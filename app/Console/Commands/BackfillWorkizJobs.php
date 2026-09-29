@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
@@ -29,6 +30,11 @@ use Illuminate\Support\Sleep;
  *    shifts every page by a row, and a re-read row costs nothing.
  *  - LANDS ONLY WHAT THE MIRROR LACKS. A job the sync already mirrors is its
  *    business, and leaving it alone keeps this from racing the sync over it.
+ *  - COUNTS PER BRANCH: jobs read, jobs new to the mirror, how many of those
+ *    attach to a customer EzBizi already has, and how many distinct clients
+ *    will become new customers. `--dry-run` reads and counts the same way and
+ *    lands nothing, under progress of its own, so it never moves the real run.
+ *    It spends the same API calls as the real run.
  *
  * It writes the mirror and nothing else. The projection turns the new rows into
  * jobs, and creating a job raises no automation event, so an old job that lands
@@ -41,12 +47,15 @@ class BackfillWorkizJobs extends Command
         {--since=2023-01-01 : The oldest job date to reach (Y-m-d)}
         {--pages=100 : Most pages to read in this run, across every branch}
         {--pause=10 : Seconds between pages, leaving the minute sync its quota}
-        {--restart : Forget the saved progress and start every branch from its first page}';
+        {--restart : Forget the saved progress and start every branch from its first page}
+        {--dry-run : Read and count, landing nothing; its own progress, so the real run is not moved}';
 
     protected $description = 'Mirror Workiz jobs from before the mirror began, paced and resumable';
 
-    /** The saved progress: the since date, and per franchise the next page and whether it is done. */
+    /** The saved progress: the since date, and per franchise the next page, whether it is done, and the counts. */
     public const PROGRESS = 'ezbizi:backfill-workiz';
+
+    private const FRESH = ['page' => 0, 'done' => false, 'jobs' => 0, 'new' => 0, 'attach' => 0, 'clients' => []];
 
     public function handle(WorkizJobs $workiz, TenantContext $tenant): int
     {
@@ -58,7 +67,9 @@ class BackfillWorkizJobs extends Command
             return self::FAILURE;
         }
 
-        $progress = $this->option('restart') ? [] : Cache::get(self::PROGRESS, []);
+        $dry = (bool) $this->option('dry-run');
+        $key = self::PROGRESS.($dry ? ':dry-run' : '');
+        $progress = $this->option('restart') ? [] : Cache::get($key, []);
 
         // A different window is a different walk: its page numbers mean other jobs.
         if (($progress['since'] ?? $since) !== $since) {
@@ -82,13 +93,16 @@ class BackfillWorkizJobs extends Command
 
         foreach ($connections as $connection) {
             $organization = $organizations[$connection->organization_id] ?? null;
-            $at = $progress['branches'][$connection->scope_id] ?? ['page' => 0, 'landed' => 0, 'done' => false];
+            $at = $progress['branches'][$connection->scope_id] ?? self::FRESH;
 
             if ($organization === null || $read >= $budget) {
                 continue;
             }
 
-            $at['page'] = max(0, $at['page'] - 1);
+            // Nothing a dry run read was landed, so it has no shifted row to catch.
+            if (! $dry) {
+                $at['page'] = max(0, $at['page'] - 1);
+            }
 
             while ($read < $budget && ! $at['done']) {
                 if ($read > 0) {
@@ -106,47 +120,80 @@ class BackfillWorkizJobs extends Command
                     return self::FAILURE;
                 }
 
-                $at['landed'] += $tenant->run($organization, fn () => $this->landNew($connection, $page['jobs']));
-                $at['done'] = count($page['jobs']) < WorkizJobs::PAGE;
-                $at['page']++;
+                $tally = $tenant->run($organization, fn () => $this->tally($connection, $page['jobs'], $at['clients'], $dry));
+                $at = ['jobs' => $at['jobs'] + count($page['jobs']), 'new' => $at['new'] + $tally['new'],
+                    'attach' => $at['attach'] + $tally['attach'], 'clients' => $tally['clients'],
+                    'done' => count($page['jobs']) < WorkizJobs::PAGE, 'page' => $at['page'] + 1];
 
                 $progress['branches'][$connection->scope_id] = $at;
-                Cache::forever(self::PROGRESS, $progress);
+                Cache::forever($key, $progress);
             }
         }
 
         $done = 0;
 
         foreach ($connections as $connection) {
-            $at = $progress['branches'][$connection->scope_id] ?? ['page' => 0, 'landed' => 0, 'done' => false];
+            $at = $progress['branches'][$connection->scope_id] ?? self::FRESH;
             $done += (int) $at['done'];
-            $this->line("{$connection->display_name}: {$at['landed']} landed, next page {$at['page']}".($at['done'] ? ', done.' : '.'));
+            $this->line(($dry ? '[dry run] ' : '')."{$connection->display_name}: {$at['jobs']} jobs read, {$at['new']} new: "
+                ."{$at['attach']} attach to a customer, ".count($at['clients']).' new customers. '
+                ."Next page {$at['page']}".($at['done'] ? ', done.' : '.'));
         }
 
         $this->info($done === $connections->count()
             ? 'Every branch is done.'
             : "Not finished: {$read} pages read this run. Run it again to go on.");
 
+        if ($dry) {
+            $this->info('Dry run: nothing was written.');
+        }
+
         return self::SUCCESS;
     }
 
-    /** Land the jobs the mirror does not have yet; returns how many. */
-    private function landNew(SocialConnection $connection, array $jobs): int
+    /**
+     * Count one page, and land what the mirror lacks unless this is a dry run.
+     *
+     * A new job whose client already has a customer ATTACHES to them: the
+     * projection finds the client's key, as the A1 import registered it. A client
+     * with no customer yet will become a new one; `$clients` holds each such
+     * client once, across pages and runs.
+     *
+     * @return array{new: int, attach: int, clients: array<int, true>}
+     */
+    private function tally(SocialConnection $connection, array $jobs, array $clients, bool $dry): array
     {
-        $known = WorkizJob::query()
+        $mirrored = WorkizJob::query()
             ->where('franchise_id', $connection->scope_id)
             ->whereIn('remote_id', array_column($jobs, 'UUID'))
             ->pluck('remote_id')
             ->flip();
 
-        $landed = 0;
+        $fresh = array_filter($jobs, fn (array $job) => ! $mirrored->has((string) ($job['UUID'] ?? '')));
 
-        foreach ($jobs as $payload) {
-            if (! $known->has((string) ($payload['UUID'] ?? ''))) {
-                $landed += WorkizJob::land($connection, $payload) ? 1 : 0;
+        $customers = WorkizClient::query()
+            ->where('franchise_id', $connection->scope_id)
+            ->whereIn('client_id', array_map(fn (array $job) => (int) ($job['ClientId'] ?? 0), $fresh))
+            ->whereNotNull('customer_id')
+            ->pluck('client_id')
+            ->flip();
+
+        $attach = 0;
+
+        foreach ($fresh as $payload) {
+            $client = (int) ($payload['ClientId'] ?? 0);
+
+            if ($customers->has($client)) {
+                $attach++;
+            } elseif ($client > 0) {
+                $clients[$client] = true;
+            }
+
+            if (! $dry) {
+                WorkizJob::land($connection, $payload);
             }
         }
 
-        return $landed;
+        return ['new' => count($fresh), 'attach' => $attach, 'clients' => $clients];
     }
 }
