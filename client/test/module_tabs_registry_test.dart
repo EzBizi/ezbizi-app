@@ -117,6 +117,11 @@ const _knownDrift = {
   // Not drift: the strip is built from the sources the server sends, so it
   // is empty with no data. leads_screen_test.dart covers its chips.
   'leads': 'data-driven strip, not checkable here',
+  // Not drift: Posts and Accounts are the Social Media Management pane's
+  // own strip, drawn inside Marketing below the strip of its child modules
+  // (Newsletter, Web Management), which is the first strip this test reads.
+  // marketing_screen_test.dart pins that inner strip against partial grants.
+  'marketing': 'inner strip of the Social Media pane — see marketing_screen_test.dart',
 };
 
 MockClientHandler _handler(String module, List<String> permissions) =>
