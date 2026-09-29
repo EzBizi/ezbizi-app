@@ -1579,9 +1579,9 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Chat' => PersonColours.hue(context, 4), // gold
   'Form' => PersonColours.hue(context, 7), // brown
   'Messenger' => PersonColours.hue(context, 6), // coral
-  'Instagram' => ToneColours.of(context, Tone.review), // purple
+  'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
-  _ => ToneColours.of(context, Tone.info),
+  _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
 };
 
 /// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
