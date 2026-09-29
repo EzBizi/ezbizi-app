@@ -47,16 +47,16 @@ class MergeWorkizTwinsTest extends TestCase
     }
 
     /** A customer made at $at, as the import or the projection makes one: with Workiz keys and jobs. */
-    private function customer(string $at, string $name, string $phone, array $keys = [], int $jobs = 0, ?string $franchise = null): Customer
+    private function customer(string $at, string $name, string $phone, array $keys = [], int $jobs = 0, ?string $franchise = null, ?string $postal = '07030'): Customer
     {
         Carbon::setTestNow($at);
 
         try {
-            return $this->inTenant($this->t['org'], function () use ($name, $phone, $keys, $jobs, $franchise) {
+            return $this->inTenant($this->t['org'], function () use ($name, $phone, $keys, $jobs, $franchise, $postal) {
                 $franchise ??= $this->t['franchise']->id;
                 $customer = Customer::create([
                     'owning_franchise_id' => $franchise, 'number' => 'C-'.bin2hex(random_bytes(3)),
-                    'name' => $name, 'phone' => $phone, 'is_active' => true,
+                    'name' => $name, 'phone' => $phone, 'postal_code' => $postal, 'is_active' => true,
                 ]);
 
                 foreach ($keys as $key) {
@@ -116,9 +116,37 @@ class MergeWorkizTwinsTest extends TestCase
         $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [77], jobs: 1, franchise: $this->other);
 
-        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge, 1 in another franchise left alone');
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 twins in the same franchise');
 
         $this->assertCount(2, $this->live());
+    }
+
+    public function test_a_match_in_another_franchise_does_not_make_this_one_ambiguous(): void
+    {
+        // The same person on a second branch's books, left there; the one in
+        // this branch is still exactly one, so the twin is folded into it.
+        $kept = $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
+        $this->customer('2026-09-29 18:36:00', 'Ann Lee', '+12015550100', [90], franchise: $this->other);
+        $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
+
+        $this->merge()->assertSuccessful()->expectsOutputToContain('1 to merge');
+
+        $this->assertCount(2, $this->live(), 'the twin went, both branch records stay');
+        $this->assertContains($kept->id, $this->live()->all());
+    }
+
+    public function test_a_booker_at_a_different_address_is_not_the_same_person(): void
+    {
+        // Staff and agents book under their own name and phone for other
+        // people's houses: phone and name agree, the address does not.
+        $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512], postal: '07030');
+        $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1, postal: '33009');
+        $this->customer('2026-09-29 10:00:00', 'Bo Lee', '+12015550111', [1], postal: null);
+        $this->customer('2026-09-29 19:00:00', 'Bo Lee', '+12015550111', [2], postal: null);
+
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge, 2 at a different address left alone');
+
+        $this->assertCount(4, $this->live());
     }
 
     public function test_what_is_not_certain_is_left_alone_and_reported(): void
@@ -161,7 +189,7 @@ class MergeWorkizTwinsTest extends TestCase
         $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
 
-        $this->merge(['--dry-run' => true])->assertSuccessful()->expectsOutputToContain('[dry run] 1 twins: 1 to merge');
+        $this->merge(['--dry-run' => true])->assertSuccessful()->expectsOutputToContain('[dry run] 1 twins in the same franchise: 1 to merge');
 
         $this->assertCount(2, $this->live());
         $this->assertSame([], Storage::disk('local')->allFiles());
