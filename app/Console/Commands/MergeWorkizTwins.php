@@ -25,15 +25,25 @@ use Illuminate\Support\Facades\Storage;
  * older live customer: Workiz's own duplicate client records (270 in the same
  * franchise) and keys the A1 export dropped as other people (426 in another).
  *
- * ── WHAT IT DOES, AND ONLY WITHIN ONE FRANCHISE ─────────────────────
+ * ── WHAT IT DOES ─────────────────────────────────────────────────
  *
  * A twin is a customer made inside the window, holding a Workiz key, whose
  * phone and name (case and spacing ignored) match exactly ONE live customer
- * made before it IN THE SAME FRANCHISE, at the SAME POSTAL CODE. Its jobs and
- * its Workiz keys move to that customer, and it is soft-deleted: one
- * transaction per pair, under the projection's lock, every move in a manifest
- * and every pair in one audit row, so a wrong one can be undone. Customers
- * approved these (2026-09-29).
+ * made before it at the SAME POSTAL CODE, in any franchise. Its jobs and its
+ * Workiz keys move to that customer, and it is soft-deleted: one transaction
+ * per pair, under the projection's lock, every move in a manifest and every
+ * pair in one audit row, so a wrong one can be undone. Customers approved
+ * these (2026-09-29).
+ *
+ * Any franchise, because plan §5.2 (DECIDED) makes one person served by two
+ * branches ONE customer: "duplicates create two half-histories for one
+ * relationship". The kept customer keeps its own owning franchise, the older
+ * one, which was accountable first; every job keeps its own franchise, so no
+ * branch's work moves, only which record it points at.
+ *
+ * When two older records of the person share the address -- themselves twins,
+ * from before -- the one in the twin's own branch is the one kept, if there is
+ * exactly one; otherwise it is left and listed (Customers' ruling on the six).
  *
  * The postal code is Customers' condition, from reading the six ambiguous
  * groups on the box: staff and agents book jobs under their OWN name and phone
@@ -41,11 +51,6 @@ use Illuminate\Support\Facades\Storage;
  * person. A real Workiz twin of one person shares one address; a booker's
  * houses do not. (It does not separate a Sr from a Jr at one address; nothing
  * here can.)
- *
- * A match owned by ANOTHER franchise is left alone, by Customers' and the
- * desk's ruling: Workiz keeps one client per account, so one person served by
- * two branches is two records, each on its own branch's books. Folding one
- * under the other would hide the person from the branch that serves them.
  *
  * ── WHAT IT WILL NOT TOUCH, CHECKED WHEN IT RUNS ─────────────────
  *
@@ -113,13 +118,18 @@ class MergeWorkizTwins extends Command
         $dryRun = (bool) $this->option('dry-run');
         $norm = fn (?string $name) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $name)));
 
-        $older = [];
+        // Who the twin is (phone and name), and who of those lives there too.
+        $person = [];
+        $there = [];
 
-        // Keyed by franchise too: a match in another branch is never a
-        // candidate, and never makes one in this branch look ambiguous.
         foreach (Customer::query()->whereNotNull('phone')->where('created_at', '<', $window[0])
             ->get(['id', 'phone', 'name', 'owning_franchise_id', 'postal_code']) as $customer) {
-            $older[$customer->owning_franchise_id.'|'.$customer->phone.'|'.$norm($customer->name)][] = $customer;
+            $key = $customer->phone.'|'.$norm($customer->name);
+            $person[$key] = true;
+
+            if ($customer->postal_code !== null) {
+                $there[$key.'|'.$customer->postal_code][] = $customer;
+            }
         }
 
         $twins = Customer::query()
@@ -133,16 +143,23 @@ class MergeWorkizTwins extends Command
         $report = ['several' => [], 'address' => 0, 'touched' => [], 'named' => []];
 
         foreach ($twins as $twin) {
-            $matches = $older[$twin->owning_franchise_id.'|'.$twin->phone.'|'.$norm($twin->name)] ?? [];
+            $key = $twin->phone.'|'.$norm($twin->name);
 
-            if ($matches === []) {
+            if (! isset($person[$key])) {
                 continue;
             }
 
+            $matches = $twin->postal_code === null ? [] : ($there[$key.'|'.$twin->postal_code] ?? []);
+
             if (count($matches) > 1) {
-                $report['several'][] = $twin->getKey().' matches '.implode(', ', array_map(fn ($c) => $c->getKey(), $matches));
-            } elseif ($twin->postal_code === null || $matches[0]->postal_code !== $twin->postal_code) {
+                $own = array_values(array_filter($matches, fn ($c) => $c->owning_franchise_id === $twin->owning_franchise_id));
+                $matches = count($own) === 1 ? $own : $matches;
+            }
+
+            if ($matches === []) {
                 $report['address']++;
+            } elseif (count($matches) > 1) {
+                $report['several'][] = $twin->getKey().' matches '.implode(', ', array_map(fn ($c) => $c->getKey(), $matches));
             } elseif ($twin->updated_at->gt($twin->created_at)) {
                 $report['touched'][] = $twin->getKey();
             } elseif (isset($named[$twin->getKey()])) {
@@ -153,9 +170,10 @@ class MergeWorkizTwins extends Command
         }
 
         $this->info(sprintf(
-            '%s%d twins in the same franchise: %d to merge, %d at a different address left alone, %d match several customers, %d changed by a person, %d named by something else.',
+            '%s%d twins: %d to merge (%d in the same franchise, %d in another), %d at a different address left alone, %d match several customers, %d changed by a person, %d named by something else.',
             $dryRun ? '[dry run] ' : '', count($pairs) + $report['address'] + count($report['several']) + count($report['touched']) + count($report['named']),
-            count($pairs), $report['address'],
+            count($pairs), count(array_filter($pairs, fn ($p) => $p[0]->owning_franchise_id === $p[1]->owning_franchise_id)),
+            count(array_filter($pairs, fn ($p) => $p[0]->owning_franchise_id !== $p[1]->owning_franchise_id)), $report['address'],
             count($report['several']), count($report['touched']), count($report['named']),
         ));
 

@@ -109,30 +109,47 @@ class MergeWorkizTwinsTest extends TestCase
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->count()));
     }
 
-    public function test_a_twin_in_another_franchise_is_left_on_its_own_branch(): void
+    public function test_a_twin_in_another_franchise_is_one_person_and_its_jobs_keep_their_branch(): void
     {
-        // One person served by two branches is two records, one per Workiz
-        // account, each on its own branch's books (Customers and the desk).
-        $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
+        // Plan §5.2, DECIDED: one person served by two branches is ONE customer.
+        $kept = $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [77], jobs: 1, franchise: $this->other);
 
-        $this->merge()->assertSuccessful()->expectsOutputToContain('0 twins in the same franchise');
+        $this->merge()->assertSuccessful()->expectsOutputToContain('1 to merge (0 in the same franchise, 1 in another)');
 
-        $this->assertCount(2, $this->live());
+        $this->assertEquals([$kept->id], $this->live()->all());
+        $this->inTenant($this->t['org'], function () use ($kept) {
+            $job = Job::query()->where('customer_id', $kept->id)->sole();
+            $this->assertSame($this->other, $job->franchise_id, 'the work stays with the branch that did it');
+            $this->assertSame($this->t['franchise']->id, $kept->fresh()->owning_franchise_id, 'and the kept customer keeps its owner');
+        });
     }
 
-    public function test_a_match_in_another_franchise_does_not_make_this_one_ambiguous(): void
+    public function test_when_two_older_records_share_the_address_the_twins_own_branch_is_kept(): void
     {
-        // The same person on a second branch's books, left there; the one in
-        // this branch is still exactly one, so the twin is folded into it.
+        // The person already had a record on each branch (themselves twins,
+        // from before): the new twin joins the one in its own branch.
         $kept = $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
-        $this->customer('2026-09-29 18:36:00', 'Ann Lee', '+12015550100', [90], franchise: $this->other);
+        $elsewhere = $this->customer('2026-09-29 18:36:00', 'Ann Lee', '+12015550100', [90], franchise: $this->other);
+        $twin = $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
+
+        $this->merge()->assertSuccessful()->expectsOutputToContain('1 to merge (1 in the same franchise, 0 in another)');
+
+        $this->assertEqualsCanonicalizing([$kept->id, $elsewhere->id], $this->live()->all());
+        $this->assertSame(1, $this->inTenant($this->t['org'], fn () => Job::query()->where('customer_id', $kept->id)->count()));
+        $this->assertNotContains($twin->id, $this->live()->all());
+    }
+
+    public function test_two_older_records_elsewhere_and_none_in_its_own_branch_is_left(): void
+    {
+        $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512], franchise: $this->other);
+        $this->customer('2026-09-29 18:36:00', 'Ann Lee', '+12015550100', [4514], franchise: $this->other);
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
 
-        $this->merge()->assertSuccessful()->expectsOutputToContain('1 to merge');
+        // One expectation per output line: two that match the same line satisfy only one.
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge (0 in the same franchise, 0 in another), 0 at a different address left alone, 1 match several customers');
 
-        $this->assertCount(2, $this->live(), 'the twin went, both branch records stay');
-        $this->assertContains($kept->id, $this->live()->all());
+        $this->assertCount(3, $this->live());
     }
 
     public function test_a_booker_at_a_different_address_is_not_the_same_person(): void
@@ -144,7 +161,7 @@ class MergeWorkizTwinsTest extends TestCase
         $this->customer('2026-09-29 10:00:00', 'Bo Lee', '+12015550111', [1], postal: null);
         $this->customer('2026-09-29 19:00:00', 'Bo Lee', '+12015550111', [2], postal: null);
 
-        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge, 2 at a different address left alone');
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge (0 in the same franchise, 0 in another), 2 at a different address left alone');
 
         $this->assertCount(4, $this->live());
     }
@@ -189,7 +206,7 @@ class MergeWorkizTwinsTest extends TestCase
         $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
 
-        $this->merge(['--dry-run' => true])->assertSuccessful()->expectsOutputToContain('[dry run] 1 twins in the same franchise: 1 to merge');
+        $this->merge(['--dry-run' => true])->assertSuccessful()->expectsOutputToContain('[dry run] 1 twins: 1 to merge');
 
         $this->assertCount(2, $this->live());
         $this->assertSame([], Storage::disk('local')->allFiles());
