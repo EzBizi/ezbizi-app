@@ -67,6 +67,55 @@ class InspectionImportA1ReportsTest extends TestCase
     }
 
     /**
+     * THE PATH PRODUCTION WILL ACTUALLY TAKE: the UUID filled, as in v2.
+     *
+     * Every other test here uses the first export's shape, with
+     * `workiz_job_uuid: null` and only the serial — which is how the suite came
+     * to cover the serial fallback thoroughly and the UUID branch not at all.
+     * The Dismantler then re-wrote the manifest (manifest_version 2) with the
+     * UUID filled on all seven, so the run on the box goes down the branch no
+     * test had walked. Both keys present, naming the same job, is the ordinary
+     * v2 case.
+     */
+    public function test_the_v2_manifest_attaches_by_uuid_with_the_serial_agreeing(): void
+    {
+        $a1 = $this->provisionTenant('A1-Group');
+        $job = $this->jobWithSerial($a1, '200022572', uuid: 'K7QX2M');
+
+        $entry = $this->entry(90, '200022572');
+        $entry['workiz_job_uuid'] = 'K7QX2M';
+        $this->writeManifest([$entry], version: 2);
+
+        $status = Artisan::call('inspection:import-a1-reports', ['dir' => $this->dir]);
+
+        $this->assertSame(1, $this->attachmentsOn($a1, $job), 'v2 lands by UUID');
+        $this->assertSame(0, $status);
+    }
+
+    /**
+     * A UUID and a serial that name DIFFERENT jobs hold rather than guess.
+     *
+     * Both are real jobs in A1-Group, so either lookup alone would attach.
+     * Only the agreement check stops it, and attaching a customer's findings to
+     * the wrong job is worse than not attaching them.
+     */
+    public function test_a_uuid_and_serial_naming_different_jobs_holds(): void
+    {
+        $a1 = $this->provisionTenant('A1-Group');
+        $byUuid = $this->jobWithSerial($a1, '111111111', uuid: 'AAAAAA');
+        $bySerial = $this->jobWithSerial($a1, '200022572', uuid: 'BBBBBB');
+
+        $entry = $this->entry(90, '200022572');
+        $entry['workiz_job_uuid'] = 'AAAAAA';
+        $this->writeManifest([$entry], version: 2);
+
+        Artisan::call('inspection:import-a1-reports', ['dir' => $this->dir]);
+
+        $this->assertSame(0, $this->attachmentsOn($a1, $byUuid), 'not the job the UUID names');
+        $this->assertSame(0, $this->attachmentsOn($a1, $bySerial), 'nor the job the serial names');
+    }
+
+    /**
      * No job means HELD — archived, not attached, and NOTHING CREATED.
      *
      * Report 28's case. EzBizi has no customer merge, so an importer that
@@ -237,15 +286,26 @@ class InspectionImportA1ReportsTest extends TestCase
         ];
     }
 
-    /** @param list<array<string, mixed>> $reports */
-    private function writeManifest(array $reports): void
+    /**
+     * v2 adds top-level `manifest_version` and `pdfs_written_at`, which the
+     * importer must ignore rather than trip on.
+     *
+     * @param  list<array<string, mixed>>  $reports
+     */
+    private function writeManifest(array $reports, int $version = 1): void
     {
-        file_put_contents($this->dir.'/manifest.json', json_encode(['reports' => $reports]));
+        $manifest = ['reports' => $reports];
+
+        if ($version >= 2) {
+            $manifest = ['manifest_version' => 2, 'pdfs_written_at' => '2026-09-29T18:00:00Z'] + $manifest;
+        }
+
+        file_put_contents($this->dir.'/manifest.json', json_encode($manifest));
     }
 
-    private function jobWithSerial(array $tenant, string $serial): Job
+    private function jobWithSerial(array $tenant, string $serial, ?string $uuid = null): Job
     {
-        return $this->inTenant($tenant['org'], function () use ($tenant, $serial) {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $serial, $uuid) {
             $customer = Customer::create([
                 'owning_franchise_id' => $tenant['franchise']->id,
                 'number' => 'C-'.bin2hex(random_bytes(3)),
@@ -260,7 +320,7 @@ class InspectionImportA1ReportsTest extends TestCase
                 'status' => 'completed',
             ]);
 
-            $uuid = strtoupper(bin2hex(random_bytes(3)));
+            $uuid ??= strtoupper(bin2hex(random_bytes(3)));
 
             WorkizJob::create([
                 'franchise_id' => $tenant['franchise']->id,
