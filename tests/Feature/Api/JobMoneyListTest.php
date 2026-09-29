@@ -82,7 +82,7 @@ class JobMoneyListTest extends TestCase
         $row = collect($this->signedInAs($this->alpha['admin'])->getJson('/api/v1/jobs')->json('data'))
             ->firstWhere('id', $this->ids['partial']);
 
-        $this->assertSame(['total' => 20000, 'due' => 8000, 'state' => 'partial', 'due_on' => '2026-10-05'], $row['money']);
+        $this->assertSame(['total' => 20000, 'due' => 8000, 'state' => 'partial', 'due_on' => '2026-10-05', 'currency' => 'USD'], $row['money']);
     }
 
     public function test_without_the_toggle_the_filter_is_refused_and_nothing_leaks(): void

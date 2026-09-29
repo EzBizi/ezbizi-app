@@ -656,13 +656,15 @@ class JobsController extends Controller
         ];
     }
 
-    /** @return array{total: int, due: int, state: string, due_on: ?string}|null */
+    /** @return array{total: int, due: int, state: string, due_on: ?string, currency: string}|null */
     private function moneySummary(Job $job): ?array
     {
         $m = WorkizMoney::for($job);
 
+        // `currency` so a list row can say its amounts without a second key to
+        // look in: a Due column formatted in the wrong currency reads as right.
         return $m === null ? null
-            : ['total' => $m['total'], 'due' => $m['due'], 'state' => $m['state'], 'due_on' => $m['due_on']];
+            : ['total' => $m['total'], 'due' => $m['due'], 'state' => $m['state'], 'due_on' => $m['due_on'], 'currency' => $m['currency']];
     }
 
     private function present(Job $job, bool $detailed = false, bool $money = false): array
