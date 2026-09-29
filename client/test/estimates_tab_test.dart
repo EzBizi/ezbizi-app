@@ -114,6 +114,20 @@ void main() {
       expect(find.text('Brian Moss'), findsOneWidget);
     });
 
+    testWidgets("says each one's title, and the date A1's came with", (
+      tester,
+    ) async {
+      await _estimates(tester);
+
+      expect(find.text('Title'), findsOneWidget, reason: 'the column');
+      expect(find.text('Rebuild the crown'), findsOneWidget);
+      // No issue date on A1's rows, so the list dates them by when they were
+      // made, which A1 kept: the only date that history has.
+      expect(find.text('Created'), findsOneWidget);
+      expect(find.text('2026-03-03'), findsOneWidget);
+      expect(find.text('2026-09-26'), findsNWidgets(3));
+    });
+
     testWidgets('says what was quoted and what was accepted', (tester) async {
       await _estimates(tester);
 
@@ -267,6 +281,45 @@ void main() {
       expect(find.text('EST-0430 · Karen Holt'), findsNothing);
     });
 
+    testWidgets('a title names the estimate, and saves when changed', (
+      tester,
+    ) async {
+      await _estimates(tester);
+      await tester.tap(find.text('Rebuild the crown'));
+      await tester.pumpAndSettle();
+
+      // Named by its title, with the number and the customer under it.
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Text && w.data == 'Rebuild the crown',
+        ),
+        findsOneWidget,
+        reason: 'the heading, not only the field',
+      );
+      expect(find.text('A1-2291 · Paula Grant · Illinois'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close Rebuild the crown'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Karen Holt'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('EST-0430 · Karen Holt'),
+        findsOneWidget,
+        reason: 'none',
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('estimate-title')),
+        'Crown and cap',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('estimate-save')));
+      await tester.pumpAndSettle();
+
+      expect(_server.patches.single['title'], 'Crown and cap');
+      expect(find.text('EST-0430 · Karen Holt · Illinois'), findsOneWidget);
+    });
+
     testWidgets('A1 Tools brought over as a total keeps that total', (
       tester,
     ) async {
@@ -275,6 +328,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('estimate-imported')), findsOneWidget);
+      expect(
+        find.textContaining('Adding lines'),
+        findsNothing,
+        reason: 'archived: no lines can be added',
+      );
       expect(_text(tester, 'estimate-total'), r'$2,600.00');
       // Archived: nothing further, not even a button to press.
       for (final type in [FilledButton, OutlinedButton, TextButton]) {
@@ -309,7 +367,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('estimate-job')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('estimate-line-add')));
+    await tester.enterText(
+      find.byKey(const ValueKey('estimate-title')),
+      'Dryer vent',
+    );
+    final add = find.byKey(const ValueKey('estimate-line-add'));
+    await tester.ensureVisible(add);
+    await tester.tap(add);
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey('estimate-line-name-0')),
@@ -329,6 +393,7 @@ void main() {
     expect(posted['franchise_id'], 'fr-il', reason: 'the only one there is');
     expect(posted['customer_id'], 'c-9');
     expect(posted.containsKey('job_id'), isFalse);
+    expect(posted['title'], 'Dryer vent');
     expect(posted['lines'], [
       {
         'name': 'Dryer vent cleaning',
@@ -423,6 +488,9 @@ class _Server {
         'Paula Grant',
         260000,
         source: 'a1',
+        title: 'Rebuild the crown',
+        issued: null,
+        created: '2026-03-03T12:00:00+00:00',
       ),
     ])
       e['id'] as String: e,
@@ -497,6 +565,7 @@ class _Server {
           final e = estimates[id]!;
           if (body['status'] != null) e['status'] = body['status'];
           if (body['lines'] != null) e['lines'] = body['lines'];
+          if (body.containsKey('title')) e['title'] = body['title'];
           return _json({'data': e});
         case 'DELETE':
           deleted.add(id);
@@ -606,6 +675,9 @@ Map<String, dynamic> _estimate(
   int total, {
   String? job,
   String source = 'ezbizi',
+  String? title,
+  String? issued = '2026-09-26',
+  String created = '2026-09-26T14:00:00+00:00',
   List<Map<String, dynamic>> lines = const [],
 }) => {
   'id': id,
@@ -615,7 +687,9 @@ Map<String, dynamic> _estimate(
   'franchise': {'id': 'fr-il', 'name': 'Illinois'},
   'customer': {'id': 'c-$id', 'name': customer, 'number': 'C-$id'},
   'job': job == null ? null : {'id': 'j-$job', 'number': job},
-  'issued_on': '2026-09-26',
+  'title': title,
+  'issued_on': issued,
+  'created_at': created,
   'accepted_at': status == 'accepted' ? '2026-09-27T10:00:00-05:00' : null,
   'currency': 'USD',
   'total_minor': total,

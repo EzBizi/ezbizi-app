@@ -491,9 +491,18 @@ class _EstimatesTabState extends State<EstimatesTab> {
   static String? _job(Map<String, dynamic> row) =>
       (row['job'] as Map?)?['number'] as String?;
 
-  String? _issued(Map<String, dynamic> row) {
-    final on = DateTime.tryParse('${row['issued_on'] ?? ''}');
-    return on == null ? null : _me.display.formatDate(on);
+  /// What it is for, when somebody said. A1 sent one on nearly every row.
+  static String? _title(Map<String, dynamic> row) {
+    final title = '${row['title'] ?? ''}'.trim();
+    return title.isEmpty ? null : title;
+  }
+
+  /// When it was made, in the reader's zone. The date every row has: A1's
+  /// estimates came with none issued, and keep A1's own created date
+  /// (Jobs, 768c9658). The issue date is on the estimate itself.
+  String? _createdOn(Map<String, dynamic> row) {
+    final at = DateTime.tryParse('${row['created_at'] ?? ''}')?.toLocal();
+    return at == null ? null : _me.display.formatDate(at);
   }
 
   static String _amount(Map<String, dynamic> row) => formatMoney(
@@ -517,13 +526,16 @@ class _EstimatesTabState extends State<EstimatesTab> {
             Text('${row['number'] ?? ''}', style: TextStyle(color: muted)),
       ),
       TableColumn(
-        'Customer',
+        'Title',
         flex: 3,
         cell: (_, row) => Text(
-          _customer(row),
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          _title(row) ?? '—',
+          style: _title(row) == null
+              ? TextStyle(color: muted)
+              : const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
+      TableColumn('Customer', flex: 2, cell: (_, row) => Text(_customer(row))),
       TableColumn(
         'Job',
         width: 104,
@@ -531,9 +543,9 @@ class _EstimatesTabState extends State<EstimatesTab> {
             Text(_job(row) ?? '—', style: TextStyle(color: muted)),
       ),
       TableColumn(
-        'Issued',
+        'Created',
         width: 120,
-        cell: (_, row) => Text(_issued(row) ?? '—'),
+        cell: (_, row) => Text(_createdOn(row) ?? '—'),
       ),
       TableColumn('Status', width: 120, cell: (_, row) => _pill(row)),
       TableColumn(
@@ -552,9 +564,10 @@ class _EstimatesTabState extends State<EstimatesTab> {
     title: _customer(row),
     topRight: _amount(row),
     subtitle: [
+      _title(row),
       '${row['number'] ?? ''}',
       _job(row),
-      _issued(row),
+      _createdOn(row),
       if (row['source'] == 'a1') 'from A1 Tools',
     ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
     bottomRight: _pill(row),
@@ -655,6 +668,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
   String? _error;
 
   final List<_Line> _lines = [];
+  final _title = TextEditingController();
   final _note = TextEditingController();
   final _issued = TextEditingController();
 
@@ -690,6 +704,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
     for (final line in _lines) {
       line.dispose();
     }
+    _title.dispose();
     _note.dispose();
     _issued.dispose();
     super.dispose();
@@ -743,6 +758,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
               price: _priceText((l['unit_price_minor'] as num?)?.toInt() ?? 0),
             ),
       ]);
+    _title.text = '${row['title'] ?? ''}';
     _note.text = '${row['note'] ?? ''}';
     _issued.text = '${row['issued_on'] ?? ''}';
     _row = row;
@@ -760,6 +776,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
       '${formatCount(minor ~/ 100)}.${(minor % 100).toString().padLeft(2, '0')}';
 
   String _fingerprint() => [
+    _title.text.trim(),
     _note.text.trim(),
     _issued.text.trim(),
     for (final l in _lines) '${l.name.text.trim()}|${l.qty}|${l.unitMinor}',
@@ -822,6 +839,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
     final response = await widget.api.patch('/estimates/${widget.id}', {
       'status': ?status,
       if (_dirty) ...{
+        'title': _trimmed(_title),
         'note': _trimmed(_note),
         'issued_on': _trimmed(_issued),
         if (_linesOpen) 'lines': [for (final l in _lines) l.toJson()],
@@ -856,6 +874,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
       'franchise_id': _franchiseId,
       'customer_id': _customer?['id'],
       'job_id': ?_jobId,
+      'title': ?_trimmed(_title),
       'note': ?_trimmed(_note),
       'issued_on': ?_trimmed(_issued),
       'lines': [for (final l in _lines) l.toJson()],
@@ -956,13 +975,19 @@ class _EstimatePanelState extends State<EstimatePanel> {
 
   /// Something typed that is not on the server yet.
   bool get _unsaved => _isNew
-      ? _customer != null || _lines.isNotEmpty || _note.text.trim().isNotEmpty
+      ? _customer != null ||
+            _lines.isNotEmpty ||
+            _title.text.trim().isNotEmpty ||
+            _note.text.trim().isNotEmpty
       : _dirty;
 
   @override
   Widget build(BuildContext context) {
     final row = _row;
     final job = (row?['job'] as Map?)?['number'];
+    final named = row == null ? null : _EstimatesTabState._title(row);
+    final who =
+        '${row?['number'] ?? ''} · ${(row?['customer'] as Map?)?['name'] ?? ''}';
 
     // Every edit rebuilds, so this is where the answer is always current.
     // Nothing listens to the notifier -- the list reads it on a tap -- so
@@ -970,16 +995,19 @@ class _EstimatePanelState extends State<EstimatePanel> {
     widget.dirty?.value = !_loading && _unsaved;
 
     return SidePanel(
+      // Named by its title when it has one, as a job's panel is, with the
+      // number and the customer under it; by those two when it has none.
       title: _isNew
           ? 'New estimate'
           : row == null
           ? 'Estimate'
-          : '${row['number'] ?? ''} · ${(row['customer'] as Map?)?['name'] ?? ''}',
+          : named ?? who,
       subtitle: _isNew
           ? 'A draft until it is marked sent.'
           : row == null
           ? null
           : [
+              if (named != null) who,
               (row['franchise'] as Map?)?['name'],
               if (job != null) 'for job $job',
             ].whereType<String>().join(' · '),
@@ -1049,6 +1077,14 @@ class _EstimatePanelState extends State<EstimatePanel> {
           ],
           const SizedBox(height: 14),
         ],
+        TextField(
+          key: const ValueKey('estimate-title'),
+          controller: _title,
+          enabled: settled,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(labelText: 'Title'),
+        ),
+        const SizedBox(height: 14),
         CalendarDayField(
           controller: _issued,
           formats: _me.display,
@@ -1066,9 +1102,13 @@ class _EstimatePanelState extends State<EstimatePanel> {
               color: ToneColours.of(context, Tone.caution).fill,
               borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
             ),
+            // The second sentence only where lines can still be added: on
+            // a decided estimate it would offer what the server refuses.
             child: Text(
-              'Brought over from A1 Tools as a total with no lines. Adding '
-              'lines replaces the total with their sum.',
+              _linesOpen
+                  ? 'Brought over from A1 Tools as a total with no lines. '
+                        'Adding lines replaces the total with their sum.'
+                  : 'Brought over from A1 Tools as a total with no lines.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: ToneColours.of(context, Tone.caution).ink,
               ),
