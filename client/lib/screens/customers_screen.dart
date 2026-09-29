@@ -628,6 +628,21 @@ class _CustomersScreenState extends State<CustomersScreen> {
         cell: (_, c) =>
             Text('${c['number'] ?? ''}', style: TextStyle(color: muted)),
       ),
+      // Workiz's own client numbers beside EzBizi's (Jose, 2026-09-29):
+      // several when one person had more than one Workiz record. Only when a
+      // loaded customer has one: other organizations have no Workiz, and a
+      // column of dashes on every row is dead weight (Customers' review).
+      if (_customers.any((c) => workizClientNumbers(c) != null))
+        TableColumn(
+          'Workiz',
+          width: 96,
+          cell: (_, c) => Text(
+            workizClientNumbers(c) ?? '—',
+            style: TextStyle(color: muted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       TableColumn(
         'Name',
         flex: 3,

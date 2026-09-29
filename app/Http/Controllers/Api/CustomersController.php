@@ -126,7 +126,7 @@ class CustomersController extends Controller
              * `company` goes quietly empty. That is the bug this line already
              * had once, on the duplicate-check path.
              */
-            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name', 'workizClients:id,customer_id,client_id')
             ->withCount('jobs')
             ->tap(fn ($q) => $this->sortCustomers(
                 $q, $request->query('sort', 'name'), $request->query('direction', 'asc'),
@@ -382,6 +382,10 @@ class CustomersController extends Controller
         $base = [
             'id'     => $customer->id,
             'number' => $customer->number,
+            // Workiz's own client numbers, beside EzBizi's (Jose, 2026-09-29).
+            // Eager-loaded by every list that presents customers.
+            'workiz_client_ids' => $customer->workizClients->pluck('client_id')
+                ->map(fn ($id) => (int) $id)->sort()->values()->all(),
             'name'   => $customer->name,
             'email'  => $customer->email,
             'phone'  => $customer->phone,
@@ -548,7 +552,7 @@ class CustomersController extends Controller
         }
 
         return $matched
-            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name', 'workizClients:id,customer_id,client_id')
             ->limit(10)
             ->get();
     }
@@ -683,7 +687,7 @@ class CustomersController extends Controller
         $groups = Customer::query()
             ->selectRaw("customers.*, {$expression} AS dup_key")
             ->whereRaw("{$expression} IN ({$placeholders})", $keys->all())
-            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name', 'workizClients:id,customer_id,client_id')
             ->orderBy('name')
             ->get()
             ->groupBy('dup_key')

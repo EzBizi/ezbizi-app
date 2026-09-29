@@ -8,6 +8,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0317',
+      date: '29 Sep 2026',
+      items: [
+        'Settings, Roles: Scheduling and Work Hours list their tabs in the order their screens draw them, Overbooking and Reports before Settings.',
+        'Reports: a role without the Reports tab no longer sees an empty library pane.',
+        'Settings, Roles: Estimates now needs Jobs Financials as well, and the editor says so when it is missing, since the Estimates tab only shows with both.',
+        'Jobs and Customers: the Workiz column shows only when the list holds a Workiz number, so an organization without Workiz sees no empty column.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0316',
+      date: '29 Sep 2026',
+      items: [
+        'Jobs and Customers: a Workiz column beside the EzBizi number in both lists, and a job or customer panel shows its Workiz number under its name.',
+        'Settings, Roles: the Leads box that covers the LS Call and LS Text chips is now named LS Call and LS Text, instead of Google.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0315',
       date: '29 Sep 2026',
       items: [

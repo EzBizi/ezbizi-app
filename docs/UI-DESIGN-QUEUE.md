@@ -2958,6 +2958,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 33 · Reports · every saved report — 📐 **DRAWN, awaiting Jose**
+
+From the deploy desk, 2026-09-29, Jose verbatim, on the "Weekly work hours report" rule: *"i should also
+be able to seelct which role gets reported or not or perhaps that's something that should show on the
+reports module, cause i see that it says on the which report weekly time report, so shouldn-t i be able
+to see that existing report on reports ?"* The report is a Work Hours `TimeClockReport` (roles, + / −
+people, recipients; `work_hours.reports.view` / `work_hours.manage`), and Reports' library lists only
+`SavedReport`. `docs/previews/reports-every-report-layouts.html`: desktop **1** one library of every saved
+report, each edited where it lives, a Work Hours one opening beside the list with its week, who is in it
+and the rule that sends it, and the automation step saying who the chosen report covers with Edit who is
+in it (recommended); **2** the library grouped by module, a Work Hours card linking to its tab; **3** the
+Work Hours reports tab moved into Reports, and a rule able to narrow a report to some roles (server:
+a roles setting on `send_report`); phone **4**-**6** the same three. Every option needs a `sent_by` per
+report (the rules whose active version sends it), which nobody serves yet. Asked Reports and Clock In /
+Work Hours which shape they would refuse and who serves it; `automation_builder.dart` is Automations'.
+
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
 From the Jobs session, 2026-09-29: Jose approved estimates as EzBizi records in Jobs (child module

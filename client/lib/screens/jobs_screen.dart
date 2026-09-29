@@ -957,6 +957,20 @@ class _JobsScreenState extends State<JobsScreen> {
         cell: (_, job) =>
             Text('${job['number']}', style: TextStyle(color: muted)),
       ),
+      // Workiz's own "Job #" beside EzBizi's (Jose, 2026-09-29). Only when a
+      // loaded job has one: other organizations have no Workiz, and a column
+      // of dashes on every row is dead weight (Customers' review).
+      if (_jobs.any((job) => job['workiz_job_number'] != null))
+        TableColumn(
+          'Workiz',
+          width: 80,
+          cell: (_, job) => Text(
+            job['workiz_job_number'] == null
+                ? '—'
+                : '#${job['workiz_job_number']}',
+            style: TextStyle(color: muted),
+          ),
+        ),
       TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
       TableColumn(
         'Customer',

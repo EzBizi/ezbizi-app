@@ -30,6 +30,23 @@ class EstimatePermissionsTest extends TestCase
             ->assertForbidden()->assertJsonPath('message', 'Money on jobs is hidden for your role.');
     }
 
+    /** The roles editor says it too (the desk's audit): an estimates tick without Financials is refused, not saved. */
+    public function test_a_role_cannot_be_given_estimates_without_financials(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
+            'name' => 'Estimator', 'permissions' => ['jobs.view', 'estimates.edit'],
+        ])->assertStatus(422)->assertJsonPath(
+            'errors.permissions.0',
+            fn (string $m) => str_contains($m, 'estimates.edit needs jobs.financials'),
+        );
+
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
+            'name' => 'Estimator', 'permissions' => ['jobs.view', 'jobs.financials', 'estimates.edit'],
+        ])->assertCreated();
+    }
+
     public function test_estimate_rights_with_financials_see_it(): void
     {
         $alpha = $this->provisionTenant('Alpha');

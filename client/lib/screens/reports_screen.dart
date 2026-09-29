@@ -68,7 +68,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // Only somebody holding the library tab asks for the library. Asking
+    // anyway drew the server's refusal in a pane they were never given.
+    if (_mayOpen('library')) {
+      _load();
+    } else {
+      _loading = false;
+    }
   }
 
   Future<void> _load() async {
@@ -224,15 +230,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ).map((chip) => (chip.$1, chip.$2)).toList();
   }
 
-  /// The chips shift when Builder is absent, so a stored index would point at
-  /// the wrong destination. Resolved by NAME rather than by number.
-  String _chipName({required bool canBuildHere, required bool canExperiment}) {
-    final labels = _chipLabels(
+  /// The chips shift when a tab is not granted, so a stored index would point
+  /// at the wrong destination. Resolved by NAME rather than by number - and an
+  /// index past the end is NOTHING, not the library. Falling back to
+  /// 'Reports' drew the library for a role that does not hold it (deploy desk
+  /// audit, 2026-09-29).
+  String? _chipName({required bool canBuildHere, required bool canExperiment}) {
+    final chips = _chips(
       canBuildHere: canBuildHere,
       canExperiment: canExperiment,
     );
 
-    return _chip < labels.length ? labels[_chip].$1 : 'Reports';
+    // Built-in tabs only: a child module carries its own builder and is
+    // drawn before this is asked, so a module labelled "Builder" cannot
+    // impersonate the tab.
+    return _chip < chips.length && chips[_chip].$3 == null
+        ? chips[_chip].$1
+        : null;
+  }
+
+  /// Where a built-in tab sits in the strip right now, or null if absent.
+  int? _indexOf(
+    String name, {
+    required bool canBuildHere,
+    required bool canExperiment,
+  }) {
+    final chips = _chips(
+      canBuildHere: canBuildHere,
+      canExperiment: canExperiment,
+    );
+    final i = chips.indexWhere((c) => c.$1 == name && c.$3 == null);
+
+    return i < 0 ? null : i;
   }
 
   Widget _header(BuildContext context, {required bool canBuildHere}) {
@@ -256,10 +285,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
         ),
-        if (canBuildHere && _open == null && _chip == 0)
+        // canExperiment: canBuildHere already implies reports.build.
+        if (_indexOf('Builder', canBuildHere: canBuildHere, canExperiment: true)
+            case final builder?
+            when _open == null &&
+                _chipName(canBuildHere: canBuildHere, canExperiment: true) ==
+                    'Reports')
           FilledButton.icon(
+            // To the Builder by NAME. `_chip = 1` was the Builder only while
+            // the library sat at 0 (deploy desk audit, 2026-09-29).
             onPressed: () => setState(() {
-              _chip = 1;
+              _chip = builder;
               _open = null;
             }),
             icon: const Icon(Icons.add),
@@ -297,14 +333,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return ReportBuilder(
           api: widget.api,
           onSaved: (_) {
-            // Back to the list, where the report now is.
-            setState(() => _chip = 0);
-            _load();
+            // Back to the list, where the report now is - if this person
+            // holds it. Otherwise the Builder stays where it is.
+            final library = _indexOf(
+              'Reports',
+              canBuildHere: canBuildHere,
+              canExperiment: canExperiment,
+            );
+
+            if (library != null) {
+              setState(() => _chip = library);
+              _load();
+            }
           },
         );
 
       case 'Experimental':
         return ExperimentalCallReport(api: widget.api);
+
+      case 'Reports':
+        break;
+
+      // No tab this person holds is selected - draw nothing rather than the
+      // library they were not given.
+      default:
+        return const SizedBox.shrink();
     }
 
     final open = _open;

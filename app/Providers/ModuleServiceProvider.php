@@ -723,10 +723,12 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('general', 'General'),
                     new TabDefinition('pto', 'Paid Time Off'),
-                    new TabDefinition('settings', 'Settings'),
                     // Saved weekly hours reports (2026-09-28): sent by hand here,
                     // or on a schedule by the action below.
                     new TabDefinition('reports', 'Reports'),
+                    // Registry order is the roles editor's order: keep it the
+                    // screen's (work_hours_screen.dart).
+                    new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['time_clock'],
                 /*
@@ -1124,6 +1126,12 @@ class ModuleServiceProvider extends ServiceProvider
                 sidebar: false,
                 subject: new AutomationSubject(Estimate::class, 'Estimate'),
                 emits: [Estimate::class],
+                // EstimatePolicy refuses every estimates action without it, so
+                // granted alone an estimates tick has nothing behind it: the
+                // Jobs screen draws no Estimates tab. The roles editor now says
+                // so instead of saving it (the desk's permissions audit,
+                // 2026-09-29). Argued in RolesApiTest.
+                actionRequires: array_fill_keys(ModuleDefinition::DEFAULT_ACTIONS, ['jobs.financials']),
                 triggers: [
                     new TriggerDefinition(
                         key: 'estimate.accepted',
@@ -1176,10 +1184,12 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('availability', 'Availability'),
                     new TabDefinition('schedule', 'Schedule'),
-                    new TabDefinition('settings', 'Settings'),
                     // Jose, 2026-09-29: "a new tab on scheduling that warns me
                     // about all the overbookings call it Overbooking".
                     new TabDefinition('overbooking', 'Overbooking'),
+                    // Last, as on the screen: the roles editor lists tabs in
+                    // this order.
+                    new TabDefinition('settings', 'Settings'),
                 ],
                 /*
                  * The first booking event (Jose, 2026-09-29: a warning email
@@ -2224,9 +2234,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * would be a fifth thing to keep in step, and the one that drifts
                  * is always the one only a permission reads.
                  *
-                 * The labels are the words the chip strip actually draws -
-                 * "Google", not "Google Ads"; "Chat", not "Website chat" -
-                 * copied from `_sourceChips` rather than written fresh. An
+                 * The labels are the words the rail actually draws - "Chat",
+                 * not "Website chat". Google is drawn as TWO chips, LS Call and
+                 * LS Text, both reading `local_services` (`_maySee` in
+                 * leads_screen.dart), so its one box names both. An
                  * administrator who ticks a name they cannot then find on screen
                  * has been told the name wrongly, and nothing errors.
                  *
@@ -2244,7 +2255,7 @@ class ModuleServiceProvider extends ServiceProvider
                  * lead of a source the reader cannot see. See visibleSources().
                  */
                 tabs: [
-                    new TabDefinition('local_services', 'Google'),
+                    new TabDefinition('local_services', 'LS Call and LS Text'),
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
