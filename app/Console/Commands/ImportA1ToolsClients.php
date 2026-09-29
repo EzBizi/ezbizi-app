@@ -376,7 +376,7 @@ class ImportA1ToolsClients extends Command
         // A line per row as it lands, so a run that dies still names what it created.
         $manifest = fopen(Storage::disk('local')->path($path), 'a');
         $created = 0;
-        $phoneMatches = [];
+        $judged = ['phone' => [], 'duplicate' => []];
 
         try {
             foreach ($rows as $i => $row) {
@@ -403,9 +403,13 @@ class ImportA1ToolsClients extends Command
                 $rows[$i]['customer_id'] = $customer;
                 $created += (int) ($row['status'] === 'new');
 
-                if ($row['status'] === 'phone') {
-                    $phoneMatches[] = ['a1_id' => $row['a1_id'], 'customer_id' => $customer, 'keys' => array_map(
-                        fn (array $k) => ['franchise_id' => $k['franchise']->getKey(), 'client_id' => $k['client_id']], $row['register'])];
+                // Both are the import deciding two records are one person (a Sr
+                // and a Jr on one line is the way that goes wrong), so both are
+                // listed with the keys they took.
+                if ($row['status'] !== 'new') {
+                    $judged[$row['status']][] = ['a1_id' => $row['a1_id'], 'customer_id' => $customer, 'keys' => array_map(
+                        fn (array $k) => ['franchise_id' => $k['franchise']->getKey(), 'client_id' => $k['client_id']], $row['register'])]
+                        + ($row['status'] === 'duplicate' ? ['same_as_a1_id' => $rows[$row['of']]['a1_id']] : []);
                 }
 
                 fwrite($manifest, json_encode([
@@ -422,7 +426,8 @@ class ImportA1ToolsClients extends Command
         $counts = array_count_values(array_column($rows, 'status'));
 
         // One row per run, as the projection writes: Customers' ruling on imports.
-        // It lists the phone+name pairs, so a wrong one can be found and undone.
+        // It lists every phone+name match and in-file duplicate, so a wrong one
+        // can be found and undone.
         $audit->log('customer.imported', metadata: [
             'source' => 'a1tools',
             'created' => $created,
@@ -430,7 +435,8 @@ class ImportA1ToolsClients extends Command
             'phone' => $counts['phone'] ?? 0,
             'duplicate' => $counts['duplicate'] ?? 0,
             'manifest' => $path,
-            'phone_matches' => $phoneMatches,
+            'phone_matches' => $judged['phone'],
+            'duplicates' => $judged['duplicate'],
         ]);
 
         $this->info("Created {$created} customers. Manifest: {$path} on the local disk.");

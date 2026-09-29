@@ -289,6 +289,15 @@ class ImportA1ToolsClientsTest extends TestCase
         $this->assertSame($byA1[1]['customer_id'], $this->links()->firstWhere('client_id', 4512)->customer_id);
         $this->assertSame($byA1[3]['customer_id'], $this->links()->firstWhere('client_id', 4600)?->customer_id);
         $this->assertCount(2, $this->links());
+
+        // Each is the import deciding two records are one person, so each is in
+        // the audit row with the key it took: a wrong one can be undone.
+        $audit = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'customer.imported')->sole());
+        $this->assertEquals([
+            ['a1_id' => 2, 'customer_id' => $byA1[1]['customer_id'], 'keys' => [], 'same_as_a1_id' => 1],
+            ['a1_id' => 4, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [], 'same_as_a1_id' => 3],
+            ['a1_id' => 5, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [['franchise_id' => $this->ids['ct'], 'client_id' => 4600]], 'same_as_a1_id' => 3],
+        ], $audit->metadata['duplicates']);
     }
 
     public function test_a_shared_workiz_key_outranks_a_phone_match(): void

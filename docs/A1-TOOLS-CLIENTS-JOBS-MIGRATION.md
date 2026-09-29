@@ -166,7 +166,7 @@ Rules for the exporter:
   3. `duplicate`: an earlier row in the file created the same key, or the same phone and name. The two become one customer.
   4. Otherwise, created.
 - **A matched customer is never written to**, not even a blank field.
-  - A phone+name match, and an in-file duplicate, register the row's unclaimed Workiz keys to the customer they matched (Customers' ruling). Otherwise the backfill's old jobs would create their twin, and nothing in EzBizi can merge two customers. The run's audit row lists every phone+name pair (A1 id, customer, keys), so a wrong one can be found and undone.
+  - A phone+name match, and an in-file duplicate, register the row's unclaimed Workiz keys to the customer they matched (Customers' ruling). Otherwise the backfill's old jobs would create their twin, and nothing in EzBizi can merge two customers. The run's audit row lists every phone+name match and every in-file duplicate (A1 id, customer, keys taken, and for a duplicate the A1 id it repeats), so a wrong one can be found and undone.
   - Keys are checked before phones, so a key that two rows share names one customer.
   - Nothing is enriched. The matched rows' second phones and company names sit on Workiz clients whose payloads EzBizi already mirrors.
 - **A created customer is built like this:**
