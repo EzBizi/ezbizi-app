@@ -269,6 +269,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
           ? null
           : [
               row['number'],
+              if (workizClientNumbers(row) case final workiz?) 'Workiz $workiz',
               // The company as well as the franchise, as on the list row: two
               // companies may each run a "Texas", and this subtitle is what
               // somebody reads before editing or reassigning the customer.
@@ -700,4 +701,13 @@ class _CustomerJobsState extends State<_CustomerJobs> {
       ),
     );
   }
+}
+
+/// A customer's Workiz client numbers, "#4512, #4600", or null when Workiz
+/// never had them. Workiz's ids beside EzBizi's (Jose, 2026-09-29), shown on
+/// the list and here.
+String? workizClientNumbers(Map<String, dynamic> customer) {
+  final ids = customer['workiz_client_ids'] as List? ?? const [];
+
+  return ids.isEmpty ? null : ids.map((id) => '#$id').join(', ');
 }

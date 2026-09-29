@@ -288,6 +288,8 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
           ? null
           : [
               row['number'],
+              if (row['workiz_job_number'] != null)
+                'Workiz #${row['workiz_job_number']}',
               customer?['name'],
               franchise?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
