@@ -76,9 +76,22 @@ Not migrated, and they stay in the A1 backup:
 
 ## Roles
 
-A1-Group gets two new roles, created as tenant data:
-- **Recruiter** (for Brian Scheets): starts with HR permissions (people, invitations, onboarding). Jose can change them in Settings.
-- **Training** (7 people): starts as a copy of Technician. Jose can change it in Settings.
+A1-Group has two new roles. Both were created on 2026-09-29 through the Roles API
+with Jose's administrator account as the actor, so they were validated and audited.
+Jose can change either in Settings.
+- **Recruiter** (for Brian Scheets): 13 permissions.
+  - dashboard.view
+  - hr.view, hr.dashboard.view, hr.records.view, hr.invitations.view, hr.onboarding.view, hr.contracts.view
+  - hr.create, hr.edit
+  - time_clock.view, work_hours.view, work_hours.general.view
+  - training.view
+
+  It is not `field.tracked`. That is Jose's call if he wants it.
+- **Training** (7 people): a copy of Technician's 15 permissions, `field.tracked` included.
+
+The export writes a manifest (path, sha256, size) to `/root/a1-people-export/`
+instead of copying the files. The importer reads each file in place on the same
+box and checks its sha256.
 
 The rest of the mapping:
 
