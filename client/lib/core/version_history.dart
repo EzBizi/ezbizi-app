@@ -12,6 +12,7 @@ class VersionHistory {
       date: '29 Sep 2026',
       items: [
         'Human Resources, Records: drag the edge of the people list to resize it. Every empty personal box except middle name, and the start date, is amber and says Not filled in, and the list shows how many each person is missing.',
+        'Leads: recorded calls are transcribed on the EzBizi server itself, and the transcript shows under each call.',
       ],
     ),
     VersionRelease(
