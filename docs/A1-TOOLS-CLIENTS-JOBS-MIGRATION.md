@@ -227,6 +227,7 @@ One UTF-8 JSON file, staged like the clients bundle: owned by www-data, 0700, an
       "a1_id": 5521,
       "a1_client_id": 18234,
       "number": "1042",
+      "title": "Relining and crown repair",
       "status": "accepted",
       "issued_on": "2025-06-02",
       "accepted_at": "2025-06-05T15:12:00Z",
@@ -250,15 +251,17 @@ Rules for the exporter:
 - **`a1_id`** is `crm_estimates.id`, unique. It becomes `estimates.external_ref`, with source `a1`, so a re-run skips what is already in.
 - **`a1_client_id`** is `crm_estimates.client_id`, and it is required. It is the join to the clients import's manifest.
 - **`number`** is A1's own estimate number, as a string exactly as A1 shows it, so people can still find an estimate by it. It is null when A1 has none, and the importer then mints an EzBizi EST- number.
+- **`title`** is A1's estimate title, a string of at most 191 characters, or null. It is stored in `estimates.title`. 2,381 of the 2,383 have one, and it is what says what the money was for.
 - **`status`** is one of `draft`, `sent`, `accepted`, `declined` or `archived`: A1's own words, which EzBizi uses unchanged. Anything else refuses the run.
 - **`issued_on`** is `YYYY-MM-DD` or null.
 - **`accepted_at`** and **`created_at`** are ISO 8601 instants in UTC. `created_at` is kept as the estimate's own date, because import time would file five years of history under today. `accepted_at` is null when A1 has no acceptance moment.
+  - `created_at` is the true instant. A1's midnight-only values (2,365 of them) are local dates. Each goes out as that local midnight in UTC in A1's timezone (04:00Z or 05:00Z for Eastern), so it stays on its own day. A `T00:00:00Z` would show as the evening before.
 - **`currency`** is ISO 4217, uppercase. A1 is `USD` throughout.
-- **`total_minor`** is A1's total in integer cents, rounded and never truncated (1.15 dollars is 115). It is the stored total. The importer does not re-add the lines: most A1 estimates have none (33 lines across 2,388).
-- **`note`** is A1's notes, unchanged, or null.
+- **`total_minor`** is A1's total in integer cents, rounded and never truncated (1.15 dollars is 115). It is the stored total. The importer does not re-add the lines: most A1 estimates have none (26 lines on 12 of the 2,383 exported).
+- **`note`** is A1's notes, unchanged, or null. When A1 has an inspection report link (18 do), it is appended as a final line: `Inspection report: <link>`.
 - **`job_workiz_uuid`** is the A1 job's `external_workiz_uuid` for the 6 estimates that have a job, and null otherwise.
-- **`lines`** is `[]` when there are none. Each line has:
-  - `name`, a string;
+- **`lines`** is `[]` when there are none, and in A1's own order: the array order becomes each line's position. Each line has:
+  - `name`, a string. A line with no name in A1 is named `(No description in A1)`, which states the absence rather than inventing an item;
   - `description`, a string or null;
   - `quantity`, a decimal as a string ("1.5"), never a float;
   - `unit_price_minor`, integer cents.
@@ -273,7 +276,7 @@ Rules for the exporter:
 - **Franchise and currency.** The franchise is the customer's owning franchise. The currency must be that franchise's, or the row is refused and counted.
 - **Job.** `job_workiz_uuid` links the EzBizi job that mirrors that Workiz job, when it is the same customer's at the same franchise. Otherwise it stays unlinked, and is counted.
 - **What it writes.** It writes `source = 'a1'`, `external_ref = a1_id` and one `import_batch` uuid per run. It raises no automation events: `estimate.accepted` is not raised for history.
-- **Safety.** It runs under the Workiz projection's lock. It writes one audit row, `jobs.estimates_imported`, with the counts.
+- **Safety.** It runs under the Workiz projection's lock. It writes one audit row, `estimate.imported`, with the counts and the run's `import_batch`.
 - **Dry run.** `--dry-run` reads, matches and counts, and writes nothing.
 - **Before the real run.** The desk takes a dump before the real run.
 - **Rollback.** Deleting from `estimates` where `source = 'a1'` and `import_batch` is the run's uuid takes its lines with it (cascade).

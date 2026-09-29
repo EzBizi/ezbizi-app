@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * one -- 6 of A1's 2,388 had a job.
  */
 #[Fillable([
-    'franchise_id', 'customer_id', 'job_id', 'number', 'status', 'issued_on',
+    'franchise_id', 'customer_id', 'job_id', 'number', 'title', 'status', 'issued_on',
     'note', 'currency', 'total_minor', 'source', 'external_ref', 'import_batch',
 ])]
 class Estimate extends Model implements StatesRetention

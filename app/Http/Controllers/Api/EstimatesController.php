@@ -125,6 +125,7 @@ class EstimatesController extends Controller
             'franchise_id' => ['required', 'uuid', $this->existsInTenant('franchises')],
             'customer_id'  => ['required', 'uuid', $this->existsInTenant('customers')],
             'job_id'       => ['nullable', 'uuid', $this->existsInTenant('jobs')],
+            'title'        => ['nullable', 'string', 'max:191'],
             'note'         => ['nullable', 'string', 'max:10000'],
             'issued_on'    => ['nullable', 'date'],
             ...$this->lineRules(),
@@ -140,6 +141,7 @@ class EstimatesController extends Controller
                 'customer_id'  => $input['customer_id'],
                 'job_id'       => $input['job_id'] ?? null,
                 'number'       => $this->numbers->next(RecordNumberGenerator::ESTIMATES, $franchise),
+                'title'        => $input['title'] ?? null,
                 'status'       => 'draft',
                 'issued_on'    => $input['issued_on'] ?? null,
                 'note'         => $input['note'] ?? null,
@@ -165,6 +167,7 @@ class EstimatesController extends Controller
 
         $input = $request->validate([
             'status'    => ['sometimes', Rule::in(Estimate::STATUSES)],
+            'title'     => ['sometimes', 'nullable', 'string', 'max:191'],
             'note'      => ['sometimes', 'nullable', 'string', 'max:10000'],
             'issued_on' => ['sometimes', 'nullable', 'date'],
             ...$this->lineRules(),
@@ -182,7 +185,7 @@ class EstimatesController extends Controller
         }
 
         DB::transaction(function () use ($estimate, $input, $before, $after) {
-            $estimate->fill(array_intersect_key($input, array_flip(['note', 'issued_on'])));
+            $estimate->fill(array_intersect_key($input, array_flip(['title', 'note', 'issued_on'])));
             $estimate->status = $after;
 
             $accepted = $after === 'accepted' && $before !== 'accepted';
@@ -284,6 +287,7 @@ class EstimatesController extends Controller
         $base = [
             'id'          => $e->id,
             'number'      => $e->number,
+            'title'       => $e->title,
             'status'      => $e->status,
             'source'      => $e->source,
             'franchise'   => ['id' => $e->franchise_id, 'name' => $e->franchise?->name],
@@ -291,6 +295,8 @@ class EstimatesController extends Controller
             'job'         => $e->job ? ['id' => $e->job_id, 'number' => $e->job->number] : null,
             'issued_on'   => $e->issued_on?->toDateString(),
             'accepted_at' => $e->accepted_at?->toIso8601String(),
+            // A1's own date on an imported row, not the import's: the importer keeps it.
+            'created_at'  => $e->created_at?->toIso8601String(),
             'currency'    => $e->currency,
             'total_minor' => $e->total_minor,
             'note'        => $e->note,

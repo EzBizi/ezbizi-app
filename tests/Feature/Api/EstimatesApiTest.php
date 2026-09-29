@@ -43,6 +43,18 @@ class EstimatesApiTest extends TestCase
         $this->assertSame('USD', $data['currency']);
     }
 
+    /** A1 titled 2,381 of its 2,383 estimates; EzBizi's own can carry one too. */
+    public function test_the_title_is_set_on_create_and_changed_on_update(): void
+    {
+        $created = $this->create(['title' => 'Relining'])->assertCreated()->assertJsonPath('data.title', 'Relining')->json('data');
+        $id = $created['id'];
+        // Carried for A1's history, whose issued_on is always null.
+        $this->assertNotNull($created['created_at']);
+
+        $this->amend($id, ['title' => 'Relining and crown'])->assertOk()->assertJsonPath('data.title', 'Relining and crown');
+        $this->amend($id, ['note' => 'Called'])->assertOk()->assertJsonPath('data.title', 'Relining and crown');
+    }
+
     public function test_the_list_is_scoped_to_view(): void
     {
         $elsewhere = $this->extraFranchise($this->alpha, 'Elsewhere');
