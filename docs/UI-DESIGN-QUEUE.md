@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 31 · Jobs · money on the list and the job — 🔨 **Jose: "as you recommend" — 1 and 4**, being built by UI/UX
+### 31 · Jobs · money on the list and the job — **Jose: "as you recommend" — 1 and 4** — **BUILT** `505af363`
 
 From the Jobs session, 2026-09-29, under Jose's rulings (money is the `jobs.financials` toggle;
 Workiz stays the truth, live and read only; spec `docs/superpowers/specs/2026-09-29-jobs-billing-design.md`).
