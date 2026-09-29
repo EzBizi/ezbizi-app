@@ -207,3 +207,18 @@ Rules:
 - **161 orphan clock-ins** under 16 retired usernames that no account links to are dropped. They stay in A1's backup.
 - **Extras** (vehicles, Workiz links): Fleet and Workiz read the exporter's provisional shape as it is.
 - **Security:** A1's PII "encryption" used a fallback key committed in the a1_tools repo, so treat A1's encrypted values as readable. EzBizi re-encrypts with its own key. After verification, the desk recommends that Jose purge A1's PII tables and backups.
+
+## Run plan (deploy desk, 2026-09-29)
+
+- **Export location:** `/var/lib/a1-people-export`. The directory is owned by www-data:www-data at 0700 and the files are 0600. Every importer runs as www-data (`sudo -u www-data php8.4 artisan …`), so the files it writes stay readable by the app.
+- **Exporter's final dry run:** 76 people from 79 accounts (3 merges; 188+195 on a per-pair case-insensitive flag). Scopes: 42 company, 31 franchise, 2 organization, 1 none (Bar). 330 files (305.6 MB; 2 missing at source). 2,665 time_records (28 open), 514 day statuses.
+- **Phase 1** (after HR's importer ships):
+  1. Export everything.
+  2. `hr:import-a1-tools` with `--dry-run`, check the counts, take a dump, then run it for real and verify.
+  3. `worktime:import-a1-tools` runs only as `--dry-run`.
+- **Phase 2**, the cutover:
+  1. Send the "set your password" emails.
+  2. People clock in on EzBizi, and the Dismantler retires A1's clock-in.
+  3. Re-export worktime, with every shift closed, and import it once.
+
+  The worktime import waits for the final export because `import_ref` would skip a row it had already imported while it was still open.
