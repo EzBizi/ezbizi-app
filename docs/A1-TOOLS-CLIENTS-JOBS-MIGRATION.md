@@ -86,7 +86,7 @@ His answers, 2026-09-29:
 | Sending invoices and estimates, and taking payments | "Later (Recommended)" |
 
 Jobs builds Phase 1:
-- `jobs.money.view` / `jobs.money.manage`
+- `jobs.financials`, a per-role Financials toggle like Fleet's and Inventory's. Jose, answering Jobs directly: "it should be decided on roles y permissions as a financials toggle". Spec: docs/superpowers/specs/2026-09-29-jobs-billing-design.md (ef7ae140).
 - the Money section on a job, and the Money list
 - estimates with `estimate.accepted`
 - the A1 estimates import, after the clients import
