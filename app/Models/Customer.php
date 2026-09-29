@@ -80,6 +80,14 @@ class Customer extends Model implements HoldsPersonalData
         'nomail@yhaoo.com', 'no@tek.net', 'no@net.swk', 'n@gmail.com',
         'nomail@tahoo.com', 'no@gmail.fr', 'noname@gmail.com', 'notavaliable11@gmail.com',
         'refused@yahoo.com', 'refuse@gmail.com', 'nm@gmsil.com',
+        // A-1's OWN role mailboxes, typed in as the client's address: 165 A1
+        // rows on office@, 54 on the NJ office. A customer email sent there
+        // reaches A-1's own staff, never the customer. Cleared on Jose's word,
+        // 2026-09-29. Role addresses only -- a staff member's personal
+        // a-1chimney.com address on a customer may be a real customer who
+        // works there, so those are not listed.
+        'office@a-1chimney.com', 'office@nj.a-1chimney.com', 'office@md.a-1chimney.com',
+        'info@a-1chimney.com', 'accounting@a-1chimney.com',
     ];
 
     /**

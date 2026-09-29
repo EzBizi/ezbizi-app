@@ -104,6 +104,8 @@ class ClearCustomerPlaceholdersTest extends TestCase
     public function test_real_email_is_what_importers_call(): void
     {
         $this->assertNull(Customer::realEmail(' NO@gmail.com '));
+        // A-1's own office, not the customer -- Jose, 2026-09-29.
+        $this->assertNull(Customer::realEmail('Office@A-1Chimney.com'));
         $this->assertNull(Customer::realEmail(''));
         $this->assertNull(Customer::realEmail(null));
         $this->assertSame('nora@gmail.com', Customer::realEmail(' nora@gmail.com'));
