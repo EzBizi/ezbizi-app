@@ -61,8 +61,16 @@ BoxDecoration _bubbleAround(WidgetTester tester, String text) {
   return tester.widget<Container>(container).decoration! as BoxDecoration;
 }
 
-Color? _textColour(WidgetTester tester, String text) =>
-    tester.widget<Text>(find.text(text)).style?.color;
+// A message is SelectableText since 2026-09-29 (copy and paste); the ink is
+// on its style either way.
+Color? _textColour(WidgetTester tester, String text) {
+  final widget = tester.widget(find.text(text));
+  return switch (widget) {
+    EditableText() => widget.style.color,
+    SelectableText() => widget.style?.color,
+    _ => (widget as Text).style?.color,
+  };
+}
 
 Future<void> _pump(WidgetTester tester, ThemeData theme) async {
   tester.view.physicalSize = const Size(600, 900);

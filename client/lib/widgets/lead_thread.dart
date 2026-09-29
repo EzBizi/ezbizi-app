@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
@@ -1388,8 +1389,10 @@ class _LeadThreadState extends State<LeadThread> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Selectable, so part of a message can be copied too (the
+          // dispatchers, via Jose, 2026-09-29: "copy and paste").
           if ((c['text'] as String?)?.isNotEmpty == true)
-            Text(
+            SelectableText(
               c['text'] as String,
               style: theme.textTheme.bodyMedium?.copyWith(color: ink),
             ),
@@ -1407,13 +1410,44 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '$who · $when',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: mine
-                    ? scheme.onPrimary.withValues(alpha: 0.8)
-                    : scheme.onSurfaceVariant,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '$who · $when',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: mine
+                          ? scheme.onPrimary.withValues(alpha: 0.8)
+                          : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                // The whole message in one press, as A1 Tools has it.
+                if ((c['text'] as String?)?.isNotEmpty == true)
+                  InkWell(
+                    key: ValueKey('copy-${c['id']}'),
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: c['text'] as String));
+                      if (!mounted) return;
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                        const SnackBar(content: Text('Message copied')),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Icon(
+                        Icons.copy_outlined,
+                        size: 14,
+                        semanticLabel: 'Copy message',
+                        color: mine
+                            ? scheme.onPrimary.withValues(alpha: 0.8)
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
