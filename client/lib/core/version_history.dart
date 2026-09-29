@@ -12,6 +12,7 @@ class VersionHistory {
       date: '29 Sep 2026',
       items: [
         'Communication, Dial pad: an Availability button opens availability in a side panel without leaving the call, on the zip of the caller when the caller is a customer on file.',
+        'Website widgets: the form can take photos, show questions only when they apply, email each enquiry and stop robots; Contact Details can list more numbers with a chosen icon per section; Social Links can add any platform. Each is off until switched on.',
       ],
     ),
     VersionRelease(
