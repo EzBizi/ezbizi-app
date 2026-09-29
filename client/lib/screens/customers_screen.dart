@@ -1217,9 +1217,14 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
             else if (_groups.isEmpty)
               Text('Nothing looks duplicated.', style: text.bodyMedium)
             else ...[
+              // Says only what a person can actually do. It used to say
+              // "correct or remove one", and a real duplicate always has jobs,
+              // which is exactly when removing is refused -- so the one action
+              // it offered was the one the server says no to.
               Text(
                 'Nothing has been merged, and nothing will be automatically. '
-                'Open a customer to correct or remove one.',
+                'Open a customer to correct it. One with no jobs can be removed; '
+                'one with jobs cannot.',
                 style: text.bodyMedium,
               ),
               const SizedBox(height: 16),

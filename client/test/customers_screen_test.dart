@@ -215,6 +215,11 @@ void main() {
     // Said out loud on the screen, every time: nothing here merges anything.
     expect(find.textContaining('Nothing has been merged'), findsOneWidget);
 
+    // And it does not offer the action the server refuses: a duplicate with
+    // jobs cannot be removed, so the panel must not say it can.
+    expect(find.textContaining('one with jobs cannot'), findsOneWidget);
+    expect(find.textContaining('correct or remove one'), findsNothing);
+
     expect(find.text('Showing 1 of 3.'), findsOneWidget);
   });
 
