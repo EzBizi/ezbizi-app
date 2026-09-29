@@ -2368,11 +2368,10 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'lead.reply',
                         label: 'Reply to the lead',
                         description: 'Sends a reply in the conversation the enquiry arrived on — '
-                            .'website live chat, Thumbtack, Facebook or Instagram. Google Local '
-                            .'Services enquiries are the exception: EzBizi told Google in writing '
-                            .'that a person types every reply there, so this step refuses them. A '
-                            .'website form has no conversation to reply into. The reply is recorded '
-                            .'as automatic, so it does not take the lead off the unreplied list.',
+                            .'a Google Local Services text enquiry, website live chat, Thumbtack, '
+                            .'Facebook or Instagram. A Google call has nothing to reply into, and '
+                            .'neither has a website form. The reply is recorded as automatic, so it '
+                            .'does not take the lead off the unreplied list.',
                     ),
                     new ActionDefinition(
                         key: 'lead.update_field',

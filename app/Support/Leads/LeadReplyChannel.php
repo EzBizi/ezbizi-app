@@ -48,9 +48,12 @@ interface LeadReplyChannel
      * Both submissions are open, and the OAuth one has already bounced twice on
      * discrepancies between what was filed and what the product does. A rule
      * that reaches a Google lead makes that sentence false while a reviewer is
-     * reading it. So the answer there is no, and it stays no until somebody
-     * re-files - at which point the quoted sentence above is what has to change
-     * first.
+     * reading it. So the answer there was no.
+     *
+     * Jose, 2026-09-29, deciding it: "flip the block now, there's no need to tell
+     * google about it" - so an automation (the auto reply that replaces Rodrigo's
+     * bot) may answer a Google text enquiry. Local
+     * Services answers yes from then on; the filing above was not re-sent.
      *
      * Thumbtack answers no as well, and that one IS a choice: no filing forbids
      * it, and nobody has argued for it. A new channel should arrive false and

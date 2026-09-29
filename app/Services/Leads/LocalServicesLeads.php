@@ -393,13 +393,17 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
-     * No. EzBizi has told Google in writing that its only write is a reply a
-     * member of staff typed, and both submissions saying so are open. See
+     * Yes, since 2026-09-29. It was no because EzBizi had told Google in
+     * writing that its only write is a reply a member of staff typed. Jose, 2026-09-29, deciding it: "flip the block now, there's no need to tell
+     * google about it" - so an automation (the auto reply that replaces Rodrigo's
+     * bot) may answer a Google text enquiry.
+     * The reply is recorded as automatic, so the thread shows the bot mark and
+     * the lead stays on the unreplied list. See
      * LeadReplyChannel::allowsUnattendedReply().
      */
     public function allowsUnattendedReply(): bool
     {
-        return false;
+        return true;
     }
 
     /** Google accepts replies for text enquiries only, while the account is connected. */
@@ -427,27 +431,11 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
 
     public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
-        /*
-         * The callee's half of the guard. `allowsUnattendedReply()` answers
-         * false for this channel and a caller is expected to ask — but a
-         * caller that forgets, or one written later by somebody who never read
-         * that method, arrives HERE. EzBizi has told Google in writing that its only write is a reply a member of staff typed, and both submissions saying so are open.
-         *
-         * Throws rather than ignoring the flag: a reply that went out anyway
-         * and merely read as automatic would still be the write we said we do
-         * not make.
-         */
-        if ($automatic) {
-            throw new RuntimeException(
-                'A Google enquiry can only be replied to by a person. '
-                .'See LeadReplyChannel::allowsUnattendedReply().',
-            );
-        }
-
-        return $this->reply($lead, $text);
+        return $this->reply($lead, $text, $automatic);
     }
 
-    public function reply(Lead $lead, string $text): LeadConversation
+    /** @param  bool  $automatic  a rule sent it, not a person - the row says so */
+    public function reply(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
         $connection = $lead->connection;
 
@@ -514,6 +502,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             'participant' => LeadConversation::FROM_ADVERTISER,
             'occurred_at' => now(),
             'text' => $text,
+            'is_automatic' => $automatic,
         ]);
 
         $this->refreshLastContact($lead);

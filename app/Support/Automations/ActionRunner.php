@@ -928,11 +928,10 @@ class ActionRunner
                 // Names the source, because "this rule is wrong" and "this
                 // source may not be answered automatically" send somebody to
                 // different places.
-                // Only Google reaches this now, and the reason is a filing rather
-                // than a preference — so the sentence says whose rule it is.
+                // Google left this on 2026-09-29 (Jose: "flip the block now");
+                // a source with no channel that permits it still lands here.
                 'detail' => "Enquiries from \"{$subject->source}\" can only be answered by a "
-                    .'person, so nothing was sent. EzBizi told Google in writing that a person '
-                    .'types every reply to a Local Services enquiry.',
+                    .'person, so nothing was sent.',
             ];
         }
 
