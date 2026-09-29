@@ -110,8 +110,6 @@ void main() {
 /// may only shrink: a module here that starts agreeing fails until removed.
 const _knownDrift = {
   'phone': 'Communication draws 5 tabs the registry lacks — Communication',
-  'scheduling': 'Settings and Overbooking in the other order — Scheduling',
-  'work_hours': 'Settings and Reports in the other order — Clock In',
   'jobs':
       'registry Work/Materials; screen draws "Jobs" and no Materials — Jobs',
   // Not drift: the strip is built from the sources the server sends, so it

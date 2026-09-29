@@ -132,7 +132,7 @@
             "label": "Leads",
             "parent": null,
             "tabs": [
-                "Google",
+                "LS Call and LS Text",
                 "Thumbtack",
                 "Chat",
                 "Forms",
@@ -202,8 +202,8 @@
             "tabs": [
                 "Availability",
                 "Schedule",
-                "Settings",
-                "Overbooking"
+                "Overbooking",
+                "Settings"
             ]
         },
         "services": {
@@ -247,8 +247,8 @@
             "tabs": [
                 "General",
                 "Paid Time Off",
-                "Settings",
-                "Reports"
+                "Reports",
+                "Settings"
             ]
         }
     },
