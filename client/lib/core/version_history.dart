@@ -12,6 +12,7 @@ class VersionHistory {
       date: '29 Sep 2026',
       items: [
         'Scheduling: a new week of time slots can be scheduled to take over from a date, and two service areas can share one availability pool.',
+        'Leads: the sources run down the side of the list, each with its unread count, so the conversation has the full height of the screen. On a phone, one button names the source and opens the list of sources.',
       ],
     ),
     VersionRelease(
