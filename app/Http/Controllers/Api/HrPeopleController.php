@@ -747,7 +747,10 @@ class HrPeopleController extends Controller
      */
     private function missing(User $person, bool $started): int
     {
-        $empty = collect(['first_name', 'middle_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'])
+        // Not middle_name. Most people do not have one, and nothing can record
+        // "has none" — so counting it flags them for ever, the count never
+        // reaches zero, and a counter that is never zero stops being read.
+        $empty = collect(['first_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'])
             ->filter(fn (string $field) => blank($person->getAttribute($field)))
             ->count();
 

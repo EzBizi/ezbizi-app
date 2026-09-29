@@ -76,7 +76,8 @@ class HrPersonRecordTest extends TestCase
         $t = $this->provisionTenant('Alpha');
         $person = $this->userWithRole($t, 'Technician', ['customers.view']);
 
-        // Empty: middle name, address, gender, and no start date.
+        // Empty: address, gender, and no start date. Middle name is empty too
+        // and is NOT a gap — most people have none, and nothing records that.
         $this->inTenant($t['org'], fn () => $person->forceFill([
             'first_name' => 'Bea',
             'middle_name' => null,
@@ -90,7 +91,7 @@ class HrPersonRecordTest extends TestCase
         $row = fn () => collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/people')->json('data'))
             ->firstWhere('id', $person->id);
 
-        $this->assertSame(4, $row()['missing']);
+        $this->assertSame(3, $row()['missing'], 'A missing middle name was counted as a gap.');
         $this->assertArrayNotHasKey('phone', $row());
 
         $this->inTenant($t['org'], fn () => EmploymentEvent::create([
@@ -100,7 +101,7 @@ class HrPersonRecordTest extends TestCase
             'occurred_on' => '2024-02-05',
         ]));
 
-        $this->assertSame(3, $row()['missing'], 'A start date is one box fewer.');
+        $this->assertSame(2, $row()['missing'], 'A start date is one box fewer.');
     }
 
     /** Opening somebody's personal details is itself recorded (§9). */

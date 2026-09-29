@@ -564,9 +564,12 @@ class _Initials extends StatelessWidget {
 /// The personal boxes counted when empty, by the rule
 /// HrPeopleController::missing counts the list's number by. With the start
 /// date, under Employment, they are every box that number covers.
+/// The personal boxes that count as not filled in when empty — the same six
+/// as HrPeopleController::missing. Not middle name: most people have none, and
+/// nothing can record "has none", so it would stay amber and keep the count
+/// above zero for ever.
 const _personalBoxes = [
   'first_name',
-  'middle_name',
   'last_name',
   'phone',
   'address',
@@ -1365,7 +1368,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
       decoration: notFilledIn(
         context,
         InputDecoration(labelText: label, border: const OutlineInputBorder()),
-        empty: _blank(_fields[key]!.text),
+        empty: _personalBoxes.contains(key) && _blank(_fields[key]!.text),
       ),
     );
 

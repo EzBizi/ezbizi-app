@@ -860,7 +860,7 @@ void main() {
     await _tap(tester, _tab('Records'));
 
     // The server's count beside Bea; nothing at all beside a zero.
-    expect(find.byTooltip('4 fields not filled in'), findsOneWidget);
+    expect(find.byTooltip('3 fields not filled in'), findsOneWidget);
     expect(find.byTooltip('0 fields not filled in'), findsNothing);
 
     await _openPerson(tester, 'Bea Okafor');
@@ -868,14 +868,17 @@ void main() {
     TextField box(String label) =>
         tester.widget<TextField>(find.widgetWithText(TextField, label));
 
-    expect(box('Middle name').decoration?.hintText, 'Not filled in');
-    expect(box('Middle name').decoration?.filled, isTrue);
+    expect(box('Gender').decoration?.hintText, 'Not filled in');
+    expect(box('Gender').decoration?.filled, isTrue);
     expect(
-      box('Middle name').decoration?.floatingLabelBehavior,
+      box('Gender').decoration?.floatingLabelBehavior,
       FloatingLabelBehavior.always,
     );
     // The control: a box with something in it is not amber.
     expect(box('Phone').decoration?.hintText, isNull);
+    // And an empty middle name is not amber either. Most people have none,
+    // and nothing can record that, so it would stay lit for ever.
+    expect(box('Middle name').decoration?.hintText, isNull);
 
     // The date of birth is a picker rather than a TextField, and says the same.
     final born = tester.widget<InputDecorator>(
@@ -887,10 +890,10 @@ void main() {
     expect(born.isEmpty, isTrue);
     expect(born.decoration.hintText, 'Not filled in');
 
-    // Where the four are: three under Personal, the start date under
+    // Where the three are: two under Personal, the start date under
     // Employment, so the number on the list can be found.
     expect(
-      find.descendant(of: _section('Personal'), matching: find.text('3')),
+      find.descendant(of: _section('Personal'), matching: find.text('2')),
       findsOneWidget,
     );
     expect(
@@ -899,9 +902,9 @@ void main() {
     );
 
     // Typing takes a box out of amber there and then.
-    await tester.enterText(find.widgetWithText(TextField, 'Middle name'), 'Ada');
+    await tester.enterText(find.widgetWithText(TextField, 'Gender'), 'Female');
     await tester.pump();
-    expect(box('Middle name').decoration?.hintText, isNull);
+    expect(box('Gender').decoration?.hintText, isNull);
   });
 
   /// Jose, 2026-09-29: "I want to be able to resize the sidebar here on human
@@ -1599,9 +1602,9 @@ const _people = [
     'last_name': 'Okafor',
     'email': 'bea@example.com',
     'is_active': true,
-    // HrPeopleController::missing: her record below is missing middle name,
-    // gender, date of birth and a start date.
-    'missing': 4,
+    // HrPeopleController::missing: her record below is missing gender, date
+    // of birth and a start date. Her middle name is empty too, and is not a gap.
+    'missing': 3,
     // The state this whole module exists to close: the row exists, the roles
     // exist, and nothing has ever joined the two.
     'role': {'id': null, 'name': null},
