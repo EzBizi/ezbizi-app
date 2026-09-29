@@ -533,8 +533,6 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'numbering.estimate_prefix', label: 'Estimate number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'EST-',
-                notYetInEffect: 'Takes effect when estimates ship. Job numbers already use '
-                    .'their prefix — there are simply no estimates to number.',
             ),
             new SettingDefinition(
                 key: 'numbering.pad_to_digits', label: 'Pad numbers to',

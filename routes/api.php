@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\EstimatesController;
 use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
@@ -697,6 +698,10 @@ Route::prefix('v1')
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
         Route::patch('jobs/{job}/lines/{line}', [JobLinesController::class, 'update']);
         Route::delete('jobs/{job}/lines/{line}', [JobLinesController::class, 'destroy']);
+
+        // Estimates live inside Jobs (spec 2026-09-29 §4); EstimatePolicy asks for
+        // Jobs' Financials toggle on every one of these.
+        Route::apiResource('estimates', EstimatesController::class);
 
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);

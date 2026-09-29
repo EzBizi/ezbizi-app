@@ -8,6 +8,7 @@ use App\Models\A1LeadsReviewEvent;
 use App\Models\AdsAccountState;
 use App\Models\Company;
 use App\Models\Customer;
+use App\Models\Estimate;
 use App\Models\FieldAlert;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
@@ -1096,6 +1097,35 @@ class ModuleServiceProvider extends ServiceProvider
                         // to declare `<thing>.create` would have its action run
                         // by this job arm without anybody noticing.
                         executionType: 'job.create',
+                    ),
+                ],
+            ),
+
+            /*
+             * Estimates, drawn inside Jobs (Jose, 2026-09-29: "build it, but as a
+             * part of Jobs"). A module of its own only because a ModuleDefinition
+             * holds one automation subject and `estimate.accepted` is about an
+             * Estimate: assertKeysMatchSubject refuses `estimate.*` on the Job.
+             *
+             * Every action here ALSO needs `jobs.financials` (EstimatePolicy): an
+             * estimate is money, and Jose ruled that money is "a financials
+             * toggle". `parent` is where it is drawn and nothing more, so the Jobs
+             * screen draws it; `sidebar: false` because it is no rail destination
+             * of its own, which also keeps it off the dashboard, where Jose ruled
+             * no money goes.
+             */
+            new ModuleDefinition(
+                key: 'estimates',
+                label: 'Estimates',
+                parent: 'jobs',
+                sidebar: false,
+                subject: new AutomationSubject(Estimate::class, 'Estimate'),
+                emits: [Estimate::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'estimate.accepted',
+                        label: 'Estimate accepted',
+                        description: 'A customer accepted an estimate. The usual next step is booking the work.',
                     ),
                 ],
             ),

@@ -76,9 +76,13 @@ class Estimate extends Model implements StatesRetention
      */
     public function recomputeTotal(): void
     {
-        $this->forceFill([
-            'total_minor' => (int) $this->lines()->get()
-                ->sum(fn (EstimateLine $l) => (int) round((float) $l->quantity * $l->unit_price_minor)),
-        ])->save();
+        $this->forceFill(['total_minor' => $this->computeTotal()])->save();
+    }
+
+    /** What the lines come to, unsaved: for a caller that audits the change first. */
+    public function computeTotal(): int
+    {
+        return (int) $this->lines()->get()
+            ->sum(fn (EstimateLine $l) => (int) round((float) $l->quantity * $l->unit_price_minor));
     }
 }
