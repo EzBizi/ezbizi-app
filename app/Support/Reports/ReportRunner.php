@@ -211,6 +211,7 @@ final class ReportRunner
             $resource = $this->resourceFor($column);
             $declared = $this->columnFor($resource, $column);
             $key = $column['resource'].'.'.$column['column'];
+            $this->mayRead($user, $declared);
 
             if (isset($declared['php'])) {
                 $php[$key] = $this->phpOn($root, $column, $declared, $rootResource, $query);
@@ -251,6 +252,10 @@ final class ReportRunner
         foreach ($definition['filters'] ?? [] as $filter) {
             $resource = $this->resourceFor($filter);
             $declaredFilter = $this->columnFor($resource, $filter);
+
+            // A filter reads the value too: `amount > 5000` answers the
+            // question the column would have, one row at a time.
+            $this->mayRead($user, $declaredFilter);
 
             $operator = self::OPERATORS[$filter['op'] ?? '']
                 ?? throw new InvalidArgumentException(
@@ -513,6 +518,22 @@ final class ReportRunner
         return array_values(array_unique($keys));
     }
 
+    /**
+     * A column that names a permission is refused to whoever RUNS the report
+     * without it - checked here rather than only in the field picker, because
+     * a saved report is run by people other than its author, and a picker is
+     * a suggestion. Refused whole rather than the column dropped: a report
+     * quietly missing its Amount reads as a report about something else.
+     */
+    private function mayRead(User $user, array $declared): void
+    {
+        if (isset($declared['permission']) && ! $user->hasPermission($declared['permission'])) {
+            throw new InvalidArgumentException(
+                "'{$declared['label']}' needs the {$declared['permission']} permission, which you do not have."
+            );
+        }
+    }
+
     private function resourceFor(array $item): array
     {
         $key = $item['resource'] ?? '';
@@ -522,7 +543,7 @@ final class ReportRunner
     }
 
     /**
-     * Today's weekday, fixed for the whole run.
+     * Today, fixed for the whole run.
      *
      * Resolved ONCE and memoised, not read per column. A report selecting a
      * derived column and filtering on the same one must use the same day in

@@ -72,7 +72,12 @@ class ReportsController extends Controller
                  * the PHP value is identical either way and only the JSON says
                  * which this is.
                  */
-                'columns'   => (object) $resource['columns'],
+                // Columns this person may not read are not offered either.
+                'columns'   => (object) array_filter(
+                    $resource['columns'],
+                    fn (array $column) => ! isset($column['permission'])
+                        || $request->user()->hasPermission($column['permission']),
+                ),
                 'relations' => (object) array_map(
                     fn (array $edge) => ['to' => $edge['to']],
                     $resource['relations'],
