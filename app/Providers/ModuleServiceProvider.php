@@ -445,7 +445,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // when Work Hours left HR for a module of its own — they are
                 // `work_hours.manage` and `work_hours.all` now, and the
                 // migration of that date copied every grant across.
-                actions: ['view', 'create', 'edit', 'security.reset'],
+                // `pay.view` and `pay.edit`, 2026-09-29 (Jose: "Pay rates", with its
+                // own permission). Who earns what is a narrower circle than who
+                // keeps the people list, so neither rides on `hr.edit` — and as new
+                // keys they are held by NO existing role until somebody ticks them,
+                // which is the safe direction for a new sensitive grant. An
+                // administrator holds them by identity, as every key.
+                actions: ['view', 'create', 'edit', 'security.reset', 'pay.view', 'pay.edit'],
+                actionLabels: [
+                    'pay.view' => 'See pay rates',
+                    'pay.edit' => 'Change pay rates',
+                ],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *

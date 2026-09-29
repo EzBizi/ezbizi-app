@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
 use App\Models\EmploymentEvent;
+use App\Models\EmergencyContact;
+use App\Models\HeldEquipment;
+use App\Models\HrNote;
+use App\Models\PayRate;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\AdministratorFloor;
@@ -511,6 +515,24 @@ class HrPeopleController extends Controller
             'gender'        => $user->gender,
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on'    => $answer['started_on'],
+
+            // The four lists of 2026-09-29. Pay is null — not an empty list —
+            // for somebody without `hr.pay.view`: "no rate recorded" and "you
+            // may not see it" must not look the same on the screen.
+            'emergency_contacts' => EmergencyContact::query()->where('user_id', $user->id)
+                ->orderBy('created_at')->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
+                ->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'equipment' => HeldEquipment::query()->where('user_id', $user->id)
+                ->orderByRaw('returned_on is not null')->orderBy('name')->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'pay_rates' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)
+                    ->orderByDesc('effective_on')->get()
+                    ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
+                : null,
 
             // Null rather than a zero allowance when the organization has not
             // set paid time off up: "not set up" and "none" read the same as a
