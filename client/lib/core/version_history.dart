@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0314',
+      date: '29 Sep 2026',
+      items: [
+        'Communication, Dial pad: an Availability button opens availability in a side panel without leaving the call, on the zip of the caller when the caller is a customer on file.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0313',
       date: '29 Sep 2026',
       items: [
