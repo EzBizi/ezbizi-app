@@ -1189,6 +1189,63 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
+  /// Transcripts opened to their full length, by conversation id.
+  final _openTranscripts = <String>{};
+
+  Widget _transcript(ThemeData theme, String id, String text) {
+    final open = _openTranscripts.contains(id);
+
+    return Container(
+      key: ValueKey('transcript-$id'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notes, size: 14, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text('Transcript', style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurfaceVariant,
+              )),
+            ],
+          ),
+          const SizedBox(height: 4),
+          open
+              ? SelectableText(text, style: theme.textTheme.bodySmall)
+              : Text(
+                  text,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+          if (text.length > 240)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: ValueKey('transcript-toggle-$id'),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                ),
+                onPressed: () => setState(() {
+                  open ? _openTranscripts.remove(id) : _openTranscripts.add(id);
+                }),
+                child: Text(open ? 'Show less' : 'Show all'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openAvailability(String? zip) async {
     final pane = AvailabilityPane(
       api: widget.api,
@@ -1391,23 +1448,21 @@ class _LeadThreadState extends State<LeadThread> {
                 ),
               ),
             ),
-          // Read off the recording by Google's speech service, both voices
-          // in one text - so it is labelled as a transcript, not quoted.
+          // The words, right under the recording (Jose, 2026-09-29): both
+          // voices in one text, machine-transcribed on our own server - so it
+          // is labelled as a transcript, not quoted. Four lines, then Show all.
           if ((c['transcript'] as String?)?.isNotEmpty ?? false)
-            Theme(
-              data: theme.copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                key: ValueKey('transcript-$id'),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(bottom: 6),
-                dense: true,
-                title: Text('Transcript', style: theme.textTheme.labelMedium),
-                children: [
-                  SelectableText(
-                    c['transcript'] as String,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
+            _transcript(theme, id, c['transcript'] as String)
+          else if (c['transcript_pending'] == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Transcribing…',
+                key: ValueKey('transcript-pending-$id'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ),
         ],

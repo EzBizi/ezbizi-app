@@ -58,7 +58,34 @@ void main() {
     );
   });
 
-  testWidgets('a call shows its transcript, folded, labelled as one', (
+  testWidgets('a long transcript opens with Show all, and a call waiting its '
+      'turn says Transcribing', (tester) async {
+    final long = List.filled(40, 'The flue is cracked and water comes in.').join(' ');
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callTranscript: long,
+    );
+    final text = find.byWidgetPredicate((w) => w is Text && w.data == long);
+    expect(tester.widget<Text>(text).maxLines, 4);
+    await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
+    await tester.pumpAndSettle();
+    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+  });
+
+  testWidgets('a call waiting its turn says Transcribing', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callTranscript: null,
+      transcriptPending: true,
+    );
+    expect(find.byKey(const ValueKey('transcript-pending-c-call')), findsOneWidget);
+  });
+
+  testWidgets('a call shows its transcript under the recording', (
     tester,
   ) async {
     await _pump(
@@ -67,13 +94,14 @@ void main() {
       recordingGate: Completer()..complete(),
     );
 
+    // Shown straight away under the recording, labelled as a transcript.
     expect(find.text('Transcript'), findsOneWidget);
-    expect(find.text('Hi, my fireplace smokes when I light it.'), findsNothing);
-
-    await tester.tap(find.text('Transcript'));
-    await tester.pumpAndSettle();
-
     expect(find.text('Hi, my fireplace smokes when I light it.'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('transcript-toggle-c-call')),
+      findsNothing,
+      reason: 'a short transcript needs no Show all',
+    );
   });
 
   testWidgets('a message row has no play bar; only a call with a recording '
@@ -477,6 +505,8 @@ Future<void> _pump(
   String? suggestion,
   Map<String, dynamic>? customer,
   Map<String, dynamic>? details,
+  String? callTranscript = 'Hi, my fireplace smokes when I light it.',
+  bool transcriptPending = false,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -553,7 +583,8 @@ Future<void> _pump(
                   'occurred_at': '2026-09-06T10:00:00Z',
                   'duration_ms': 125000,
                   'text': null,
-                  'transcript': 'Hi, my fireplace smokes when I light it.',
+                  'transcript': callTranscript,
+                  'transcript_pending': transcriptPending,
                   'attachments': <String>[],
                   'has_recording': true,
                 },

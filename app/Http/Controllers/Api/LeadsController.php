@@ -16,6 +16,7 @@ use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Services\Leads\CallTranscripts;
 use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadReplies;
@@ -697,6 +698,14 @@ class LeadsController extends Controller
             'text' => $c->text,
             // A call's words, machine-transcribed from the recording.
             'transcript' => $c->transcript,
+            // Waiting its turn with the transcriber (ezbizi-transcribe.timer):
+            // an answered, recorded customer call from the last week, not done.
+            'transcript_pending' => $c->transcript === null && $c->transcribed_at === null
+                && $c->channel === LeadConversation::CHANNEL_PHONE_CALL
+                && $c->participant === LeadConversation::FROM_CONSUMER
+                && $c->recording_url !== null && $c->duration_ms !== null
+                && $c->occurred_at?->gte(now()->subDays(7)) === true
+                && app(CallTranscripts::class)->enabled(),
             'attachments' => $c->attachments ?? [],
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.

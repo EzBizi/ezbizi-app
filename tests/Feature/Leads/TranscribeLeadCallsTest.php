@@ -168,8 +168,14 @@ class TranscribeLeadCallsTest extends TestCase
         config(['services.whisper.python' => PHP_BINARY, 'services.whisper.script' => $script]);
 
         $answered = $this->recordedCall('a', '2026-09-27T15:00:00Z', 95000);
+        $thread = fn () => $this->signedInAs($this->t['admin'])
+            ->getJson('/api/v1/leads/'.$answered->lead_id)->assertOk()->json('data.conversations.0');
+        $this->assertTrue($thread()['transcript_pending'], 'the screen says it is coming');
+
         $this->artisan('ezbizi:transcribe-lead-calls')->assertSuccessful();
         @unlink($script);
+        $this->assertFalse($thread()['transcript_pending']);
+        $this->assertSame('Hi, my fireplace smokes.', $thread()['transcript']);
 
         $row = $this->fresh($answered);
         $this->assertSame('Hi, my fireplace smokes.', $row->transcript);
