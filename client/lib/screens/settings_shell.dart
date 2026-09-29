@@ -44,65 +44,81 @@ class SettingsShell extends StatefulWidget {
 
 class _SettingsShellState extends State<SettingsShell> {
   /// The cascade is the landing face: the destination is named Settings, so
-  /// opening it still shows timezone, paper, address. Organization is chip
-  /// 0, this is chip 1 — not a hijack of the first click.
-  static const _settings = 1;
-
-  int _tab = _settings;
+  /// opening it still shows timezone, paper, address.
+  ///
+  /// By KEY, not position: since 2026-09-29 each tab is its own grant, so the
+  /// list is filtered and an index would land on whichever face slid into it.
+  String _tab = 'settings';
 
   /// Which faces have been shown at least once — hr_screen's idiom. Opening
   /// Settings must not fetch the company tree, and a tree already opened must
   /// not rebuild when somebody glances at Roles.
-  final Set<int> _shown = {_settings};
+  final Set<String> _shown = {'settings'};
 
   @override
   Widget build(BuildContext context) {
     final me = widget.session.me!;
     final roles = me.module('roles');
 
-    final tabs = <(String, IconData, Widget Function())>[
-      (
-        'Organization',
-        Icons.hub_outlined,
-        () => OrganizationScreen(api: widget.api, session: widget.session),
-      ),
-      (
-        UiStrings.t('shell.settings'),
-        Icons.tune_outlined,
-        () => SettingsScreen(api: widget.api, session: widget.session),
-      ),
+    // Each face is its own grant (`organizations.{tab}.view`), declared on the
+    // `organizations` module so the roles editor can offer it.
+    final tabs = <(String, String, IconData, Widget Function())>[
+      if (me.can('organizations.organization.view'))
+        (
+          'organization',
+          'Organization',
+          Icons.hub_outlined,
+          () => OrganizationScreen(api: widget.api, session: widget.session),
+        ),
+      if (me.can('organizations.settings.view'))
+        (
+          'settings',
+          UiStrings.t('shell.settings'),
+          Icons.tune_outlined,
+          () => SettingsScreen(api: widget.api, session: widget.session),
+        ),
       /*
        * Integrations sits between Settings and Roles: it is a thing you look
-       * at while configuring, and it is not a permission surface. Gated on
-       * marketing.view because that is the module that owns most of what it
-       * lists, and somebody who cannot see Marketing has nothing to read here.
+       * at while configuring, and it is not a permission surface. The tab
+       * grant is an AND on top of marketing.view, which is the module that
+       * owns most of what it lists: without it there is nothing to read here.
        */
-      if (me.can('marketing.view'))
+      if (me.can('organizations.integrations.view') && me.can('marketing.view'))
         (
+          'integrations',
           'Integrations',
           Icons.link_outlined,
           () => IntegrationsScreen(api: widget.api, session: widget.session),
         ),
       if (roles != null && roles.reachable)
         (
+          'roles',
           roles.label,
           Icons.badge_outlined,
           () => RolesScreen(api: widget.api, session: widget.session),
         ),
     ];
 
-    final index = _tab.clamp(0, tabs.length - 1);
+    if (tabs.isEmpty) {
+      return const Center(
+        child: Text('Your role does not open any part of Settings.'),
+      );
+    }
+
+    // A face this role cannot open falls back to the first it can.
+    final active = tabs.any((t) => t.$1 == _tab) ? _tab : tabs.first.$1;
+    final index = tabs.indexWhere((t) => t.$1 == active);
 
     return Column(
       children: [
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
-            labels: [for (final tab in tabs) (tab.$1, tab.$2)],
+            labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index,
             onSelected: (i) => setState(() {
-              _tab = i;
-              _shown.add(i);
+              _tab = tabs[i].$1;
+              _shown.add(_tab);
             }),
           ),
         ),
@@ -114,8 +130,8 @@ class _SettingsShellState extends State<SettingsShell> {
               for (var i = 0; i < tabs.length; i++)
                 Offstage(
                   offstage: i != index,
-                  child: _shown.contains(i)
-                      ? tabs[i].$3()
+                  child: _shown.contains(tabs[i].$1) || i == index
+                      ? tabs[i].$4()
                       : const SizedBox.shrink(),
                 ),
             ],

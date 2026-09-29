@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -37,6 +38,7 @@ class SettingsController extends Controller
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
+        private readonly ModuleRegistry $modules,
     ) {}
 
     /**
@@ -60,6 +62,10 @@ class SettingsController extends Controller
             // API is untouched — update() and destroy() below still answer for
             // it — so this is the FORM moving, not the setting hiding.
             if (! $definition->isEditedOnSettingsScreen()) {
+                continue;
+            }
+
+            if (! $this->mayOpenGroupOf($request->user(), $key)) {
                 continue;
             }
 
@@ -566,6 +572,10 @@ class SettingsController extends Controller
         // Named by its label, which is the text on the row in front of them.
         $act = "{$verb} the ‘{$definition->label}’ setting";
 
+        if (! $this->mayOpenGroupOf($user, $definition->key)) {
+            return Refusal::permission($act)->message();
+        }
+
         if (! $user->hasPermission($definition->permissionRequired())) {
             return Refusal::permission($act)->message();
         }
@@ -590,6 +600,30 @@ class SettingsController extends Controller
             // out of a tree the API already showed them.
             $scope->name,
         )->message();
+    }
+
+    /**
+     * Whether this person may open the module Settings tab that owns this
+     * setting's group, when there is one.
+     *
+     * Work Hours, AI Assistance, Field and Shared inboxes are each drawn twice:
+     * inside their module's Settings tab, and here. The tab grant hid the
+     * first and this endpoint handed out the second to anybody signed in
+     * (deploy desk audit, 2026-09-29). Derived from the registry — group key
+     * equals module key, and the module declares a `settings` tab — so a
+     * module that adds one later is covered with no edit here.
+     */
+    private function mayOpenGroupOf(User $user, string $key): bool
+    {
+        $group = $this->registry->groupOf($key)['key'];
+
+        foreach ($this->modules->get($group)?->tabs ?? [] as $tab) {
+            if ($tab->key === 'settings') {
+                return $user->hasPermission("{$group}.{$tab->action()}");
+            }
+        }
+
+        return true;
     }
 
     private function scopeTypeOf(Model $scope): string

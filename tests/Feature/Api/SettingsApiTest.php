@@ -540,6 +540,49 @@ class SettingsApiTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * A module's Settings tab gates its rows HERE too (deploy desk, 2026-09-29).
+     *
+     * Both roles hold `organizations.edit`, so the only difference between them
+     * is the tab grant — an administrator fixture would pass either way.
+     */
+    public function test_a_modules_settings_rows_follow_its_settings_tab(): void
+    {
+        ['organization' => $org] = $this->org('Alpha', 'a@a.test');
+
+        $person = fn (string $name, array $keys) => app(TenantContext::class)->run($org, function () use ($org, $name, $keys) {
+            $role = Role::create(['organization_id' => $org->id, 'name' => $name]);
+            $role->syncPermissionKeys($keys);
+
+            return User::create([
+                'organization_id' => $org->id, 'role_id' => $role->id,
+                'name' => $name, 'email' => strtolower($name).'@a.test', 'password' => 'pw-here-please',
+            ])->fresh(); // is_active comes from the column default, which create() does not load
+        });
+
+        $without = $person('Without', ['organizations.edit']);
+        $with    = $person('With', ['organizations.edit', 'work_hours.settings.view']);
+
+        $keys = function (User $user) use ($org) {
+            // The guard keeps the first user across requests otherwise.
+            $this->app['auth']->forgetGuards();
+            Sanctum::actingAs($user);
+
+            return collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")
+                ->assertOk()->json('data'))->pluck('key');
+        };
+
+        $this->assertTrue($keys($without)->contains('locale'), 'A group with no module tab stays readable.');
+        $this->assertFalse($keys($without)->contains('time_clock.enabled'));
+        $this->assertTrue($keys($with)->contains('time_clock.enabled'));
+
+        // And not writable by the back door the rows used to be.
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($without);
+        $this->patchJson("/api/v1/settings/time_clock.enabled?scope_type=organization&scope_id={$org->id}", ['value' => true])
+            ->assertForbidden();
+    }
+
     // ── subscription state (§13) ─────────────────────────────────
 
     public function test_a_lapsed_subscription_blocks_writes_but_allows_reads(): void

@@ -1418,6 +1418,8 @@ const Map<String, dynamic> _me = {
     'jobs.create',
     'jobs.edit',
     'jobs.delete',
+    'organizations.organization.view',
+    'organizations.settings.view',
   ],
   'modules': [
     {

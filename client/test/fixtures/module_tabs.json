@@ -172,7 +172,11 @@
         "organizations": {
             "label": "Organization settings",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "Organization",
+                "Settings",
+                "Integrations"
+            ]
         },
         "phone": {
             "label": "Communication",
@@ -394,6 +398,9 @@
         "newsletter.settings.view",
         "newsletter.view",
         "organizations.edit",
+        "organizations.integrations.view",
+        "organizations.organization.view",
+        "organizations.settings.view",
         "organizations.view",
         "phone.edit",
         "phone.phone.view",

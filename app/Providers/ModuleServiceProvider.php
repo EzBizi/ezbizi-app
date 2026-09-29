@@ -135,6 +135,21 @@ class ModuleServiceProvider extends ServiceProvider
                 // itself. Self-serve signup and staff creation both live in the
                 // control plane (§4.2), outside tenant permissions.
                 actions: ['view', 'edit'],
+                /*
+                 * The Settings destination's own faces (settings_shell.dart).
+                 * Until 2026-09-29 two were drawn for everybody and the third
+                 * borrowed `marketing.view`, so `organizations.view` was a box
+                 * that controlled nothing. Roles keeps its own module gate.
+                 *
+                 * Integrations is still an AND with `marketing.view` on the
+                 * client: the tab opens the pane, the lists inside it are
+                 * Marketing's reads.
+                 */
+                tabs: [
+                    new TabDefinition('organization', 'Organization'),
+                    new TabDefinition('settings', 'Settings'),
+                    new TabDefinition('integrations', 'Integrations'),
+                ],
                 // SettingsController files every settings event against the
                 // tenant root, whatever level the value was written at, because
                 // that is the one of the three that can say where it sits.

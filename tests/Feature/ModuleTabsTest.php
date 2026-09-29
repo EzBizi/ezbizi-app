@@ -160,6 +160,45 @@ class ModuleTabsTest extends TestCase
         }
     }
 
+    public function test_every_role_keeps_the_settings_faces_it_saw_before_they_were_grants(): void
+    {
+        /*
+         * Organization and Settings were drawn for everybody and Integrations
+         * for `marketing.view`. A role holding NOTHING is the case that
+         * distinguishes: 090000's rule ("holders of the module's view") would
+         * give it nothing, and it saw two tabs yesterday.
+         */
+        $tenant = $this->provisionTenant('Alpha');
+
+        [$plain, $marketer] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $make = fn (string $name) => Role::create([
+                'organization_id' => $tenant['org']->id, 'name' => $name, 'is_system' => false,
+            ]);
+
+            $plain    = $make('Plain');
+            $marketer = $make('Marketer');
+            $marketer->permissions()->attach(app(PermissionCatalogue::class)->materialise('marketing.view')->id);
+
+            return [$plain, $marketer];
+        });
+
+        (require database_path(
+            'migrations/2026_09_29_440000_grant_every_role_the_settings_faces_it_already_sees.php'
+        ))->up();
+
+        $keys = fn (Role $role) => $this->inTenant($tenant['org'], fn () => $role->fresh()->permissionKeys());
+
+        $this->assertSame(
+            ['organizations.organization.view', 'organizations.settings.view', 'organizations.view'],
+            $keys($plain),
+        );
+        $this->assertSame(
+            ['marketing.view', 'organizations.integrations.view', 'organizations.organization.view',
+                'organizations.settings.view', 'organizations.view'],
+            $keys($marketer),
+        );
+    }
+
     public function test_the_migration_grants_no_action_a_tab_merely_NAMES(): void
     {
         /*

@@ -678,7 +678,11 @@ Map<String, dynamic> _me(List<Map<String, dynamic>> modules) => {
   'email': 'jose@example.com',
   'role': {'name': 'Administrator'},
   'has_avatar': false,
-  'permissions': <String>[],
+  // An administrator is sent every key; these two are the Settings faces.
+  'permissions': <String>[
+    'organizations.organization.view',
+    'organizations.settings.view',
+  ],
   'modules': modules,
   'preferences': <String, dynamic>{},
   'organization': {
