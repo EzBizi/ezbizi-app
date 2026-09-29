@@ -2221,9 +2221,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * would be a fifth thing to keep in step, and the one that drifts
                  * is always the one only a permission reads.
                  *
-                 * The labels are the words the chip strip actually draws -
-                 * "Google", not "Google Ads"; "Chat", not "Website chat" -
-                 * copied from `_sourceChips` rather than written fresh. An
+                 * The labels are the words the rail actually draws - "Chat",
+                 * not "Website chat". Google is drawn as TWO chips, LS Call and
+                 * LS Text, both reading `local_services` (`_maySee` in
+                 * leads_screen.dart), so its one box names both. An
                  * administrator who ticks a name they cannot then find on screen
                  * has been told the name wrongly, and nothing errors.
                  *
@@ -2241,7 +2242,7 @@ class ModuleServiceProvider extends ServiceProvider
                  * lead of a source the reader cannot see. See visibleSources().
                  */
                 tabs: [
-                    new TabDefinition('local_services', 'Google'),
+                    new TabDefinition('local_services', 'LS Call and LS Text'),
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
