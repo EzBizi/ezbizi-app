@@ -284,3 +284,34 @@ Rules for the exporter:
   - skipped for no customer;
   - refused for a currency mismatch;
   - job linked or unlinked.
+
+## Clients import: results (desk, 2026-09-29)
+
+The deploy desk ran it on release 54e37fec (0.0.0313), 18:30:46 to 18:37:10 UTC.
+
+- **Export:**
+  - 38,539 rows (sha256 52a4350c…), out of 38,904 in A1. Left out: 151 test rows and 214 unplaceable ones.
+  - Customers reviewed the dry run's 17 phone+name matches plus a1_id 23999, and excluded 23999: a name and phone that may belong to someone booking for other people. So the run read 38,538.
+- **Outcome:**
+  - 5,663 matched by Workiz key, 18 by phone+name, 0 in-file duplicates. **32,857 created.**
+  - Created by franchise: CT 3,648, DMV 1,451, GA 2,593, IL 2,761, Nationwide 3,806, NJ 9,837, OH 4,254, TX 4,507.
+  - Blanked as placeholders: 3,532 emails, 524 phones.
+  - The 18th phone match (a1_id 26936) is a customer the projection created four minutes before the run. The run re-matches under the lock, as designed. Customers reviews it after the fact.
+- **Verified:**
+  - All 32,857 created ids are live and unique.
+  - 32,875 workiz_clients were registered, 18 of them on phone matches. All are live.
+  - Every created customer has a number and a `customer_since`.
+  - One `customer.imported` audit row. No customer automation events.
+- **Extra keys** (Workiz's go, Customers' approval):
+  - The problem: some key-matched rows also carried keys EzBizi did not hold. The importer registers nothing for a key match, so the backfill would have turned each of those keys into a twin customer.
+  - The fix: measured after the run, then registered through the importer's own `register()`, one transaction per row, under the projection's lock. 34 keys on 34 rows.
+  - 2 rows were skipped: their held keys already name two or three customers, so they are existing twins. They are listed for Customers.
+  - One more `customer.imported` audit row, holding `key_matches` and `split_owners_skipped`.
+- **Kept:**
+  - the manifest, `storage/app/private/a1-imports/clients-20260929-183046.jsonl`: the estimates import's join key
+  - the dump, `/home/ubuntu/manual-dumps/customers-before-a1-clients-import-20260929T183040Z.sql.gz` (customers, workiz_clients, record_sequences)
+  - the extra keys' rollback list, `/home/ubuntu/manual-dumps/a1-extra-keys-run.log`
+- **Deleted:** clients.json and the approved copy, once the import was verified.
+- **Next:**
+  1. The Workiz backfill: `ezbizi:backfill-workiz` with the defaults and no dry run, repeated until it prints "Every branch is done."
+  2. A follow-up import, `clients-unplaced.json`, of the unplaceable rows that can be placed. 21 of the 214 are placeable so far: 5 by their own estimates or lead, 16 by address state. The other 193 stay out unless an A1 lead record, tied to the row by A1's own key, names one franchise. Most of them are staff leads with no address (184 have no state).
