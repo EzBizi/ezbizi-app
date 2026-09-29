@@ -32,7 +32,7 @@ use Illuminate\Support\Collection;
 #[Fillable([
     'owning_franchise_id', 'number', 'name', 'email', 'phone',
     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
-    'notes', 'is_active',
+    'notes', 'is_active', 'customer_since',
 ])]
 class Customer extends Model implements HoldsPersonalData
 {
@@ -44,7 +44,7 @@ class Customer extends Model implements HoldsPersonalData
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return ['is_active' => 'boolean', 'customer_since' => 'date'];
     }
 
     /**
@@ -71,14 +71,41 @@ class Customer extends Model implements HoldsPersonalData
         'none@msn.com', 'none@noemail.com', 'none@ymail.com', 'none@gmail.com',
         'cxdeclined@gmail.com', 'cxdeclinedemail@gmail.com', 'refuse@g.c',
         'fhfg@gmail.com', 'ghfg@gmail.com',
-        // A1 Tools' client list (2026-09-29), each on 5 to 504 rows. The Workiz
-        // client-list export it came from required an email.
+        // A1 Tools' own, measured by the Workiz session on 2026-09-29 before
+        // the A1 import -- each on 5 or more rows, 1,309 rows between them.
+        // The misspellings are real: "nomail@yahoo.con" is what got typed.
         'nomail@yahoo.com', 'nomail@gmail.com', 'refused@gmail.com', 'naa@gmail.com',
         'no@mail.com', 'no@aol.com', 'na@gmail.com', 'refused@mail.com',
         'nomail@yahoo.con', 'nomail@yaho.com', 'nonail@yahoo.com', 'nomaol@yahoo.com',
-        'nomail@yhaoo.com', 'no@tek.net', 'no@net.swk', 'n@gmail.com', 'nomail@tahoo.com',
-        'no@gmail.fr', 'noname@gmail.com', 'notavaliable11@gmail.com', 'refused@yahoo.com',
-        'refuse@gmail.com', 'nm@gmsil.com',
+        'nomail@yhaoo.com', 'no@tek.net', 'no@net.swk', 'n@gmail.com',
+        'nomail@tahoo.com', 'no@gmail.fr', 'noname@gmail.com', 'notavaliable11@gmail.com',
+        'refused@yahoo.com', 'refuse@gmail.com', 'nm@gmsil.com',
+        // A-1's OWN role mailboxes, typed in as the client's address: 165 A1
+        // rows on office@, 54 on the NJ office. A customer email sent there
+        // reaches A-1's own staff, never the customer. Cleared on Jose's word,
+        // 2026-09-29. Role addresses only -- a staff member's personal
+        // a-1chimney.com address on a customer may be a real customer who
+        // works there, so those are not listed.
+        'office@a-1chimney.com', 'office@nj.a-1chimney.com', 'office@md.a-1chimney.com',
+        'info@a-1chimney.com', 'accounting@a-1chimney.com',
+    ];
+
+    /**
+     * Numbers that belong to nobody on the row: relay, tracking and office
+     * lines typed in as the customer's phone. Ten digits, US, no leading 1.
+     *
+     * Each was measured as many DIFFERENT names at different addresses --
+     * 3236761570 on 28 customers under 28 names; 8187482055 on 388 A1 rows. That
+     * is the test, not the count: 3477245006 sits on 12 customers but only 8
+     * names and 7 addresses, which reads as a real property manager, so it is
+     * deliberately NOT here. An SMS automation would text a stranger for every
+     * row one of these is on, and the duplicate sweep would call them one
+     * person.
+     */
+    public const PLACEHOLDER_PHONES = [
+        '8187482055', '9547109003', '9527777291', '2109636961', '8777711892',
+        '6266244006', '2168590559', '4636764568', '6099035648', '8886219148',
+        '3236761570', '2723942201',
     ];
 
     /**
@@ -98,26 +125,24 @@ class Customer extends Model implements HoldsPersonalData
     }
 
     /**
-     * Numbers typed into the phone box that are not the customer's, in E.164.
+     * A phone worth keeping, or null for a blank or a known placeholder line.
      *
-     * Measured 2026-09-29: each sat on 5 to 388 records of A1 Tools' client list,
-     * or 10 to 28 live customers here, and on every one of them a different name
-     * at a different address, across branches -- a relay or office line. Texting
-     * one reaches a stranger, and as an identity it makes the duplicate sweep
-     * report dozens of strangers as one person.
-     *
-     * ponytail: a list, as PLACEHOLDER_EMAILS is and for the same reason.
+     * Compared as the national ten digits, so +18187482055, (818) 748-2055 and
+     * 818.748.2055 are the same number -- the stored form varies with where the
+     * row came from. The value handed back is the one given, untouched: this
+     * decides WHETHER to keep a number, not how to write it.
      */
-    public const PLACEHOLDER_PHONES = [
-        '+18187482055', '+19547109003', '+19527777291', '+12109636961', '+18777711892',
-        '+16266244006', '+12168590559', '+14636764568', '+16099035648', '+18886219148',
-        '+13236761570', '+12723942201',
-    ];
-
-    /** An E.164 number worth keeping, or null for a blank or a known placeholder. */
-    public static function realPhone(?string $e164): ?string
+    public static function realPhone(?string $phone): ?string
     {
-        return $e164 === null || $e164 === '' || in_array($e164, self::PLACEHOLDER_PHONES, true) ? null : $e164;
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        $national = strlen($digits) === 11 && $digits[0] === '1' ? substr($digits, 1) : $digits;
+
+        return in_array($national, self::PLACEHOLDER_PHONES, true) ? null : trim((string) $phone);
     }
 
     // ── §9 data inventory ────────────────────────────────────────

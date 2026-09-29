@@ -69,6 +69,30 @@ His answers, 2026-09-29:
 - 1,064 live EzBizi customers share 15 email addresses; 8 look like placeholders, the biggest used 451 times. This skews duplicate detection, and any email automation that uses the customer email.
 - No job has a technician set, and only 4 of 434 Workiz team members are linked to users. The staff migration's Workiz links (33) address part of this.
 
+## Decisions after measuring (2026-09-29)
+
+**Old jobs:** Workiz measured that the v1 API returns jobs from before May 2026. `start_date` is the lower bound, and the pages run from the far future back. No Chrome export is needed.
+- Workiz builds a paced, resumable backfill that stops on the first 429.
+- It runs AFTER the clients import, so old jobs attach to the imported customers.
+- Hard rule: no automation events and no customer-facing side effects. Old jobs landing as Done must not send review requests, texts, emails or notifications.
+
+**Billing, Jobs' sketch.** Jobs measured that EzBizi's Workiz mirror already carries every A-1 job's money and refreshes it every minute ($5.09M total, $718,506 open). Jose's answers:
+
+| Question | Answer |
+|---|---|
+| Hide job prices and all money from anyone without a new money permission (administrators only until granted) | "Yes, hide it (Recommended)" |
+| Billing on Workiz's live money, read-only in EzBizi, plus a Money section, a Money list and EzBizi estimates | "Yes, as proposed (Recommended)" |
+| Skip A1's invoice copies (the backfill brings the old jobs' money), import A1's 2,388 estimates | "Yes (Recommended)" |
+| Sending invoices and estimates, and taking payments | "Later (Recommended)" |
+
+Jobs builds Phase 1:
+- `jobs.financials`, a per-role Financials toggle like Fleet's and Inventory's. Jose, answering Jobs directly: "it should be decided on roles y permissions as a financials toggle". Spec: docs/superpowers/specs/2026-09-29-jobs-billing-design.md (ef7ae140).
+- the Money section on a job, and the Money list
+- estimates with `estimate.accepted`
+- the A1 estimates import, after the clients import
+
+A1's 1,488 CSV invoices are skipped, because they would double-count the backfilled jobs' money.
+
 ## Clients importer (`customers:import-a1-tools`): the file it reads
 
 Written by Workiz, 2026-09-29. It is for the Dismantler, who writes the file, and for the desk, who runs it. A key the importer does not know refuses the whole run before anything is written.
@@ -118,7 +142,7 @@ Rules for the exporter:
   - Null, not a placeholder: NA, N/A, none, `-` and empty all become null.
   - Numbers go as strings, because a zip sent as a number loses its leading 0.
 - **Emails and phones go as A1 holds them.** The importer blanks placeholders itself, using `Customer::PLACEHOLDER_EMAILS` and `PLACEHOLDER_PHONES`, so the list lives in one place.
-- **`client_since`** is A1's `created_at` as `YYYY-MM-DD`. On CSV rows that is Workiz's own client date.
+- **`client_since`** is A1's `created_at` as `YYYY-MM-DD`. On CSV rows that is Workiz's own client date. It goes into `customers.customer_since`, the column Customers added for it.
 - **`notes`** is A1's `notes`, unchanged.
 
 ### What the importer does
@@ -143,7 +167,7 @@ Rules for the exporter:
   - Notes, one line for each value that is present:
 
     ```
-    From A1 Tools, Workiz client #4512 (New Jersey), client since 2025-10-14.
+    From A1 Tools, Workiz client #4512 (New Jersey).
     Company: …
     Second phone: …
     <A1's notes>
@@ -155,7 +179,7 @@ Rules for the exporter:
 - **It writes a manifest.**
   - Path: `storage/app/private/a1-imports/clients-<time>.jsonl`, one line per row, written as each row lands: `{"a1_id", "status", "customer_id", "workiz_client_ids"}`.
   - The `created` lines are the exact list a rollback needs.
-  - Every line maps an A1 client to its EzBizi customer. The billing import needs that map for the CSV invoices and the estimates. Keep the file.
+  - Every line maps an A1 client to its EzBizi customer. The A1 estimates import needs that map. Keep the file.
 - **It prints counts only:** each outcome, the created customers per franchise, and the placeholders blanked. No name, phone or email.
 - **Running it twice creates no second copy of any row with a key, or with a phone and a name.** Only a row that has none of these would be created again.
 

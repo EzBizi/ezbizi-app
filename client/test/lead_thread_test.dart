@@ -74,6 +74,70 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
   });
 
+  // Jose, 2026-09-29: who sent what, and who else has the lead open.
+  testWidgets('replies name who sent them, and others viewing are shown', (
+    tester,
+  ) async {
+    Map<String, dynamic> msg(String id, String from, {String? by, bool auto = false}) => {
+      'id': id,
+      'channel': 'MESSAGE',
+      'from': from,
+      'occurred_at': '2026-09-28T12:00:00Z',
+      'duration_ms': null,
+      'text': 'Text $id',
+      'attachments': <String>[],
+      'has_recording': false,
+      'sent_by': by,
+      'automatic': auto,
+    };
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      conversations: [
+        msg('a', 'CONSUMER'),
+        msg('b', 'ADVERTISER', by: 'Tanya Ruiz'),
+        msg('c', 'ADVERTISER', auto: true),
+      ],
+      viewers: ['Tanya Ruiz', 'Marco Diaz'],
+    );
+
+    expect(find.textContaining('Tanya Ruiz · '), findsOneWidget);
+    expect(find.textContaining('Automation · '), findsOneWidget);
+    expect(find.text('Tanya Ruiz and Marco Diaz are viewing this lead'), findsOneWidget);
+  });
+
+  // The dispatchers, via Jose, 2026-09-29: opening a lead showed the FIRST
+  // message; it must open on the newest, like a chat.
+  testWidgets('a long thread opens on its newest message', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      conversations: [
+        for (var i = 0; i < 60; i++)
+          {
+            'id': 'm-$i',
+            'channel': 'MESSAGE',
+            'from': i.isEven ? 'CONSUMER' : 'ADVERTISER',
+            'occurred_at': DateTime.utc(2026, 9, 28, 12, i).toIso8601String(),
+            'duration_ms': null,
+            'text': 'Message $i',
+            'attachments': <String>[],
+            'has_recording': false,
+          },
+      ],
+    );
+
+    expect(find.text('Message 59'), findsOneWidget, reason: 'the newest is on screen');
+    expect(find.text('Message 0'), findsNothing, reason: 'the oldest is not');
+    expect(
+      tester.getTopLeft(find.text('Message 59')).dy,
+      greaterThan(tester.getTopLeft(find.text('Message 58')).dy),
+      reason: 'newest at the bottom, as the conversation happened',
+    );
+  });
+
   testWidgets('a call waiting its turn says Transcribing', (tester) async {
     await _pump(
       tester,
@@ -487,7 +551,9 @@ void main() {
     expect(find.text('Is Saturday ok?'), findsOneWidget);
     expect(find.text('Yes, 10am works.'), findsOneWidget);
     expect(find.textContaining('They · '), findsOneWidget);
-    expect(find.textContaining('You · '), findsOneWidget);
+    // Our reply had no sender on record: it was sent outside EzBizi, and it
+    // says so rather than "You" (2026-09-29).
+    expect(find.textContaining('Sent outside EzBizi · '), findsOneWidget);
     expect(find.textContaining('CONSUMER'), findsNothing);
     expect(find.textContaining('ADVERTISER'), findsNothing);
   });
@@ -507,6 +573,8 @@ Future<void> _pump(
   Map<String, dynamic>? details,
   String? callTranscript = 'Hi, my fireplace smokes when I light it.',
   bool transcriptPending = false,
+  List<Map<String, dynamic>>? conversations,
+  List<String> viewers = const [],
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -575,7 +643,8 @@ Future<void> _pump(
               'can_suggest': suggestion != null,
               'customer': customer,
               'details': details,
-              'conversations': [
+              'viewers': viewers,
+              'conversations': conversations ?? [
                 {
                   'id': 'c-call',
                   'channel': 'PHONE_CALL',

@@ -112,6 +112,10 @@ class _LeadThreadState extends State<LeadThread> {
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
 
+  /// Everybody else with this lead open right now (LeadPresence), refreshed
+  /// with every re-read of the lead.
+  List<String> _viewers = const [];
+
   bool _editingNote = false;
   bool _savingNote = false;
   final _note = TextEditingController();
@@ -304,6 +308,7 @@ class _LeadThreadState extends State<LeadThread> {
       _canSuggest = data['can_suggest'] == true;
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
+      _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
@@ -531,6 +536,7 @@ class _LeadThreadState extends State<LeadThread> {
                             fontStyle: FontStyle.italic,
                           ),
                         ),
+                      if (_viewers.isNotEmpty) _viewingBanner(),
                       if (_details != null) _detailsBlock(theme, lead),
                       _noteBlock(theme, lead),
                       if (_customer != null) _customerCard(theme, _customer!),
@@ -946,15 +952,28 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _thread(ThemeData theme) {
     final items = threadItems(_conversations);
 
+    // Opens on the NEWEST message, as a chat does (the dispatchers, via Jose,
+    // 2026-09-29: "it sends them to the top ... it should be sending them to
+    // the bottom"). A reversed list starts at its end without scrolling, so a
+    // long thread never has to be built to its bottom first.
     return ListView.builder(
+    key: const ValueKey('thread-list'),
+    reverse: true,
     padding: const EdgeInsets.all(14),
     itemCount: items.length,
     itemBuilder: (context, i) {
-      final item = items[i];
+      final item = items[items.length - 1 - i];
       if (item is String) return _dayDivider(theme, item);
       final c = item as Map<String, dynamic>;
       final mine = c['from'] == 'ADVERTISER';
-      final who = mine ? 'You' : 'They';
+      // Our replies say who sent them (Jose, 2026-09-29). A reply with no
+      // name was sent outside EzBizi - A1 Tools, Google - so it is not
+      // "You", which would claim the reader sent it.
+      final who = !mine
+          ? 'They'
+          : c['automatic'] == true
+          ? 'Automation'
+          : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
       final when = _when(c['occurred_at'] as String?);
 
       final Widget body;
@@ -1241,6 +1260,36 @@ class _LeadThreadState extends State<LeadThread> {
                 child: Text(open ? 'Show less' : 'Show all'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// "Tanya is viewing this lead" - somebody else may be answering it.
+  Widget _viewingBanner() {
+    final colours = ToneColours.of(context, Tone.caution);
+    final names = _viewers.length == 1
+        ? _viewers.first
+        : '${_viewers.sublist(0, _viewers.length - 1).join(', ')} and ${_viewers.last}';
+
+    return Container(
+      key: const ValueKey('lead-viewers'),
+      margin: const EdgeInsets.only(top: 6, bottom: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.visibility_outlined, size: 16, color: colours.ink),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '$names ${_viewers.length == 1 ? 'is' : 'are'} viewing this lead',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colours.ink),
+            ),
+          ),
         ],
       ),
     );
