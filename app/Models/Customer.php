@@ -226,6 +226,15 @@ class Customer extends Model implements HoldsPersonalData
         return $this->hasMany(Job::class);
     }
 
+    /**
+     * The Workiz client records this customer is: one per (franchise, Workiz
+     * client number), and several when one person had more than one.
+     */
+    public function workizClients(): HasMany
+    {
+        return $this->hasMany(WorkizClient::class);
+    }
+
     // ── the "served by" list (§5.2) ──────────────────────────────
 
     /**

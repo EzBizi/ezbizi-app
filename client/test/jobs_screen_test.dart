@@ -71,6 +71,32 @@ void main() {
     expect(paths.any((p) => p == 'DELETE /api/v1/jobs/j-1'), isTrue);
   });
 
+  testWidgets('a Workiz job shows its Workiz number beside ours, list and panel', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      jobs: [
+        {..._crown, 'workiz_job_number': 12345},
+        {..._job(number: 'J-1002', title: 'Typed in EzBizi'), 'id': 'j-2', 'workiz_job_number': null},
+      ],
+      onRequest: (request) => request.url.path.endsWith('/jobs/j-1')
+          ? _json({
+              'data': {..._crownDetail, 'workiz_job_number': 12345},
+            })
+          : null,
+    );
+
+    expect(find.text('Workiz'), findsOneWidget, reason: 'the column');
+    expect(find.text('#12345'), findsOneWidget);
+    expect(find.text('—'), findsWidgets, reason: 'a job Workiz never had');
+
+    await tester.tap(find.text('Crown inspection'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('J-1001 · Workiz #12345'), findsOneWidget);
+  });
+
   testWidgets('a failed customer search is not an empty result', (tester) async {
     await _pump(tester);
 
