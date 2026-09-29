@@ -64,7 +64,7 @@ per-person table into git.
 | Tools and equipment held | **new HR field** (per-person custody list) |
 | Clock-ins (`time_records`, 3,360, UTC) | `time_clock_shifts`, removing overlaps with shifts already in EzBizi (10 matched people clock in to both) |
 | Day statuses (`time_day_status`, almost all absent) | `time_clock_days.tag` |
-| Vehicle assignments (2) | `vehicle_assignments` |
+| Vehicle assignments (2) | Not migrated. Both are on Jose's A1-TEST vehicle (created 2026-07-27, deleted in A1, never imported into EzBizi); Fleet measured it and created nothing |
 | Workiz team links (61) | `workiz_team_members.user_id` |
 
 Not migrated, and they stay in the A1 backup:
