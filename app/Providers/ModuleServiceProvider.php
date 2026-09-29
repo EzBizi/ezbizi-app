@@ -324,7 +324,10 @@ class ModuleServiceProvider extends ServiceProvider
                 // or delete action exists to grant, so tampering isn't a permission
                 // question — there is simply no code path.
                 automationExemptBecause: 'The audit log is append-only; nothing may act on it programmatically.',
-                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                // Omitted from the roles editor (2026-09-29): there is no audit
+                // screen or route yet, so `audit.view` would be a tick that opens
+                // nothing. Back to ROLES_SETTINGS when a screen reads it.
+                rolesGroup: ModuleDefinition::ROLES_OMIT,
             ),
         ];
     }
