@@ -68,3 +68,27 @@ His answers, 2026-09-29:
 
 - 1,064 live EzBizi customers share 15 email addresses; 8 look like placeholders, the biggest used 451 times. This skews duplicate detection, and any email automation that uses the customer email.
 - No job has a technician set, and only 4 of 434 Workiz team members are linked to users. The staff migration's Workiz links (33) address part of this.
+
+## Decisions after measuring (2026-09-29)
+
+**Old jobs:** Workiz measured that the v1 API returns jobs from before May 2026. `start_date` is the lower bound, and the pages run from the far future back. No Chrome export is needed.
+- Workiz builds a paced, resumable backfill that stops on the first 429.
+- It runs AFTER the clients import, so old jobs attach to the imported customers.
+- Hard rule: no automation events and no customer-facing side effects. Old jobs landing as Done must not send review requests, texts, emails or notifications.
+
+**Billing, Jobs' sketch.** Jobs measured that EzBizi's Workiz mirror already carries every A-1 job's money and refreshes it every minute ($5.09M total, $718,506 open). Jose's answers:
+
+| Question | Answer |
+|---|---|
+| Hide job prices and all money from anyone without a new money permission (administrators only until granted) | "Yes, hide it (Recommended)" |
+| Billing on Workiz's live money, read-only in EzBizi, plus a Money section, a Money list and EzBizi estimates | "Yes, as proposed (Recommended)" |
+| Skip A1's invoice copies (the backfill brings the old jobs' money), import A1's 2,388 estimates | "Yes (Recommended)" |
+| Sending invoices and estimates, and taking payments | "Later (Recommended)" |
+
+Jobs builds Phase 1:
+- `jobs.money.view` / `jobs.money.manage`
+- the Money section on a job, and the Money list
+- estimates with `estimate.accepted`
+- the A1 estimates import, after the clients import
+
+A1's 1,488 CSV invoices are skipped, because they would double-count the backfilled jobs' money.
