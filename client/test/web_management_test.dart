@@ -397,6 +397,33 @@ void main() {
     expect(find.byKey(const Key('seo-bulk-hours')), findsOneWidget);
   });
 
+  /// Rodrigo, 2026-09-29: an hours Save on aus.a-1chimney.com was refused with
+  /// "This build does not publish about_us_careers_field_1, …" — General sent
+  /// every page's text back as site-wide.
+  testWidgets('a General save sends only General fields, and offers a zone', (
+    tester,
+  ) async {
+    _puts.clear();
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    expect(find.byKey(const Key('seo-hours-zone')), findsOneWidget);
+
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final values = _puts.last['values'] as Map<String, dynamic>;
+    expect(values.keys, contains('hours'));
+    expect(values.keys, isNot(contains('about_us_field_1')));
+    expect(values.keys, isNot(contains('template_1')));
+    expect(_puts.last.containsKey('hours_timezone'), isFalse);
+  });
+
   testWidgets('on a phone the editor opens in the tab, not behind the site', (
     tester,
   ) async {
@@ -733,6 +760,7 @@ Future<http.Response> Function(http.Request) _respond(
      * doubled. A mock that cannot tell those apart is not a test of anything.
      */
     final path = request.url.path;
+    if (request.method == 'PUT') _puts.add(jsonDecode(request.body) as Map<String, dynamic>);
 
     if (path == '/api/v1/me') {
       body = {'data': _me(permissions, scopedToCompany)};
@@ -814,6 +842,23 @@ Future<http.Response> Function(http.Request) _respond(
               'hint': '',
               'shortcode': '[ezbizi_hours]',
             },
+            // A page's text and a template: other screens' fields, which a
+            // General save must never send back as site-wide.
+            {
+              'key': 'about_us_field_1',
+              'label': 'About us — field 1',
+              'hint': '',
+              'shortcode': '[ezbizi_about_us_field_1]',
+              'section': 'page',
+              'path': '/about-us',
+            },
+            {
+              'key': 'template_1',
+              'label': 'Template 1',
+              'hint': '',
+              'shortcode': '[ezbizi_template_1]',
+              'section': 'template',
+            },
           ],
           // An empty map arrives from PHP as `[]`, not `{}` — the shape that
           // used to deadlock this panel. Serving the real thing is the only
@@ -836,6 +881,9 @@ Future<http.Response> Function(http.Request) _respond(
     );
   };
 }
+
+/// Every PUT body the screen sent, newest last.
+final List<Map<String, dynamic>> _puts = [];
 
 const List<Map<String, Object?>> _sites = [
   {
