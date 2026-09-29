@@ -18,6 +18,7 @@ class VersionHistory {
         'Settings, Roles: Audit log is no longer offered, since no screen reads it yet.',
         'Settings, Roles: the Newsletter tabs (Dashboard, Composer, Settings) and the Social Media tabs (Posts, Accounts) can be granted per role. Every role keeps the panes it had.',
         'Marketing, Newsletter: a newsletter can be deleted from the composer, with a second tap to confirm.',
+        'Settings, Roles: the Communication tabs (Phone, Users, Records, Reports, Settings) can be granted per role, and without Settings or Reports their data is refused as well. Every role keeps the tabs it had.',
       ],
     ),
     VersionRelease(
