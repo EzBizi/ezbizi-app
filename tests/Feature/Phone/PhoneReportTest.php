@@ -129,7 +129,7 @@ class PhoneReportTest extends TestCase
                 ->where('number_id', $number->id)
                 ->update(['created_at' => Carbon::parse('2026-08-29 00:30:00', 'UTC')]));
 
-            $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+            $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
             $this->grant($t, $number, $admin);
 
             $response = $this->signedInAs($admin)
@@ -158,7 +158,7 @@ class PhoneReportTest extends TestCase
             'completed', 'completed', 'no-answer', 'busy', 'failed',
         ]);
 
-        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
         $this->grant($t, $number, $admin);
 
         $response = $this->signedInAs($admin)
@@ -177,7 +177,7 @@ class PhoneReportTest extends TestCase
     public function test_a_period_with_no_calls_has_no_missed_rate_rather_than_zero(): void
     {
         $t = $this->provisionTenant();
-        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
 
         $response = $this->signedInAs($admin)
             ->getJson('/api/v1/phone/reports/run?period=last_7')
@@ -195,7 +195,7 @@ class PhoneReportTest extends TestCase
     public function test_labels_are_an_object_even_when_there_are_none(): void
     {
         $t = $this->provisionTenant();
-        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
 
         $response = $this->signedInAs($admin)
             ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=day')
@@ -223,7 +223,7 @@ class PhoneReportTest extends TestCase
         $stranger = $this->userWithRole(
             $t,
             'Phone viewer',
-            ['phone.view'],
+            ['phone.view', 'phone.reports.view'],
             onlyAt: $t['franchise'],
         );
 
@@ -237,7 +237,7 @@ class PhoneReportTest extends TestCase
     public function test_a_saved_report_stores_the_question_not_the_dates(): void
     {
         [$t, $number] = $this->lineWithCalls(['completed']);
-        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
         $this->grant($t, $number, $admin);
 
         $saved = $this->signedInAs($admin)->postJson('/api/v1/phone/reports', [
@@ -261,7 +261,7 @@ class PhoneReportTest extends TestCase
     public function test_two_reports_cannot_share_a_name(): void
     {
         $t = $this->provisionTenant();
-        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view', 'phone.edit']);
 
         $body = ['name' => 'Weekly', 'period' => 'last_7', 'group_by' => 'day'];
 

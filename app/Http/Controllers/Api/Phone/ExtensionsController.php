@@ -285,6 +285,7 @@ class ExtensionsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PhoneNumber::class);
+        $this->mayOpenUsersOrSettings($request);
 
         $connections = $this->connectionsInReach($request->user());
 
@@ -351,6 +352,8 @@ class ExtensionsController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
+        $this->mayOpenUsersOrSettings($request);
+
         $input = $request->validate([
             'connection_id' => ['required', 'uuid'],
             'user_id' => ['required', 'uuid'],
@@ -449,5 +452,20 @@ class ExtensionsController extends Controller
             'extension' => $row->extension,
             'number_id' => $row->number_id,
         ]]);
+    }
+
+    /**
+     * Everybody's extension is the Users tab's, and a menu key that rings one
+     * is edited in Settings, so either tab opens this; `permission:` takes one.
+     */
+    private function mayOpenUsersOrSettings(Request $request): void
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user->hasPermission('phone.users.view') || $user->hasPermission('phone.settings.view'),
+            403,
+            \App\Support\Access\Refusal::permission('open this tab')->message(),
+        );
     }
 }

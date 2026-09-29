@@ -30,7 +30,7 @@ class PhoneNumberQualityTest extends TestCase
     public function test_a_second_look_is_served_from_cache_and_costs_nothing(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -62,7 +62,7 @@ class PhoneNumberQualityTest extends TestCase
     public function test_force_buys_a_fresh_answer(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -99,7 +99,7 @@ class PhoneNumberQualityTest extends TestCase
     public function test_twilio_being_unreachable_is_not_the_same_as_an_invalid_number(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -116,7 +116,7 @@ class PhoneNumberQualityTest extends TestCase
     public function test_looking_a_number_up_needs_the_authority_that_pays_for_it(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view', 'phone.settings.view']);
 
         $this->signedInAs($viewer)
             ->getJson('/api/v1/phone/lookup?e164=%2B17865550123')

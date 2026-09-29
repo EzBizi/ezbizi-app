@@ -89,7 +89,7 @@ class PhoneNumberImportTest extends TestCase
     public function test_it_lists_lines_the_account_holds_that_ezbizi_has_no_row_for(): void
     {
         [$t, , ] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $response = $this->signedInAs($editor)->getJson(
             '/api/v1/phone/numbers/importable?scope_type=company&scope_id='.$t['company']->id,
@@ -107,7 +107,7 @@ class PhoneNumberImportTest extends TestCase
     public function test_importing_points_the_carrier_at_ezbizi_and_writes_the_row(): void
     {
         [$t, , $gateway] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/numbers/import', [
             'scope_type' => 'company',
@@ -136,7 +136,7 @@ class PhoneNumberImportTest extends TestCase
     public function test_a_line_already_imported_is_not_offered_or_duplicated(): void
     {
         [$t, , ] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $body = [
             'scope_type' => 'company',

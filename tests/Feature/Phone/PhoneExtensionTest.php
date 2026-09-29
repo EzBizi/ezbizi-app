@@ -176,7 +176,7 @@ class PhoneExtensionTest extends TestCase
     public function test_two_people_cannot_hold_one_extension(): void
     {
         $t = $this->ready();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         [$bar, $ana] = $this->inTenant($t['org'], fn () => [
             $this->member($t, 'Bar', PhonePresence::STATE_REGISTERED),

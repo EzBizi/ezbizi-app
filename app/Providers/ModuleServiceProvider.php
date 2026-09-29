@@ -1760,6 +1760,24 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
+                /*
+                 * Jose, 2026-09-29: "the communication right now is only view
+                 * and edit, which means everyone can view the settings, we need
+                 * to add the tab support like all the others". Labels are the
+                 * tab bar's in phone_screen.dart, in its order.
+                 *
+                 * What each one closes on the server is listed in routes/api.php
+                 * beside the routes. Records has no route of its own to close:
+                 * its calls and texts are the same endpoints the Phone tab's
+                 * history and customer panel read.
+                 */
+                tabs: [
+                    new TabDefinition('phone', 'Phone'),
+                    new TabDefinition('users', 'Users'),
+                    new TabDefinition('records', 'Records'),
+                    new TabDefinition('reports', 'Reports'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 triggers: [
                     new TriggerDefinition(
                         key: 'phone.call.started',

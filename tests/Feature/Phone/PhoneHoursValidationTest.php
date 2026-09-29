@@ -23,7 +23,7 @@ class PhoneHoursValidationTest extends TestCase
     private function ready(): array
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,

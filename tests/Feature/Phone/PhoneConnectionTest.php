@@ -28,7 +28,7 @@ class PhoneConnectionTest extends TestCase
         $branch = $this->userWithRole(
             $t,
             'Branch phone',
-            ['phone.view', 'phone.edit'],
+            ['phone.view', 'phone.settings.view', 'phone.edit'],
             onlyAt: $t['franchise'],
         );
 
@@ -57,7 +57,7 @@ class PhoneConnectionTest extends TestCase
         $this->withPlatformTwilio();
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -105,7 +105,7 @@ class PhoneConnectionTest extends TestCase
         ]);
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/connections', [
             'scope_type' => 'organization',
@@ -129,7 +129,7 @@ class PhoneConnectionTest extends TestCase
         $this->withPlatformTwilio();
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -201,7 +201,7 @@ class PhoneConnectionTest extends TestCase
         $this->withPlatformTwilio();
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -236,7 +236,7 @@ class PhoneConnectionTest extends TestCase
         $this->withPlatformTwilio();
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -273,7 +273,7 @@ class PhoneConnectionTest extends TestCase
         $this->withPlatformTwilio();
 
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
@@ -329,7 +329,7 @@ class PhoneConnectionTest extends TestCase
             'status' => PhoneConnection::STATUS_CONNECTED,
         ]));
 
-        $readOnly = $this->userWithRole($t, 'Tech', ['phone.view'], 'tech@t.test');
+        $readOnly = $this->userWithRole($t, 'Tech', ['phone.view', 'phone.settings.view'], 'tech@t.test');
 
         $this->signedInAs($readOnly)
             ->patchJson("/api/v1/phone/connections/{$connection->id}", [
@@ -368,7 +368,7 @@ class PhoneConnectionTest extends TestCase
         $branch = $this->userWithRole(
             $t,
             'Branch phone',
-            ['phone.view', 'phone.edit'],
+            ['phone.view', 'phone.settings.view', 'phone.edit'],
             'branch@t.test',
             onlyAt: $t['franchise'],
         );

@@ -97,7 +97,7 @@ class PhoneExtensionZeroTest extends TestCase
     public function test_the_migration_prefixes_extensions_that_predate_the_rule(): void
     {
         [$t, $connection, , $person] = $this->team();
-        $other = $this->userWithRole($t, 'Bruno Vega', ['phone.view']);
+        $other = $this->userWithRole($t, 'Bruno Vega', ['phone.view', 'phone.settings.view']);
 
         $this->inTenant($t['org'], function () use ($t, $connection, $person, $other) {
             // Straight to the table: the endpoint now refuses exactly these.
@@ -142,8 +142,8 @@ class PhoneExtensionZeroTest extends TestCase
     private function team(): array
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view', 'phone.edit']);
-        $person = $this->userWithRole($t, 'Alice Nolan', ['phone.view']);
+        $editor = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view', 'phone.settings.view', 'phone.edit']);
+        $person = $this->userWithRole($t, 'Alice Nolan', ['phone.view', 'phone.settings.view']);
 
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,

@@ -227,8 +227,8 @@ class PhoneExtensionDirectoryTest extends TestCase
     private function account(): array
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view', 'phone.edit']);
-        $alice = $this->userWithRole($t, 'Alice Nolan', ['phone.view']);
+        $editor = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view', 'phone.settings.view', 'phone.edit']);
+        $alice = $this->userWithRole($t, 'Alice Nolan', ['phone.view', 'phone.settings.view']);
 
         [$connection, $group] = $this->inTenant($t['org'], function () use ($t, $alice) {
             $connection = PhoneConnection::factory()->create([

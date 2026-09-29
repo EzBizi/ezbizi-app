@@ -86,7 +86,7 @@ class PhoneNumberMoveTest extends TestCase
     public function test_moving_inside_one_account_rescopes_without_touching_twilio(): void
     {
         [$t, $connection, $other] = $this->orgAccountAndSecondCompany();
-        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $number = $this->line($t, $connection, 'PN'.str_repeat('m', 32));
         $group = $this->group($t, $connection, 'Front desk');
 
@@ -127,7 +127,7 @@ class PhoneNumberMoveTest extends TestCase
     public function test_moving_across_accounts_lets_go_of_the_old_company_settings(): void
     {
         [$t, $connection, $other] = $this->orgAccountAndSecondCompany();
-        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $number = $this->line($t, $connection, 'PN'.str_repeat('n', 32));
         $group = $this->group($t, $connection, 'A-1 Front desk');
 
@@ -200,7 +200,7 @@ class PhoneNumberMoveTest extends TestCase
     public function test_a_refused_carrier_move_writes_nothing(): void
     {
         [$t, $connection, $other] = $this->orgAccountAndSecondCompany();
-        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.edit']);
+        $admin = $this->userWithRole($t, 'Phone admin', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $number = $this->line($t, $connection, 'PN'.str_repeat('p', 32));
 
         $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([

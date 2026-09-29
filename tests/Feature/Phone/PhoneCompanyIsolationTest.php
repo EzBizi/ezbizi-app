@@ -116,7 +116,7 @@ class PhoneCompanyIsolationTest extends TestCase
                 'name' => 'Everdoors phone',
                 'is_system' => false,
             ]);
-            $role->syncPermissionKeys(['phone.view', 'phone.edit']);
+            $role->syncPermissionKeys(['phone.view', 'phone.settings.view', 'phone.edit']);
 
             $user = User::query()->create([
                 'organization_id' => $t['org']->id,
@@ -220,7 +220,7 @@ class PhoneCompanyIsolationTest extends TestCase
                 'name' => 'Two companies',
                 'is_system' => false,
             ]);
-            $role->syncPermissionKeys(['phone.view', 'phone.edit']);
+            $role->syncPermissionKeys(['phone.view', 'phone.settings.view', 'phone.edit']);
 
             $user = User::query()->create([
                 'organization_id' => $t['org']->id,
