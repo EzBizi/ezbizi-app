@@ -5,6 +5,9 @@ namespace Tests\Feature\Api;
 use App\Models\Assignment;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InventoryBalance;
+use App\Models\InventoryItem;
+use App\Models\InventoryLocation;
 use App\Models\Job;
 use App\Models\Permission;
 use App\Models\Role;
@@ -302,7 +305,9 @@ class DashboardTest extends TestCase
      * Derived, not enumerated: the administrator holds every permission, so
      * every registered glance resolves into this one response, and the needle
      * is searched in the raw body — a glance added next month under a key
-     * nobody has heard of is caught too. The client draws no money either, but
+     * nobody has heard of is caught too -- but only on a branch the fixture
+     * reaches: a glance whose money sits behind data this test does not seed
+     * is not covered. Seed it here when a glance grows a reading branch. The client draws no money either, but
      * the response is readable whatever the client draws, so this is the guard.
      */
     public function test_no_glance_sends_money_to_the_dashboard(): void
@@ -316,13 +321,32 @@ class DashboardTest extends TestCase
             $this->as($this->alpha['admin'])->getJson("/api/v1/jobs/{$job->id}")->assertOk()->getContent(),
         );
 
+        // Stock worth 3 x 43.21 = 129.63. Without it the Inventory box takes its
+        // "No items" branch and never reaches the line that once sent money —
+        // the guard stayed green with stock value put back until this existed.
+        $this->inTenant(function () {
+            $item = InventoryItem::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'last_cost_minor' => 4321,
+            ]);
+            $location = InventoryLocation::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+            ]);
+            InventoryBalance::create(['item_id' => $item->id, 'location_id' => $location->id, 'qty_on_hand' => '3.000']);
+        });
+
         $response = $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk();
-        $jobs = collect($response->json('glances'))->firstWhere('key', 'jobs');
-        $this->assertSame(1, array_sum(array_column($jobs['data']['slices'], 'total')), 'the job is on the dashboard');
+        $glances = collect($response->json('glances'));
+        $this->assertSame(1, array_sum(array_column($glances->firstWhere('key', 'jobs')['data']['slices'], 'total')), 'the job is on the dashboard');
+        $this->assertFalse($glances->firstWhere('key', 'inventory')['data']['empty'], 'the stock is on the dashboard');
 
         $body = $response->getContent();
         $this->assertStringNotContainsString('987654', $body);
         $this->assertStringNotContainsString('9876.54', $body);
+        $this->assertStringNotContainsString('12963', $body);
+        $this->assertStringNotContainsString('129.63', $body);
         $this->assertStringNotContainsString('amount_minor', $body);
         $this->assertStringNotContainsString('"revenue"', $body);
         $this->assertStringNotContainsString('"stock_value"', $body);
