@@ -313,6 +313,9 @@ Rules for the exporter:
     them ("A1 Chimney", "Crestline"); the importer maps them with section G1.
   - `{"type": "franchises", "franchises": [...]}` — A1 franchise CODES ("CT",
     "OH", "NY"); always under A-1 Chimney (G2).
+- **`pay_rates[].period`** is `hour`, `week`, `month` or `year`, or A1's own
+  word for one of them (`hourly`, `weekly`, `monthly`, `yearly`, `annual`),
+  which the importer maps. Anything else still refuses the run.
 - **`work_schedule`** is A1's own stored shape, unchanged. The importer converts
   it to EzBizi's `{timezone, days}` with America/New_York, and a day with
   `off: true` or no times becomes a day off.

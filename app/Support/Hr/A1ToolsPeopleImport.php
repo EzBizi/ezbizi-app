@@ -141,6 +141,16 @@ final class A1ToolsPeopleImport
 
     public const OTHER_SLOTS = 10;
 
+    /** A1's period words => EzBizi's. EzBizi's own words pass through unchanged. */
+    private const PERIOD_SPELLINGS = [
+        'hourly'   => 'hour',
+        'weekly'   => 'week',
+        'monthly'  => 'month',
+        'yearly'   => 'year',
+        'annual'   => 'year',
+        'annually' => 'year',
+    ];
+
     private const TOP_KEYS = ['format', 'exported_at', 'organization', 'files', 'people'];
 
     private const PERSON_KEYS = [
@@ -596,6 +606,12 @@ final class A1ToolsPeopleImport
 
         foreach ($this->listOf($list, "{$label}: pay_rates") as $rate) {
             $amount = $rate['amount'] ?? null;
+
+            // A1 spells its periods as adverbs ("weekly"); the exporter passes
+            // them through as A1 has them, which is the rule the spec gives
+            // for roles and places too. Refusing the whole run over a spelling
+            // would be the importer being right and useless.
+            $rate['period'] = self::PERIOD_SPELLINGS[$rate['period'] ?? ''] ?? ($rate['period'] ?? null);
 
             if (! in_array($rate['basis'] ?? null, PayRate::BASES, true)
                 || ! in_array($rate['period'] ?? null, PayRate::PERIODS, true)

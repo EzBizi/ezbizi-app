@@ -289,7 +289,12 @@ class A1ToolsPeopleImportTest extends TestCase
         $assignmentsBefore = $this->inTenant($this->t['org'], fn () => Assignment::query()->where('user_id', $existing->id)->count());
 
         $png = $this->file(base64_decode(self::PNG), 'png', 'image/png');
-        $this->bundle([$this->newPerson(['avatar' => $png['path'], 'a1_role' => 'nothing-mapped'])], [$png]);
+        // An unmapped A1 role and a null scope, both of which refuse a NEW
+        // person — and must not refuse a matched one (Eve's `administrator`,
+        // Bar's missing company access; the desk's rule of 2026-09-29).
+        $this->bundle([$this->newPerson([
+            'avatar' => $png['path'], 'a1_role' => 'administrator', 'scope' => null,
+        ])], [$png]);
 
         $this->assertSame(0, $this->import());
 
@@ -510,6 +515,36 @@ class A1ToolsPeopleImportTest extends TestCase
 
         Notification::assertSentOnDemandTimes(WelcomeSetPassword::class, 1);
         $this->assertSame(1, DB::table('password_resets')->whereNull('used_at')->count());
+    }
+
+    /**
+     * A1's own period words are accepted: the exporter sends salaries as A1
+     * has them, "weekly", and refusing the run over a spelling would stop all
+     * 76 people for a word the importer can read.
+     */
+    public function test_a1_period_words_are_read_as_ezbizi_periods(): void
+    {
+        $this->bundle([$this->newPerson(['pay_rates' => [
+            ['basis' => 'salary', 'amount' => '950', 'period' => 'weekly', 'effective_on' => '2026-01-05', 'note' => null],
+            ['basis' => 'hourly', 'amount' => '25', 'period' => 'hourly', 'effective_on' => '2025-06-02', 'note' => null],
+        ]])], []);
+
+        $this->assertSame(0, $this->import());
+
+        $periods = $this->inTenant($this->t['org'], fn () => PayRate::query()
+            ->orderBy('effective_on')->pluck('period')->all());
+
+        $this->assertSame(['hour', 'week'], $periods);
+    }
+
+    /** An unknown period is still refused — only A1's known words are mapped. */
+    public function test_an_unknown_pay_period_still_refuses(): void
+    {
+        $this->bundle([$this->newPerson(['pay_rates' => [
+            ['basis' => 'salary', 'amount' => '950', 'period' => 'fortnightly', 'effective_on' => '2026-01-05', 'note' => null],
+        ]])], []);
+
+        $this->artisan('hr:import-a1-tools', ['bundle' => $this->dir])->assertFailed();
     }
 
     /** A role with no mapping refuses a NEW person — never a guessed role. */
