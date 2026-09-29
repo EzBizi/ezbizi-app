@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0317',
+      date: '29 Sep 2026',
+      items: [
+        'Settings, Roles: Scheduling and Work Hours list their tabs in the order their screens draw them, Overbooking and Reports before Settings.',
+        'Reports: a role without the Reports tab no longer sees an empty library pane.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0316',
       date: '29 Sep 2026',
       items: [
