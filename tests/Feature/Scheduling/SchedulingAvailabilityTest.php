@@ -578,6 +578,31 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertContains(['2026-10-06', 'area', 'Dallas', 1, 0, 1, true], $rows);
     }
 
+    /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
+    public function test_the_overbooking_tab_shows_one_picked_date(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['07:00', '08:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+        $this->booked($tenant, '2026-10-06 09:00:00');
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/overbooking?date=2026-10-05')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(['2026-10-05', 1], [$body['from'], $body['days']]);
+        $this->assertSame([['2026-10-05', 'Dallas', 4, 3]], array_map(
+            fn ($r) => [$r['date'], $r['name'], $r['booked'], $r['capacity']],
+            $body['overbooked'],
+        ));
+
+        $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/overbooking?date=10/05/2026')->assertStatus(422);
+    }
+
     /** Fully booked: works in the next 7 days and has no spot left in any of them. */
     public function test_an_area_with_no_spot_in_the_next_seven_days_is_fully_booked(): void
     {
