@@ -215,7 +215,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// keeps its row, the thread keeps its header with the star, Book and the
   /// status control on one line. A share alone let a wide window push the
   /// thread to 336px, and the header overflowed by 46.
-  double _listShare = 0.5;
+  ///
+  /// Where it was last dragged, kept as a preference: held here alone, it went
+  /// back to the middle every time somebody left the tab (Jose, 2026-09-29:
+  /// "it resets after u leave the tab, default should be 30 - 70").
+  late double _listShare = widget.session.me?.leadsListShare ?? 0.3;
   static const _minListPx = 320.0;
   static const _minThreadPx = 460.0;
 
@@ -827,6 +831,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       (listWidth + d.delta.dx).clamp(_minListPx, maxList) /
                       width;
                 }),
+                onHorizontalDragEnd: (_) => widget.session.setPreference(
+                  'leads.list_percent',
+                  (_listShare * 100).round().clamp(15, 70),
+                ),
                 child: const SizedBox(
                   width: 8,
                   child: Center(child: VerticalDivider(width: 1)),
@@ -1393,12 +1401,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                     color: ToneColours.of(context, Tone.caution).ink,
                                   ),
                                   const SizedBox(width: 3),
-                                  Text(
-                                    '${(lead['viewers'] as List).first}'
-                                    '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: ToneColours.of(context, Tone.caution).ink,
+                                  // Flexible, so a long name ellipsizes in a
+                                  // narrow list rather than running past it.
+                                  Flexible(
+                                    child: Text(
+                                      '${(lead['viewers'] as List).first}'
+                                      '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: ToneColours.of(context, Tone.caution).ink,
+                                      ),
                                     ),
                                   ),
                                 ],

@@ -858,6 +858,14 @@ class Me {
   double get webWidgetsPreviewWidth =>
       _width('web.widgets.preview_width', 360, 280, 640);
 
+  /// The leads list's share of Leads, 30% unless dragged (Jose, 2026-09-29:
+  /// "default should be 30 - 70"), and the people list's width on HR →
+  /// Records. Preferences, so leaving the tab does not reset them.
+  double get leadsListShare => _width('leads.list_percent', 30, 15, 70) / 100;
+
+  double get hrRecordsListWidth =>
+      _width('hr.records.list_width', 300, 240, 900);
+
   double _width(String key, double fallback, double min, double max) {
     final stored = preferences[key];
     final value = stored is num ? stored.toDouble() : fallback;

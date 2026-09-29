@@ -199,6 +199,35 @@ class PreferenceRegistry
             ],
 
             /*
+             * The list beside a lead's conversation, and the people list on
+             * HR → Records. Jose, 2026-09-29, on the first: "it resets after
+             * u leave the tab" -- the pin's symptom above, for the pin's
+             * reason, fixed the same way.
+             *
+             * Leads' is a share of the width rather than pixels, because the
+             * conversation is the pane that should grow with the window; 30
+             * is his "default should be 30 - 70". The client still keeps both
+             * panes above their pixel floors whatever share is stored.
+             */
+            'leads.list_percent' => [
+                'label' => 'Leads list width',
+                'type' => 'int',
+                'default' => 30,
+                'min' => 15,
+                'max' => 70,
+                'help' => 'Drag the line beside the leads list to change it.',
+            ],
+
+            'hr.records.list_width' => [
+                'label' => 'People list width',
+                'type' => 'int',
+                'default' => 300,
+                'min' => 240,
+                'max' => 900,
+                'help' => 'Drag the line beside the list of people to change it.',
+            ],
+
+            /*
              * Which part of the business you are looking at (§3 roll-ups).
              *
              * "organization", or "company:<uuid>", or "franchise:<uuid>". A

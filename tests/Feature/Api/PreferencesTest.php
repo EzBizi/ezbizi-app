@@ -316,4 +316,20 @@ class PreferencesTest extends TestCase
                 ->preferences['navigation.width'],
         );
     }
+
+    /**
+     * The two list widths Jose asked to survive leaving the tab (2026-09-29),
+     * kept and bounded like the sidebar's.
+     */
+    public function test_the_leads_and_people_list_widths_are_kept_within_bounds(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['leads.list_percent' => 45, 'hr.records.list_width' => 5000],
+        ])->assertOk();
+
+        $stored = User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences;
+
+        $this->assertSame(45, $stored['leads.list_percent']);
+        $this->assertSame(900, $stored['hr.records.list_width'], 'Wider than any list needs is clamped.');
+    }
 }
