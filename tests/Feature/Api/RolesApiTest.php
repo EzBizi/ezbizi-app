@@ -119,6 +119,18 @@ class RolesApiTest extends TestCase
         $this->assertSame([], $watch['requires']);
     }
 
+    public function test_the_editor_does_not_offer_the_audit_log_it_has_no_screen_for(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $keys = collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules'))
+            ->pluck('key');
+
+        $this->assertContains('roles', $keys, 'control: a Settings module is still offered');
+        $this->assertNotContains('audit', $keys);
+    }
+
     public function test_no_shipped_module_declares_a_requirement_by_accident(): void
     {
         // The mechanism stays and the client renders it, so nothing stops a

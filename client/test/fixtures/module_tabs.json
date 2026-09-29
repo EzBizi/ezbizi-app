@@ -1,0 +1,434 @@
+{
+    "modules": {
+        "a1leads_gbp": {
+            "label": "A1Leads GBP",
+            "parent": null,
+            "tabs": []
+        },
+        "ads_performance": {
+            "label": "Google Ads",
+            "parent": "reports",
+            "tabs": []
+        },
+        "ai_assistance": {
+            "label": "AI Assistance",
+            "parent": null,
+            "tabs": [
+                "AI",
+                "Library",
+                "Settings"
+            ]
+        },
+        "audit": {
+            "label": "Audit log",
+            "parent": null,
+            "tabs": []
+        },
+        "automations": {
+            "label": "Automations",
+            "parent": null,
+            "tabs": [
+                "Your automations",
+                "Build"
+            ]
+        },
+        "business_profile": {
+            "label": "Business Profile",
+            "parent": "customer_experience",
+            "tabs": []
+        },
+        "companies": {
+            "label": "Companies",
+            "parent": null,
+            "tabs": []
+        },
+        "customer_experience": {
+            "label": "Customer Experience",
+            "parent": null,
+            "tabs": []
+        },
+        "customers": {
+            "label": "Customers",
+            "parent": null,
+            "tabs": []
+        },
+        "dashboard": {
+            "label": "Dashboard",
+            "parent": null,
+            "tabs": []
+        },
+        "email": {
+            "label": "Email",
+            "parent": null,
+            "tabs": [
+                "Inbox",
+                "Settings"
+            ]
+        },
+        "estimates": {
+            "label": "Estimates",
+            "parent": "jobs",
+            "tabs": []
+        },
+        "field": {
+            "label": "Field",
+            "parent": null,
+            "tabs": [
+                "Dashboard",
+                "Map",
+                "Route",
+                "Settings"
+            ]
+        },
+        "fleet_management": {
+            "label": "Fleet Management",
+            "parent": null,
+            "tabs": []
+        },
+        "franchises": {
+            "label": "Franchises",
+            "parent": null,
+            "tabs": []
+        },
+        "hr": {
+            "label": "Human Resources",
+            "parent": null,
+            "tabs": [
+                "Dashboard",
+                "Onboarding",
+                "Records",
+                "Invitations",
+                "Contracts"
+            ]
+        },
+        "inspection": {
+            "label": "Inspection",
+            "parent": null,
+            "tabs": [
+                "New Inspection",
+                "Generated Reports",
+                "Builder"
+            ]
+        },
+        "inventory": {
+            "label": "Inventory",
+            "parent": null,
+            "tabs": [
+                "Stock",
+                "Items",
+                "Orders",
+                "Locations"
+            ]
+        },
+        "jobs": {
+            "label": "Jobs",
+            "parent": null,
+            "tabs": [
+                "Work",
+                "Materials"
+            ]
+        },
+        "leads": {
+            "label": "Leads",
+            "parent": null,
+            "tabs": [
+                "Google",
+                "Thumbtack",
+                "Chat",
+                "Forms",
+                "Messenger",
+                "Instagram",
+                "Workiz"
+            ]
+        },
+        "marketing": {
+            "label": "Marketing",
+            "parent": null,
+            "tabs": []
+        },
+        "monitoring": {
+            "label": "Monitoring",
+            "parent": null,
+            "tabs": [
+                "General",
+                "Map",
+                "PC Specs",
+                "Camera Monitoring",
+                "Desktop Monitoring"
+            ]
+        },
+        "newsletter": {
+            "label": "Newsletter",
+            "parent": "marketing",
+            "tabs": []
+        },
+        "organizations": {
+            "label": "Organization settings",
+            "parent": null,
+            "tabs": []
+        },
+        "phone": {
+            "label": "Communication",
+            "parent": null,
+            "tabs": []
+        },
+        "profit_loss": {
+            "label": "Profit & Loss",
+            "parent": "reports",
+            "tabs": []
+        },
+        "reports": {
+            "label": "Reports",
+            "parent": null,
+            "tabs": [
+                "Reports",
+                "Builder",
+                "Experimental"
+            ]
+        },
+        "reviews": {
+            "label": "Reviews",
+            "parent": "customer_experience",
+            "tabs": []
+        },
+        "roles": {
+            "label": "Roles & permissions",
+            "parent": null,
+            "tabs": []
+        },
+        "scheduling": {
+            "label": "Scheduling",
+            "parent": null,
+            "tabs": [
+                "Availability",
+                "Schedule",
+                "Settings",
+                "Overbooking"
+            ]
+        },
+        "services": {
+            "label": "Services",
+            "parent": null,
+            "tabs": [
+                "Catalogue",
+                "Settings"
+            ]
+        },
+        "time_clock": {
+            "label": "Clock in",
+            "parent": null,
+            "tabs": []
+        },
+        "training": {
+            "label": "Training",
+            "parent": null,
+            "tabs": [
+                "Learn",
+                "Dashboard",
+                "Settings"
+            ]
+        },
+        "users": {
+            "label": "Users",
+            "parent": null,
+            "tabs": []
+        },
+        "web_management": {
+            "label": "Web Management",
+            "parent": "marketing",
+            "tabs": [
+                "SEO",
+                "Widgets"
+            ]
+        },
+        "work_hours": {
+            "label": "Work Hours",
+            "parent": null,
+            "tabs": [
+                "General",
+                "Paid Time Off",
+                "Settings",
+                "Reports"
+            ]
+        }
+    },
+    "permissions": [
+        "a1leads_gbp.manage",
+        "a1leads_gbp.reply",
+        "a1leads_gbp.view",
+        "ads_performance.manage",
+        "ads_performance.view",
+        "ai_assistance.ai.view",
+        "ai_assistance.library.view",
+        "ai_assistance.manage",
+        "ai_assistance.settings.view",
+        "ai_assistance.view",
+        "audit.view",
+        "automations.build.view",
+        "automations.create",
+        "automations.delete",
+        "automations.edit",
+        "automations.rules.view",
+        "automations.view",
+        "business_profile.create",
+        "business_profile.delete",
+        "business_profile.edit",
+        "business_profile.view",
+        "companies.create",
+        "companies.delete",
+        "companies.edit",
+        "companies.view",
+        "customer_experience.view",
+        "customers.create",
+        "customers.delete",
+        "customers.edit",
+        "customers.export",
+        "customers.view",
+        "dashboard.view",
+        "email.create",
+        "email.delete",
+        "email.edit",
+        "email.inbox.view",
+        "email.settings.view",
+        "email.view",
+        "estimates.create",
+        "estimates.delete",
+        "estimates.edit",
+        "estimates.view",
+        "field.dashboard.view",
+        "field.manage",
+        "field.map.view",
+        "field.route.view",
+        "field.settings.view",
+        "field.tracked",
+        "field.view",
+        "fleet_management.assign",
+        "fleet_management.create",
+        "fleet_management.delete",
+        "fleet_management.edit",
+        "fleet_management.financials",
+        "fleet_management.view",
+        "franchises.create",
+        "franchises.delete",
+        "franchises.edit",
+        "franchises.view",
+        "hr.contracts.view",
+        "hr.create",
+        "hr.dashboard.view",
+        "hr.edit",
+        "hr.invitations.view",
+        "hr.onboarding.view",
+        "hr.pay.edit",
+        "hr.pay.view",
+        "hr.records.view",
+        "hr.security.reset",
+        "hr.view",
+        "inspection.archive",
+        "inspection.builder.view",
+        "inspection.create",
+        "inspection.delete",
+        "inspection.edit",
+        "inspection.new.view",
+        "inspection.reports.view",
+        "inspection.view",
+        "inventory.create",
+        "inventory.delete",
+        "inventory.edit",
+        "inventory.financials",
+        "inventory.items.view",
+        "inventory.locations.view",
+        "inventory.orders.view",
+        "inventory.stock.view",
+        "inventory.view",
+        "jobs.create",
+        "jobs.delete",
+        "jobs.edit",
+        "jobs.export",
+        "jobs.financials",
+        "jobs.materials.view",
+        "jobs.view",
+        "leads.create",
+        "leads.delete",
+        "leads.edit",
+        "leads.export",
+        "leads.facebook.view",
+        "leads.instagram.view",
+        "leads.local_services.view",
+        "leads.thumbtack.view",
+        "leads.view",
+        "leads.website_chat.view",
+        "leads.website_form.view",
+        "leads.workiz.view",
+        "marketing.edit",
+        "marketing.view",
+        "monitoring.cameras.manage",
+        "monitoring.cameras.view",
+        "monitoring.control",
+        "monitoring.general.view",
+        "monitoring.map.manage",
+        "monitoring.map.view",
+        "monitoring.screenshots.view",
+        "monitoring.specs.view",
+        "monitoring.view",
+        "newsletter.create",
+        "newsletter.delete",
+        "newsletter.edit",
+        "newsletter.send",
+        "newsletter.view",
+        "organizations.edit",
+        "organizations.view",
+        "phone.edit",
+        "phone.view",
+        "profit_loss.view",
+        "reports.build",
+        "reports.builder.view",
+        "reports.experimental.view",
+        "reports.export",
+        "reports.library.view",
+        "reports.view",
+        "reviews.create",
+        "reviews.delete",
+        "reviews.edit",
+        "reviews.publish",
+        "reviews.view",
+        "roles.create",
+        "roles.delete",
+        "roles.edit",
+        "roles.view",
+        "scheduling.availability.view",
+        "scheduling.create",
+        "scheduling.delete",
+        "scheduling.edit",
+        "scheduling.overbooking.view",
+        "scheduling.schedule.view",
+        "scheduling.settings.view",
+        "scheduling.view",
+        "services.catalogue.view",
+        "services.create",
+        "services.delete",
+        "services.edit",
+        "services.settings.view",
+        "services.view",
+        "time_clock.lock_screen",
+        "time_clock.view",
+        "training.assign",
+        "training.manage",
+        "training.monitor",
+        "training.view",
+        "users.create",
+        "users.delete",
+        "users.edit",
+        "users.view",
+        "web_management.edit",
+        "web_management.seo.view",
+        "web_management.view",
+        "web_management.widgets.view",
+        "work_hours.all",
+        "work_hours.general.view",
+        "work_hours.manage",
+        "work_hours.pto.view",
+        "work_hours.reports.view",
+        "work_hours.settings.view",
+        "work_hours.view"
+    ]
+}
