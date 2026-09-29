@@ -175,8 +175,9 @@ class ImportA1ToolsClientsTest extends TestCase
         $this->assertSame($this->ids['nj'], $customer->owning_franchise_id);
         $this->assertTrue($customer->is_active);
         $this->assertStringStartsWith('C-', $customer->number);
+        $this->assertSame('2025-10-14', $customer->customer_since->toDateString());
         $this->assertSame(implode("\n", [
-            'From A1 Tools, Workiz client #4512 (New Jersey), client since 2025-10-14.',
+            'From A1 Tools, Workiz client #4512 (New Jersey).',
             'Company: Lee Holdings',
             'Second phone: 201-555-0101',
             'Gate code 4411',

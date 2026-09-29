@@ -265,7 +265,7 @@ class ImportA1ToolsClients extends Command
             $first .= ', Workiz client '.implode(', ', array_map(
                 fn (array $k) => "#{$k['client_id']} ({$k['franchise']->name})", $keys));
         }
-        $first .= ($since !== null ? ", client since {$since}" : '').'.';
+        $first .= '.';
 
         return [
             'a1_id' => $a1,
@@ -289,6 +289,9 @@ class ImportA1ToolsClients extends Command
                     $text['notes'],
                 ])),
                 'is_active' => true,
+                // When they became a customer: Customers' column for exactly
+                // this, since created_at can only say the import day.
+                'customer_since' => $since,
             ],
         ];
     }
