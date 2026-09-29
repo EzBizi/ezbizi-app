@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'client_platform.dart';
+import 'clock_window.dart';
 
 /// A notification the operating system shows, rather than the bell (plan §12).
 ///
@@ -115,6 +116,19 @@ class OsNotifications {
   static bool _initialised = false;
   static bool _permitted = false;
 
+  /// What a click on one of these does, given the `payload` it was shown with.
+  ///
+  /// Set by NotificationBell, which is the only thing that knows how to open
+  /// what a notification is about. Until 2026-09-29 nothing was set and
+  /// [initialize] was given no response callback at all, so a click on a
+  /// Windows toast was delivered to the running app and dropped on the floor —
+  /// Jose: "clicking on notification on desktop does nothing".
+  ///
+  /// A static hook rather than a stream: there is one bell, it is the one
+  /// consumer, and it clears this when it is disposed so a click after
+  /// sign-out cannot reach a widget that no longer exists.
+  static void Function(String? payload)? onClick;
+
   /// Ask for permission, initialising the plugin the first time.
   ///
   /// Returns whether an OS notification can actually be shown. False is a
@@ -162,6 +176,7 @@ class OsNotifications {
                 ),
                 web: const WebInitializationSettings(),
               ),
+              onDidReceiveNotificationResponse: _clicked,
             ) ??
             false;
       }
@@ -185,15 +200,21 @@ class OsNotifications {
   /// the web (where the plugin maps it onto the notification `tag`). Callers
   /// pass a fresh id per distinct thing to say, and reuse one deliberately to
   /// overwrite — see the summary in NotificationBell.
+  ///
+  /// [payload] comes back to [onClick] when the notification is clicked. On
+  /// Windows it rides the toast's `launch` attribute, so it survives the app
+  /// being closed in between.
   static Future<void> show({
     required int id,
     required String title,
     String? body,
+    String? payload,
   }) async {
     if (!_permitted) return;
 
     try {
       await _plugin.show(
+        payload: payload,
         id: id,
         title: title,
         body: body,
@@ -225,6 +246,19 @@ class OsNotifications {
       // Same reasoning as above. A failed toast must never be able to take a
       // poll cycle down with it.
     }
+  }
+
+  /// A notification was clicked: bring EzBizi forward, then go where it says.
+  ///
+  /// The window first, because a click that navigates a hidden window has
+  /// done nothing the person can see. [ClockWindow.raise] is show, restore if
+  /// minimized, focus — the same three steps as the runner's ShowFromTray, so
+  /// it covers a window closed to the tray (hidden, not minimized) as well as
+  /// one minimized to the taskbar. A no-op off the desktop, where the OS
+  /// brings the app forward itself.
+  static Future<void> _clicked(NotificationResponse response) async {
+    await ClockWindow.raise();
+    onClick?.call(response.payload);
   }
 
   /// Per-platform, because the four ask in four different ways.

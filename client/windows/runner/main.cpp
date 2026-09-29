@@ -6,6 +6,40 @@
 #include "win32_window.h"
 #include "utils.h"
 
+// Lets a click on an EzBizi toast START EzBizi when it is not running.
+//
+// Jose, 2026-09-29: "if app is closed it should open it". A toast click is
+// delivered by COM to the class registered as the app's CustomActivator
+// (flutter_local_notifications_windows writes that, with our GUID). While
+// EzBizi runs, the plugin serves that class from inside the process. When it
+// does not, COM needs to know which program to START for it, and that is this
+// key and nothing else: without it the click is simply dropped, which is what
+// happened. COM then launches `ezbizi.exe -Embedding`; the plugin registers its
+// class object once Dart initialises it, and the click is delivered.
+//
+// Written by the app at every start rather than by the installer so it
+// follows the exe wherever it runs from and covers every install that
+// predates this, and HKCU so it needs no elevation. Idempotent.
+//
+// THE GUID IS DUPLICATED, deliberately and unavoidably: it must equal
+// `_windowsGuid` in lib/core/os_notifications.dart (and the installer's AppId).
+// Different values mean a registration for a class nobody activates.
+static void RegisterToastActivator() {
+  wchar_t exe[MAX_PATH];
+  const DWORD length = ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
+  if (length == 0 || length == MAX_PATH) {
+    return;
+  }
+
+  const std::wstring command = L"\"" + std::wstring(exe, length) + L"\"";
+  ::RegSetKeyValueW(
+      HKEY_CURRENT_USER,
+      L"Software\\Classes\\CLSID\\{8F3A6C21-4D7E-4B90-9E52-1C6A0B7D4E38}"
+      L"\\LocalServer32",
+      nullptr, REG_SZ, command.c_str(),
+      static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -62,6 +96,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::CoUninitialize();
     return EXIT_SUCCESS;
   }
+
+  // Only the instance that stays, so a second launch that hands off above
+  // never rewrites the path.
+  RegisterToastActivator();
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);

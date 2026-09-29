@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/os_notifications.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/notification_bell.dart';
 import 'package:flutter/material.dart';
@@ -103,6 +104,81 @@ void main() {
     expect(record, 'lead-1');
   });
 
+  testWidgets('clicking its desktop toast does exactly what tapping its row does', (
+    tester,
+  ) async {
+    // Jose, 2026-09-29: "clicking on notification on desktop does nothing, it
+    // should lead to whatever it's warning about". The plugin delivered the
+    // click; nothing was listening. The toast carries the notification's id,
+    // and the click must mark it read and go where the row goes — module,
+    // filter AND record — without the panel ever being opened.
+    final opened = <String>[];
+    final posted = <String>[];
+    String? filter;
+    String? record;
+
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n1',
+        'source': 'automation',
+        'title': 'New Live Chat Lead',
+        'body': null,
+        'subject': {'type': 'Lead', 'id': 'lead-1'},
+        'meta': {'module': 'leads', 'filter': 'website_chat'},
+        'read_at': null,
+        'created_at': '2026-09-16T12:00:00+00:00',
+      },
+      onOpenModule: (m, f, r) {
+        opened.add(m);
+        filter = f;
+        record = r;
+      },
+      posted: posted,
+    );
+
+    // What the OS delivers on a click, with the payload the toast was shown with.
+    OsNotifications.onClick?.call('n1');
+    await tester.pumpAndSettle();
+
+    expect(opened, ['leads']);
+    expect(filter, 'website_chat');
+    expect(record, 'lead-1');
+    expect(posted, contains(endsWith('/notifications/n1/read')));
+  });
+
+  testWidgets('clicking the "N new notifications" toast opens the panel that holds them', (
+    tester,
+  ) async {
+    // The summary toast carries no id: its answer is the list. Asserted by the
+    // row's title appearing, which only the open panel draws — and by nothing
+    // having navigated, so this cannot pass by accident through the path above.
+    final opened = <String>[];
+
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n3',
+        'source': 'automation',
+        'title': 'New Live Chat Lead',
+        'body': null,
+        'subject': {'type': 'Lead', 'id': 'lead-1'},
+        'meta': {'module': 'leads', 'filter': 'website_chat'},
+        'read_at': null,
+        'created_at': '2026-09-16T12:00:00+00:00',
+      },
+      onOpenModule: (m, f, r) => opened.add(m),
+    );
+
+    expect(find.text('New Live Chat Lead'), findsNothing, reason: 'Precondition: the panel is closed.');
+
+    OsNotifications.onClick?.call(null);
+    await tester.pumpAndSettle();
+
+    expect(find.text('New Live Chat Lead'), findsOneWidget);
+    expect(opened, isEmpty);
+  });
+
   testWidgets('a notification about nothing openable navigates nowhere', (
     tester,
   ) async {
@@ -145,10 +221,14 @@ Future<void> _pumpWithItem(
   WidgetTester tester, {
   required Map<String, dynamic> item,
   required void Function(String, String?, String?) onOpenModule,
+  List<String>? posted,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
-      if (request.method == 'POST') return _json({'data': {}});
+      if (request.method == 'POST') {
+        posted?.add(request.url.path);
+        return _json({'data': {}});
+      }
 
       return _json({
         'data': [item],
