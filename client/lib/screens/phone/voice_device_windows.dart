@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:webview_windows/webview_windows.dart' as wvw;
 
 import 'voice_device.dart';
@@ -74,6 +75,9 @@ class WindowsVoiceDevice implements VoiceDevice {
   /// Same as the browser: the desk's own button does the answering.
   @override
   void Function()? onAnswered;
+
+  @override
+  void Function(String reason)? onCallFailed;
 
   @override
   bool get supported => true;
@@ -189,6 +193,13 @@ class WindowsVoiceDevice implements VoiceDevice {
     }
   }
 
+  /// A call this device started and nothing has ended yet. An error while it
+  /// is true is THAT call failing; one outside it is registration's business.
+  bool _calling = false;
+
+  @visibleForTesting
+  void receive(dynamic raw) => _receive(raw);
+
   void _receive(dynamic raw) {
     Map<String, dynamic> message;
     try {
@@ -223,7 +234,17 @@ class WindowsVoiceDevice implements VoiceDevice {
         // true; until it existed the message was sent into nothing and a
         // desktop desk went quiet an hour after launch.
         onTokenExpiring?.call();
+      case 'error':
+        if (!_calling) return;
+        _calling = false;
+        onCallFailed?.call(
+          callFailureSentence(
+            (message['message'] ?? '').toString(),
+            code: (message['code'] as num?)?.toInt(),
+          ),
+        );
       case 'ended':
+        _calling = false;
         // This used to `break` with a comment saying the Dial tab tracked its
         // own on-call state. That was true when CallTab owned the device; it
         // stopped being true the moment the device moved into a service the
@@ -244,6 +265,7 @@ class WindowsVoiceDevice implements VoiceDevice {
 
   @override
   Future<void> connect({required String to, String? callerId}) async {
+    _calling = true;
     _post({'type': 'connect', 'to': to, 'callerId': callerId});
   }
 
@@ -263,6 +285,7 @@ class WindowsVoiceDevice implements VoiceDevice {
     onIncoming = null;
     onRegistrationChanged = null;
     onEnded = null;
+    onCallFailed = null;
 
     final controller = _controller;
     _controller = null;

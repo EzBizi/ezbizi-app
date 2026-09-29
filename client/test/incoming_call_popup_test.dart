@@ -360,6 +360,9 @@ class _FakeDevice implements VoiceDevice {
   void Function()? onAnswered;
 
   @override
+  void Function(String reason)? onCallFailed;
+
+  @override
   String? pushPlatform;
 
   var declined = false;

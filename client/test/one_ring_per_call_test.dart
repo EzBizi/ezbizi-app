@@ -137,6 +137,9 @@ class _Fake implements VoiceDevice {
   void Function()? onAnswered;
 
   @override
+  void Function(String reason)? onCallFailed;
+
+  @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override

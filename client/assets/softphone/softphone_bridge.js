@@ -77,9 +77,11 @@
     if (statusEl) statusEl.textContent = text;
   }
 
-  function fail(message) {
+  // `code` is Twilio's, when there is one: 31402 is a microphone that could
+  // not be opened, which Dart turns into a sentence somebody can act on.
+  function fail(message, code) {
     note('error: ' + message);
-    send({ type: 'error', message: String(message) });
+    send({ type: 'error', message: String(message), code: code || null });
   }
 
   /** Both call objects go through here so no listener is registered twice. */
@@ -104,7 +106,7 @@
     });
 
     call.on('error', function (error) {
-      fail(error && error.message ? error.message : 'call failed');
+      fail(error && error.message ? error.message : 'call failed', error && error.code);
     });
   }
 
@@ -226,7 +228,7 @@
         note('calling');
       },
       function (error) {
-        fail(error && error.message ? error.message : 'the call was refused');
+        fail(error && error.message ? error.message : 'the call was refused', error && error.code);
       }
     );
   }

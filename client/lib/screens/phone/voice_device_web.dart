@@ -33,6 +33,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   void Function()? onAnswered;
 
+  @override
+  void Function(String reason)? onCallFailed;
+
   // The browser grants the microphone against the page itself, so there is
   // no widget that a permission has to reach.
   @override
@@ -179,7 +182,11 @@ class TwilioVoiceDevice implements VoiceDevice {
       final result = await device.connect(options).toDart;
       _active = result as _JsCall;
       _watchForEnd(_active!);
-    } catch (_) {}
+    } catch (error) {
+      // Said, not swallowed: this was `catch (_) {}`, and a Call that failed
+      // here looked exactly like a Call that was never pressed.
+      throw CallRefused(callFailureSentence(error.toString()));
+    }
   }
 
   @override

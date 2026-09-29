@@ -246,6 +246,9 @@ class MobileVoiceDevice implements VoiceDevice {
   void Function()? onAnswered;
 
   @override
+  void Function(String reason)? onCallFailed;
+
+  @override
   Object? get platformView => null;
 
   /// A handset, and which kind — so the token it asks for names a credential

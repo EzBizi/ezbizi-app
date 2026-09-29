@@ -1510,11 +1510,14 @@ class _CallTabState extends State<CallTab> {
         ),
         // What the bridge did, said where the Call button is rather than in a
         // banner: it is the answer to the thing just pressed.
-        if (_bridgeNote != null)
+        //
+        // Or why the call just placed failed on the device, which arrives
+        // after Call has returned — see PhoneCallService._callFailed.
+        if ((_bridgeNote ?? _service.callRefusal) != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             child: Text(
-              _bridgeNote!,
+              (_bridgeNote ?? _service.callRefusal)!,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall,
             ),

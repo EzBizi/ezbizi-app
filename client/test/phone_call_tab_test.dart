@@ -1050,6 +1050,32 @@ void main() {
     );
   });
 
+  /// A call that fails on the device AFTER Call returned is said under Call.
+  ///
+  /// Jose, 2026-09-29: Call "tries to open up something then nothing
+  /// happens" — the Windows page found no microphone, and nothing said so.
+  testWidgets('a call that fails on the device says why under Call', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    device.onCallFailed!('No microphone found.');
+    await tester.pumpAndSettle();
+
+    expect(find.text('No microphone found.'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Call'), findsOneWidget);
+  });
+
   /// The line you are assigned to is the one you start on.
   ///
   /// The assigned line is deliberately SECOND here. The test above has it
@@ -1422,6 +1448,9 @@ class _FakeDevice implements VoiceDevice {
 
   @override
   void Function()? onAnswered;
+
+  @override
+  void Function(String reason)? onCallFailed;
 
   @override
   String? pushPlatform;

@@ -109,6 +109,28 @@ void main() {
     service.stop();
   });
 
+  /// A CALL THAT FAILS ON THE DEVICE, after Call returned, says why.
+  ///
+  /// Jose, 2026-09-29: Call "tries to open up something then nothing
+  /// happens". On Windows connect() returns before the softphone page has
+  /// tried; the page then found no microphone and its error was dropped.
+  testWidgets('a call that fails on the device says why and ends', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+
+    await service.connect(to: '+13055550100', callerId: '+12035550142');
+    expect(service.onCall, isTrue);
+
+    device.onCallFailed!('No microphone found.');
+
+    expect(service.onCall, isFalse, reason: 'left on a call that failed');
+    expect(service.callRefusal, 'No microphone found.');
+
+    service.stop();
+  });
+
   /// A HANDSET GETS NO EXPIRY EVENT, so the desk renews on the clock.
   ///
   /// Android reported this on 2026-09-17 with the greps: `tokenWillExpire`
@@ -744,6 +766,9 @@ class _FakeDevice implements VoiceDevice {
 
   @override
   void Function()? onAnswered;
+
+  @override
+  void Function(String reason)? onCallFailed;
 
   @override
   void Function(VoiceIncoming incoming)? onIncoming;

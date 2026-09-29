@@ -81,6 +81,7 @@ class PhoneCallService extends ChangeNotifier {
     device.onRegistrationChanged = service.notifyListeners;
     device.onEnded = service._ended;
     device.onAnswered = service._answeredElsewhere;
+    device.onCallFailed = service._callFailed;
 
     return service;
   }
@@ -250,6 +251,7 @@ class PhoneCallService extends ChangeNotifier {
       _device!.onRegistrationChanged = notifyListeners;
       _device!.onEnded = _ended;
       _device!.onAnswered = _answeredElsewhere;
+      _device!.onCallFailed = _callFailed;
       _device!.onTokenExpiring = () => unawaited(_renewToken());
 
       // prepare(), then a FRAME, then the token. platformView is null until
@@ -428,6 +430,7 @@ class PhoneCallService extends ChangeNotifier {
     _device?.onIncoming = null;
     _device?.onRegistrationChanged = null;
     _device?.onEnded = null;
+    _device?.onCallFailed = null;
     _device?.dispose();
     _device = null;
     _started = false;
@@ -587,6 +590,16 @@ class PhoneCallService extends ChangeNotifier {
   /// the call started, so `registered` is the honest restore: they are on the
   /// hook again and the control shows it. Do Not Disturb surviving a call is a
   /// separate question and belongs on the server, where the choice lives.
+  /// The call just placed failed on the device, after connect() returned.
+  ///
+  /// Said where Call was pressed, through [callRefusal], and then ended like
+  /// any other call — which also takes the person off `on_call`, set the
+  /// moment connect() returned.
+  void _callFailed(String reason) {
+    callRefusal = reason;
+    _ended();
+  }
+
   void _ended() {
     final wasOnCall = _onCall;
 

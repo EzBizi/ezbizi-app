@@ -57,6 +57,9 @@ class _SilentVoiceDevice implements VoiceDevice {
   @override
   void Function()? onAnswered;
 
+  @override
+  void Function(String reason)? onCallFailed;
+
   // Nothing to mount, so nothing to prepare.
   @override
   Future<void> prepare() async {}

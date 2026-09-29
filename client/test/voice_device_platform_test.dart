@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:ezbizi_client/screens/phone/voice_device_io.dart' as io;
 import 'package:ezbizi_client/screens/phone/voice_device_mobile.dart';
 import 'package:ezbizi_client/screens/phone/voice_device_windows.dart';
@@ -21,6 +22,38 @@ void main() {
   _webRingContract();
 
   tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+  /// Jose, 2026-09-29: Call did nothing. The page reported the failure and
+  /// the device dropped it. The error text is Chromium's own, measured on his
+  /// PC with no microphone connected.
+  test('a call the Windows page could not start is reported with a reason', () async {
+    final device = WindowsVoiceDevice();
+    final reasons = <String>[];
+    device.onCallFailed = reasons.add;
+
+    // No call placed: a page error is registration's business, not a call's.
+    device.receive('{"type":"error","message":"device error"}');
+    expect(reasons, isEmpty);
+
+    await device.connect(to: '+13055550100');
+    device.receive(
+      '{"type":"error","message":"NotFoundError: Requested device not found","code":31402}',
+    );
+
+    expect(reasons, ['No microphone found. Connect a headset or microphone, then press Call again.']);
+  });
+
+  test('the reasons a call cannot start are sentences somebody can act on', () {
+    expect(
+      callFailureSentence('NotFoundError: Requested device not found'),
+      startsWith('No microphone found'),
+    );
+    expect(
+      callFailureSentence('Permission denied', code: 31401),
+      startsWith('EzBizi is not allowed to use the microphone'),
+    );
+    expect(callFailureSentence('Something else'), 'The call could not start: Something else');
+  });
 
   test('Windows gets the WebView2 device, because Twilio has no SDK for it', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;

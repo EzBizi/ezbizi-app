@@ -234,7 +234,48 @@ abstract class VoiceDevice {
   /// answering, so the desk already knows.
   void Function()? onAnswered;
 
+  /// A call this device started failed before it reached anybody.
+  ///
+  /// Jose, 2026-09-29: pressing Call "tries to open up something then nothing
+  /// happens". The Windows softphone could not find a microphone, Twilio never
+  /// saw the call, and the page's error message was dropped on the Dart side,
+  /// so the Dial pad showed nothing at all. The reason is one of
+  /// [callFailureSentence]'s.
+  void Function(String reason)? onCallFailed;
+
   void dispose();
+}
+
+/// A person-readable sentence for why a call could not start.
+///
+/// Microphone first, because that is the one somebody can fix from their desk:
+/// Twilio's 31401/31208 are a refused permission and 31402/31400 a microphone
+/// that could not be opened — most often, none is connected.
+String callFailureSentence(String message, {int? code}) {
+  final text = message.toLowerCase();
+
+  if (code == 31401 ||
+      code == 31208 ||
+      text.contains('notallowed') ||
+      text.contains('permission')) {
+    return 'EzBizi is not allowed to use the microphone. Allow microphone '
+        'access for EzBizi, then press Call again.';
+  }
+
+  if (code == 31402 ||
+      code == 31400 ||
+      text.contains('notfound') ||
+      text.contains('device not found') ||
+      text.contains('acquisition') ||
+      text.contains('getusermedia') ||
+      text.contains('microphone')) {
+    return 'No microphone found. Connect a headset or microphone, then press '
+        'Call again.';
+  }
+
+  return message.trim().isEmpty
+      ? 'The call could not start.'
+      : 'The call could not start: ${message.trim()}';
 }
 
 /// The platform refused to place an outbound call, and here is why.
