@@ -261,11 +261,18 @@ class LeadsController extends Controller
         if (is_string($source = $request->query('source')) && $source !== '') {
             // Google, split the way A1 Leads splits it (Jose, 2026-09-28):
             // "LS Call" and "LS Text" are Local Services leads by lead_type.
-            match ($source) {
-                Lead::KIND_LS_CALL => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)->where('leads.lead_type', 'PHONE_CALL'),
-                Lead::KIND_LS_TEXT => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)->where('leads.lead_type', 'MESSAGE'),
-                default => $query->where('leads.source', $source),
-            };
+            $query->where(fn ($q) => self::whereKind($q, $source));
+        }
+
+        // All, narrowed to the sources ticked under it (Jose, 2026-09-29: "by
+        // default all of them active except for LS Call as those are not
+        // actionable"). Comma-separated keys; one nobody has matches nothing.
+        if (is_string($sources = $request->query('sources')) && $sources !== '') {
+            $query->where(function ($q) use ($sources) {
+                foreach (array_filter(explode(',', $sources)) as $key) {
+                    $q->orWhere(fn ($w) => self::whereKind($w, $key));
+                }
+            });
         }
 
         /*
@@ -454,6 +461,22 @@ class LeadsController extends Controller
                     'currency' => $j->currency,
                 ])->values()->all(),
         ];
+    }
+
+    /**
+     * One source key as the list narrows by it. Google splits as A1 Leads
+     * splits it: LS Call is the calls, LS Text everything else Google sends
+     * (texts and bookings), so ticking every chip reaches every lead.
+     */
+    private static function whereKind($query, string $key): void
+    {
+        match ($key) {
+            Lead::KIND_LS_CALL => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
+                ->where('leads.lead_type', 'PHONE_CALL'),
+            Lead::KIND_LS_TEXT => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
+                ->where(fn ($t) => $t->whereNull('leads.lead_type')->orWhere('leads.lead_type', '!=', 'PHONE_CALL')),
+            default => $query->where('leads.source', $key),
+        };
     }
 
     /** The last ten digits, which decide between +1 (216) 555-0100 and 2165550100. */

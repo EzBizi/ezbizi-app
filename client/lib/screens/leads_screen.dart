@@ -118,6 +118,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// The source chip, as the API spells it. Null is every source.
   String? _source;
 
+  /// Sources left out of All. LS Call is out by default: a call is over by
+  /// the time it is listed, so it is not something to act on (Jose,
+  /// 2026-09-29: "by default it should have all of them active except for LS
+  /// Call as those are not actionable").
+  final Set<String> _allLeftOut = {'ls_call'};
+
+  /// What All asks for: every source this person sees, less those left out.
+  /// Null when nothing is left out, so the request stays unnarrowed.
+  String? get _allSources {
+    if (_source != null) return null;
+    final shown = [
+      for (final s in _visibleSources)
+        if (!_allLeftOut.contains(s.$1)) s.$1,
+    ];
+    if (shown.length == _visibleSources.length) return null;
+    return shown.isEmpty ? '-' : shown.join(',');
+  }
+
   static const _sourceChips = <(String, String)>[
     // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
     // takes these as a source and narrows Local Services by lead type.
@@ -307,6 +325,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (_unread) 'unread': '1',
       if (_starred) 'starred': '1',
       'source': ?_source,
+      'sources': ?_allSources,
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -609,6 +628,30 @@ class _LeadsScreenState extends State<LeadsScreen> {
           onSelected: (i) =>
               _setSource(i == 0 ? null : _visibleSources[i - 1].$1),
         ),
+        // Under All: which sources it holds, one toggle each.
+        if (_source == null && _visibleSources.length > 1)
+          Padding(
+            key: const ValueKey('all-sources'),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final s in _visibleSources)
+                  FilterChip(
+                    key: ValueKey('all-source-${s.$1}'),
+                    avatar: Icon(s.$3, size: 16),
+                    showCheckmark: false,
+                    label: Text(s.$2),
+                    selected: !_allLeftOut.contains(s.$1),
+                    onSelected: (on) {
+                      setState(() => on ? _allLeftOut.remove(s.$1) : _allLeftOut.add(s.$1));
+                      _load();
+                    },
+                  ),
+              ],
+            ),
+          ),
         // One "Connected sources" row whatever the number of providers: the
         // band-to-panel shape Google's accounts shipped with, costing one row
         // at one provider or four. The panel holds every provider's section.
