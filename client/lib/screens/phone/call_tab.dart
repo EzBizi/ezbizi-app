@@ -8,6 +8,8 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/side_panel.dart';
+import '../scheduling/availability_pane.dart';
 import '../../core/phone_call_service.dart';
 import '../../core/timestamps.dart';
 import 'staff_thread.dart';
@@ -655,6 +657,34 @@ class _CallTabState extends State<CallTab> {
                 '$to.'
           : response.reason;
     });
+  }
+
+  /// Opens on the caller's zip when they are a customer on file.
+  Future<void> _openAvailability() async {
+    String? zip;
+    final peer = _peer;
+    if (peer != null && peer.isNotEmpty) {
+      final response = await widget.api.get(
+        '/phone/caller?e164=${Uri.encodeQueryComponent(peer)}',
+      );
+      final data = response.ok ? response.data : null;
+      if (data is Map) zip = (data['postal_code'] as String?)?.trim();
+    }
+    if (!mounted) return;
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Availability',
+        scrollable: false,
+        child: AvailabilityPane(
+          api: widget.api,
+          session: widget.session,
+          visible: true,
+          initialZip: (zip ?? '').isEmpty ? null : zip,
+        ),
+      ),
+    );
   }
 
   String? _clientTo() {
@@ -1504,6 +1534,17 @@ class _CallTabState extends State<CallTab> {
                         child: Text(group.name),
                       ),
                   ],
+                ),
+
+              // Toula's suggestion (2026-09-10): the caller says a zip, and
+              // the dispatcher checks who is free there without leaving the
+              // call. Scheduling's own pane, as Leads opens it.
+              if (widget.session.me?.can('scheduling.availability.view') ??
+                  false)
+                OutlinedButton(
+                  key: const Key('dial-availability'),
+                  onPressed: _openAvailability,
+                  child: const Text('Availability'),
                 ),
             ],
           ),

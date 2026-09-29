@@ -675,12 +675,16 @@ class CallsController extends Controller
         // none.
         $customer = Customer::query()
             ->where('phone', $input['e164'])
-            ->first(['id', 'name']);
+            ->first(['id', 'name', 'postal_code']);
 
         return response()->json(['data' => [
             'e164' => $input['e164'],
             'name' => $customer?->name,
             'customer_id' => $customer?->id,
+
+            // For the Dial pad's Availability panel, which opens on the
+            // caller's own zip when they are on file (Toula's suggestion).
+            'postal_code' => $customer?->postal_code,
         ]]);
     }
 

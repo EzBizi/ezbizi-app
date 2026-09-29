@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/phone_call_service.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/call_tab.dart';
+import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
@@ -1076,6 +1077,34 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Call'), findsOneWidget);
   });
 
+  /// Toula's suggestion: the caller says where they are, and the dispatcher
+  /// checks availability without leaving the call — on the caller's own zip
+  /// when they are a customer on file.
+  testWidgets("Availability opens on the caller's zip", (tester) async {
+    await _pump(
+      tester,
+      size: const Size(1280, 900),
+      permissions: ['phone.view', 'phone.edit', 'scheduling.availability.view'],
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('dial-availability')));
+
+    final pane = tester.widget<AvailabilityPane>(find.byType(AvailabilityPane));
+    expect(pane.initialZip, '33401');
+  });
+
+  /// The control: without the Scheduling grant there is no button to press.
+  testWidgets('no availability grant, no Availability button', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    expect(find.byKey(const Key('dial-availability')), findsNothing);
+  });
+
   /// The line you are assigned to is the one you start on.
   ///
   /// The assigned line is deliberately SECOND here. The test above has it
@@ -1559,6 +1588,7 @@ Future<void> _pump(
   List<http.Request>? seen,
   bool requireCallTag = false,
   Map<String, Object?> preferences = const {},
+  List<String>? permissions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1571,6 +1601,7 @@ Future<void> _pump(
     parked: parked,
     ringing: ringing,
     groups: groups,
+    permissions: permissions,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1611,13 +1642,24 @@ MockClientHandler _handler({
   List<Map<String, dynamic>> parked = const [],
   List<Map<String, dynamic>> ringing = const [],
   List<Map<String, Object?>> groups = const [],
+  List<String>? permissions,
 }) {
   return (request) async {
     final path = request.url.path;
 
+    if (path.endsWith('/phone/caller')) {
+      return _json({
+        'data': {'name': 'Marta Delgado', 'postal_code': '33401'},
+      });
+    }
+
     if (path.endsWith('/me')) {
       return _json({
-        'data': {..._me, 'preferences': {..._me['preferences']! as Map, ...preferences}},
+        'data': {
+          ..._me,
+          'permissions': ?permissions,
+          'preferences': {..._me['preferences']! as Map, ...preferences},
+        },
       });
     }
 

@@ -31,12 +31,16 @@ class PhoneCallerLookupTest extends TestCase
             'owning_franchise_id' => $t['franchise']->id,
             'name' => 'Marta Delgado',
             'phone' => '+13055550100',
+            'postal_code' => '33401',
         ]));
 
         $this->signedInAs($desk)
             ->getJson('/api/v1/phone/caller?e164=%2B13055550100')
             ->assertOk()
-            ->assertJsonPath('data.name', 'Marta Delgado');
+            ->assertJsonPath('data.name', 'Marta Delgado')
+
+            // The Dial pad's Availability panel opens on it.
+            ->assertJsonPath('data.postal_code', '33401');
     }
 
     /**
