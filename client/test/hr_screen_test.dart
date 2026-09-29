@@ -1009,6 +1009,143 @@ void main() {
     expect(find.byTooltip('All people'), findsNothing);
   });
 
+  // ── the four lists on a record (2026-09-29) ─────────────────────
+
+  /// Pay is not a section for somebody the server sent no pay: null is "you may
+  /// not see it", and a tab that could only refuse is not drawn.
+  testWidgets('pay is not a section without hr.pay.view', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    expect(_section('Pay'), findsNothing);
+    // The control: the other three new sections ARE drawn for this reader.
+    expect(_section('Emergency contacts'), findsOneWidget);
+    expect(_section('Equipment'), findsOneWidget);
+    expect(_section('Notes'), findsOneWidget);
+  });
+
+  /// Seeing pay is not changing it: `hr.pay.edit` is its own key, and the
+  /// section says so instead of offering a button the server would refuse.
+  testWidgets('pay shows, and says why it cannot be changed', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        payRates: const [
+          {
+            'id': 'p-1',
+            'basis': 'hourly',
+            'amount': '27.50',
+            'period': 'hour',
+            'effective_on': '2026-06-01',
+            'note': null,
+          },
+        ],
+      ),
+    );
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Pay'));
+
+    expect(find.text('27.50 an hour'), findsOneWidget);
+    expect(find.text('Add pay rate'), findsNothing);
+    expect(find.textContaining('change pay rates'), findsOneWidget);
+  });
+
+  testWidgets('adding an emergency contact sends what the form asked', (
+    tester,
+  ) async {
+    final writes = <(String, String, Map<String, dynamic>?)>[];
+
+    await _pump(
+      tester,
+      _handler(onDetail: (method, path, body) => writes.add((method, path, body))),
+    );
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Emergency contacts'));
+    await _tap(tester, find.text('Add emergency contact'));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ana Okafor');
+    await tester.enterText(find.widgetWithText(TextField, 'Phone'), '(203) 555-0101');
+    await tester.pump();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    expect(writes, hasLength(1));
+    expect(writes.single.$1, 'POST');
+    expect(writes.single.$2, '/api/v1/hr/people/u-2/details/emergency-contacts');
+    expect(writes.single.$3, {
+      'name': 'Ana Okafor',
+      'relationship': null,
+      'phone': '(203) 555-0101',
+    });
+  });
+
+  /// Equipment is handed back rather than deleted: the row stays as the record
+  /// of what was returned, so the button is "Mark returned", with today's date.
+  testWidgets('equipment still held can be marked returned', (tester) async {
+    final writes = <(String, String, Map<String, dynamic>?)>[];
+
+    await _pump(
+      tester,
+      _handler(
+        equipment: const [
+          {
+            'id': 'e-1',
+            'name': 'Ladder',
+            'category': 'tool',
+            'quantity': 1,
+            'identifier': null,
+            'issued_on': '2026-05-01',
+            'returned_on': null,
+            'note': null,
+          },
+        ],
+        onDetail: (method, path, body) => writes.add((method, path, body)),
+      ),
+    );
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Equipment'));
+
+    expect(find.textContaining('still held'), findsOneWidget);
+
+    await _tap(tester, find.text('Mark returned'));
+
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    expect(writes.single.$1, 'PATCH');
+    expect(writes.single.$2, '/api/v1/hr/people/u-2/details/equipment/e-1');
+    expect(writes.single.$3, {'returned_on': today});
+  });
+
+  testWidgets('a note says who wrote it', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        notes: const [
+          {
+            'id': 'n-1',
+            'body': 'Prefers the Stamford jobs.',
+            'author': 'Jose Silva',
+            'created_at': '2026-09-20T10:00:00Z',
+          },
+        ],
+      ),
+    );
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Notes'));
+
+    expect(find.text('Prefers the Stamford jobs.'), findsOneWidget);
+    expect(find.textContaining('Jose Silva ·'), findsOneWidget);
+    expect(find.textContaining('The person does not see these.'), findsOneWidget);
+  });
+
   /// "Abandoned" used to be one word for two different things — nobody came,
   /// and we changed our mind — and the two want opposite responses. They are two
   /// words now, and this is what proves the screen uses both.
@@ -1175,6 +1312,13 @@ MockClientHandler _handler({
   void Function(String path)? onPostPerson,
   void Function(String? user)? onTraining,
   void Function(String id)? onRecord,
+  // The four lists on a record (2026-09-29). `payRates` null is what the server
+  // sends a reader without `hr.pay.view`.
+  List<Map<String, Object?>>? payRates,
+  List<Map<String, Object?>> equipment = const [],
+  List<Map<String, Object?>> notes = const [],
+  void Function(String method, String path, Map<String, dynamic>? body)?
+  onDetail,
   // The signed-in person, so a test can hold or lack a key. Defaults to the
   // administrator every other test in this file drives.
   Map<String, Object?> me = _me,
@@ -1295,8 +1439,23 @@ MockClientHandler _handler({
           'date_of_birth': null,
           'started_on': null,
           'pto': null,
+          'emergency_contacts': <Map<String, Object?>>[],
+          'notes': notes,
+          'equipment': equipment,
+          'pay_rates': payRates,
         },
       });
+    }
+
+    if (path.contains('/details/')) {
+      onDetail?.call(
+        request.method,
+        path,
+        request.body.isEmpty
+            ? null
+            : jsonDecode(request.body) as Map<String, dynamic>,
+      );
+      return _json({'data': <String, Object?>{'id': 'd-1'}}, 201);
     }
 
     if (path.endsWith('/hr/people')) {

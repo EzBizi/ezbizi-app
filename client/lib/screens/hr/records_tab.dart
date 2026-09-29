@@ -580,13 +580,24 @@ const _personalBoxes = [
 bool _blank(Object? value) => (value?.toString() ?? '').trim().isEmpty;
 
 /// The sections, in the order the record's tab strip draws them.
-const _sections = [
+///
+/// Pay is drawn only for somebody the server sent pay to: `pay_rates` is null,
+/// not an empty list, for a reader without `hr.pay.view`, so the tab is absent
+/// rather than a pane that could only ever refuse. That makes the list depend
+/// on the reader — which is why the record holds its section as a KEY and
+/// derives the live one each build (see `_active`), the shape hr_screen.dart's
+/// `_activeTab` set.
+List<(String, String, IconData)> _sectionsFor(Map<String, dynamic> person) => [
   ('personal', 'Personal', Icons.badge_outlined),
+  ('contacts', 'Emergency contacts', Icons.contact_phone_outlined),
   ('employment', 'Employment', Icons.work_outline),
+  if (person['pay_rates'] != null) ('pay', 'Pay', Icons.payments_outlined),
   ('work', 'Work', Icons.schedule_outlined),
+  ('equipment', 'Equipment', Icons.handyman_outlined),
   ('onboarding', 'Onboarding', Icons.how_to_reg_outlined),
   ('timeoff', 'Time off', Icons.beach_access_outlined),
   ('training', 'Training', Icons.school_outlined),
+  ('notes', 'Notes', Icons.sticky_note_2_outlined),
   ('access', 'Access', Icons.lock_reset_outlined),
 ];
 
@@ -752,10 +763,10 @@ class _PersonRecordState extends State<_PersonRecord> {
                 // Keyed so a test can name THIS strip. The HR screen draws its
                 // own module chips above it, and "Onboarding" is on both.
                 key: _RecordsTabState.sectionsKey,
-                labels: [for (final s in _sections) (s.$2, s.$3)],
-                missing: [for (final s in _sections) _emptyIn(s.$1)],
-                selected: _sections.indexWhere((s) => s.$1 == _section),
-                onSelected: (i) => setState(() => _section = _sections[i].$1),
+                labels: [for (final s in _shown) (s.$2, s.$3)],
+                missing: [for (final s in _shown) _emptyIn(s.$1)],
+                selected: _shown.indexWhere((s) => s.$1 == _active),
+                onSelected: (i) => setState(() => _section = _shown[i].$1),
               ),
             ),
             const Divider(height: 1),
@@ -828,7 +839,67 @@ class _PersonRecordState extends State<_PersonRecord> {
     );
   }
 
-  Widget _body(BuildContext context) => switch (_section) {
+  List<(String, String, IconData)> get _shown => _sectionsFor(_person);
+
+  /// The section being shown, derived against the list drawn THIS build. A
+  /// section that has gone — Pay, after a role change removed it — falls back
+  /// to the first one rather than lighting no chip over a blank pane.
+  String get _active {
+    final shown = _shown;
+
+    return shown.any((s) => s.$1 == _section) ? _section : shown.first.$1;
+  }
+
+  List<Map<String, dynamic>> _rows(String key) => [
+    for (final row in (_person[key] as List? ?? const []))
+      if (row is Map) Map<String, dynamic>.from(row),
+  ];
+
+  Widget _body(BuildContext context) => switch (_active) {
+    'contacts' => _DetailList(
+      key: ValueKey('contacts-$_version'),
+      kind: _DetailKind.contacts,
+      rows: _rows('emergency_contacts'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      refused: _noEdit,
+      onChanged: _reload,
+    ),
+    'pay' => _DetailList(
+      key: ValueKey('pay-$_version'),
+      kind: _DetailKind.pay,
+      rows: _rows('pay_rates'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      // Its own key: somebody who keeps the people list is not thereby
+      // somebody who changes what they are paid.
+      refused:
+          widget.session.me?.refusal('hr.pay.edit', 'change pay rates') ??
+          _noEdit,
+      onChanged: _reload,
+    ),
+    'equipment' => _DetailList(
+      key: ValueKey('equipment-$_version'),
+      kind: _DetailKind.equipment,
+      rows: _rows('equipment'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      refused: _noEdit,
+      onChanged: _reload,
+    ),
+    'notes' => _DetailList(
+      key: ValueKey('notes-$_version'),
+      kind: _DetailKind.notes,
+      rows: _rows('notes'),
+      personId: widget.personId,
+      api: widget.api,
+      formats: widget.formats,
+      refused: _noEdit,
+      onChanged: _reload,
+    ),
     'personal' => _PersonalSection(
       key: ValueKey('personal-$_version'),
       person: _person,
@@ -1683,6 +1754,507 @@ class _OnboardingSectionState extends State<_OnboardingSection> {
                   ),
               ],
             ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The four lists of 2026-09-29: emergency contacts, pay, equipment, notes
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum _FieldType { text, multiline, date, number, choice }
+
+class _FieldSpec {
+  const _FieldSpec(
+    this.key,
+    this.label,
+    this.type, {
+    this.required = false,
+    this.options = const {},
+  });
+
+  final String key;
+  final String label;
+  final _FieldType type;
+  final bool required;
+
+  /// value => label, for [_FieldType.choice].
+  final Map<String, String> options;
+}
+
+/// One kind of list on a person's record, and everything that differs between
+/// the four: where it is written, what a row says, and what the form asks.
+class _DetailKind {
+  const _DetailKind({
+    required this.path,
+    required this.noun,
+    required this.empty,
+    required this.fields,
+    required this.title,
+    required this.subtitle,
+    this.intro,
+    this.returnable = false,
+  });
+
+  /// The `{kind}` in `hr/people/{user}/details/{kind}`.
+  final String path;
+  final String noun;
+  final String empty;
+  final String? intro;
+  final List<_FieldSpec> fields;
+  final String Function(Map<String, dynamic> row, DisplayFormats formats) title;
+  final String Function(Map<String, dynamic> row, DisplayFormats formats)
+  subtitle;
+
+  /// Equipment is handed back rather than deleted: the row stays as the record
+  /// of what was returned.
+  final bool returnable;
+
+  static String _date(Object? iso, DisplayFormats formats) {
+    final at = DateTime.tryParse(iso?.toString() ?? '');
+    return at == null ? '' : formats.formatDate(at);
+  }
+
+  static String _join(List<String?> parts) =>
+      parts.where((p) => p != null && p.trim().isNotEmpty).join(' · ');
+
+  static final contacts = _DetailKind(
+    path: 'emergency-contacts',
+    noun: 'emergency contact',
+    empty: 'No emergency contact recorded.',
+    fields: const [
+      _FieldSpec('name', 'Name', _FieldType.text, required: true),
+      _FieldSpec('relationship', 'Relationship', _FieldType.text),
+      _FieldSpec('phone', 'Phone', _FieldType.text),
+    ],
+    title: (row, _) => row['name']?.toString() ?? '',
+    subtitle: (row, _) =>
+        _join([row['relationship']?.toString(), row['phone']?.toString()]),
+  );
+
+  static const _periods = {
+    'hour': 'an hour',
+    'week': 'a week',
+    'month': 'a month',
+    'year': 'a year',
+  };
+
+  static final pay = _DetailKind(
+    path: 'pay-rates',
+    noun: 'pay rate',
+    empty: 'No pay rate recorded.',
+    intro:
+        'A raise is a new rate from a new date; the old one stays as history. '
+        'Seen and changed only by roles given pay.',
+    fields: const [
+      _FieldSpec(
+        'basis',
+        'Paid',
+        _FieldType.choice,
+        required: true,
+        options: {'hourly': 'Hourly', 'salary': 'Salary'},
+      ),
+      _FieldSpec('amount', 'Amount', _FieldType.number, required: true),
+      _FieldSpec(
+        'period',
+        'Per',
+        _FieldType.choice,
+        required: true,
+        options: {
+          'hour': 'Hour',
+          'week': 'Week',
+          'month': 'Month',
+          'year': 'Year',
+        },
+      ),
+      _FieldSpec('effective_on', 'From', _FieldType.date, required: true),
+      _FieldSpec('note', 'Note', _FieldType.multiline),
+    ],
+    title: (row, _) =>
+        '${row['amount']} ${_periods[row['period']] ?? row['period']}',
+    subtitle: (row, formats) => _join([
+      row['basis'] == 'salary' ? 'Salary' : 'Hourly',
+      'from ${_date(row['effective_on'], formats)}',
+      row['note']?.toString(),
+    ]),
+  );
+
+  static final equipment = _DetailKind(
+    path: 'equipment',
+    noun: 'item',
+    empty: 'Nothing recorded as held.',
+    returnable: true,
+    fields: const [
+      _FieldSpec('name', 'Item', _FieldType.text, required: true),
+      _FieldSpec(
+        'category',
+        'Kind',
+        _FieldType.choice,
+        required: true,
+        options: {'tool': 'Tool', 'equipment': 'Equipment'},
+      ),
+      _FieldSpec('quantity', 'Quantity', _FieldType.number),
+      _FieldSpec('identifier', 'Serial or asset tag', _FieldType.text),
+      _FieldSpec('issued_on', 'Issued', _FieldType.date),
+      _FieldSpec('note', 'Note', _FieldType.multiline),
+    ],
+    title: (row, _) {
+      final quantity = row['quantity'] as int? ?? 1;
+      return quantity > 1 ? '${row['name']} ×$quantity' : '${row['name']}';
+    },
+    subtitle: (row, formats) => _join([
+      row['category'] == 'tool' ? 'Tool' : 'Equipment',
+      row['identifier']?.toString(),
+      if (row['issued_on'] != null)
+        'issued ${_date(row['issued_on'], formats)}',
+      row['returned_on'] == null
+          ? 'still held'
+          : 'returned ${_date(row['returned_on'], formats)}',
+    ]),
+  );
+
+  static final notes = _DetailKind(
+    path: 'notes',
+    noun: 'note',
+    empty: 'No notes yet.',
+    intro: 'Kept for HR. The person does not see these.',
+    fields: const [
+      _FieldSpec('body', 'Note', _FieldType.multiline, required: true),
+    ],
+    title: (row, _) => row['body']?.toString() ?? '',
+    subtitle: (row, formats) => _join([
+      row['author']?.toString(),
+      _date(row['created_at'], formats),
+    ]),
+  );
+}
+
+/// One of the four lists: its rows, and add, change, remove.
+class _DetailList extends StatefulWidget {
+  const _DetailList({
+    super.key,
+    required this.kind,
+    required this.rows,
+    required this.personId,
+    required this.api,
+    required this.formats,
+    required this.refused,
+    required this.onChanged,
+  });
+
+  final _DetailKind kind;
+  final List<Map<String, dynamic>> rows;
+  final String personId;
+  final ApiClient api;
+  final DisplayFormats formats;
+
+  /// Why this reader may not change the list, or null when they may.
+  final String? refused;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_DetailList> createState() => _DetailListState();
+}
+
+class _DetailListState extends State<_DetailList> {
+  bool _busy = false;
+
+  String get _base =>
+      '/hr/people/${widget.personId}/details/${widget.kind.path}';
+
+  Future<void> _write(Future<ApiResponse> Function() call) async {
+    setState(() => _busy = true);
+    final response = await call();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(response.reason),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+          width: 420,
+        ),
+      );
+      return;
+    }
+
+    await widget.onChanged();
+  }
+
+  Future<void> _edit([Map<String, dynamic>? row]) async {
+    final values = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (_) => _DetailForm(
+        kind: widget.kind,
+        initial: row,
+        formats: widget.formats,
+      ),
+    );
+
+    if (values == null || !mounted) return;
+
+    await _write(
+      () => row == null
+          ? widget.api.post(_base, values)
+          : widget.api.patch('$_base/${row['id']}', values),
+    );
+  }
+
+  Future<void> _remove(Map<String, dynamic> row) async {
+    final sure = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Remove this ${widget.kind.noun}?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+        child: Text(widget.kind.title(row, widget.formats)),
+      ),
+    );
+
+    if (sure != true || !mounted) return;
+
+    await _write(() => widget.api.delete('$_base/${row['id']}'));
+  }
+
+  Future<void> _returned(Map<String, dynamic> row) => _write(
+    () => widget.api.patch('$_base/${row['id']}', {
+      'returned_on': _DetailForm.ymd(DateTime.now()),
+    }),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final editable = widget.refused == null && !_busy;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.refused != null) ...[
+          ErrorNote(widget.refused!),
+          const SizedBox(height: 12),
+        ],
+        if (widget.kind.intro != null) ...[
+          Text(widget.kind.intro!, style: theme.textTheme.bodySmall),
+          const SizedBox(height: 12),
+        ],
+        if (widget.rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(widget.kind.empty),
+          ),
+        for (final row in widget.rows)
+          Card(
+            child: ListTile(
+              title: Text(widget.kind.title(row, widget.formats)),
+              subtitle: Text(widget.kind.subtitle(row, widget.formats)),
+              trailing: widget.refused != null
+                  ? null
+                  : Wrap(
+                      spacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (widget.kind.returnable &&
+                            row['returned_on'] == null)
+                          TextButton(
+                            onPressed: editable ? () => _returned(row) : null,
+                            child: const Text('Mark returned'),
+                          ),
+                        IconButton(
+                          tooltip: 'Change this ${widget.kind.noun}',
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: editable ? () => _edit(row) : null,
+                        ),
+                        IconButton(
+                          tooltip: 'Remove this ${widget.kind.noun}',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: editable ? () => _remove(row) : null,
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        if (widget.refused == null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: Text('Add ${widget.kind.noun}'),
+                onPressed: editable ? () => _edit() : null,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The form for one row, in a side panel. Returns the values, or null.
+class _DetailForm extends StatefulWidget {
+  const _DetailForm({
+    required this.kind,
+    required this.initial,
+    required this.formats,
+  });
+
+  final _DetailKind kind;
+  final Map<String, dynamic>? initial;
+  final DisplayFormats formats;
+
+  static String ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  State<_DetailForm> createState() => _DetailFormState();
+}
+
+class _DetailFormState extends State<_DetailForm> {
+  late final Map<String, TextEditingController> _text = {
+    for (final f in widget.kind.fields)
+      if (f.type == _FieldType.text ||
+          f.type == _FieldType.multiline ||
+          f.type == _FieldType.number)
+        f.key: TextEditingController(
+          text: widget.initial?[f.key]?.toString() ?? '',
+        )..addListener(() => setState(() {})),
+  };
+
+  late final Map<String, String?> _picked = {
+    for (final f in widget.kind.fields)
+      if (f.type == _FieldType.date || f.type == _FieldType.choice)
+        f.key:
+            widget.initial?[f.key]?.toString() ??
+            (f.type == _FieldType.choice ? f.options.keys.first : null),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _text.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Object? _value(_FieldSpec f) {
+    if (_text.containsKey(f.key)) {
+      final text = _text[f.key]!.text.trim();
+      if (text.isEmpty) return null;
+      return f.key == 'quantity' ? int.tryParse(text) : text;
+    }
+    return _picked[f.key];
+  }
+
+  bool get _complete =>
+      widget.kind.fields.every((f) => !f.required || _value(f) != null);
+
+  Widget _field(_FieldSpec f) {
+    switch (f.type) {
+      case _FieldType.choice:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(f.label, style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              segments: [
+                for (final entry in f.options.entries)
+                  ButtonSegment(value: entry.key, label: Text(entry.value)),
+              ],
+              selected: {_picked[f.key] ?? f.options.keys.first},
+              onSelectionChanged: (v) =>
+                  setState(() => _picked[f.key] = v.first),
+            ),
+          ],
+        );
+      case _FieldType.date:
+        final at = DateTime.tryParse(_picked[f.key] ?? '');
+        return InkWell(
+          onTap: () async {
+            final chosen = await showDatePicker(
+              context: context,
+              initialDate: at ?? DateTime.now(),
+              firstDate: DateTime(1900),
+              lastDate: DateTime(DateTime.now().year + 2),
+            );
+            if (chosen != null) {
+              setState(() => _picked[f.key] = _DetailForm.ymd(chosen));
+            }
+          },
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: f.label,
+              border: const OutlineInputBorder(),
+              suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
+            ),
+            child: Text(
+              at == null ? 'Choose a date' : widget.formats.formatDate(at),
+            ),
+          ),
+        );
+      case _FieldType.text:
+      case _FieldType.multiline:
+      case _FieldType.number:
+        return TextField(
+          controller: _text[f.key],
+          maxLines: f.type == _FieldType.multiline ? 4 : 1,
+          keyboardType: f.type == _FieldType.number
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : null,
+          decoration: InputDecoration(
+            labelText: f.label,
+            border: const OutlineInputBorder(),
+          ),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title: widget.initial == null
+          ? 'Add ${widget.kind.noun}'
+          : 'Change ${widget.kind.noun}',
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _complete
+              ? () => Navigator.of(context).pop({
+                  for (final f in widget.kind.fields) f.key: _value(f),
+                })
+              : null,
+          child: const Text('Save'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final f in widget.kind.fields) ...[
+            _field(f),
+            const SizedBox(height: 14),
+          ],
+        ],
+      ),
     );
   }
 }
