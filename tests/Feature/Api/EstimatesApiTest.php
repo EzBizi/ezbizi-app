@@ -79,6 +79,24 @@ class EstimatesApiTest extends TestCase
         $this->assertSame(['USD' => ['quoted' => 100000, 'accepted' => 40000]], $meta['totals']);
     }
 
+    /** "Number or customer" (queue 32): matched on the estimate's number or the customer's name or number. */
+    public function test_search_finds_by_number_or_customer(): void
+    {
+        $crown = $this->inTenant($this->alpha['org'], fn () => Customer::create([
+            'owning_franchise_id' => $this->alpha['franchise']->id, 'number' => 'C-900', 'name' => 'Crown Repairs Ltd',
+        ])->id);
+        $theirs = $this->create(['customer_id' => $crown])->json('data');
+        $mine = $this->create()->json('data');
+
+        $search = fn (string $term) => array_column($this->signedInAs($this->alpha['admin'])
+            ->getJson('/api/v1/estimates?search='.urlencode($term))->assertOk()->json('data'), 'id');
+
+        $this->assertSame([$theirs['id']], $search('crown'));
+        $this->assertSame([$theirs['id']], $search('C-900'));
+        $this->assertSame([$mine['id']], $search($mine['number']));
+        $this->assertCount(2, $search(''), 'The control: an empty search filters nothing.');
+    }
+
     public function test_the_header_is_an_object_even_when_nothing_matches(): void
     {
         $raw = $this->signedInAs($this->alpha['admin'])

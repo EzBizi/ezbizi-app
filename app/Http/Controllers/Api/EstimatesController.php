@@ -55,6 +55,7 @@ class EstimatesController extends Controller
             'customer_id' => ['nullable', 'uuid'],
             'job_id'      => ['nullable', 'uuid'],
             'status'      => ['nullable', Rule::in(Estimate::STATUSES)],
+            'search'      => ['nullable', 'string', 'max:100'],
         ]);
 
         $reach = ViewScope::forUser($request->user())->franchiseIds();
@@ -67,7 +68,13 @@ class EstimatesController extends Controller
             ->whereIn('franchise_id', $reach)
             ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             ->when($request->query('job_id'), fn ($q, $id) => $q->where('job_id', $id))
-            ->when($withStatus ? $request->query('status') : null, fn ($q, $s) => $q->where('status', $s));
+            ->when($withStatus ? $request->query('status') : null, fn ($q, $s) => $q->where('status', $s))
+            // "Number or customer" (queue 32), the way the jobs list searches.
+            ->when(filled($request->query('search')), function ($q) use ($request) {
+                $like = '%'.trim((string) $request->query('search')).'%';
+                $q->where(fn ($w) => $w->where('number', 'like', $like)
+                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)->orWhere('number', 'like', $like)));
+            });
 
         $page = $filtered()
             ->with(['franchise', 'customer', 'job'])
