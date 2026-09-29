@@ -14,6 +14,7 @@ class VersionHistory {
         'Scheduling: a new Overbooking tab lists the days booked past what an area or a franchise takes, and the areas with no spot left in the next 7 days. Each morning EzBizi can send a warning email when there are any.',
         'Leads: a message can be copied in one press, and part of it can be selected.',
         'Leads: All has a switch for each source, and leaves LS Call out until you switch it on.',
+        'Automations: a rule can reply to a new Google text lead, so EzBizi can send the first reply instead of another tool.',
       ],
     ),
     VersionRelease(
