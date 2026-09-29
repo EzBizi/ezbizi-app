@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
+use App\Support\Jobs\WorkizMoney;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -633,7 +634,7 @@ class JobsController extends Controller
             return $base;
         }
 
-        $job->loadMissing(['lines', 'performedBy:id,name']);
+        $job->loadMissing(['lines', 'performedBy:id,name', 'workizJob']);
 
         return $base + [
             'description'      => $job->description,
@@ -646,6 +647,10 @@ class JobsController extends Controller
             'allowed_service_areas' => ServiceArea::query()
                 ->where('franchise_id', $job->franchise_id)->orderBy('name')
                 ->get(['id', 'name'])->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name])->all(),
+            // Workiz's own money for the job, read live from the mirror, which
+            // is where A-1's invoices live (Jose, decision 2). Null for a job
+            // Workiz does not have. Financials only.
+            ...($money ? ['money' => WorkizMoney::for($job)] : []),
             // The lines ARE the money breakdown: Financials only.
             ...($money ? ['lines' => $job->lines->map(fn (JobLine $line) => [
                 'id'               => $line->id,
