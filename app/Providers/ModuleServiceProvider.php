@@ -1413,6 +1413,23 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Marketing',
                 auditActionPrefixes: ['social'],
                 actions: ['view', 'edit'],
+                /*
+                 * Social Media Management's own two panes, grantable one at a
+                 * time (Jose, 2026-09-29: tabs should be grantable "like all the
+                 * others"). Labels are the words its chip strip draws.
+                 *
+                 * `posts` is enforced on its routes. `accounts` is enforced on
+                 * the SCREEN only, deliberately: the connection routes serve
+                 * Settings > Integrations, Leads, Reports and Newsletter as well,
+                 * so a route gate there would take accounts away from people
+                 * who reach them another way (RequirePermission's docblock names
+                 * this case). What connecting and disconnecting CHANGE is
+                 * refused server-side without `connectPermission()` regardless.
+                 */
+                tabs: [
+                    new TabDefinition('posts', 'Posts'),
+                    new TabDefinition('accounts', 'Accounts'),
+                ],
                 triggers: [
                     /*
                      * Both are declared as never raised, because nothing sends a
@@ -1502,6 +1519,23 @@ class ModuleServiceProvider extends ServiceProvider
                 parent: 'marketing',
                 auditActionPrefixes: ['newsletter'],
                 actions: ['view', 'create', 'edit', 'delete', 'send'],
+                /*
+                 * The three panes, grantable one at a time (Jose, 2026-09-29).
+                 * Labels are the words the sub-tab strip draws.
+                 *
+                 * `composer` is enforced on every route that writes, previews or
+                 * sends. The LIST is read by Dashboard and Composer both - the
+                 * calendar and the picker are the same rows - so it answers to
+                 * either, inside NewslettersController::index. `settings` is the
+                 * Mailchimp connection, which Settings > Integrations reaches as
+                 * well, so it is enforced on the screen; connecting still needs
+                 * `newsletter.send` on the server.
+                 */
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('composer', 'Composer'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 /*
                  * One record type, and it really is one: both triggers pass a
                  * Newsletter. `newsletter.unsubscribed` fires from the public

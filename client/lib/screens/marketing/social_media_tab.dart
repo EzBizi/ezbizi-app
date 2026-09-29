@@ -55,7 +55,23 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// than drawn as progress forever.
   static const int _pollLimit = 20;
 
-  int _tab = 0;
+  /// Posts · Accounts, by KEY — each is grantable on its own since
+  /// 2026-09-29, and an index would point at a different pane depending on
+  /// which ones this role is shown.
+  String _tab = 'posts';
+
+  static const _panes = [
+    ('posts', 'Posts', Icons.edit_outlined),
+    ('accounts', 'Accounts', Icons.link_outlined),
+  ];
+
+  /// Absent `/me` answers NO.
+  bool _mayOpen(String pane) =>
+      widget.session.me?.permissions.contains('marketing.$pane.view') ?? false;
+
+  List<(String, String, IconData)> get _shownPanes =>
+      [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
+
   List<_SocialNetwork> _providers = const [];
   List<_SocialConnection> _connections = const [];
   List<_SentPost> _posts = const [];
@@ -101,7 +117,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _load() async {
     final providers = await widget.api.get('/social/providers');
     final connections = await widget.api.get('/social/connections');
-    final posts = await widget.api.get('/social/posts');
+    // Not asked for without the Posts pane: the server would refuse it, and a
+    // request made only to be refused is noise in every log that reads 403s.
+    final posts = _mayOpen('posts') ? await widget.api.get('/social/posts') : null;
     if (!mounted) return;
 
     setState(() {
@@ -127,7 +145,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       // out is the least important thing on the tab, and losing the whole
       // screen — Connect included — because a list could not be read would be
       // the wrong trade.
-      _posts = !posts.ok
+      _posts = posts == null || !posts.ok
           ? const []
           : ((posts.body['data'] as List<dynamic>?) ?? const [])
               .whereType<Map<String, dynamic>>()
@@ -141,6 +159,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// Just the Sent list. Used by the poll below, which has no business
   /// re-reading the catalogue and the connections every few seconds.
   Future<void> _loadPosts() async {
+    if (!_mayOpen('posts')) return;
+
     final posts = await widget.api.get('/social/posts');
     if (!mounted || !posts.ok) return;
 
@@ -310,20 +330,36 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
 
   @override
   Widget build(BuildContext context) {
+    final shown = _shownPanes;
+
+    if (shown.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            "None of Social Media Management's tabs are available to your role.",
+            style: Theme.of(context).textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    // The chosen pane if it is shown, else the first that is — resolved every
+    // frame so a grant changing mid-session lands on a pane that exists.
+    final current = shown.any((p) => p.$1 == _tab) ? _tab : shown.first.$1;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
-          labels: const [
-            ('Posts', Icons.edit_outlined),
-            ('Accounts', Icons.link_outlined),
-          ],
-          selected: _tab,
-          onSelected: (tab) => setState(() => _tab = tab),
+          labels: [for (final pane in shown) (pane.$2, pane.$3)],
+          selected: shown.indexWhere((p) => p.$1 == current),
+          onSelected: (i) => setState(() => _tab = shown[i].$1),
         ),
         const Divider(height: 1),
         Expanded(
-          child: _tab == 0
+          child: current == 'posts'
               ? _PostsPane(
                   api: widget.api,
                   session: widget.session,

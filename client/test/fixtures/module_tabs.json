@@ -144,7 +144,10 @@
         "marketing": {
             "label": "Marketing",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "Posts",
+                "Accounts"
+            ]
         },
         "monitoring": {
             "label": "Monitoring",
@@ -160,7 +163,11 @@
         "newsletter": {
             "label": "Newsletter",
             "parent": "marketing",
-            "tabs": []
+            "tabs": [
+                "Dashboard",
+                "Composer",
+                "Settings"
+            ]
         },
         "organizations": {
             "label": "Organization settings",
@@ -365,7 +372,9 @@
         "leads.website_chat.view",
         "leads.website_form.view",
         "leads.workiz.view",
+        "marketing.accounts.view",
         "marketing.edit",
+        "marketing.posts.view",
         "marketing.view",
         "monitoring.cameras.manage",
         "monitoring.cameras.view",
@@ -376,10 +385,13 @@
         "monitoring.screenshots.view",
         "monitoring.specs.view",
         "monitoring.view",
+        "newsletter.composer.view",
         "newsletter.create",
+        "newsletter.dashboard.view",
         "newsletter.delete",
         "newsletter.edit",
         "newsletter.send",
+        "newsletter.settings.view",
         "newsletter.view",
         "organizations.edit",
         "organizations.view",

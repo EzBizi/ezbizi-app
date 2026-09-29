@@ -1709,18 +1709,24 @@ Route::prefix('v1')
         // use — an organization-level newsletter is visible down, a sibling
         // company's never is. Out of view answers 404, not 403, because a
         // sibling learning a mailing exists is itself the leak.
+        // The list answers to Dashboard OR Composer, so its tab check lives in
+        // NewslettersController::index rather than on the route.
         Route::get('newsletters', [NewslettersController::class, 'index']);
-        Route::post('newsletters', [NewslettersController::class, 'store']);
-        Route::put('newsletters/{newsletter}', [NewslettersController::class, 'update']);
-        Route::delete('newsletters/{newsletter}', [NewslettersController::class, 'destroy']);
 
-        // The preview is the SAME document the send carries, rendered by the
-        // same class — see BlockRenderer on why nothing renders twice.
-        Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
-        Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+        // Composer's own routes: everything that writes, previews or sends.
+        Route::middleware('permission:newsletter.composer.view')->group(function () {
+            Route::post('newsletters', [NewslettersController::class, 'store']);
+            Route::put('newsletters/{newsletter}', [NewslettersController::class, 'update']);
+            Route::delete('newsletters/{newsletter}', [NewslettersController::class, 'destroy']);
 
-        Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
-        Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
+            // The preview is the SAME document the send carries, rendered by the
+            // same class — see BlockRenderer on why nothing renders twice.
+            Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
+            Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+
+            Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
+            Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
+        });
 
         // Mailchimp is connected here and from Settings > Integrations. It is
         // NOT in the social catalogue: `SocialProvider::all()` filters to
@@ -1728,9 +1734,14 @@ Route::prefix('v1')
         Route::post('newsletter/mailchimp/connect', [MailchimpConnectController::class, 'store']);
         Route::get('newsletter/mailchimp/lists', [MailchimpConnectController::class, 'lists']);
 
-        Route::get('social/posts', [SocialPostsController::class, 'index']);
-        Route::post('social/posts', [SocialPostsController::class, 'store']);
-        Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
+        // Social Media Management's Posts tab. Accounts is gated on the screen
+        // only: the connection routes below serve Integrations, Leads, Reports
+        // and Newsletter too.
+        Route::middleware('permission:marketing.posts.view')->group(function () {
+            Route::get('social/posts', [SocialPostsController::class, 'index']);
+            Route::post('social/posts', [SocialPostsController::class, 'store']);
+            Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
+        });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);

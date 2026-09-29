@@ -52,18 +52,49 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// preview feels attached to the keyboard.
   static const _settle = Duration(milliseconds: 700);
 
-  /// Dashboard · Composer · Settings.
+  /// Dashboard · Composer · Settings, by KEY.
   ///
   /// Dashboard first, deliberately: opening Newsletter and landing in an empty
   /// composer answers no question, whereas "what is going out, and when" is
   /// what somebody arriving actually wants. The composer is one chip away.
-  int _tab = 0;
+  ///
+  /// A key, not an index, since each pane became grantable on its own
+  /// (2026-09-29). An index means a different pane depending on which panes
+  /// this role is shown — Settings found that in three modules, and the
+  /// symptom is the wrong pane rather than a refusal, so nothing errors.
+  String _tab = 'dashboard';
+
+  static const _panes = [
+    ('dashboard', 'Dashboard', Icons.insights_outlined),
+    ('composer', 'Composer', Icons.edit_outlined),
+    ('settings', 'Settings', Icons.tune_outlined),
+  ];
+
+  /// Absent `/me` answers NO: a pane nobody said this person may open is not
+  /// drawn. The server refuses the same thing, so this only decides whether
+  /// the chip is offered.
+  bool _mayOpen(String pane) =>
+      widget.session.me?.permissions.contains('newsletter.$pane.view') ?? false;
+
+  List<(String, String, IconData)> get _shownPanes =>
+      [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
+
+  /// The pane actually on screen: the chosen one if it is shown, else the
+  /// first that is. Resolved every frame, so a grant changing mid-session
+  /// lands on a pane that exists rather than a position that used to.
+  String get _current {
+    final shown = _shownPanes;
+    return shown.any((p) => p.$1 == _tab) ? _tab : shown.first.$1;
+  }
 
   NewsletterStats _stats = const NewsletterStats();
 
   List<_Newsletter> _all = const [];
   List<NewsletterAudience> _audiences = const [];
   String? _selectedId;
+
+  /// The newsletter whose Delete was tapped once; the next tap deletes it.
+  String? _confirmingDelete;
   String? _loadError;
   bool _loading = true;
 
@@ -109,8 +140,22 @@ class _NewsletterTabState extends State<NewsletterTab> {
   }
 
   Future<void> _load() async {
+    /*
+     * Only what this role's panes read. The list serves Dashboard and
+     * Composer; audiences and the preview are Composer's. A Settings-only role
+     * asks for neither — the server would refuse both, and the list's refusal
+     * would otherwise be drawn as an error over the one pane they CAN use.
+     */
+    final readsList = _mayOpen('dashboard') || _mayOpen('composer');
+    if (!readsList) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
     final letters = await widget.api.get('/newsletters');
-    final audiences = await widget.api.get('/newsletter/audiences');
+    final audiences = _mayOpen('composer')
+        ? await widget.api.get('/newsletter/audiences')
+        : null;
     if (!mounted) return;
 
     setState(() {
@@ -137,7 +182,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
           ? NewsletterStats.fromJson(stats)
           : const NewsletterStats();
 
-      _audiences = !audiences.ok
+      _audiences = audiences == null || !audiences.ok
           ? const []
           : ((audiences.body['data'] as List<dynamic>?) ?? const [])
               .whereType<Map<String, dynamic>>()
@@ -211,7 +256,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
   Future<void> _refreshPreview() async {
     final id = _selectedId;
-    if (id == null) return;
+    if (id == null || !_mayOpen('composer')) return;
 
     final response = await widget.api.get('/newsletters/$id/preview');
     if (!mounted || !response.ok) return;
@@ -231,6 +276,39 @@ class _NewsletterTabState extends State<NewsletterTab> {
           .map(_Newsletter.fromJson)
           .toList();
     });
+  }
+
+  /// Delete the open newsletter, after asking.
+  ///
+  /// `newsletter.delete` was declared and grantable with nothing to press —
+  /// the server's destroy() has existed all along. The server keeps the rules
+  /// (a mailing being sent cannot be deleted; out of view is 404); this only
+  /// asks first and reports what it said.
+  Future<void> _delete() async {
+    final id = _selectedId;
+    if (id == null) return;
+
+    // A second tap, not a dialog (no modal dialogs: DEVELOPMENT-RULES). Keyed
+    // by id, so opening another newsletter disarms it.
+    if (_confirmingDelete != id) {
+      setState(() => _confirmingDelete = id);
+      return;
+    }
+    setState(() => _confirmingDelete = null);
+
+    final response = await widget.api.delete('/newsletters/$id');
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _saveError = response.reason);
+      return;
+    }
+
+    setState(() {
+      _selectedId = null;
+      _previewHtml = '';
+    });
+    await _load();
   }
 
   Future<void> _create() async {
@@ -271,27 +349,42 @@ class _NewsletterTabState extends State<NewsletterTab> {
       );
     }
 
+    final shown = _shownPanes;
+
+    if (shown.isEmpty) {
+      // Newsletter reached, and none of its three panes granted. Said out loud
+      // rather than drawn as an empty frame, which reads as the app broken.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            "None of Newsletter's tabs are available to your role.",
+            style: Theme.of(context).textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final current = _current;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
-          labels: const [
-            ('Dashboard', Icons.insights_outlined),
-            ('Composer', Icons.edit_outlined),
-            ('Settings', Icons.tune_outlined),
-          ],
-          selected: _tab,
-          onSelected: (tab) => setState(() => _tab = tab),
+          labels: [for (final pane in shown) (pane.$2, pane.$3)],
+          selected: shown.indexWhere((p) => p.$1 == current),
+          onSelected: (i) => setState(() => _tab = shown[i].$1),
         ),
         const Divider(height: 1),
-        Expanded(child: _body(context)),
+        Expanded(child: _body(context, current)),
       ],
     );
   }
 
-  Widget _body(BuildContext context) {
-    return switch (_tab) {
-      0 => NewsletterDashboard(
+  Widget _body(BuildContext context, String current) {
+    return switch (current) {
+      'dashboard' => NewsletterDashboard(
         stats: _stats,
         viewName: _viewName,
         scheduled: [
@@ -309,16 +402,21 @@ class _NewsletterTabState extends State<NewsletterTab> {
         // "review them or edit them" is the reason to draw the calendar at
         // all — a date with no way in is a poster.
         onOpen: (id) {
+          // Opening a mailing lands in the Composer, so without that pane the
+          // entry is a date to read rather than a door — tapping it must not
+          // switch to a pane this role cannot see.
+          if (!_mayOpen('composer')) return;
+
           final picked = _all.where((n) => n.id == id).toList();
           if (picked.isEmpty) return;
           setState(() {
             _open(picked.first);
-            _tab = 1;
+            _tab = 'composer';
           });
           _refreshPreview();
         },
       ),
-      1 => Column(
+      'composer' => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _bar(context),
@@ -386,6 +484,30 @@ class _NewsletterTabState extends State<NewsletterTab> {
                       ? 'Saving…'
                       : 'Saved',
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          // Delete the open one. Offered only when something is open, and
+          // refused in the server's words without `newsletter.delete`; a
+          // mailing already going out is refused by the server, which says so.
+          if (_selectedId != null) ...[
+            const SizedBox(width: 12),
+            Refused(
+              reason: widget.session.me?.refusal(
+                'newsletter.delete',
+                'delete a newsletter',
+              ),
+              child: TextButton.icon(
+                onPressed: (widget.session.me?.can('newsletter.delete') ?? false) &&
+                        _selected?.status != 'sending'
+                    ? _delete
+                    : null,
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: Text(
+                  _confirmingDelete == _selectedId
+                      ? 'Tap again to delete'
+                      : 'Delete',
+                ),
+              ),
             ),
           ],
           const SizedBox(width: 12),

@@ -60,6 +60,18 @@ class NewslettersController extends Controller
     {
         $user = $this->mayView($request);
 
+        /*
+         * The list is the calendar AND the picker - Dashboard and Composer read
+         * the same rows - so it answers to either tab rather than taking one
+         * route-level gate that would empty the other pane.
+         */
+        abort_unless(
+            $user->hasPermission('newsletter.dashboard.view')
+                || $user->hasPermission('newsletter.composer.view'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('open this tab')->message(),
+        );
+
         $rows = NewsletterAccess::visible(Newsletter::query(), $user)
             ->with(['audience', 'author:id,name', 'sends'])
             ->latest()

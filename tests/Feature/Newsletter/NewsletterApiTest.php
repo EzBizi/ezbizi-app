@@ -44,8 +44,10 @@ class NewsletterApiTest extends TestCase
         $audience = $this->audience($t, 'company', $t['company']->id);
 
         // A writer: everything except putting it in front of anybody.
+        // Holds the Composer TAB, so the send refusal below is the send one:
+        // without it the tab gate would answer first with a different sentence.
         $writer = $this->userWithRole($t, 'Writer', [
-            'newsletter.view', 'newsletter.create', 'newsletter.edit',
+            'newsletter.view', 'newsletter.composer.view', 'newsletter.create', 'newsletter.edit',
         ]);
 
         $id = $this->signedInAs($writer)->postJson(self::ENDPOINT, [
@@ -386,7 +388,7 @@ class NewsletterApiTest extends TestCase
         $audience = $this->audience($t, 'company', $t['company']->id);
         $this->lookingAt($t['admin'], 'company', $t['company']->id);
         $id = $this->draft($t);
-        $reader = $this->userWithRole($t, 'Branch reader', ['newsletter.view'], onlyAt: $t['franchise']);
+        $reader = $this->userWithRole($t, 'Branch reader', ['newsletter.view', 'newsletter.composer.view'], onlyAt: $t['franchise']);
         $this->signedInAs($reader)->withHeader('X-EzBizi-View', 'franchise:'.$t['franchise']->id);
         $this->getJson(self::ENDPOINT)->assertOk()->assertJsonPath('data.0.id', $id);
         $this->getJson('/api/v1/newsletter/audiences')->assertOk()->assertJsonPath('data.0.id', $audience->id);

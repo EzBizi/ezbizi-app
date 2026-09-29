@@ -1417,6 +1417,107 @@ void main() {
   });
 
 
+  /// Each pane follows its own grant (Jose, 2026-09-29: tabs grantable "like
+  /// all the others"). The server refuses what the screen hides; these assert
+  /// the screen neither offers a pane nor ASKS for data it cannot have — a
+  /// request made only to be refused would also draw an error over the pane
+  /// the role can use.
+  group('panes follow their own grants', () {
+    MockClientHandler recording(MockClientHandler inner, List<String> paths) =>
+        (request) {
+          paths.add('${request.method} ${request.url.path}');
+          return inner(request);
+        };
+
+    testWidgets('Social Media with only Accounts shows only Accounts and never asks for posts', (
+      tester,
+    ) async {
+      final paths = <String>[];
+      await _pumpSocial(
+        tester,
+        recording(_handler(tabs: const ['marketing.accounts.view']), paths),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsNothing);
+      expect(paths.where((p) => p.endsWith('/social/posts')), isEmpty,
+          reason: 'The post list was requested without the Posts pane.');
+    });
+
+    // The control for the test above, in its own test: a second pump in the
+    // same test reuses the State, so initState would not run and "no request"
+    // would be true for a reason unrelated to the grant.
+    testWidgets('with Posts granted the post list IS asked for', (tester) async {
+      final paths = <String>[];
+      await _pumpSocial(tester, recording(_handler(), paths));
+
+      expect(paths.where((p) => p.endsWith('/social/posts')), isNotEmpty);
+    });
+
+    testWidgets('Newsletter with only Dashboard shows only Dashboard', (tester) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(tabs: const ['newsletter.dashboard.view'], newsletters: const [_draft]),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Composer'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, 'Settings'), findsNothing);
+    });
+
+    testWidgets('Newsletter with only Settings asks for no mailings and shows no error', (
+      tester,
+    ) async {
+      final paths = <String>[];
+      await _pumpNewsletter(
+        tester,
+        recording(_handler(tabs: const ['newsletter.settings.view']), paths),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
+      expect(paths.where((p) => p.endsWith('/newsletters')), isEmpty,
+          reason: 'The list is refused to this role; asking draws an error over Settings.');
+      expect(paths.where((p) => p.endsWith('/newsletter/audiences')), isEmpty);
+    });
+  });
+
+  /// Delete the open newsletter. `newsletter.delete` was declared and grantable
+  /// with nothing to press; the server's destroy() existed all along.
+  group('deleting a newsletter', () {
+    testWidgets('asks first, then sends the DELETE', (tester) async {
+      final paths = <String>[];
+      await _pumpComposer(
+        tester,
+        (request) {
+          paths.add('${request.method} ${request.url.path}');
+          if (request.method == 'DELETE') {
+            return Future.value(http.Response(jsonEncode({'data': {'id': 'n-1'}}), 200,
+                headers: {'content-type': 'application/json'}));
+          }
+          return _handler(canEdit: true, newsletters: const [_draft])(request);
+        },
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Nothing sent yet: the first tap only arms it.
+      expect(paths.where((p) => p.startsWith('DELETE')), isEmpty);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Tap again to delete'));
+      await tester.pumpAndSettle();
+
+      expect(paths.where((p) => p.startsWith('DELETE') && p.contains('/newsletters/')), hasLength(1));
+    });
+
+    testWidgets('is not offered to a role without the delete permission', (tester) async {
+      await _pumpComposer(tester, _handler(newsletters: const [_draft]));
+
+      final button = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Delete'));
+      expect(button.onPressed, isNull);
+    });
+  });
+
   /// Newsletter — layout 3, and the promises it makes.
   ///
   /// The preview is the whole reason this layout was chosen: a newsletter is
@@ -2115,6 +2216,8 @@ MockClientHandler _handler({
   /// `permissions` here would change nothing on screen and pass or fail for
   /// reasons unrelated to what it claims to be about.
   List<String>? reachable,
+  /// Which pane keys this role holds. Null is every pane.
+  List<String>? tabs,
   List<Map<String, Object?>>? newsletters,
   List<Map<String, Object?>>? audiences,
   String? sendingRefusedBecause,
@@ -2188,6 +2291,10 @@ MockClientHandler _handler({
           'permissions': [
             'marketing.view',
             'newsletter.view',
+            // Every pane, as the 2026-09-29 migration grants to any role that
+            // held the module's view. `tabs` narrows it for the tests about
+            // which pane a partial grant draws.
+            ...(tabs ?? _allTabs),
             if (canEdit) 'marketing.edit',
             // Newsletter's own keys. `canEdit` stands for "this role can do
             // things in Marketing", and sending is one of them — a separate
@@ -2196,6 +2303,7 @@ MockClientHandler _handler({
             if (canEdit) 'newsletter.create',
             if (canEdit) 'newsletter.edit',
             if (canEdit) 'newsletter.send',
+            if (canEdit) 'newsletter.delete',
           ],
         },
       });
@@ -2435,6 +2543,16 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
       headers: {'content-type': 'application/json'},
     );
 
+/// Every Marketing and Newsletter pane, which is what a role holding each
+/// module's view has after the 2026-09-29 grant migration.
+const _allTabs = [
+  'marketing.posts.view',
+  'marketing.accounts.view',
+  'newsletter.dashboard.view',
+  'newsletter.composer.view',
+  'newsletter.settings.view',
+];
+
 const _me = {
   'id': 'u-1',
   'name': 'Jose Silva',
@@ -2444,7 +2562,7 @@ const _me = {
   // Newsletter is a MODULE with its own grant, not a slice of marketing.view,
   // so the default fixture holds both — a role that reaches the tab in
   // production holds both too.
-  'permissions': ['marketing.view', 'newsletter.view'],
+  'permissions': ['marketing.view', 'newsletter.view', ..._allTabs],
   'modules': [
     {
       'key': 'marketing',

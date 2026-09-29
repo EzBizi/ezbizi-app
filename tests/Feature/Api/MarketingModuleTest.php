@@ -49,10 +49,13 @@ class MarketingModuleTest extends TestCase
         $this->assertNotNull($module, 'Marketing is not in the registry, so it has no tab at all.');
         $this->assertSame('Marketing', $module->label);
 
-        // Reaching the tab is `view`. Connecting a page is `edit`. A `send`
-        // for Newsletter is still not declared — that would grant a capability
-        // the software does not have.
-        $this->assertSame(['marketing.view', 'marketing.edit'], $module->permissionKeys());
+        // Reaching the tab is `view`. Connecting a page is `edit`. Since
+        // 2026-09-29 the two panes are grantable one at a time as well (Jose:
+        // tabs grantable "like all the others"), in the order the strip draws.
+        $this->assertSame(
+            ['marketing.view', 'marketing.edit', 'marketing.posts.view', 'marketing.accounts.view'],
+            $module->permissionKeys(),
+        );
 
         $this->assertContains(
             'marketing.view',
@@ -518,8 +521,9 @@ class MarketingModuleTest extends TestCase
 
         // `send` is the reason this is a module rather than two more marketing
         // keys: drafting and mailing twelve hundred people are different acts.
+        // And its three panes, grantable one at a time since 2026-09-29.
         $this->assertSame(
-            ['view', 'create', 'edit', 'delete', 'send'],
+            ['view', 'create', 'edit', 'delete', 'send', 'dashboard.view', 'composer.view', 'settings.view'],
             $newsletter->actions,
         );
         $this->assertSame('marketing', $newsletter->parent);
