@@ -2958,6 +2958,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 30 · Leads · more room for the conversation — 📐 **DRAWN, awaiting Jose**
+
+Jose, 2026-09-29, beside A1 Tools: *"ezbizi is taking a lot of space with tabs and filters from
+the chat ... not to copy a1tools but to make something in between, better than both"*.
+`docs/previews/leads-roomier-layouts.html`: desktop **1** everything for the list in the list
+pane, **2** A1's tab bar made ours (recommended), **3** sources down the side; phone **4** tabs
+you swipe (recommended), **5** one source button and a sources page, **6** round source buttons
+with the filters as tabs. The rows, the conversation header, the bubbles and the reply box are
+the same new ones in all six, and they keep the earlier rulings (unread is weight, the dot is
+unreplied, ours filled primary, no accent bar). **Needs when built:** an unread count per source
+in the list's meta, which is what the tab numbers are; and the phone conversation drawn in place
+with its own back arrow, not pushed as a page (containment).
+
 ### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **SHIPPED** (`24bb6dce`, 0.0.0303, the desk verified all five platforms)
 
 **Built (client):** `lib/screens/web/seo_helper_pane.dart`, the last section of the SEO strip. The

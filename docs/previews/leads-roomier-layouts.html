@@ -1,0 +1,508 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Leads · more room for the conversation</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). Source colours are PersonColours.hue, as
+   leads_screen.dart's sourceColours maps them. Names, numbers, addresses and messages are
+   invented. Kept from earlier Leads rulings: unread is weight, the dot is unreplied, the star is
+   everyone's; our messages are filled primary; no accent bar anywhere. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--brand:#00aeef;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px;
+ --blue:#dceafb;--bluei:#0b4a8f;--teal:#d8f1f0;--teali:#0b5957;--green:#dff2e3;--greeni:#1c5e2e;
+ --olive:#eaf0d2;--olivei:#4a5a12;--gold:#f8edc6;--goldi:#6a4f00;--orange:#ffe6d2;--orangei:#8a3a00;
+ --coral:#fde2de;--corali:#8e2418;--brown:#efe3d8;--browni:#5e3b22;--rose:#fce4ec;--rosei:#9a1b4b}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;vertical-align:middle}
+svg.i.s{width:14px;height:14px} svg.i.l{width:19px;height:19px}
+
+/* the desktop window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px;letter-spacing:-.02em}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.top .sp{flex:1}
+.top .clk{font:600 11px Inter,sans-serif;color:#b04040;border:1px solid #e3a9a9;background:#fdf1f1;border-radius:8px;padding:3px 8px}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:10px 20px 8px;flex:0 0 auto}
+.mh .t{font-size:21px;font-weight:800;line-height:1.1}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.body{flex:1;min-height:0;display:flex;border-top:1px solid var(--line)}
+.lcol{width:30%;min-width:0;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.tcol{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper)}
+
+/* shared controls */
+.fld{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:34px;color:var(--muted);background:var(--paper);font-size:12.5px;min-width:0;white-space:nowrap;overflow:hidden}
+.fld.g{flex:1}
+.fld .v{color:var(--ink);font-weight:600;white-space:nowrap}
+.ib{width:34px;height:34px;border-radius:var(--r);border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;color:var(--pri);background:var(--paper);flex:0 0 auto}
+.ib.q{border-color:transparent}
+.row{display:flex;align-items:center;gap:8px}
+.pad{padding:10px 12px}
+.sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.5}
+.p-new{background:var(--pric);color:var(--prid)} .p-ok{background:var(--okc);color:var(--ok)}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-warn{background:var(--warnc);color:var(--warn)}
+.t-call{background:var(--blue);color:var(--bluei)} .t-text{background:var(--green);color:var(--greeni)}
+.t-book{background:var(--teal);color:var(--teali)} .t-tack{background:var(--orange);color:var(--orangei)}
+.t-chat{background:var(--gold);color:var(--goldi)} .t-form{background:var(--brown);color:var(--browni)}
+.t-msgr{background:var(--coral);color:var(--corali)} .t-ig{background:var(--rose);color:var(--rosei)}
+.t-wz{background:var(--olive);color:var(--olivei)}
+.tog{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu)}
+.tog.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.tog .c{font-weight:800;color:var(--pri)}
+.tog.on .c{color:var(--prid)}
+.cnt{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:var(--pri);color:#fff;font:800 10px Inter,sans-serif}
+.cnt.q{background:var(--neuc);color:var(--neu)}
+.health{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.health b{color:var(--ink);font-weight:600}
+.gd{width:7px;height:7px;border-radius:50%;background:#1a7f37;flex:0 0 auto}
+.lnk{color:var(--pri);font-weight:700;font-size:12px;white-space:nowrap}
+
+/* list rows */
+.list{flex:1;overflow:hidden}
+.ld{display:flex;gap:9px;padding:9px 12px 9px 10px;border-bottom:1px solid var(--line2);align-items:flex-start}
+.ld.sel{background:#e8f4f8}
+.ud{width:7px;height:7px;border-radius:50%;background:var(--pri);flex:0 0 auto;margin-top:6px}
+.ud.no{background:transparent}
+.ld .g{flex:1;min-width:0}
+.l1{display:flex;align-items:center;gap:6px;min-width:0}
+.nm{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.nm.b{font-weight:800}
+.tm{font-size:10.5px;color:var(--muted);white-space:nowrap;margin-left:auto;padding-left:6px}
+.l2{display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0}
+.pv{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.st{color:#b8c2c8;flex:0 0 auto}
+.st.on{color:#c98a00}
+
+/* the conversation */
+.th{padding:12px 18px 10px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start;flex:0 0 auto}
+.av{width:38px;height:38px;border-radius:50%;background:var(--green);color:var(--greeni);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 auto}
+.th .who{flex:1;min-width:0}
+.th .n{font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.th .d{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th .a{display:flex;gap:14px;margin-top:5px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.convo{flex:1;min-height:0;overflow:hidden;background:#f0f4f7;padding:12px 22px;display:flex;flex-direction:column;gap:9px}
+.day{align-self:center;font-size:10.5px;font-weight:700;color:var(--muted);background:#e3e9ed;border-radius:999px;padding:2px 10px}
+.bub{max-width:62%;background:var(--paper);border-radius:14px 14px 14px 4px;padding:8px 12px 6px;font-size:12.5px;box-shadow:0 1px 2px rgba(6,8,8,.08)}
+.bub .m{font-size:10px;color:var(--muted);margin-top:3px;text-align:right}
+.bub.me{align-self:flex-end;background:var(--pri);color:#fff;border-radius:14px 14px 4px 14px}
+.bub.me .m{color:#cfe7ef}
+.cmp{display:flex;gap:9px;padding:10px 16px 12px;border-top:1px solid var(--line);align-items:center;flex:0 0 auto}
+.cmp .box{flex:1;height:38px;border:1px solid var(--line);border-radius:19px;display:flex;align-items:center;padding:0 14px;color:var(--muted);font-size:12.5px;background:var(--ground)}
+.send{width:38px;height:38px;border-radius:50%;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+
+/* option 2: the tab bar across the top */
+.ut{display:flex;align-items:stretch;background:var(--paper);flex:0 0 auto;border-bottom:1px solid var(--line)}
+.ut .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:50px;color:var(--muted);font-size:11.5px;font-weight:600;position:relative;white-space:nowrap}
+.ut .tab .ic{position:relative;display:flex}
+.ut .tab .cnt{position:absolute;top:-6px;left:12px}
+.ut .tab.on{color:var(--pri)}
+.ut .tab.on:after{content:"";position:absolute;left:18%;right:18%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--pri)}
+.ut .end{display:flex;align-items:center;gap:10px;padding:0 14px;border-left:1px solid var(--line2)}
+
+/* option 1: icon tabs inside the list */
+.it{display:flex;gap:2px;padding:2px 8px 0;border-bottom:1px solid var(--line2)}
+.it .tab{flex:1;height:40px;display:flex;align-items:center;justify-content:center;color:var(--muted);position:relative}
+.it .tab .ic{position:relative;display:flex}
+.it .tab .ic .cnt{position:absolute;top:-7px;left:11px;min-width:15px;height:15px;font-size:9px;padding:0 4px}
+.it .tab.on{color:var(--pri)}
+.it .tab.on:after{content:"";position:absolute;left:22%;right:22%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--pri)}
+.it .tab.on .lab{font-size:11px;font-weight:700;margin-left:5px}
+
+/* option 3: the rail */
+.rail{width:78px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:stretch;padding:8px 6px;gap:2px;flex:0 0 auto}
+.rail .tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 2px 6px;border-radius:12px;color:var(--muted);font-size:10.5px;font-weight:600;position:relative;text-align:center;line-height:1.2}
+.rail .tab .cnt{position:absolute;top:3px;right:9px}
+.rail .tab.on{background:var(--pric);color:var(--prid)}
+.rail .tab .hd{position:absolute;top:5px;right:17px;width:7px;height:7px;border-radius:50%;background:#c1492f;border:2px solid var(--paper)}
+.rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+
+/* phones */
+.pair{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.ph{width:360px;height:760px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;position:relative;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;flex:0 0 auto;background:var(--paper)}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line)}
+.ab .t{font-size:17px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ab .lg{color:var(--pri);font-weight:800;font-size:14px}
+.scr{flex:1;min-height:0;overflow:hidden;background:var(--paper);display:flex;flex-direction:column}
+.mt{display:flex;overflow:hidden;border-bottom:1px solid var(--line);flex:0 0 auto}
+.mt .tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 12px 8px;color:var(--muted);font-size:11px;font-weight:600;position:relative;white-space:nowrap}
+.mt .tab .ic{position:relative;display:flex}
+.mt .tab .cnt{position:absolute;top:-6px;left:11px}
+.mt .tab.on{color:var(--pri)}
+.mt .tab.on:after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--pri)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:0 12px 9px;flex:0 0 auto}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.bubs{flex:1;min-height:0;overflow:hidden;background:#f0f4f7;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.bubs .bub{max-width:82%}
+.srcl{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line2)}
+.srcl .ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.srcl .g{flex:1;min-width:0}
+.srcl .g b{display:block;font-size:13.5px}
+.srcl .g span{font-size:11.5px;color:var(--muted)}
+.srcl.on{background:#e8f4f8}
+.bub6{display:flex;gap:14px;overflow:hidden;padding:10px 12px 8px;flex:0 0 auto}
+.bub6 .s{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--muted);position:relative;width:48px;flex:0 0 auto}
+.bub6 .s .o{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid transparent}
+.bub6 .s.on .o{border-color:var(--pri)}
+.bub6 .s.on{color:var(--pri)}
+.bub6 .s .cnt{position:absolute;top:-2px;right:-2px}
+.ft{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+.ft span{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:600;color:var(--muted);position:relative}
+.ft span.on{color:var(--pri)}
+.ft span.on:after{content:"";position:absolute;left:24%;right:24%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--pri)}
+</style>
+
+<svg width="0" height="0" style="position:absolute">
+ <symbol id="inbox" viewBox="0 0 24 24"><path d="M4 13h4l1.5 3h5L16 13h4"/><path d="M5.5 5h13L21 13v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z"/></symbol>
+ <symbol id="phone" viewBox="0 0 24 24"><path d="M5 4h3.5l1.8 4.5-2.3 1.4a11 11 0 0 0 6.1 6.1l1.4-2.3L20 15.5V19a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></symbol>
+ <symbol id="text" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5"/></symbol>
+ <symbol id="tack" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 3 3H7l3-3z"/><path d="M12 12v9"/></symbol>
+ <symbol id="chat" viewBox="0 0 24 24"><path d="M3 5h12v8H8l-5 3.5z"/><path d="M15 9h6v8l-3-2.5h-6.5V13"/></symbol>
+ <symbol id="form" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+ <symbol id="msgr" viewBox="0 0 24 24"><path d="M12 3c5 0 9 3.6 9 8.2S17 19.5 12 19.5c-1 0-2-.1-2.9-.4L5 21v-3.6C3.8 16 3 13.8 3 11.2 3 6.6 7 3 12 3z"/><path d="M7.5 13l3-3 2.5 2 3.5-3"/></symbol>
+ <symbol id="ig" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><path d="M16.8 7.2h.01"/></symbol>
+ <symbol id="wz" viewBox="0 0 24 24"><path d="M4 6l3.2 12L12 8l4.8 10L20 6"/></symbol>
+ <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+ <symbol id="sync" viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.5 1.5M5 16a7.5 7.5 0 0 0 13.5-1.5"/><path d="M19 3.5V8h-4.5M5 20.5V16h4.5"/></symbol>
+ <symbol id="star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></symbol>
+ <symbol id="checks" viewBox="0 0 24 24"><path d="M2.5 12.5l4 4 8-9M10 16l1 1 8.5-9.5"/></symbol>
+ <symbol id="link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+ <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></symbol>
+ <symbol id="send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/></symbol>
+ <symbol id="cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+ <symbol id="note" viewBox="0 0 24 24"><path d="M5 19l1-4 10-10 3 3-10 10z"/><path d="M14 7l3 3"/></symbol>
+ <symbol id="pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
+ <symbol id="menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+ <symbol id="down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+ <symbol id="eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+ <symbol id="filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+</svg>
+
+<div class="wrap">
+<h1>Leads · more room for the conversation</h1>
+<p class="sub">Jose, 2026-09-29, beside A1 Tools: <i>"ezbizi is taking a lot of space with tabs and filters from the chat ... the ideal would be not to copy a1tools but to make something in between, better than both"</i>.</p>
+<p class="cap">In all six the rows, the conversation header, the bubbles and the reply box are the same new ones; what differs is where the sources, search, filters and connected accounts go. Numbers on the tabs are unread leads.</p>
+
+<!-- ═════════════════════════════ 1 ═════════════════════════════ -->
+<h2><span class="n">1</span>Everything for the list lives in the list</h2>
+<p class="cap">The conversation runs from the title to the bottom. Sources are icon tabs across the top of the list, the chosen one named; search, status, filters and the connected accounts are the list's own.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span><span class="sp"></span><span class="clk">Clock Out</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+  <div class="mod">
+   <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+   <div class="body">
+    <div class="lcol">
+     <div class="pad row" style="padding-bottom:6px"><div class="fld g"><svg class="i"><use href="#search"/></svg>Search name or phone</div><div class="fld" style="width:112px"><span class="v">Any status</span><span class="sp"></span><svg class="i s"><use href="#down"/></svg></div><span class="ib" title="Fetch new"><svg class="i"><use href="#sync"/></svg></span></div>
+     <div class="it">
+      <span class="tab on"><svg class="i l"><use href="#inbox"/></svg><span class="lab">All</span><span class="cnt" style="margin-left:5px">17</span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#phone"/></svg><span class="cnt">3</span></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#text"/></svg><span class="cnt">9</span></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#tack"/></svg></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#chat"/></svg><span class="cnt">2</span></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#form"/></svg><span class="cnt">3</span></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#msgr"/></svg></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#ig"/></svg></span></span>
+      <span class="tab"><span class="ic"><svg class="i l"><use href="#wz"/></svg></span></span>
+     </div>
+     <div class="row" style="padding:8px 12px;gap:6px"><span class="tog">Unread <span class="c">17</span></span><span class="tog on">Unreplied <span class="c">6</span></span><span class="tog">Starred</span><span class="sp"></span><span class="ib q" title="Mark all read"><svg class="i"><use href="#checks"/></svg></span></div>
+     <div class="list" style="border-top:1px solid var(--line2)">
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm b">+1 (330) 555-0148</span><span class="tm">2m</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Call · 0:16</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld sel"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Marcus Bell</span><span class="pill p-ok">Booked</span><span class="tm">9m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">You: See you Thursday between 9 and 11</span><svg class="i s st on"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Tom Alvarez</span><span class="tm">32m</span></div><div class="l2"><span class="pill t-tack">Thumbtack</span><span class="pv">Perfect, thank you</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Grace Kim</span><span class="tm">42m</span></div><div class="l2"><span class="pill t-msgr">Messenger</span><span class="pv">Thank you so much for your patience</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+     </div>
+     <div class="row" style="padding:8px 12px;border-top:1px solid var(--line)"><div class="health"><span class="gd"></span><b>All 50 accounts syncing</b></div><span class="sp"></span><span class="lnk">Manage</span></div>
+    </div>
+    <div class="tcol">
+     <div class="th"><div class="av">+1</div><div class="who"><div class="n">+1 (404) 555-0193 <span class="pill p-new">New</span><svg class="i st"><use href="#star"/></svg></div><div class="d">Chimney cleaning · Google Ads · A-1 Chimney – Atlanta · <svg class="i s" style="color:var(--ok)"><use href="#pin"/></svg> 18 Alder Ct, Roswell, GA 30075</div><div class="a"><span class="lnk"><svg class="i s"><use href="#cal"/></svg> Check availability for 30075</span><span class="lnk"><svg class="i s"><use href="#note"/></svg> Add a note</span></div></div><div class="row"><span class="btn">Archive</span><span class="btn">Not a lead</span><span class="btn f">Book</span></div></div>
+     <div class="convo">
+      <span class="day">Today</span>
+      <div class="bub">Hello, I live in Roswell GA, I need an estimate for chimney cleaning.<div class="m">11:57 AM</div></div>
+      <div class="bub me">Thank you for reaching out to A-1 Chimney. A dispatcher will follow up with you shortly.<br><br>In the meantime, could you share the service address and a day that works for you?<div class="m">Rodrigo · 11:57 AM ✓✓</div></div>
+      <div class="bub">18 Alder Ct<br>Roswell 30075<div class="m">11:58 AM</div></div>
+      <div class="bub me">Hey there! Our chimney cleanings are a flat rate of $299.<div class="m">Rodrigo · 12:00 PM ✓✓</div></div>
+      <div class="bub">Can you please give me a call<div class="m">12:02 PM</div></div>
+     </div>
+     <div class="cmp"><div class="box">Reply to +1 (404) 555-0193…</div><span class="send"><svg class="i"><use href="#send"/></svg></span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ═════════════════════════════ 2 ═════════════════════════════ -->
+<h2><span class="n">2</span>A1's tab bar, made ours <span class="rec">Recommended</span></h2>
+<p class="cap">One row of tabs under the title, spread across the width with an icon, a name and the unread count, and the fetch and connected accounts at its end. Search and filters sit over the list only, so the conversation starts right under the tabs.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span><span class="sp"></span><span class="clk">Clock Out</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+  <div class="mod">
+   <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+   <div class="ut">
+    <span class="tab on"><span class="ic"><svg class="i l"><use href="#inbox"/></svg><span class="cnt">17</span></span>All</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#phone"/></svg><span class="cnt">3</span></span>LS Call</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#text"/></svg><span class="cnt">9</span></span>LS Text</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#tack"/></svg></span>Thumbtack</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#chat"/></svg><span class="cnt">2</span></span>Chat</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#form"/></svg><span class="cnt">3</span></span>Forms</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#msgr"/></svg></span>Messenger</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#ig"/></svg></span>Instagram</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#wz"/></svg></span>Workiz</span>
+    <span class="end"><span class="health"><span class="gd"></span><b>All syncing</b></span><span class="lnk">Manage</span><span class="ib q" title="Fetch new"><svg class="i"><use href="#sync"/></svg></span></span>
+   </div>
+   <div class="body" style="border-top:0">
+    <div class="lcol">
+     <div class="pad row" style="padding-bottom:6px"><div class="fld g"><svg class="i"><use href="#search"/></svg>Search name or phone</div><div class="fld" style="width:112px"><span class="v">Any status</span><span class="sp"></span><svg class="i s"><use href="#down"/></svg></div></div>
+     <div class="row" style="padding:2px 12px 8px;gap:6px"><span class="tog">Unread <span class="c">17</span></span><span class="tog on">Unreplied <span class="c">6</span></span><span class="tog">Starred</span><span class="sp"></span><span class="ib q" title="Mark all read"><svg class="i"><use href="#checks"/></svg></span></div>
+     <div class="list" style="border-top:1px solid var(--line2)">
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm b">+1 (330) 555-0148</span><span class="tm">2m</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Call · 0:16</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld sel"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Marcus Bell</span><span class="pill p-ok">Booked</span><span class="tm">9m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">You: See you Thursday between 9 and 11</span><svg class="i s st on"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Tom Alvarez</span><span class="tm">32m</span></div><div class="l2"><span class="pill t-tack">Thumbtack</span><span class="pv">Perfect, thank you</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Grace Kim</span><span class="tm">42m</span></div><div class="l2"><span class="pill t-msgr">Messenger</span><span class="pv">Thank you so much for your patience</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Luis Ortega</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-ig">Instagram</span><span class="pv">Saw your post about liners, how much?</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+     </div>
+    </div>
+    <div class="tcol">
+     <div class="th"><div class="av">+1</div><div class="who"><div class="n">+1 (404) 555-0193 <span class="pill p-new">New</span><svg class="i st"><use href="#star"/></svg></div><div class="d">Chimney cleaning · Google Ads · A-1 Chimney – Atlanta · <svg class="i s" style="color:var(--ok)"><use href="#pin"/></svg> 18 Alder Ct, Roswell, GA 30075</div><div class="a"><span class="lnk"><svg class="i s"><use href="#cal"/></svg> Check availability for 30075</span><span class="lnk"><svg class="i s"><use href="#note"/></svg> Add a note</span></div></div><div class="row"><span class="btn">Archive</span><span class="btn">Not a lead</span><span class="btn f">Book</span></div></div>
+     <div class="convo">
+      <span class="day">Today</span>
+      <div class="bub">Hello, I live in Roswell GA, I need an estimate for chimney cleaning.<div class="m">11:57 AM</div></div>
+      <div class="bub me">Thank you for reaching out to A-1 Chimney. A dispatcher will follow up with you shortly.<br><br>In the meantime, could you share the service address and a day that works for you?<div class="m">Rodrigo · 11:57 AM ✓✓</div></div>
+      <div class="bub">18 Alder Ct<br>Roswell 30075<div class="m">11:58 AM</div></div>
+      <div class="bub me">Hey there! Our chimney cleanings are a flat rate of $299.<div class="m">Rodrigo · 12:00 PM ✓✓</div></div>
+      <div class="bub">Can you please give me a call<div class="m">12:02 PM</div></div>
+     </div>
+     <div class="cmp"><div class="box">Reply to +1 (404) 555-0193…</div><span class="send"><svg class="i"><use href="#send"/></svg></span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ═════════════════════════════ 3 ═════════════════════════════ -->
+<h2><span class="n">3</span>Sources down the side</h2>
+<p class="cap">A narrow column of sources beside the list, each with its count and a red mark when its account stops syncing; Manage and fetch at its foot. Nothing sits above the list or the conversation.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span><span class="sp"></span><span class="clk">Clock Out</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+  <div class="mod">
+   <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+   <div class="body">
+    <div class="rail">
+     <span class="tab on"><svg class="i l"><use href="#inbox"/></svg>All<span class="cnt">17</span></span>
+     <span class="tab"><svg class="i l"><use href="#phone"/></svg>LS Call<span class="cnt">3</span></span>
+     <span class="tab"><svg class="i l"><use href="#text"/></svg>LS Text<span class="cnt">9</span></span>
+     <span class="tab"><svg class="i l"><use href="#tack"/></svg>Thumbtack<span class="hd" title="Not syncing"></span></span>
+     <span class="tab"><svg class="i l"><use href="#chat"/></svg>Chat<span class="cnt">2</span></span>
+     <span class="tab"><svg class="i l"><use href="#form"/></svg>Forms<span class="cnt">3</span></span>
+     <span class="tab"><svg class="i l"><use href="#msgr"/></svg>Messenger</span>
+     <span class="tab"><svg class="i l"><use href="#ig"/></svg>Instagram</span>
+     <span class="tab"><svg class="i l"><use href="#wz"/></svg>Workiz</span>
+     <div class="foot"><span class="tab"><svg class="i l"><use href="#link"/></svg>Manage</span><span class="tab"><svg class="i l"><use href="#sync"/></svg>Fetch</span></div>
+    </div>
+    <div class="lcol" style="width:28%">
+     <div class="pad row" style="padding-bottom:6px"><div class="fld g"><svg class="i"><use href="#search"/></svg>Search name or phone</div><div class="fld" style="width:112px"><span class="v">Any status</span><span class="sp"></span><svg class="i s"><use href="#down"/></svg></div></div>
+     <div class="row" style="padding:2px 12px 8px;gap:6px"><span class="tog">Unread <span class="c">17</span></span><span class="tog on">Unreplied <span class="c">6</span></span><span class="tog">Starred</span><span class="sp"></span><span class="ib q" title="Mark all read"><svg class="i"><use href="#checks"/></svg></span></div>
+     <div class="list" style="border-top:1px solid var(--line2)">
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm b">+1 (330) 555-0148</span><span class="tm">2m</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Call · 0:16</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld sel"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Marcus Bell</span><span class="pill p-ok">Booked</span><span class="tm">9m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">You: See you Thursday between 9 and 11</span><svg class="i s st on"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Tom Alvarez</span><span class="tm">32m</span></div><div class="l2"><span class="pill t-tack">Thumbtack</span><span class="pv">Perfect, thank you</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Grace Kim</span><span class="tm">42m</span></div><div class="l2"><span class="pill t-msgr">Messenger</span><span class="pv">Thank you so much for your patience</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+      <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Luis Ortega</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-ig">Instagram</span><span class="pv">Saw your post about liners, how much?</span><svg class="i s st"><use href="#star"/></svg></div></div></div>
+     </div>
+    </div>
+    <div class="tcol">
+     <div class="th"><div class="av">+1</div><div class="who"><div class="n">+1 (404) 555-0193 <span class="pill p-new">New</span><svg class="i st"><use href="#star"/></svg></div><div class="d">Chimney cleaning · Google Ads · A-1 Chimney – Atlanta · <svg class="i s" style="color:var(--ok)"><use href="#pin"/></svg> 18 Alder Ct, Roswell, GA 30075</div><div class="a"><span class="lnk"><svg class="i s"><use href="#cal"/></svg> Check availability for 30075</span><span class="lnk"><svg class="i s"><use href="#note"/></svg> Add a note</span></div></div><div class="row"><span class="btn">Archive</span><span class="btn">Not a lead</span><span class="btn f">Book</span></div></div>
+     <div class="convo">
+      <span class="day">Today</span>
+      <div class="bub">Hello, I live in Roswell GA, I need an estimate for chimney cleaning.<div class="m">11:57 AM</div></div>
+      <div class="bub me">Thank you for reaching out to A-1 Chimney. A dispatcher will follow up with you shortly.<br><br>In the meantime, could you share the service address and a day that works for you?<div class="m">Rodrigo · 11:57 AM ✓✓</div></div>
+      <div class="bub">18 Alder Ct<br>Roswell 30075<div class="m">11:58 AM</div></div>
+      <div class="bub me">Hey there! Our chimney cleanings are a flat rate of $299.<div class="m">Rodrigo · 12:00 PM ✓✓</div></div>
+      <div class="bub">Can you please give me a call<div class="m">12:02 PM</div></div>
+     </div>
+     <div class="cmp"><div class="box">Reply to +1 (404) 555-0193…</div><span class="send"><svg class="i"><use href="#send"/></svg></span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ═════════════════════════════ 4 ═════════════════════════════ -->
+<h2><span class="n">4</span>Phone · tabs you swipe <span class="rec">Recommended</span></h2>
+<p class="cap">The same tab bar as 2, swiped sideways; search, fetch and the filters under it. A conversation opens in place with its own back arrow, and the three actions sit at the bottom where a thumb is.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#menu"/></svg><span class="t">Leads</span></div>
+  <div class="scr">
+   <div class="mt">
+    <span class="tab on"><span class="ic"><svg class="i l"><use href="#inbox"/></svg><span class="cnt">17</span></span>All</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#phone"/></svg><span class="cnt">3</span></span>LS Call</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#text"/></svg><span class="cnt">9</span></span>LS Text</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#tack"/></svg></span>Thumbtack</span>
+    <span class="tab"><span class="ic"><svg class="i l"><use href="#chat"/></svg><span class="cnt">2</span></span>Chat</span>
+   </div>
+   <div class="pad row" style="padding-bottom:6px"><div class="fld g"><svg class="i"><use href="#search"/></svg>Search name or phone</div><span class="ib" title="Fetch new"><svg class="i"><use href="#sync"/></svg></span></div>
+   <div class="hs"><span class="tog">Unread <span class="c">17</span></span><span class="tog on">Unreplied <span class="c">6</span></span><span class="tog">Starred</span><span class="tog">Any status ⌄</span></div>
+   <div class="list" style="border-top:1px solid var(--line2)">
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm b">+1 (330) 555-0148</span><span class="tm">2m</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Call · 0:16</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Marcus Bell</span><span class="pill p-ok">Booked</span><span class="tm">9m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">You: See you Thursday between 9 and 11</span><svg class="i s st on"><use href="#star"/></svg></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Tom Alvarez</span><span class="tm">32m</span></div><div class="l2"><span class="pill t-tack">Thumbtack</span><span class="pv">Perfect, thank you</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Grace Kim</span><span class="tm">42m</span></div><div class="l2"><span class="pill t-msgr">Messenger</span><span class="pv">Thank you so much for your patience</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span></div></div></div>
+   </div>
+   <div class="row" style="padding:8px 12px;border-top:1px solid var(--line)"><div class="health"><span class="gd"></span><b>All syncing</b> · 37 Google · 12 Thumbtack</div><span class="sp"></span><span class="lnk">Manage</span></div>
+  </div>
+ </div></div>
+ <div><div class="pl">A conversation</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#back"/></svg><span class="t">+1 (404) 555-0193</span><span class="pill p-new">New</span><svg class="i l st"><use href="#star"/></svg></div>
+  <div class="scr">
+   <div style="padding:8px 14px;border-bottom:1px solid var(--line)"><div class="d" style="font-size:11.5px;color:var(--muted)"><span class="pill t-text">LS Text</span> Chimney cleaning · A-1 Chimney – Atlanta</div><div style="font-size:11.5px;color:var(--muted);margin-top:3px"><svg class="i s" style="color:var(--ok)"><use href="#pin"/></svg> 18 Alder Ct, Roswell, GA 30075</div><div class="row" style="gap:14px;margin-top:5px"><span class="lnk"><svg class="i s"><use href="#cal"/></svg> Availability</span><span class="lnk"><svg class="i s"><use href="#note"/></svg> Add a note</span></div></div>
+   <div class="bubs">
+    <span class="day">Today</span>
+    <div class="bub">Hello, I live in Roswell GA, I need an estimate for chimney cleaning.<div class="m">11:57 AM</div></div>
+    <div class="bub me">Thank you for reaching out to A-1 Chimney. A dispatcher will follow up with you shortly.<div class="m">Rodrigo · 11:57 AM ✓✓</div></div>
+    <div class="bub">18 Alder Ct<br>Roswell 30075<div class="m">11:58 AM</div></div>
+    <div class="bub me">Our chimney cleanings are a flat rate of $299.<div class="m">Rodrigo · 12:00 PM ✓✓</div></div>
+    <div class="bub">Can you please give me a call<div class="m">12:02 PM</div></div>
+   </div>
+   <div class="cmp" style="padding:8px 10px"><div class="box">Reply…</div><span class="send"><svg class="i"><use href="#send"/></svg></span></div>
+  </div>
+  <div class="pbar"><span class="btn">Archive</span><span class="btn">Not a lead</span><span class="btn f">Book</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 5 ═════════════════════════════ -->
+<h2><span class="n">5</span>Phone · one source button</h2>
+<p class="cap">One button says which source is showing and how many are unread; it opens the sources as a page of their own, with each account's state and Manage. The list gets everything below it.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#menu"/></svg><span class="t">Leads</span><span class="ib q"><svg class="i l"><use href="#search"/></svg></span><span class="ib q"><svg class="i l"><use href="#sync"/></svg></span></div>
+  <div class="scr">
+   <div class="pad row"><div class="fld g" style="height:40px"><svg class="i l" style="color:var(--pri)"><use href="#inbox"/></svg><span class="v">All sources</span><span class="cnt">17</span><span class="sp"></span><svg class="i"><use href="#chev"/></svg></div></div>
+   <div class="hs"><span class="tog">Unread <span class="c">17</span></span><span class="tog on">Unreplied <span class="c">6</span></span><span class="tog">Starred</span><span class="tog">Any status ⌄</span></div>
+   <div class="list" style="border-top:1px solid var(--line2)">
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm b">+1 (330) 555-0148</span><span class="tm">2m</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Call · 0:16</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Marcus Bell</span><span class="pill p-ok">Booked</span><span class="tm">9m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">You: See you Thursday between 9 and 11</span><svg class="i s st on"><use href="#star"/></svg></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Tom Alvarez</span><span class="tm">32m</span></div><div class="l2"><span class="pill t-tack">Thumbtack</span><span class="pv">Perfect, thank you</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Grace Kim</span><span class="tm">42m</span></div><div class="l2"><span class="pill t-msgr">Messenger</span><span class="pv">Thank you so much for your patience</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span></div></div></div>
+    <div class="ld"><span class="ud no"></span><div class="g"><div class="l1"><span class="nm">Luis Ortega</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-ig">Instagram</span><span class="pv">Saw your post about liners, how much?</span></div></div></div>
+   </div>
+  </div>
+ </div></div>
+ <div><div class="pl">The sources page</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#back"/></svg><span class="t">Sources</span></div>
+  <div class="scr">
+   <div class="srcl on"><span class="ic" style="background:var(--pric);color:var(--prid)"><svg class="i l"><use href="#inbox"/></svg></span><div class="g"><b>All sources</b><span>Every source below</span></div><span class="cnt">17</span></div>
+   <div class="srcl"><span class="ic t-call"><svg class="i l"><use href="#phone"/></svg></span><div class="g"><b>LS Call</b><span><span class="gd" style="display:inline-block"></span> 37 Google accounts</span></div><span class="cnt">3</span></div>
+   <div class="srcl"><span class="ic t-text"><svg class="i l"><use href="#text"/></svg></span><div class="g"><b>LS Text</b><span><span class="gd" style="display:inline-block"></span> 37 Google accounts</span></div><span class="cnt">9</span></div>
+   <div class="srcl"><span class="ic t-tack"><svg class="i l"><use href="#tack"/></svg></span><div class="g"><b>Thumbtack</b><span style="color:var(--bad)">● Not syncing since 10:12 AM</span></div></div>
+   <div class="srcl"><span class="ic t-chat"><svg class="i l"><use href="#chat"/></svg></span><div class="g"><b>Chat</b><span><span class="gd" style="display:inline-block"></span> 12 websites</span></div><span class="cnt">2</span></div>
+   <div class="srcl"><span class="ic t-form"><svg class="i l"><use href="#form"/></svg></span><div class="g"><b>Forms</b><span><span class="gd" style="display:inline-block"></span> 12 websites</span></div><span class="cnt">3</span></div>
+   <div class="srcl"><span class="ic t-msgr"><svg class="i l"><use href="#msgr"/></svg></span><div class="g"><b>Messenger</b><span><span class="gd" style="display:inline-block"></span> 2 pages</span></div></div>
+   <div class="srcl"><span class="ic t-ig"><svg class="i l"><use href="#ig"/></svg></span><div class="g"><b>Instagram</b><span><span class="gd" style="display:inline-block"></span> 1 account</span></div></div>
+   <div class="srcl"><span class="ic t-wz"><svg class="i l"><use href="#wz"/></svg></span><div class="g"><b>Workiz</b><span><span class="gd" style="display:inline-block"></span> Connected</span></div></div>
+   <div style="padding:14px 16px"><span class="btn" style="width:100%"><svg class="i"><use href="#link"/></svg> Manage connections</span></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 6 ═════════════════════════════ -->
+<h2><span class="n">6</span>Phone · sources as round buttons</h2>
+<p class="cap">Sources as a row of round buttons you swipe, each with its colour and count; the filters as tabs under them. A conversation keeps its actions in its header, so the reply box has the bottom to itself.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#menu"/></svg><span class="t">Leads</span><span class="ib q"><svg class="i l"><use href="#search"/></svg></span><span class="ib q"><svg class="i l"><use href="#sync"/></svg></span></div>
+  <div class="scr">
+   <div class="bub6">
+    <span class="s on"><span class="o" style="background:var(--pric);color:var(--prid)"><svg class="i l"><use href="#inbox"/></svg></span>All<span class="cnt">17</span></span>
+    <span class="s"><span class="o t-call"><svg class="i l"><use href="#phone"/></svg></span>LS Call<span class="cnt">3</span></span>
+    <span class="s"><span class="o t-text"><svg class="i l"><use href="#text"/></svg></span>LS Text<span class="cnt">9</span></span>
+    <span class="s"><span class="o t-tack"><svg class="i l"><use href="#tack"/></svg></span>Thumbtack</span>
+    <span class="s"><span class="o t-chat"><svg class="i l"><use href="#chat"/></svg></span>Chat<span class="cnt">2</span></span>
+    <span class="s"><span class="o t-form"><svg class="i l"><use href="#form"/></svg></span>Forms<span class="cnt">3</span></span>
+   </div>
+   <div class="ft"><span>All</span><span>Unread 17</span><span class="on">Unreplied 6</span><span>Starred</span></div>
+   <div class="list">
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Booking through Google</span><span class="tm">1m</span></div><div class="l2"><span class="pill t-book">LS Booking</span><span class="pv">Chimney sweep · Thu 9–11 AM</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Dana Whitfield</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-form">Form</span><span class="pv">Needs a cap on the flue before winter</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm">+1 (404) 555-0193</span><span class="pill p-warn">Awaiting reply</span><span class="tm">5m</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Can you please give me a call</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Priya Nair</span><span class="tm">16m</span></div><div class="l2"><span class="pill t-chat">Chat</span><span class="pv">Do you do dryer vents too?</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Unknown caller</span><span class="tm">1h</span></div><div class="l2"><span class="pill t-call">LS Call</span><span class="pv">Missed · 0:00</span></div></div></div>
+    <div class="ld"><span class="ud"></span><div class="g"><div class="l1"><span class="nm b">Ellen Parks</span><span class="tm">2h</span></div><div class="l2"><span class="pill t-text">LS Text</span><span class="pv">Is Saturday morning possible?</span></div></div></div>
+   </div>
+   <div class="row" style="padding:8px 12px;border-top:1px solid var(--line)"><div class="health"><span class="gd"></span><b>All syncing</b> · 37 Google · 12 Thumbtack</div><span class="sp"></span><span class="lnk">Manage</span></div>
+  </div>
+ </div></div>
+ <div><div class="pl">A conversation</div><div class="ph">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><svg class="i l"><use href="#back"/></svg><span class="t">+1 (404) 555-0193</span><svg class="i l st"><use href="#star"/></svg></div>
+  <div class="scr">
+   <div style="padding:9px 14px;border-bottom:1px solid var(--line)"><div class="row" style="gap:6px"><span class="pill p-new">New</span><span class="pill t-text">LS Text</span><span style="font-size:11.5px;color:var(--muted)">A-1 Chimney – Atlanta</span></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px"><svg class="i s" style="color:var(--ok)"><use href="#pin"/></svg> 18 Alder Ct, Roswell, GA 30075</div><div class="row" style="margin-top:8px;gap:6px"><span class="btn f" style="flex:1">Book</span><span class="btn" style="flex:1">Archive</span><span class="btn" style="flex:1">Not a lead</span></div></div>
+   <div class="bubs">
+    <span class="day">Today</span>
+    <div class="bub">Hello, I live in Roswell GA, I need an estimate for chimney cleaning.<div class="m">11:57 AM</div></div>
+    <div class="bub me">Thank you for reaching out to A-1 Chimney. A dispatcher will follow up with you shortly.<div class="m">Rodrigo · 11:57 AM ✓✓</div></div>
+    <div class="bub">18 Alder Ct<br>Roswell 30075<div class="m">11:58 AM</div></div>
+    <div class="bub me">Our chimney cleanings are a flat rate of $299.<div class="m">Rodrigo · 12:00 PM ✓✓</div></div>
+    <div class="bub">Can you please give me a call<div class="m">12:02 PM</div></div>
+   </div>
+   <div class="cmp" style="padding:8px 10px"><div class="box">Reply…</div><span class="send"><svg class="i"><use href="#send"/></svg></span></div>
+  </div>
+ </div></div>
+</div>
+
+</div>
