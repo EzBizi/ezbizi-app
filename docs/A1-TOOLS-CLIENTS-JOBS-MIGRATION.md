@@ -191,3 +191,13 @@ Rules for the exporter:
 ```
 php8.4 -d memory_limit=1G artisan customers:import-a1-tools /path/to/clients.json --dry-run
 ```
+
+## Desk decisions on the clients export (2026-09-29)
+
+Written here because cross-session messaging was paused.
+- **Mixed people across franchises:** the export emits only the Workiz keys in the placed franchise (the latest job's franchise). That drops 2,318 foreign keys across 1,543 rows, counted in counts.json. Those keys belong to other people, whom A1 merged into one row. Their real clients come from Workiz itself.
+- **The 10 zero-key rows** (the A1 job franchise differs from the Workiz account's franchise): place them by the Workiz account's franchise, so they keep their key.
+- **67 rows with 2+ keys inside one franchise:** keep all their keys. It is the same person with duplicate Workiz client records.
+- **Phone + name matches** (~29 clients): the importer registers the Workiz key on the matched customer, so the backfill's old jobs attach instead of duplicating (Workiz's recommendation; the desk agrees).
+- **20 unplaceable clients (no franchise) holding 161 estimates:** they are left out of the clients import. Jobs decides their placement when it builds the estimates import. The importer's manifest (`storage/app/private/a1-imports/clients-<time>.jsonl`) is the A1 client → customer join key.
+- **Order:** 0.0.0310 (the clients importer) live → export → `--dry-run` → dump → real run → then `ezbizi:backfill-workiz` (merged in f86addc4, rides 0.0.0311), repeated until "Every branch is done."

@@ -10,6 +10,7 @@ use App\Support\Leads\LeadReplies;
 use App\Support\Social\SocialProvider;
 use App\Support\Web\WebsiteChatReplies;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -40,15 +41,14 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * THE ONE THAT IS A FILING. If this ever goes green the other way, the
-     * quoted sentence above has to be re-filed with Google first.
+     * GOOGLE ALLOWS ONE, since 2026-09-29. This asserted the opposite because
+     * of the filing quoted above; Jose decided it: "flip the block now,
+     * there's no need to tell google about it". The auto reply that replaces
+     * Rodrigo's bot answers Google text enquiries.
      */
-    public function test_google_refuses_an_unattended_reply(): void
+    public function test_google_allows_an_unattended_reply(): void
     {
-        $this->assertFalse(
-            app(LocalServicesLeads::class)->allowsUnattendedReply(),
-            'a rule replying to a Local Services enquiry contradicts an open filing',
-        );
+        $this->assertTrue(app(LocalServicesLeads::class)->allowsUnattendedReply());
     }
 
     /**
@@ -122,7 +122,7 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
 
         $replies = app(LeadReplies::class);
 
-        $this->assertFalse($replies->allowsUnattendedReply($google));
+        $this->assertTrue($replies->allowsUnattendedReply($google));
         $this->assertTrue($replies->allowsUnattendedReply($chat));
 
         $this->assertFalse(
@@ -175,25 +175,26 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
             'the control: a person really can answer this one',
         );
 
-        $this->assertFalse(
-            $replies->allowsUnattendedReply($lead),
-            'and software really cannot',
-        );
+        // Since 2026-09-29 software may too (Jose's ruling above).
+        $this->assertTrue($replies->allowsUnattendedReply($lead));
     }
 
     /**
-     * THE CALLEE'S HALF OF THE GUARD.
-     *
-     * `allowsUnattendedReply()` is asked by the caller. A caller that forgets
-     * to ask — or one written later by somebody who never read that method —
-     * arrives at `send()` with the flag set, and this is what is in the room
-     * then. It throws rather than ignoring the flag, because a reply that went
-     * out anyway and merely READ as automatic would still be the write EzBizi
-     * has told Google it does not make.
+     * A rule's reply to a Google text enquiry goes to Google, and the thread
+     * records it as automatic - the bot mark, and the lead stays unreplied.
      */
-    public function test_google_refuses_the_flag_even_if_nobody_asked_first(): void
+    public function test_a_rules_reply_on_google_is_sent_and_marked_automatic(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+        ]);
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response(['responses' => [['localServicesLeadConversation' => 'customers/4051729356/localServicesLeadConversations/991']]], 200),
+        ]);
 
         $lead = $this->inTenant($t['org'], function () use ($t) {
             $connection = SocialConnection::create([
@@ -212,7 +213,7 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
                 'company_id' => $t['company']->getKey(),
                 'connection_id' => $connection->getKey(),
                 'source' => Lead::SOURCE_LOCAL_SERVICES,
-                'remote_id' => 'L-guard',
+                'remote_id' => 'L-auto',
                 'contact_name' => 'Dana Whitfield',
                 'lead_type' => 'MESSAGE',
                 'status' => Lead::STATUS_NEW,
@@ -220,13 +221,11 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
             ]);
         });
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessageMatches('/only be replied to by a person/');
+        $row = $this->inTenant($t['org'], fn () => app(LocalServicesLeads::class)->send($lead, 'Hello', automatic: true));
 
-        $this->inTenant(
-            $t['org'],
-            fn () => app(LocalServicesLeads::class)->send($lead, 'Hello', automatic: true),
-        );
+        $this->assertTrue((bool) $row->fresh()->is_automatic);
+        $this->assertSame('991', $row->remote_id);
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'localServices:appendLeadConversation'));
     }
 
     /**

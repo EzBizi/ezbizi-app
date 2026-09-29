@@ -1044,7 +1044,9 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
-     * A rule replies to website chat and REFUSES a Google enquiry.
+     * Until 2026-09-29 a rule REFUSED a Google enquiry, for the reason below;
+     * Jose then decided "flip the block now, there's no need to tell google",
+     * and a rule may answer Google. The history, as it was:
      *
      * The refusal is the assertion that matters and it is not a style rule.
      * EzBizi told Google's ads-api-compliance team and OAuth Trust and Safety,
@@ -1057,7 +1059,7 @@ class AutomationEngineTest extends TestCase
      * just as well against an arm that refuses everything, which is the same
      * defect wearing the safe coat.
      */
-    public function test_a_rule_replies_to_website_chat_and_refuses_a_google_lead(): void
+    public function test_a_rule_may_answer_google_but_not_a_google_lead_it_cannot_reach(): void
     {
         $runner = app(ActionRunner::class);
 
@@ -1087,11 +1089,12 @@ class AutomationEngineTest extends TestCase
             ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $google,
         ));
 
-        $this->assertFalse($refused['ok'],
-            'a rule replying to a Google enquiry makes a live compliance filing false');
-        $this->assertStringContainsString('local_services', $refused['detail'],
-            'the refusal must name the source - "this rule is wrong" and "this source cannot be '
-            .'answered automatically" send somebody to different places');
+        // Since 2026-09-29 a rule MAY answer Google (Jose: "flip the block
+        // now"). This lead still gets nothing - it has no account to send
+        // through - and it says so, not the old compliance refusal.
+        $this->assertFalse($refused['ok']);
+        $this->assertStringNotContainsString('can only be answered by a person', $refused['detail']);
+        $this->assertStringContainsString('no longer connected', $refused['detail']);
 
         // THE CONTROL. A source that DOES permit it must not be refused, or the
         // assertion above passes against an arm that refuses everything.

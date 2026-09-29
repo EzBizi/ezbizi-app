@@ -1006,7 +1006,12 @@ class ModuleServiceProvider extends ServiceProvider
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
                 // this is the only transfer grant this module has to offer.
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                //
+                //   financials — see and change prices, and every amount on a
+                //                job (Jose, 2026-09-29: "a financials toggle").
+                //                Money never travels with edit, as in Fleet and
+                //                Inventory.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'financials'],
                 subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(
@@ -1139,23 +1144,32 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('availability', 'Availability'),
                     new TabDefinition('schedule', 'Schedule'),
                     new TabDefinition('settings', 'Settings'),
+                    // Jose, 2026-09-29: "a new tab on scheduling that warns me
+                    // about all the overbookings call it Overbooking".
+                    new TabDefinition('overbooking', 'Overbooking'),
+                ],
+                /*
+                 * The first booking event (Jose, 2026-09-29: a warning email
+                 * when a service area is overbooked or fully booked for the
+                 * next 7 days). Raised once each morning by
+                 * scheduling:warn-overbooking with a plain-text `summary`; who
+                 * is told is an automation on it.
+                 */
+                // The warning covers every area, so it is filed against the
+                // organization, as Organization settings files its events.
+                emits: [Organization::class],
+                triggers: [
+                    new TriggerDefinition(
+                        'scheduling.overbooking_found',
+                        'Overbooking found',
+                        'Each morning, when a service area is overbooked or has no spot left in the next 7 days. Its summary lists them.',
+                    ),
                 ],
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
-                automationExemptBecause: 'Still exempt, but not for the reason this line '
-                    .'used to give. It said "this module is a shell" and told the reader to '
-                    .'add triggers "when Availability becomes real" — Availability and '
-                    .'Settings shipped in 0.0.0174, so the condition it named had already '
-                    .'been met and nothing said so. The real reason: this module holds '
-                    .'CONFIGURATION. A service area changes when somebody deliberately edits '
-                    .'it in Settings, which is not an event another module waits for. The '
-                    .'events worth automating are all about a BOOKING — a slot taken, a slot '
-                    .'filled, capacity run out — and nothing books a slot yet, because Job '
-                    .'has scheduled_for and no link to a service area. They arrive with '
-                    .'Scheduled Jobs, and THAT is the condition to revisit this on.',
             ),
 
             /*
@@ -2354,11 +2368,10 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'lead.reply',
                         label: 'Reply to the lead',
                         description: 'Sends a reply in the conversation the enquiry arrived on — '
-                            .'website live chat, Thumbtack, Facebook or Instagram. Google Local '
-                            .'Services enquiries are the exception: EzBizi told Google in writing '
-                            .'that a person types every reply there, so this step refuses them. A '
-                            .'website form has no conversation to reply into. The reply is recorded '
-                            .'as automatic, so it does not take the lead off the unreplied list.',
+                            .'a Google Local Services text enquiry, website live chat, Thumbtack, '
+                            .'Facebook or Instagram. A Google call has nothing to reply into, and '
+                            .'neither has a website form. The reply is recorded as automatic, so it '
+                            .'does not take the lead off the unreplied list.',
                     ),
                     new ActionDefinition(
                         key: 'lead.update_field',

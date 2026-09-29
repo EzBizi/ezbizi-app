@@ -1,0 +1,135 @@
+import 'dart:convert';
+
+import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/scheduling/overbooking_pane.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+/// Scheduling › Overbooking (Jose, 2026-09-29): which days are overbooked, and
+/// which areas are fully booked in the next 7 days.
+void main() {
+  testWidgets('overbooked days are listed by date, franchise rows named', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, _data, asked);
+
+    expect(find.text('MON, OCT 5'), findsOneWidget);
+    expect(find.text('TUE, OCT 6'), findsOneWidget);
+    // Dallas is over on both days.
+    expect(find.text('Texas › Dallas'), findsNWidgets(2));
+    expect(find.text('4 booked of 3'), findsOneWidget);
+    expect(find.text('1 over'), findsNWidgets(3));
+    expect(find.text('Texas (whole franchise)'), findsOneWidget);
+    expect(find.text('1 booked on a day this area is closed'), findsOneWidget);
+
+    expect(find.text('Ohio › Cleveland'), findsOneWidget);
+    expect(find.text('Next opening Mon, Oct 12'), findsOneWidget);
+
+    // The two counters are one size.
+    final sizes = {
+      tester.getSize(find.byKey(const ValueKey('overbooking-stat-overbooked'))),
+      tester.getSize(find.byKey(const ValueKey('overbooking-stat-full'))),
+    };
+    expect(sizes, hasLength(1));
+
+    await tester.tap(find.text('7 days'));
+    await tester.pumpAndSettle();
+    expect(asked.last.queryParameters['days'], '7');
+  });
+
+  testWidgets('a quiet week says so rather than showing nothing', (
+    tester,
+  ) async {
+    await _pump(tester, {
+      'from': '2026-09-30',
+      'days': 30,
+      'overbooked': const [],
+      'full_from': '2026-10-01',
+      'full_days': 7,
+      'fully_booked': const [],
+    }, <Uri>[]);
+
+    expect(find.textContaining('No overbooked days'), findsOneWidget);
+    expect(find.textContaining('still has a spot'), findsOneWidget);
+  });
+
+  testWidgets('a phone-width list draws without overflowing', (tester) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(tester, _data, <Uri>[], width: 360);
+
+    expect(find.text('Texas › Dallas'), findsWidgets);
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
+}
+
+const _data = {
+  'from': '2026-09-30',
+  'days': 30,
+  'overbooked': [
+    {
+      'level': 'area', 'date': '2026-10-05', 'area_id': 'a-1', //
+      'name': 'Dallas', 'franchise_name': 'Texas',
+      'capacity': 3, 'booked': 4, 'over': 1, 'closed': false,
+    },
+    {
+      'level': 'franchise', 'date': '2026-10-05', 'area_id': null, //
+      'name': 'Texas', 'franchise_name': 'Texas',
+      'capacity': 4, 'booked': 5, 'over': 1, 'closed': false,
+    },
+    {
+      'level': 'area', 'date': '2026-10-06', 'area_id': 'a-1', //
+      'name': 'Dallas', 'franchise_name': 'Texas',
+      'capacity': 0, 'booked': 1, 'over': 1, 'closed': true,
+    },
+  ],
+  'full_from': '2026-10-01',
+  'full_days': 7,
+  'fully_booked': [
+    {
+      'area_id': 'a-9', 'name': 'Cleveland', 'franchise_name': 'Ohio', //
+      'working_days': 5, 'next_opening': '2026-10-12',
+    },
+  ],
+};
+
+Future<void> _pump(
+  WidgetTester tester,
+  Map<String, dynamic> data,
+  List<Uri> asked, {
+  double width = 1100,
+}) async {
+  tester.view.physicalSize = Size(width, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final api = ApiClient(
+    client: MockClient((request) async {
+      asked.add(request.url);
+      return http.Response(
+        jsonEncode({'data': data}),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }),
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: OverbookingPane(api: api, visible: true)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}

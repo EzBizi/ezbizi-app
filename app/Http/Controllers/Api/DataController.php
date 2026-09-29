@@ -81,7 +81,7 @@ class DataController extends Controller
             $out[] = [
                 'key'        => $key,
                 'label'      => $definition['label'],
-                'columns'    => $definition['columns'],
+                'columns'    => ResourceMap::columnsFor($definition, $user),
 
                 /*
                  * Whether this person may take the whole resource, as one

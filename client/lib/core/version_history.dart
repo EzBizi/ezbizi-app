@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0311',
+      date: '29 Sep 2026',
+      items: [
+        'Scheduling: a new Overbooking tab lists the days booked past what an area or a franchise takes, and the areas with no spot left in the next 7 days. Each morning EzBizi can send a warning email when there are any.',
+        'Leads: a message can be copied in one press, and part of it can be selected.',
+        'Leads: All has a switch for each source, and leaves LS Call out until you switch it on.',
+        'Automations: a rule can reply to a new Google text lead, so EzBizi can send the first reply instead of another tool.',
+        'Jobs: job amounts and service lines now show only to administrators and to roles with the new Financials toggle, on the Jobs row in Settings, Roles. Every other role stops seeing them until you turn it on.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0310',
       date: '29 Sep 2026',
       items: [

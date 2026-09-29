@@ -111,5 +111,10 @@ class ReplyOverdueTest extends TestCase
         $this->assertSame(['Customer c'], array_column($this->getJson('/api/v1/leads?source=ls_call')->assertOk()->json('data'), 'contact_name'));
         $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?source=ls_text')->assertOk()->json('data'), 'contact_name'));
         $this->assertCount(2, $this->getJson('/api/v1/leads?source=local_services')->assertOk()->json('data'));
+
+        // All, with LS Call left out - the default (Jose, 2026-09-29).
+        $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?sources=ls_text,thumbtack')->assertOk()->json('data'), 'contact_name'));
+        $this->assertCount(2, $this->getJson('/api/v1/leads?sources=ls_text,ls_call')->assertOk()->json('data'));
+        $this->assertSame([], $this->getJson('/api/v1/leads?sources=-')->assertOk()->json('data'), 'nothing ticked, nothing shown');
     }
 }

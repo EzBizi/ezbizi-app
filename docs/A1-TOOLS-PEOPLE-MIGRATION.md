@@ -64,7 +64,7 @@ per-person table into git.
 | Tools and equipment held | **new HR field** (per-person custody list) |
 | Clock-ins (`time_records`, 3,360, UTC) | `time_clock_shifts`, removing overlaps with shifts already in EzBizi (10 matched people clock in to both) |
 | Day statuses (`time_day_status`, almost all absent) | `time_clock_days.tag` |
-| Vehicle assignments (2) | `vehicle_assignments` |
+| Vehicle assignments (2) | Not migrated. Both are on Jose's A1-TEST vehicle (created 2026-07-27, deleted in A1, never imported into EzBizi); Fleet measured it and created nothing. Jose, 2026-09-29: "no that's a test". Not migrated, by his word |
 | Workiz team links (61) | `workiz_team_members.user_id` |
 
 Not migrated, and they stay in the A1 backup:
@@ -411,3 +411,27 @@ the run carries on; files copied for a person whose transaction rolled back are
 deleted again. `--dry-run` reads everything, validates everything and writes
 nothing, and prints per-person counts and a total the desk can hold against the
 inventory. No personal value is ever printed: people are named by their A1 account ids, which is also how the inventory is keyed.
+
+## Phase 1 result (deploy desk, 2026-09-29)
+
+- **Export:** 76 people, 330 files (305.6 MB). The HR dry run matched it: 64 new, 12 matched.
+- **Dump:** `/home/ubuntu/manual-dumps/hr-before-a1-people-import-20260929T155356Z.sql.gz` (13 tables).
+- **First run:** 23 created, 10 updated, 43 failed, every one of them `League\Flysystem\UnableToCreateDirectory`. `storage/app/private/attachments` was `ubuntu:ubuntu 0700`, created on Aug 11 by a process running as ubuntu, and it held 9 older files the app could not read either. It was chowned to www-data like its siblings. Each failure had rolled back whole.
+- **Re-run:** 41 created, 2 updated, 0 failed.
+- **Verified:**
+  - 77 A1-Group users (64 new, all active). New by role: Dispatcher 29, Technician 20, Training 7, Local Manager 6, Accounting 1, Recruiter 1.
+  - All 64 new users have an assignment (33 company, 31 franchise).
+  - 76 onboardings, 681 answers, 1 archived contract.
+  - 328 attachments, all on disk with matching checksums (320.8 MB).
+  - 35 pay rates, 3 emergency contacts, 52 notes, 294 equipment items.
+  - 0 failed jobs, and no notifications from the import.
+- **Welcome:** 64 sent (`hr:send-a1-welcome --send`). 64 unused links, valid until 2026-10-06.
+- **A1 clock-in:** Jose, asked when it should stop: "Now". The Dismantler retires it, runs phase 2 (worktime only), and the desk imports the hours.
+
+## Phase 2 and clean-up (deploy desk, 2026-09-29)
+
+- **Hours:** A1's clock-in retired at 16:01:13 UTC. The final worktime export held 2,666 records (29 open). Dump: `worktime-before-a1-hours-import-20260929T160218Z.sql.gz`.
+  - `worktime:import-a1-tools` imported 2,562 shifts (20 open, 2 closed at the cap). 93 overlapped EzBizi, 4 overlapped A1, 7 were unreadable. 497 days were tagged.
+  - 50 people, 2024-01-01 to today. A re-run is a no-op.
+- **Workiz team links:** Workiz's reviewed script ran after a dump (`workiz-team-before-a1-links-20260929T160820Z.sql.gz`). 20 were linked and 13 were already linked, so all 33 are done.
+- **Clean-up:** `/var/lib/a1-people-export` (with its decrypted PII) and the crosswalk file were deleted once everything was verified.

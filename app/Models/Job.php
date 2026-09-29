@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -133,6 +134,12 @@ class Job extends Model implements StatesRetention
     public function serviceArea(): BelongsTo
     {
         return $this->belongsTo(ServiceArea::class);
+    }
+
+    /** The Workiz mirror row this job was projected from, if any -- where its money lives. */
+    public function workizJob(): HasOne
+    {
+        return $this->hasOne(WorkizJob::class);
     }
 
     public function assignedRole(): BelongsTo

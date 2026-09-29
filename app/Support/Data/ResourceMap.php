@@ -4,6 +4,7 @@ namespace App\Support\Data;
 
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\User;
 
 /**
  * What can be exported and imported (plan §12).
@@ -95,6 +96,9 @@ final class ResourceMap
                 'label'      => 'Jobs',
                 'permission' => 'jobs.view',
                 'export'     => ['permission' => 'jobs.export'],
+                // Jose, 2026-09-29: money in Jobs is a financials toggle, and
+                // an export is a way out like any other.
+                'money'      => ['permission' => 'jobs.financials', 'columns' => ['amount_minor', 'currency']],
 
                 // The WHERE gate (§4), as data rather than a special case in the
                 // exporter. Permission says a person may look at jobs; reach says
@@ -125,5 +129,21 @@ final class ResourceMap
     public static function get(string $key): ?array
     {
         return static::all()[$key] ?? null;
+    }
+
+    /**
+     * The columns this person may take out: a resource's money columns only
+     * with that resource's money permission. Every export path reads columns
+     * through here, so none of them can be the door the others closed.
+     *
+     * @return string[]
+     */
+    public static function columnsFor(array $definition, User $user): array
+    {
+        $money = $definition['money'] ?? null;
+
+        return $money === null || $user->hasPermission($money['permission'])
+            ? $definition['columns']
+            : array_values(array_diff($definition['columns'], $money['columns']));
     }
 }

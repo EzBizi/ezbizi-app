@@ -425,6 +425,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                     editable: editable,
                     refusalReason: _editRefusal,
                     onChanged: (fresh) => setState(() => _row = fresh),
+                    money: _me.can('jobs.financials'),
                   ),
                 ],
                 if (row != null && row['materials'] is List) ...[

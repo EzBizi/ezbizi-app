@@ -37,6 +37,7 @@ class JobLinesController extends Controller
     public function store(Request $request, Job $job): JsonResponse
     {
         $this->authorize('update', $job);
+        $this->assertSeesMoney();
 
         $input = $request->validate([
             'service_id' => [
@@ -84,6 +85,7 @@ class JobLinesController extends Controller
     public function update(Request $request, Job $job, JobLine $line): JsonResponse
     {
         $this->authorize('update', $job);
+        $this->assertSeesMoney();
         abort_unless($line->job_id === $job->getKey(), Response::HTTP_NOT_FOUND);
 
         $input = $request->validate([
@@ -111,6 +113,7 @@ class JobLinesController extends Controller
     public function destroy(Job $job, JobLine $line): JsonResponse
     {
         $this->authorize('update', $job);
+        $this->assertSeesMoney();
         abort_unless($line->job_id === $job->getKey(), Response::HTTP_NOT_FOUND);
 
         DB::transaction(function () use ($job, $line) {
@@ -137,5 +140,15 @@ class JobLinesController extends Controller
             'amount_minor'     => $line->amount_minor,
             'position'         => $line->position,
         ];
+    }
+
+    /**
+     * The lines ARE a job's money: every line action needs the Financials
+     * toggle (Jose, 2026-09-29). Money never travels with edit.
+     */
+    private function assertSeesMoney(): void
+    {
+        abort_unless(request()->user()->hasPermission('jobs.financials'), Response::HTTP_FORBIDDEN,
+            'Money on jobs is hidden for your role.');
     }
 }

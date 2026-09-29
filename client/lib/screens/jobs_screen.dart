@@ -717,12 +717,15 @@ class _JobsScreenState extends State<JobsScreen> {
           tone: toneForJobStatus('${job['status'] ?? ''}'),
         ),
       ),
-      TableColumn(
-        'Amount',
-        width: 110,
-        numeric: true,
-        cell: (_, job) => Text(listAmount(job['amount']) ?? '—'),
-      ),
+      // Only with the Financials toggle (Jose, 2026-09-29). Without it the
+      // server sends no amount, and a column of dashes would read as "free".
+      if (widget.session.me!.can('jobs.financials'))
+        TableColumn(
+          'Amount',
+          width: 110,
+          numeric: true,
+          cell: (_, job) => Text(listAmount(job['amount']) ?? '—'),
+        ),
     ];
   }
 

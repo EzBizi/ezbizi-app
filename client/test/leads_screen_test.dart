@@ -149,7 +149,11 @@ void main() {
 
     await _pump(tester, leads: leads, connections: _connected);
 
-    await tester.tap(find.text('Chat'));
+    // The tab, not All's toggle of the same name (2026-09-29).
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('source-tabs')),
+      matching: find.text('Chat'),
+    ));
     await tester.pumpAndSettle();
     expect(_lastListQuery['source'], 'website_chat');
 
@@ -342,6 +346,24 @@ void main() {
         ['LS Call', 'LS Text', 'Thumbtack', 'Form']);
     expect({for (final id in ['lead-1', 'lead-2', 'lead-3', 'lead-4']) fill(id)}, hasLength(4),
         reason: 'no two sources share a colour');
+  });
+
+  // Jose, 2026-09-29: All holds every source but LS Call, and each can be
+  // switched on or off.
+  testWidgets('All leaves LS Call out until it is switched on', (tester) async {
+    await _pump(tester, leads: [_lead('lead-1', 'A')], connections: const []);
+
+    expect(_lastListQuery['sources'], isNot(contains('ls_call')));
+    expect(_lastListQuery['sources'], contains('ls_text'));
+
+    await tester.tap(find.byKey(const ValueKey('all-source-ls_call')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery.containsKey('sources'), isFalse, reason: 'everything on: no narrowing');
+
+    await tester.tap(find.byKey(const ValueKey('all-source-thumbtack')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], isNot(contains('thumbtack')));
+    expect(_lastListQuery['sources'], contains('ls_call'));
   });
 
   // Jose, 2026-09-29: the list shows who else has a lead open.
@@ -890,8 +912,8 @@ void main() {
     expect(find.text('Call'), findsOneWidget);
     expect(
       find.text('Chat'),
-      findsNWidgets(2),
-      reason: 'the chip and one badge, not a second badge',
+      findsNWidgets(3),
+      reason: "the tab, All's toggle and one badge, not a second badge",
     );
   });
 
@@ -1435,7 +1457,7 @@ void _conversationRowTests() {
     final search = find.byType(TextField);
     expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(0));
 
-    await tester.drag(find.text('Caller 3'), const Offset(0, -500));
+    await tester.drag(find.text('Caller 0'), const Offset(0, -500));
     await tester.pumpAndSettle();
 
     // Above the top of the screen. (Still found: it is within the scroll

@@ -1,6 +1,6 @@
 # Draft: telling Google that EzBizi will send automated replies to Local Services leads
 
-**Status:** draft for Jose to send, written 2026-09-28. Nothing has been sent.
+**Status:** NOT SENT, by decision. Jose, 2026-09-29: "flip the block now, there's no need to tell google about it". Kept for the record in case it is ever wanted.
 
 ## Why this is needed
 

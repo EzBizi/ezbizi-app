@@ -30,6 +30,7 @@ class JobLinesTab extends StatefulWidget {
     required this.editable,
     required this.refusalReason,
     required this.onChanged,
+    required this.money,
   });
 
   final ApiClient api;
@@ -40,6 +41,11 @@ class JobLinesTab extends StatefulWidget {
   /// re-fetches the job and hands the fresh copy back through [onChanged]
   /// rather than keeping a second copy of it.
   final Map<String, dynamic> job;
+
+  /// Whether the reader holds the Financials toggle (`jobs.financials`).
+  /// Without it the server sends no `lines` and no `amount`, and this section
+  /// shows the role and the performer only.
+  final bool money;
 
   /// Whether a line may be added, changed or removed. Same gate the rest of
   /// the panel edits behind — adding a line is editing the job as far as the
@@ -256,60 +262,64 @@ class _JobLinesTabState extends State<JobLinesTab> {
           'Performed by ${_performedBy?['name'] as String? ?? 'nobody yet'}',
           style: theme.textTheme.bodyMedium,
         ),
-        const SizedBox(height: 16),
-        for (final line in lines) _lineRow(context, line),
-        if (lines.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'No service lines yet.',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        const Divider(height: 24),
-        Row(
-          children: [
-            Expanded(child: Text('Total', style: theme.textTheme.titleSmall)),
-            Text(
-              _amount?['display'] as String? ?? formatMinor(0, _currency),
-              style: theme.textTheme.titleMedium,
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        // Says where the number above came from, so nobody goes looking for
-        // the field that used to let them type over it — except when that
-        // would itself be false. A job priced before it had any lines (old
-        // data from before this field was removed from Create, or a job still
-        // waiting on its first line) shows a total nothing here summed. Saying
-        // "Summed from 0 lines." on that number would be the same kind of lie
-        // this module exists to remove, just moved into the caption instead of
-        // the field.
-        Text(
-          lines.isEmpty && _amountMinor != 0
-              ? 'Set before this job had any service lines.'
-              : 'Summed from ${lines.length} line${lines.length == 1 ? '' : 's'}.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 16),
-        if (!_adding)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Refused(
-              reason: widget.refusalReason,
-              child: TextButton.icon(
-                key: const Key('job-add-line'),
-                onPressed: widget.editable ? _startAdding : null,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add a service'),
+        // The lines, the total and adding one ARE the job's money: Financials
+        // only (Jose, 2026-09-29). The role and the performer above are not.
+        if (widget.money) ...[
+          const SizedBox(height: 16),
+          for (final line in lines) _lineRow(context, line),
+          if (lines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'No service lines yet.',
+                style: theme.textTheme.bodyMedium,
               ),
             ),
-          )
-        else
-          _addForm(context),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_error!),
+          const Divider(height: 24),
+          Row(
+            children: [
+              Expanded(child: Text('Total', style: theme.textTheme.titleSmall)),
+              Text(
+                _amount?['display'] as String? ?? formatMinor(0, _currency),
+                style: theme.textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // Says where the number above came from, so nobody goes looking for
+          // the field that used to let them type over it — except when that
+          // would itself be false. A job priced before it had any lines (old
+          // data from before this field was removed from Create, or a job still
+          // waiting on its first line) shows a total nothing here summed. Saying
+          // "Summed from 0 lines." on that number would be the same kind of lie
+          // this module exists to remove, just moved into the caption instead of
+          // the field.
+          Text(
+            lines.isEmpty && _amountMinor != 0
+                ? 'Set before this job had any service lines.'
+                : 'Summed from ${lines.length} line${lines.length == 1 ? '' : 's'}.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          if (!_adding)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Refused(
+                reason: widget.refusalReason,
+                child: TextButton.icon(
+                  key: const Key('job-add-line'),
+                  onPressed: widget.editable ? _startAdding : null,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add a service'),
+                ),
+              ),
+            )
+          else
+            _addForm(context),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            ErrorNote(_error!),
+          ],
         ],
       ],
     );
