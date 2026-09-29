@@ -33,11 +33,7 @@ void main() {
   testWidgets('an empty library tells a runner somebody else makes the first', (
     tester,
   ) async {
-    await _pumpReports(
-      tester,
-      reports: [],
-      permissions: _runner,
-    );
+    await _pumpReports(tester, reports: [], permissions: _runner);
 
     expect(find.text('No reports built yet.'), findsOneWidget);
     expect(
@@ -45,20 +41,13 @@ void main() {
       findsOneWidget,
     );
     // Must not read as this reader's own dead end.
-    expect(
-      find.textContaining('Build one and it appears here'),
-      findsNothing,
-    );
+    expect(find.textContaining('Build one and it appears here'), findsNothing);
   });
 
   testWidgets('without reports.build there is no New report control at all', (
     tester,
   ) async {
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      permissions: _runner,
-    );
+    await _pumpReports(tester, reports: [_report], permissions: _runner);
 
     expect(find.text('New report'), findsNothing);
   });
@@ -93,36 +82,40 @@ void main() {
     expect(find.textContaining('No rows matched'), findsNothing);
   });
 
-  testWidgets('a report can be deleted, confirmed in place and never a dialog', (
-    tester,
-  ) async {
-    var deleted = false;
+  testWidgets(
+    'a report can be deleted, confirmed in place and never a dialog',
+    (tester) async {
+      var deleted = false;
 
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      onRequest: (request) {
-        if (request.method == 'DELETE') {
-          deleted = true;
-          return _json({}, 204);
-        }
-        return null;
-      },
-    );
+      await _pumpReports(
+        tester,
+        reports: [_report],
+        onRequest: (request) {
+          if (request.method == 'DELETE') {
+            deleted = true;
+            return _json({}, 204);
+          }
+          return null;
+        },
+      );
 
-    await tester.tap(find.byTooltip('Delete report'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete report'));
+      await tester.pumpAndSettle();
 
-    expect(find.byType(Dialog), findsNothing);
-    expect(find.textContaining('Delete this report?'), findsOneWidget);
-    // Says what it does NOT destroy: a report is a question, not the records.
-    expect(find.textContaining('records it reads on are untouched'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.textContaining('Delete this report?'), findsOneWidget);
+      // Says what it does NOT destroy: a report is a question, not the records.
+      expect(
+        find.textContaining('records it reads on are untouched'),
+        findsOneWidget,
+      );
 
-    await tester.tap(find.text('Delete report'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete report'));
+      await tester.pumpAndSettle();
 
-    expect(deleted, isTrue);
-  });
+      expect(deleted, isTrue);
+    },
+  );
 
   testWidgets('a delete can be backed out of without sending anything', (
     tester,
@@ -153,11 +146,7 @@ void main() {
   testWidgets('without reports.build there is no delete control', (
     tester,
   ) async {
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      permissions: _runner,
-    );
+    await _pumpReports(tester, reports: [_report], permissions: _runner);
 
     // Same rule as New report: absent, not disabled.
     expect(find.byTooltip('Delete report'), findsNothing);
@@ -264,9 +253,7 @@ void main() {
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
   });
 
-  testWidgets('the Experimental tab shows the day per person', (
-    tester,
-  ) async {
+  testWidgets('the Experimental tab shows the day per person', (tester) async {
     await _pumpReports(
       tester,
       reports: [_report],
@@ -560,7 +547,9 @@ void main() {
           return _json({
             'message': 'Switch to the branch this Workiz account belongs to.',
             'errors': {
-              'api_token': ['Switch to the branch this Workiz account belongs to.'],
+              'api_token': [
+                'Switch to the branch this Workiz account belongs to.',
+              ],
             },
           }, 422);
         }
@@ -586,15 +575,10 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('Switch to the branch'),
-      findsWidgets,
-    );
+    expect(find.textContaining('Switch to the branch'), findsWidgets);
   });
 
-  testWidgets('a module registered inside Reports gets a chip', (
-    tester,
-  ) async {
+  testWidgets('a module registered inside Reports gets a chip', (tester) async {
     // A module with parent: 'reports' gets NO sidebar row - _hasDestination in
     // main.dart refuses every parented module by design, because it is meant to
     // be drawn as a chip inside its parent. Google Ads shipped registered,
@@ -653,11 +637,7 @@ void main() {
   testWidgets('without reports.build there is no Builder tab at all', (
     tester,
   ) async {
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      permissions: _runner,
-    );
+    await _pumpReports(tester, reports: [_report], permissions: _runner);
 
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
     // Absent, not disabled - a chip leading to a refusal tells somebody the
@@ -680,11 +660,7 @@ void main() {
     // Builder is dropped by WIDTH here rather than by permission, because
     // Experimental needs `reports.build` too - dropping the permission would
     // drop both chips and leave this test with nothing to shift.
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      width: 375,
-    );
+    await _pumpReports(tester, reports: [_report], width: 375);
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
@@ -765,17 +741,75 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
   });
 
+  testWidgets(
+    'without the library grant the list is neither asked for nor drawn',
+    (tester) async {
+      // Deploy desk audit, 2026-09-29: the chip was hidden but the PANE was
+      // not - an out-of-range tab fell back to the library and drew it.
+      var asked = false;
+
+      await _pumpReports(
+        tester,
+        reports: [_report],
+        permissions: const [
+          'reports.view',
+          'reports.build',
+          'reports.experimental.view',
+        ],
+        onRequest: (request) {
+          if (request.method == 'GET' &&
+              request.url.path.endsWith('/reports')) {
+            asked = true;
+          }
+          if (request.url.path.endsWith('/reports/experimental/calls')) {
+            return _json({'connected': false, 'missing': 'RingCentral'});
+          }
+          return null;
+        },
+      );
+
+      expect(asked, isFalse, reason: 'the library endpoint was called');
+      expect(find.text('Open jobs'), findsNothing);
+      expect(find.text('New report'), findsNothing);
+    },
+  );
+
+  testWidgets('New report finds the Builder by name, not by position', (
+    tester,
+  ) async {
+    // Library and Builder, no Experimental: the Builder is still at 1 here,
+    // so this is the control - the assertion that matters is the one above,
+    // where position 1 would not have been the Builder at all.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [
+        'reports.view',
+        'reports.build',
+        'reports.library.view',
+        'reports.builder.view',
+      ],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({'data': _fieldsStub});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('New report'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
+  });
+
   testWidgets('a session that has not loaded yet draws no tabs', (
     tester,
   ) async {
     // Absent `/me` answers NO. A null session is a load that has not finished,
     // and the safe reading of "I do not know yet" is to draw nothing rather
     // than everything — the failure here is silent and in the open direction.
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      permissions: const [],
-    );
+    await _pumpReports(tester, reports: [_report], permissions: const []);
 
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
@@ -849,7 +883,9 @@ Future<void> _pumpReports(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: ReportsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: ReportsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
