@@ -90,7 +90,7 @@ class Exporter
     public function csv(string $resource, User $user, bool $includeSensitive = false): StreamedResponse
     {
         $definition = ResourceMap::get($resource);
-        $columns = $definition['columns'];
+        $columns = ResourceMap::columnsFor($definition, $user);
 
         // Both captured HERE, not read inside the callback.
         //
@@ -155,7 +155,7 @@ class Exporter
                 // `readable()` rather than `only()`, so this file obeys the same
                 // rule the CSV does. A portability bundle that carried values
                 // the CSV masks would be the same leak through the quieter door.
-                ->map(fn (Model $m) => $this->readable($m, $definition['columns'], $user, $includeSensitive))
+                ->map(fn (Model $m) => $this->readable($m, ResourceMap::columnsFor($definition, $user), $user, $includeSensitive))
                 ->all();
         }
 
@@ -243,10 +243,10 @@ class Exporter
         // without being asked.
         return [
             'customer' => $this->readable(
-                $customer, ResourceMap::get('customers')['columns'], $user, $includeSensitive,
+                $customer, ResourceMap::columnsFor(ResourceMap::get('customers'), $user), $user, $includeSensitive,
             ),
             'jobs' => $visible->map(
-                fn (Model $j) => $this->readable($j, $jobs['columns'], $user, $includeSensitive),
+                fn (Model $j) => $this->readable($j, ResourceMap::columnsFor($jobs, $user), $user, $includeSensitive),
             )->all(),
         ];
     }
