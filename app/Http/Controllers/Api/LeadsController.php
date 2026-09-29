@@ -16,6 +16,7 @@ use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -367,6 +368,14 @@ class LeadsController extends Controller
             'account' => $lead->connection === null ? null : ($lead->connection->label ?: $lead->connection->display_name),
             'google_status' => $lead->source_status === null ? null : ucfirst(strtolower(str_replace('_', ' ', $lead->source_status))),
         ];
+
+        // The address as Google knows it, with its ZIP - Rodrigo's USPS
+        // check, done with Google (AddressCheck). Null when unknown.
+        $checked = $data['details']['address'] !== null
+            ? AddressCheck::check($data['details']['address'], $data['details']['zip'])
+            : null;
+        $data['details']['checked_address'] = $checked;
+        $data['details']['zip'] ??= $checked['zip'] ?? null;
 
         // Whether a reply can go anywhere, and when it cannot, WHY — in the
         // refusing channel's own words. The screen used to carry one sentence

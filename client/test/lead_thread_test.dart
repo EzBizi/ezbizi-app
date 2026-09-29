@@ -244,6 +244,29 @@ void main() {
     expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
   });
 
+  testWidgets('an address Google placed exactly is shown as Google has it', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      details: {
+        'address': '215 Lakeview Dr Michigan City Indiana',
+        'zip': '46360',
+        'checked_address': {
+          'address': '215 Lakeview Dr, Michigan City, IN 46360, USA',
+          'zip': '46360',
+          'exact': true,
+        },
+      },
+    );
+
+    expect(find.byKey(const ValueKey('lead-address-checked')), findsOneWidget);
+    expect(find.text('215 Lakeview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
+    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
+  });
+
   // Jose, 2026-09-28: a number that is already a customer shows who they are
   // and what they have had done.
   testWidgets('a known customer is shown with their jobs, newest first', (

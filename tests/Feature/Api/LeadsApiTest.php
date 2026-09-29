@@ -11,6 +11,7 @@ use App\Models\SocialConnection;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -177,8 +178,18 @@ class LeadsApiTest extends TestCase
             app(AuditLogger::class)->log('lead.replied', $lead, ['conversation_id' => $reply->id], actor: $t['admin']);
         });
 
+        config(['services.google_maps.server_key' => 'maps-key']);
+        Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'OK', 'results' => [[
+            'formatted_address' => '44 Elm St, Bethel, CT 06801, USA',
+            'address_components' => [['short_name' => '06801', 'types' => ['postal_code']]],
+            'geometry' => ['location_type' => 'ROOFTOP'],
+        ]]])]);
+
         $data = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data');
 
+        $this->assertSame(['address' => '44 Elm St, Bethel, CT 06801, USA', 'zip' => '06801', 'exact' => true], $data['details']['checked_address']);
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'address=44%20Elm%20Street%20Bethel%20CT%2006801')
+            && ! str_contains($r->url(), 'Saturday'), 'only the address is sent, nothing else they said');
         $this->assertSame('44 Elm Street Bethel CT 06801', $data['details']['address']);
         $this->assertSame('06801', $data['details']['zip']);
         $this->assertSame('Active', $data['details']['google_status']);

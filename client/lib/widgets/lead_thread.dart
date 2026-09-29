@@ -1098,7 +1098,25 @@ class _LeadThreadState extends State<LeadThread> {
         if (facts.isNotEmpty) Text(facts.join(' · '), style: quiet),
         if (!named && d['name'] is String)
           Text('Name, from the conversation: ${d['name']}', style: quiet),
-        if (address != null || zip != null)
+        // Google placed the address exactly: show its version, marked.
+        if ((d['checked_address'] as Map?)?['exact'] == true)
+          Row(
+            key: const ValueKey('lead-address-checked'),
+            children: [
+              Icon(Icons.verified_outlined, size: 14, color: theme.colorScheme.primary),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Tooltip(
+                  message: 'Checked with Google. The customer wrote: ${address ?? ''}',
+                  child: Text(
+                    '${(d['checked_address'] as Map)['address']}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ),
+            ],
+          )
+        else if (address != null || zip != null)
           Text(
             [
               ?address,
