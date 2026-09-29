@@ -76,7 +76,7 @@ minutes. It has already overturned three confident guesses — including one of 
   enumerated rather than prefixed. It was corrected by checking the frozen tree
   instead of reasoning about it — which is what the paragraph above tells you to do.*
 - **A registry addition changes an existing response by construction.**
-  `GlanceRegistry`, `WidgetRegistry`, `SettingRegistry`, `PermissionCatalogue` and the
+  `GlanceRegistry`, `SettingRegistry`, `PermissionCatalogue` and the
   automation catalogue answer for the whole registry, not for your module. Safe only
   while the frozen client's parser is tolerant — and **tolerance must be checked on
   the write path, not just the decode.** The decode was tolerant in the case above;
