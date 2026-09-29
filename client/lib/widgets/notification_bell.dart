@@ -115,6 +115,11 @@ class _NotificationBellState extends State<NotificationBell>
      * "when this mounts" already means "just after somebody signed in", which
      * is the moment an app is expected to ask.
      */
+    // Before enable(): enable() is what hands the plugin its click callback,
+    // and a click can arrive the moment it does — on Windows, a toast clicked
+    // while EzBizi was not running is exactly what launched it.
+    OsNotifications.onClick = _openFromToast;
+
     if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
 
     // Same moment, for the other half of notifications: enable() above asks
@@ -130,6 +135,8 @@ class _NotificationBellState extends State<NotificationBell>
 
   @override
   void dispose() {
+    // Only our own hook: a newer bell (a re-sign-in) may already have set its.
+    if (OsNotifications.onClick == _openFromToast) OsNotifications.onClick = null;
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -259,13 +266,82 @@ class _NotificationBellState extends State<NotificationBell>
       return;
     }
 
+    // The notification's own id rides the toast, so a click can do exactly
+    // what clicking its row in the panel does — see [_openFromToast]. The
+    // summary above carries none: its answer is the panel itself.
     for (final item in arrivals) {
       await OsNotifications.show(
         id: _osId++,
         title: item['title'] as String? ?? 'EzBizi',
         body: item['body'] as String?,
+        payload: item['id']?.toString(),
       );
     }
+  }
+
+  /// A toast was clicked. Do what clicking that notification in the panel does.
+  ///
+  /// Jose, 2026-09-29: "clicking on notification on desktop does nothing, it
+  /// should lead to whatever it's warning about". OsNotifications has already
+  /// brought the window forward by the time this runs.
+  ///
+  /// With no id — the "N new notifications" summary — the destination is the
+  /// panel, because that is where the N are. With an id, mark it read and go
+  /// where its row would go; when there is nowhere specific to go ("your trial
+  /// ends tomorrow"), the panel again, rather than a click that visibly does
+  /// nothing a second time.
+  Future<void> _openFromToast(String? payload) async {
+    if (!mounted) return;
+
+    if (payload == null || payload.isEmpty) {
+      await _open();
+      return;
+    }
+
+    // Unread-ness from the list as fetched, so a toast clicked twice does not
+    // post the read twice. A failed read is not a reason to go nowhere: the
+    // person clicked to see something, and the panel below still shows it.
+    final clicked = _items.cast<Map<String, dynamic>?>().firstWhere(
+      (item) => item?['id']?.toString() == payload,
+      orElse: () => null,
+    );
+    if (clicked != null && clicked['read_at'] == null) {
+      await widget.api.post('/notifications/$payload/read', {});
+    }
+
+    await _refresh();
+    if (!mounted) return;
+
+    final destination = _destinationOf(payload);
+    if (destination != null && widget.onOpenModule != null) {
+      widget.onOpenModule!(destination.module, destination.filter, destination.record);
+      return;
+    }
+
+    await _open();
+  }
+
+  /// Where a notification leads, read from the REFRESHED list, or null.
+  ///
+  /// Shared by the row tap and the toast click so the two cannot drift: the
+  /// toast click exists to be the row tap, reached from outside the app.
+  /// Read after a refresh deliberately — the refresh re-reads the governed
+  /// feed, and a notification that has since stopped being visible must not
+  /// still navigate on a stale copy.
+  ({String module, String? filter, String? record})? _destinationOf(String id) {
+    final current = _items.cast<Map<String, dynamic>?>().firstWhere(
+      (item) => item?['id']?.toString() == id,
+      orElse: () => null,
+    );
+    final meta = current?['meta'] as Map<String, dynamic>?;
+    final module = meta?['module'] as String?;
+    if (module == null) return null;
+
+    return (
+      module: module,
+      filter: meta?['filter'] as String?,
+      record: (current?['subject'] as Map<String, dynamic>?)?['id'] as String?,
+    );
   }
 
   Future<void> _markAllRead() async {
@@ -397,33 +473,18 @@ class _NotificationBellState extends State<NotificationBell>
                          * "New Live Chat Lead" meant being told about a lead and
                          * given no way to open it.
                          */
-                        final current = _items
-                            .cast<Map<String, dynamic>?>()
-                            .firstWhere(
-                              (item) => item?['id'] == n['id'],
-                              orElse: () => null,
-                            );
+                        // With the filter (Jose asked for the Leads tab AND
+                        // its chat filter) and the record, so Leads opens
+                        // THAT lead rather than the newest.
+                        final destination = _destinationOf(n['id'].toString());
 
-                        final module =
-                            (current?['meta'] as Map<String, dynamic>?)?['module']
-                                as String?;
-
-                        if (module != null && widget.onOpenModule != null) {
-                          // And what to narrow it to, when the destination
-                          // understands one. Jose asked for the Leads tab AND
-                          // its chat filter; the module alone lands you on a
-                          // list of every source, which is where you were
-                          // already looking.
-                          final filter =
-                              (current?['meta'] as Map<String, dynamic>?)?['filter']
-                                  as String?;
-
-                          final record =
-                              (current?['subject'] as Map<String, dynamic>?)?['id']
-                                  as String?;
-
+                        if (destination != null && widget.onOpenModule != null) {
                           Navigator.of(context).pop();
-                          widget.onOpenModule!(module, filter, record);
+                          widget.onOpenModule!(
+                            destination.module,
+                            destination.filter,
+                            destination.record,
+                          );
                           return;
                         }
 

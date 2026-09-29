@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/web/hours_bulk.dart';
@@ -91,6 +92,7 @@ void main() {
     List<Map<String, Object?>> sites = sites,
     VoidCallback? onClose,
     Map<String, Object?>? reviewed,
+    List<CompanySummary> companies = const [],
   }) async {
     final posted = <String, Map<String, dynamic>>{};
     http.Response json(Object body, [int status = 200]) => http.Response(
@@ -145,6 +147,7 @@ void main() {
             ),
             startWith: 'site-a',
             onClose: onClose ?? () {},
+            companies: companies,
           ),
         ),
       ),
@@ -436,6 +439,71 @@ void main() {
   });
 
   // "a1chimney has like 50 websites u cant expect a person to click 50 times"
+  /// Jose, 2026-09-29: "separation between company and sub companies too,
+  /// with a select all for each ... a1chimney, subdomains, sub company, sub
+  /// company subdomains".
+  testWidgets('websites are grouped by company, each with its own Select all', (
+    tester,
+  ) async {
+    Map<String, Object?> site(String id, String host, String company) => {
+      'id': id,
+      'host': host,
+      'is_primary': false,
+      'company': {'id': company, 'name': company == 'co-1' ? 'A-1 Chimney' : 'Chimney Star'},
+    };
+
+    await pump(
+      tester,
+      // Sorted by host, as the server sends them: the sub company's domain
+      // would land between the parent's subdomains.
+      sites: [
+        site('site-a', 'a-1chimney.com', 'co-1'),
+        site('site-atl', 'atl.a-1chimney.com', 'co-1'),
+        site('site-cs', 'chimneystar.com', 'co-2'),
+        site('site-csx', 'dal.chimneystar.com', 'co-2'),
+        site('site-dfw', 'dfw.a-1chimney.com', 'co-1'),
+      ],
+      // Listed child first, so the order below comes from the parent link.
+      companies: const [
+        CompanySummary(id: 'co-2', name: 'Chimney Star', parentCompanyId: 'co-1'),
+        CompanySummary(id: 'co-1', name: 'A-1 Chimney', parentCompanyId: null),
+      ],
+    );
+
+    double top(String text) => tester.getTopLeft(find.text(text)).dy;
+    expect(top('A-1 Chimney'), lessThan(top('A-1 Chimney subdomains')));
+    expect(top('A-1 Chimney subdomains'), lessThan(top('Chimney Star')));
+    expect(top('Chimney Star'), lessThan(top('Chimney Star subdomains')));
+    expect(find.text('sub company of A-1 Chimney'), findsOneWidget);
+    // Each website under its own heading.
+    expect(top('dfw.a-1chimney.com'), lessThan(top('Chimney Star')));
+    expect(top('chimneystar.com'), greaterThan(top('Chimney Star')));
+
+    bool ticked(String host) =>
+        tester.widget<FilterChip>(find.widgetWithText(FilterChip, host)).selected;
+
+    // A-1 Chimney's subdomains, and nothing else.
+    await tap(tester, find.byKey(const Key('hours-bulk-group-co-1-sub')));
+    expect(ticked('atl.a-1chimney.com'), isTrue);
+    expect(ticked('dfw.a-1chimney.com'), isTrue);
+    expect(ticked('dal.chimneystar.com'), isFalse);
+    expect(ticked('chimneystar.com'), isFalse);
+    // a-1chimney.com was ticked already, as the site it was opened from.
+    expect(ticked('a-1chimney.com'), isTrue);
+
+    // Its button now clears the two it picked, and only those.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('hours-bulk-group-co-1-sub')),
+        matching: find.text('Clear'),
+      ),
+      findsOneWidget,
+    );
+    await tap(tester, find.byKey(const Key('hours-bulk-group-co-1-sub')));
+    expect(ticked('atl.a-1chimney.com'), isFalse);
+    expect(ticked('a-1chimney.com'), isTrue);
+  });
+
   testWidgets('Select all picks every website, and a search narrows it', (
     tester,
   ) async {
