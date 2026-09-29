@@ -36,9 +36,10 @@ use Illuminate\Support\Facades\Storage;
  * a live customer with the same phone AND the same name; an earlier row of the
  * same file by either. Phone alone is not a match. A1's own import already
  * merged rows sharing a phone and a first name, so every same-phone pair left is
- * two people: a household, or a relay line. A matched row is never written to,
- * not even a blank field, and a phone match registers no key, because
- * auto-merging on phone is refused.
+ * two people: a household, or a relay line. A matched customer is never written
+ * to, not even a blank field. A phone+name match does register the row's Workiz
+ * keys to it (Customers' ruling, see match()), and the run's audit row lists
+ * every such pair so a wrong one can be found and undone.
  *
  * ── The key is written with the customer, under the projection's lock ──
  *
@@ -297,9 +298,16 @@ class ImportA1ToolsClients extends Command
     }
 
     /**
-     * Decide each row's outcome against the mirror, the live customers and the
-     * rows before it: `workiz`, `phone`, `duplicate` (of an earlier new row), or
-     * `new`.
+     * Decide each row's outcome, in order: `workiz` (a key the mirror holds),
+     * `duplicate` (a key, then a phone and name, an earlier row claimed),
+     * `phone` (a live customer's phone and name), or `new`.
+     *
+     * Every outcome but `workiz` also says which of the row's Workiz keys to
+     * register, and to whom: all of them for `new`, and for `phone` and
+     * `duplicate` the ones nobody has claimed yet. Customers' ruling: the import
+     * has decided they are the customer it matched, so leaving a key unclaimed
+     * would only let the projection create their twin when an old job lands --
+     * and nothing in EzBizi can merge two customers afterwards.
      */
     private function match(array $rows): array
     {
@@ -312,41 +320,50 @@ class ImportA1ToolsClients extends Command
         $claimed = [];
 
         foreach ($rows as $i => $row) {
-            $keys = array_map(fn (array $k) => 'k:'.$k['franchise']->getKey().'|'.$k['client_id'], $row['keys']);
+            $keys = [];
+
+            foreach ($row['keys'] as $k) {
+                $keys['k:'.$k['franchise']->getKey().'|'.$k['client_id']] = $k;
+            }
+
             $phone = $row['customer']['phone'] === null ? [] : ['p:'.$row['customer']['phone'].'|'.self::norm($row['customer']['name'])];
 
-            $rows[$i]['status'] = 'new';
-
-            foreach ($keys as $key) {
+            foreach (array_keys($keys) as $key) {
                 if ($known->has($key)) {
-                    $rows[$i] = ['status' => 'workiz', 'customer_id' => $known[$key]] + $rows[$i];
+                    $rows[$i] += ['status' => 'workiz', 'customer_id' => $known[$key], 'register' => []];
 
                     continue 2;
                 }
             }
 
-            foreach ($phone as $key) {
-                if ($byPhone->has($key)) {
-                    $rows[$i] = ['status' => 'phone', 'customer_id' => $byPhone[$key]] + $rows[$i];
+            // Keys before phones: a key is the stronger identity, and one that
+            // two rows share must be inserted once.
+            $rows[$i] += match (true) {
+                ($of = $this->firstClaimed(array_keys($keys), $claimed)) !== null => ['status' => 'duplicate', 'of' => $of],
+                $phone !== [] && $byPhone->has($phone[0]) => ['status' => 'phone', 'customer_id' => $byPhone[$phone[0]]],
+                ($of = $this->firstClaimed($phone, $claimed)) !== null => ['status' => 'duplicate', 'of' => $of],
+                default => ['status' => 'new'],
+            };
 
-                    continue 2;
-                }
-            }
+            $rows[$i]['register'] = array_values(array_diff_key($keys, $claimed));
 
-            foreach ([...$keys, ...$phone] as $key) {
-                if (isset($claimed[$key])) {
-                    $rows[$i] = ['status' => 'duplicate', 'of' => $claimed[$key]] + $rows[$i];
-
-                    continue 2;
-                }
-            }
-
-            foreach ([...$keys, ...$phone] as $key) {
-                $claimed[$key] = $i;
+            foreach ([...array_keys($keys), ...$phone] as $key) {
+                $claimed[$key] ??= $i;
             }
         }
 
         return $rows;
+    }
+
+    private function firstClaimed(array $keys, array $claimed): ?int
+    {
+        foreach ($keys as $key) {
+            if (isset($claimed[$key])) {
+                return $claimed[$key];
+            }
+        }
+
+        return null;
     }
 
     // ── pass two: write ───────────────────────────────────────────
@@ -359,45 +376,44 @@ class ImportA1ToolsClients extends Command
         // A line per row as it lands, so a run that dies still names what it created.
         $manifest = fopen(Storage::disk('local')->path($path), 'a');
         $created = 0;
+        $phoneMatches = [];
 
         try {
             foreach ($rows as $i => $row) {
-                $line = ['a1_id' => $row['a1_id'], 'status' => $row['status']];
+                if ($row['status'] === 'workiz') {
+                    fwrite($manifest, json_encode(['a1_id' => $row['a1_id'], 'status' => 'workiz', 'customer_id' => $row['customer_id']])."\n");
 
-                if ($row['status'] === 'new') {
-                    [$customer, $links] = DB::transaction(function () use ($row, $numbers) {
-                        $customer = Customer::create($row['customer'] + [
-                            'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $row['franchise']),
-                        ]);
-
-                        $links = array_map(fn (array $k) => WorkizClient::create([
-                            'franchise_id' => $k['franchise']->getKey(),
-                            'client_id' => $k['client_id'],
-                            'customer_id' => $customer->getKey(),
-                            'name' => $customer->name,
-                            'company' => $row['company'],
-                            'email' => $customer->email,
-                            'phone' => $customer->phone,
-                            'phone_digits' => $customer->phone === null ? null : preg_replace('/\D+/', '', $customer->phone),
-                            'address' => $customer->address_line1,
-                            'unit' => $customer->address_line2,
-                            'city' => $customer->city,
-                            'state' => $customer->state,
-                            'postal_code' => $customer->postal_code,
-                            'synced_at' => now(),
-                        ])->getKey(), $row['keys']);
-
-                        return [$customer->getKey(), $links];
-                    });
-
-                    $rows[$i]['customer_id'] = $customer;
-                    $line = ['a1_id' => $row['a1_id'], 'status' => 'created', 'customer_id' => $customer, 'workiz_client_ids' => $links];
-                    $created++;
-                } else {
-                    $line['customer_id'] = $row['status'] === 'duplicate' ? $rows[$row['of']]['customer_id'] : $row['customer_id'];
+                    continue;
                 }
 
-                fwrite($manifest, json_encode($line)."\n");
+                // The customer and its keys are one act: a customer written without
+                // its key would be projected a second time by the next Workiz job.
+                [$customer, $links] = DB::transaction(function () use ($row, $rows, $numbers) {
+                    $customer = match ($row['status']) {
+                        'new' => Customer::create($row['customer'] + [
+                            'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $row['franchise']),
+                        ])->getKey(),
+                        'duplicate' => $rows[$row['of']]['customer_id'],
+                        'phone' => $row['customer_id'],
+                    };
+
+                    return [$customer, $this->register($row, $customer)];
+                });
+
+                $rows[$i]['customer_id'] = $customer;
+                $created += (int) ($row['status'] === 'new');
+
+                if ($row['status'] === 'phone') {
+                    $phoneMatches[] = ['a1_id' => $row['a1_id'], 'customer_id' => $customer, 'keys' => array_map(
+                        fn (array $k) => ['franchise_id' => $k['franchise']->getKey(), 'client_id' => $k['client_id']], $row['register'])];
+                }
+
+                fwrite($manifest, json_encode([
+                    'a1_id' => $row['a1_id'],
+                    'status' => $row['status'] === 'new' ? 'created' : $row['status'],
+                    'customer_id' => $customer,
+                    'workiz_client_ids' => $links,
+                ])."\n");
             }
         } finally {
             fclose($manifest);
@@ -406,6 +422,7 @@ class ImportA1ToolsClients extends Command
         $counts = array_count_values(array_column($rows, 'status'));
 
         // One row per run, as the projection writes: Customers' ruling on imports.
+        // It lists the phone+name pairs, so a wrong one can be found and undone.
         $audit->log('customer.imported', metadata: [
             'source' => 'a1tools',
             'created' => $created,
@@ -413,11 +430,35 @@ class ImportA1ToolsClients extends Command
             'phone' => $counts['phone'] ?? 0,
             'duplicate' => $counts['duplicate'] ?? 0,
             'manifest' => $path,
+            'phone_matches' => $phoneMatches,
         ]);
 
         $this->info("Created {$created} customers. Manifest: {$path} on the local disk.");
 
         return self::SUCCESS;
+    }
+
+    /** The row's unclaimed Workiz keys, registered to this customer. Returns the new ids. */
+    private function register(array $row, string $customerId): array
+    {
+        $c = $row['customer'];
+
+        return array_map(fn (array $k) => WorkizClient::create([
+            'franchise_id' => $k['franchise']->getKey(),
+            'client_id' => $k['client_id'],
+            'customer_id' => $customerId,
+            'name' => $c['name'],
+            'company' => $row['company'],
+            'email' => $c['email'],
+            'phone' => $c['phone'],
+            'phone_digits' => $c['phone'] === null ? null : preg_replace('/\D+/', '', $c['phone']),
+            'address' => $c['address_line1'],
+            'unit' => $c['address_line2'],
+            'city' => $c['city'],
+            'state' => $c['state'],
+            'postal_code' => $c['postal_code'],
+            'synced_at' => now(),
+        ])->getKey(), $row['register']);
     }
 
     // ── helpers ───────────────────────────────────────────────────
