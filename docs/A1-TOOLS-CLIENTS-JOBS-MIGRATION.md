@@ -204,3 +204,7 @@ Written here because cross-session messaging was paused.
 - **Phone + name matches** (~29 clients): the importer registers the Workiz key on the matched customer, so the backfill's old jobs attach instead of duplicating (Workiz's recommendation; the desk agrees).
 - **20 unplaceable clients (no franchise) holding 161 estimates:** they are left out of the clients import. Jobs decides their placement when it builds the estimates import. The importer's manifest (`storage/app/private/a1-imports/clients-<time>.jsonl`) is the A1 client → customer join key.
 - **Order:** 0.0.0310 (the clients importer) live → export → `--dry-run` → dump → real run → then `ezbizi:backfill-workiz` (merged in f86addc4, rides 0.0.0311), repeated until "Every branch is done."
+
+## Estimates export format (desk, 2026-09-29)
+
+**Jobs defines it,** as the owner of the A1 estimates importer, the same way HR, Clock In and Workiz each defined their own. Jobs appends a section here, "Estimates importer: the file it reads", and the A1 Tools Dismantler builds the export to it. The join key is the clients importer's manifest (`storage/app/private/a1-imports/clients-<time>.jsonl`, A1 client id → EzBizi customer). The import runs after the clients import. 20 unplaceable A1 clients hold 161 estimates, so Jobs decides whether to place them or skip them with a count.
