@@ -12,6 +12,7 @@ class VersionHistory {
       date: '29 Sep 2026',
       items: [
         'Jobs: estimates are now records in EzBizi, numbered EST-. They need the new Estimates permissions in Settings, Roles, plus the Jobs Financials toggle. The screens to see them are being designed.',
+        'Communication, Dial pad: with no microphone connected, Call now says so (connect a headset or microphone, then press Call again) instead of doing nothing.',
       ],
     ),
     VersionRelease(
