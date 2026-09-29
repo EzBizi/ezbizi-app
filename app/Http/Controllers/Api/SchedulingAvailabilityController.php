@@ -265,7 +265,9 @@ class SchedulingAvailabilityController extends Controller
      */
     private function month(Collection $areas, ?ServiceArea $area, CarbonImmutable $from, int $count): array
     {
-        $shown = $area === null ? $areas : collect([$area]);
+        // A shared pool counts once, under its lead: a member answers the
+        // lead's days, so adding both would double the pool.
+        $shown = $area === null ? $areas->whereNull('shares_with_id') : collect([$area]);
         $openings = app(Openings::class);
         $perArea = $shown->map(fn (ServiceArea $a) => $openings->days($a, $from, $count))->all();
 

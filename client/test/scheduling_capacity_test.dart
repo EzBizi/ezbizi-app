@@ -927,6 +927,172 @@ void main() {
     expect(tile(6, 'Closed'), findsOneWidget);
   });
 
+  /// Eve, 2026-09-29: "change automatically starting from October 30, going
+  /// Eve, 2026-09-29: "give 2 service areas, the same availability pool".
+  /// Picking a lead saves it, and the member stops offering a week of its own:
+  /// the server never reads it, so editing it would change nothing.
+  testWidgets('an area shares another area availability pool', (tester) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (request.method == 'PUT' &&
+            request.url.path.endsWith(
+              '/scheduling/areas/a-dallas/shares-with',
+            )) {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {..._dallasDetail, 'shares_with_id': 'a-houston'},
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+    // The control: at the top of the pane, before sharing, the area's own
+    // limits are there to find.
+    expect(find.text('DAILY LIMIT FOR DALLAS'), findsOneWidget);
+
+    await _scrollPaneTo(tester, find.byKey(const Key('shares-with')));
+    await tester.ensureVisible(find.byKey(const Key('shares-with')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('shares-with')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Houston').last);
+    await tester.pumpAndSettle();
+
+    expect(sent, {'shares_with_id': 'a-houston'});
+    expect(
+      find.textContaining("books into Houston's availability"),
+      findsOneWidget,
+    );
+    await tester.drag(
+      find.byKey(const Key('scheduling-area-pane')),
+      const Offset(0, 5000),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('DAILY LIMIT FOR DALLAS'), findsNothing);
+    expect(find.text('Save Dallas'), findsNothing);
+  });
+
+  /// forward". A week scheduled ahead is listed, opens in the same grid, and
+  /// saves to its own date rather than over the current week.
+  testWidgets(
+    'a week scheduled ahead is edited in the grid and saved to its date',
+    (tester) async {
+      final puts = <String, Map<String, dynamic>>{};
+
+      await _pump(
+        tester,
+        onRequest: (request) {
+          final path = request.url.path;
+          if (path.endsWith('/scheduling/time-slots')) {
+            return _json({'data': _twoWindows, 'can_edit': true});
+          }
+          if (request.method == 'GET' &&
+              path.endsWith('/scheduling/areas/a-dallas')) {
+            return _json({
+              'data': {
+                ..._dallasDetail,
+                'scheduled': [
+                  {
+                    'starts_on': '2026-10-30',
+                    'slots': [
+                      {
+                        'weekday': 1,
+                        'start_time': '10:00',
+                        'end_time': '13:00',
+                        'max_jobs': 3,
+                      },
+                      {
+                        'weekday': 5,
+                        'start_time': '10:00',
+                        'end_time': '13:00',
+                        'max_jobs': 2,
+                      },
+                    ],
+                  },
+                ],
+              },
+            });
+          }
+          if (request.method == 'PUT') {
+            puts[path] = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'data': {..._dallasDetail, 'scheduled': const []},
+            });
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Dallas').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('From Fri, Oct 30'), findsOneWidget);
+      expect(find.textContaining('Mon 3'), findsOneWidget);
+
+      await _scrollPaneTo(tester, find.byTooltip('Edit this week'));
+      await tester.ensureVisible(find.byTooltip('Edit this week'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Edit this week'));
+      await tester.pumpAndSettle();
+
+      // The banner and the grid sit above the card: scroll back up to them.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('scheduled-banner')),
+        -200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('scheduling-area-pane')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.byKey(const Key('scheduled-banner')), findsOneWidget);
+      // The grid now shows the scheduled week: Friday 2 in 10–1.
+      final friday = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const ValueKey('slot-5-10:00-13:00')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(friday.controller.text, '2');
+
+      await tester.enterText(
+        find.byKey(const ValueKey('slot-5-10:00-13:00')),
+        '4',
+      );
+      await tester.pumpAndSettle();
+      await _scrollPaneTo(tester, find.textContaining('Save the week from'));
+      await tester.ensureVisible(find.textContaining('Save the week from'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Save the week from'));
+      await tester.pumpAndSettle();
+
+      final body =
+          puts['/api/v1/scheduling/areas/a-dallas/scheduled/2026-10-30'];
+      expect(
+        body,
+        isNotNull,
+        reason: 'Saved to its own date. Puts: ${puts.keys}',
+      );
+      expect(
+        puts.keys.where((k) => k.endsWith('/slots')),
+        isEmpty,
+        reason: 'The current week was not touched.',
+      );
+      final friSlots = (body!['slots'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((s) => s['weekday'] == 5);
+      expect(friSlots.map((s) => s['max_jobs']), [4]);
+      expect(find.byKey(const Key('scheduled-banner')), findsNothing);
+    },
+  );
+
   testWidgets('a narrow overview scrolls its table, not the page', (
     tester,
   ) async {

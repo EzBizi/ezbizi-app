@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\WorkizJob;
+use App\Support\Scheduling\Openings;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -622,6 +623,101 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertStringContainsString('Mon Oct 5', $summary);
         $this->assertStringContainsString('Dallas: 4 booked of 3 (1 over)', $summary);
         $this->assertStringContainsString('FULLY BOOKED', $summary);
+    }
+
+    /**
+     * A WEEK SCHEDULED AHEAD (Eve, 2026-09-29: "change automatically starting
+     * from October 30"). Dallas takes 2 + 1 on Mondays; from Monday Oct 12 it
+     * takes 5 in one window. The Monday before keeps the old numbers.
+     */
+    public function test_a_scheduled_week_takes_over_from_its_date(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+        $url = "/api/v1/scheduling/areas/{$dallas->id}/scheduled";
+        $week = ['slots' => [['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 5]]];
+
+        $this->signedInAs($tenant['admin'])->putJson("{$url}/2026-09-30", $week)->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->putJson("{$url}/2026-10-12", ['slots' => []])->assertStatus(422);
+
+        $this->signedInAs($tenant['admin'])->putJson("{$url}/2026-10-12", $week)
+            ->assertOk()
+            ->assertJsonPath('data.scheduled.0.starts_on', '2026-10-12')
+            ->assertJsonPath('data.scheduled.0.slots.0.max_jobs', 5);
+
+        $area = $this->first($tenant, 'zip=75201');
+        $this->assertSame('2026-10-05', $area['first']['date']);
+        $this->assertSame([2, 1], array_column($area['first']['windows'], 'remaining'), 'Before the change: the old week.');
+        $this->assertSame('2026-10-12', $area['after'][0]['date']);
+        $this->assertSame([5], array_column($area['after'][0]['windows'], 'remaining'), 'From the change: the new week.');
+
+        $this->signedInAs($tenant['admin'])->deleteJson("{$url}/2026-10-12")
+            ->assertOk()
+            ->assertJsonPath('data.scheduled', []);
+    }
+
+    /** Two areas, one pool (Eve, 2026-09-29): a booking in either fills both. */
+    public function test_an_area_sharing_availability_books_into_its_lead_pool(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+        app(TenantContext::class)->set($tenant['org']);
+        $plano = ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Plano']);
+        $url = "/api/v1/scheduling/areas/{$plano->id}/shares-with";
+
+        $this->signedInAs($tenant['admin'])->putJson($url, ['shares_with_id' => $plano->id])->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->putJson($url, ['shares_with_id' => $dallas->id])
+            ->assertOk()
+            ->assertJsonPath('data.shares_with_id', $dallas->id);
+        // No chains: the lead cannot now share into another area.
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$dallas->id}/shares-with", ['shares_with_id' => $plano->id])
+            ->assertStatus(422);
+
+        // Two booked in Plano take Dallas's 7–11 window.
+        $this->booked($tenant, '2026-10-05 07:00:00', area: 'Plano');
+        $this->booked($tenant, '2026-10-05 08:00:00', area: 'Plano');
+
+        $area = $this->first($tenant, 'zip=75201');
+        $this->assertSame('2026-10-05', $area['first']['date']);
+        $this->assertSame([0, 1], array_column($area['first']['windows'], 'remaining'));
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertTrue(Openings::hasCapacity($plano->fresh()), 'A member is configured through its lead.');
+        $this->assertSame([0, 1], array_column(
+            app(Openings::class)->days($plano->fresh(), CarbonImmutable::parse('2026-10-05'), 1)[0]['windows'],
+            'remaining',
+        ), 'Plano answers the pool, not a week of its own.');
+
+        // The franchise calendar counts the pool once.
+        $this->assertSame(3, $this->calendarDay($tenant, '', '2026-10-05')['capacity']);
+
+        $this->signedInAs($tenant['admin'])->putJson($url, ['shares_with_id' => null])
+            ->assertOk()
+            ->assertJsonPath('data.shares_with_id', null);
+    }
+
+    /** On its date the scheduled week becomes the area's week, and the version goes. */
+    public function test_the_scheduled_week_becomes_the_area_week_on_its_date(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$dallas->id}/scheduled/2026-10-12", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 5],
+            ['weekday' => 5, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+        ]])->assertOk();
+
+        $this->artisan('scheduling:apply-scheduled-changes')->assertSuccessful();
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame(2, \App\Models\ServiceAreaSlot::where('service_area_id', $dallas->id)->count(), 'Not yet: Oct 12 has not come.');
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 00:30:00', 'America/New_York'));
+        $this->artisan('scheduling:apply-scheduled-changes')->assertSuccessful();
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame([[1, 5], [5, 2]], \App\Models\ServiceAreaSlot::where('service_area_id', $dallas->id)
+            ->orderBy('weekday')->get()->map(fn ($s) => [$s->weekday, $s->max_jobs])->all());
+        $this->assertSame(0, \App\Models\ServiceAreaScheduledSlot::count());
     }
 
     /**

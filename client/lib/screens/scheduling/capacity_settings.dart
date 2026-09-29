@@ -113,6 +113,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// The franchise whose Overview is open; null is the whole view's.
   String? _overviewFranchiseId;
 
+  /// While set, the week grid edits the pattern that takes over from this
+  /// date instead of the current one (Eve, 2026-09-29).
+  String? _editingFrom;
+
   /// Each franchise's daily limit, weekday => jobs (Jose, 2026-09-25: the
   /// franchise's technicians are shared, so its areas' sum is not what it can
   /// do). Absent is no limit. Openings enforces it on the server.
@@ -337,24 +341,69 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       _zipSearch.clear();
       _zipEntry.clear();
       _cityEntry.clear();
-      _grid.clear();
-      for (final slot
-          in (_openArea?['slots'] as List? ?? const [])
-              .cast<Map<String, dynamic>>()) {
-        (_grid[slot['weekday'] as int] ??= []).add({
-          'start_time': slot['start_time'],
-          'end_time': slot['end_time'],
-          'max_jobs': slot['max_jobs'],
-        });
-      }
-      for (var weekday = 0; weekday < 7; weekday++) {
-        _syncDayTotal(weekday);
-      }
+      _editingFrom = null;
+      _fillGrid((_openArea?['slots'] as List? ?? const []));
       final limits = (_openArea?['daily_limits'] as Map?) ?? const {};
       for (final e in _areaLimitFields.entries) {
         e.value.text = limits['${e.key}']?.toString() ?? '';
       }
     });
+  }
+
+  /// Loads [slots] into the week grid: the area's current week, or a week
+  /// scheduled ahead. The window fields read their value once, so every day's
+  /// generation moves on and they are drawn fresh.
+  void _fillGrid(List slots) {
+    _grid.clear();
+    for (final slot in slots.cast<Map<String, dynamic>>()) {
+      (_grid[slot['weekday'] as int] ??= []).add({
+        'start_time': slot['start_time'],
+        'end_time': slot['end_time'],
+        'max_jobs': slot['max_jobs'],
+      });
+    }
+    for (var weekday = 0; weekday < 7; weekday++) {
+      _syncDayTotal(weekday);
+      _dayGen[weekday] = (_dayGen[weekday] ?? 0) + 1;
+    }
+  }
+
+  /// Edit the week that takes over from [date]: its saved version if there
+  /// is one, else a copy of the current week to change from.
+  void _startScheduled(String date) {
+    final existing = ((_openArea?['scheduled'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((v) => v['starts_on'] == date)
+        .firstOrNull;
+    setState(() {
+      _editingFrom = date;
+      _paneError = null;
+      _fillGrid(
+        (existing?['slots'] as List?) ??
+            (_openArea?['slots'] as List? ?? const []),
+      );
+    });
+  }
+
+  void _stopScheduled() => setState(() {
+    _editingFrom = null;
+    _fillGrid((_openArea?['slots'] as List? ?? const []));
+  });
+
+  Future<void> _scheduleNew() async {
+    final now = DateTime.now();
+    final tomorrow = _ymd(DateTime(now.year, now.month, now.day + 1));
+    final picked = await _pickDate(initial: tomorrow);
+    if (picked == null || !mounted) return;
+    if (picked.compareTo(tomorrow) < 0) {
+      setState(
+        () => _paneError =
+            'A scheduled change starts tomorrow or later. Change the '
+            'current week directly.',
+      );
+      return;
+    }
+    _startScheduled(picked);
   }
 
   /// What an area takes on a weekday as saved: its windows' sum, lowered by
@@ -722,6 +771,26 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               'max_jobs': slot['max_jobs'],
             },
     ];
+
+    final from = _editingFrom;
+    if (from != null) {
+      final response = await widget.api.put(
+        '/scheduling/areas/$id/scheduled/$from',
+        {'slots': slots},
+      );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        if (!response.ok) {
+          _paneError = response.message;
+          return;
+        }
+        _openArea = response.body['data'] as Map<String, dynamic>?;
+        _editingFrom = null;
+        _fillGrid((_openArea?['slots'] as List? ?? const []));
+      });
+      return;
+    }
 
     final response = await widget.api.put('/scheduling/areas/$id/slots', {
       'slots': slots,
@@ -1816,68 +1885,112 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           const SizedBox(height: 12),
           ErrorNote(_paneError!),
         ],
-        const SizedBox(height: 14),
-        _dailyTotals(theme, area),
-        const SizedBox(height: 14),
-        Text(
-          'DAILY LIMIT FOR ${area['name']}'.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 0.8,
-            color: theme.colorScheme.onSurfaceVariant,
+        // A member books into its lead's pool: its own week, limits and
+        // dates are never read, so they are not offered here.
+        if (area['shares_with_id'] == null) ...[
+          const SizedBox(height: 14),
+          _dailyTotals(theme, area),
+          const SizedBox(height: 14),
+          Text(
+            'DAILY LIMIT FOR ${area['name']}'.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.8,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        _limitRow(
-          theme,
-          _areaLimitFields,
-          keyPrefix: 'area-limit',
-          enabled: !_savingAreaLimits,
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
+          const SizedBox(height: 6),
+          _limitRow(
+            theme,
+            _areaLimitFields,
+            keyPrefix: 'area-limit',
+            enabled: !_savingAreaLimits,
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'The most jobs ${area['name']} takes that day, whatever its '
+                  'time slots add up to. It only ever lowers a day. Blank is no '
+                  'limit.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _savingAreaLimits
+                    ? null
+                    : () => _saveAreaLimits(area['id'] as String),
+                child: Text(_savingAreaLimits ? 'Saving…' : 'Save limit'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            "Type a day's total and it splits across the time slots, earliest "
+            'first — or set each slot yourself. A blank slot is not offered '
+            'that day.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_editingFrom != null)
+            Container(
+              key: const Key('scheduled-banner'),
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: ToneColours.of(context, Tone.info).fill,
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Text(
-                'The most jobs ${area['name']} takes that day, whatever its '
-                'time slots add up to. It only ever lowers a day. Blank is no '
-                'limit.',
+                'Editing the week that takes over on '
+                '${_prettyDate(_editingFrom!)}. It replaces the current week '
+                'automatically that day and stays until the next change. Days '
+                'before it keep the current week.',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: ToneColours.of(context, Tone.info).ink,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: _savingAreaLimits
-                  ? null
-                  : () => _saveAreaLimits(area['id'] as String),
-              child: Text(_savingAreaLimits ? 'Saving…' : 'Save limit'),
+          _weekGrid(theme),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton(
+                  onPressed: _saving ? null : _saveGrid,
+                  child: Text(
+                    _saving
+                        ? 'Saving…'
+                        : _editingFrom == null
+                        ? 'Save ${area['name']}'
+                        : 'Save the week from ${_prettyDate(_editingFrom!)}',
+                  ),
+                ),
+                if (_editingFrom != null)
+                  TextButton(
+                    onPressed: _saving ? null : _stopScheduled,
+                    child: const Text('Cancel'),
+                  ),
+              ],
             ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Text(
-          "Type a day's total and it splits across the time slots, earliest "
-          'first — or set each slot yourself. A blank slot is not offered '
-          'that day.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
           ),
-        ),
-        const SizedBox(height: 10),
-        _weekGrid(theme),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _saveGrid,
-            child: Text(_saving ? 'Saving…' : 'Save ${area['name']}'),
-          ),
-        ),
-        const SizedBox(height: 24),
-        _datesCard(theme),
+          const SizedBox(height: 24),
+          _scheduledCard(theme),
+          const SizedBox(height: 8),
+          _datesCard(theme),
+        ],
         const SizedBox(height: 8),
         _zipCard(theme),
+        const SizedBox(height: 8),
+        _poolCard(theme, area),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -1924,6 +2037,115 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     return '${_daysShort[d.weekday - 1]}, ${_monthsShort[d.month - 1]} ${d.day}';
   }
 
+  /// Weeks scheduled to take over from a date (Eve, 2026-09-29: "change
+  /// automatically starting from October 30, going forward").
+  Widget _scheduledCard(ThemeData theme) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final versions = ((_openArea?['scheduled'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
+
+    String summary(List slots) {
+      final byDay = <int, int>{};
+      for (final s in slots.cast<Map<String, dynamic>>()) {
+        byDay[s['weekday'] as int] =
+            (byDay[s['weekday'] as int] ?? 0) +
+            ((s['max_jobs'] as num).toInt());
+      }
+      return [
+        for (final (weekday, label) in _week) '$label ${byDay[weekday] ?? '–'}',
+      ].join(' · ');
+    }
+
+    return _card(
+      theme,
+      title: 'Scheduled changes',
+      badge: versions.isEmpty ? 'None' : '${versions.length}',
+      action: _editingFrom != null
+          ? null
+          : OutlinedButton.icon(
+              key: const Key('schedule-change'),
+              onPressed: _saving ? null : _scheduleNew,
+              icon: const Icon(Icons.event_repeat, size: 18),
+              label: const Text('Schedule a change'),
+            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'A new week that takes over automatically from a date, and stays '
+            'until the next change. A specific date below still wins on its '
+            'own day.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 8),
+          if (versions.isEmpty)
+            Text(
+              'Nothing scheduled.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          for (final v in versions)
+            Container(
+              key: ValueKey('scheduled-${v['starts_on']}'),
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _editingFrom == v['starts_on']
+                      ? theme.colorScheme.primary
+                      : EzBiziTheme.edge(context),
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'From ${_prettyDate(v['starts_on'] as String)}',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        Text(
+                          summary(v['slots'] as List? ?? const []),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Edit this week',
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: _saving
+                        ? null
+                        : () => _startScheduled(v['starts_on'] as String),
+                  ),
+                  IconButton(
+                    tooltip: 'Cancel this change',
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            if (_editingFrom == v['starts_on']) {
+                              _stopScheduled();
+                            }
+                            await _areaWrite(
+                              (id) => widget.api.delete(
+                                '/scheduling/areas/$id/scheduled/${v['starts_on']}',
+                              ),
+                            );
+                          },
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   static String _ymd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
@@ -1965,6 +2187,87 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     });
 
     if (response.ok) await _load();
+  }
+
+  Future<void> _setSharesWith(String? leadId) => _areaWrite(
+    (id) => widget.api.put('/scheduling/areas/$id/shares-with', {
+      'shares_with_id': leadId,
+    }),
+  );
+
+  /// One availability pool for several areas (Eve, 2026-09-29: "give 2
+  /// service areas, the same availability pool"). A member uses its lead's
+  /// week, dates and limits; a job in any area of the pool takes its spots.
+  /// One level only, same franchise — the server refuses anything else.
+  Widget _poolCard(ThemeData theme, Map<String, dynamic> area) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final name = area['name'] as String? ?? '';
+    final leadId = area['shares_with_id'] as String?;
+    final lead =
+        _areas.firstWhere(
+              (a) => a['id'] == leadId,
+              orElse: () => const {},
+            )['name']
+            as String? ??
+        'another area';
+    final sharers = [
+      for (final a in _areas)
+        if (a['shares_with_id'] == area['id']) a['name'] as String,
+    ];
+    final leads = [
+      for (final a in _areas)
+        if (a['id'] != area['id'] &&
+            a['franchise_id'] == area['franchise_id'] &&
+            a['shares_with_id'] == null)
+          a,
+    ];
+
+    return _card(
+      theme,
+      title: 'Shared availability',
+      badge: leadId != null
+          ? 'Shared'
+          : sharers.isNotEmpty
+          ? '${sharers.length + 1} areas'
+          : 'Own',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            leadId != null
+                ? "$name books into $lead's availability: its week, dates and "
+                      'limits. A job in either area takes the same spots. '
+                      'Change them on $lead.'
+                : sharers.isNotEmpty
+                ? "${sharers.join(', ')} ${sharers.length == 1 ? 'books' : 'book'} "
+                      "into $name's availability. A job in any of them takes "
+                      'the same spots.'
+                : 'Give $name the same availability pool as another area of '
+                      'its franchise: a job in either takes the same spots.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          if (sharers.isEmpty) ...[
+            const SizedBox(height: 10),
+            SearchPickerField<String>(
+              key: const Key('shares-with'),
+              value: leadId,
+              label: 'Shares availability with',
+              hint: 'Its own availability',
+              isDense: true,
+              allowClear: true,
+              options: [
+                for (final a in leads)
+                  SearchOption(
+                    value: a['id'] as String,
+                    label: a['name'] as String,
+                  ),
+              ],
+              onChanged: _saving ? null : _setSharesWith,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> _setAvailableFrom(String? date) => _areaWrite(

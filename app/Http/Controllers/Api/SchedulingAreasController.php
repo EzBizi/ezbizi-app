@@ -8,9 +8,12 @@ use App\Models\ServiceArea;
 use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
+use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Scheduling\Openings;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -63,6 +66,7 @@ class SchedulingAreasController extends Controller
                 'id' => $a->id,
                 'name' => $a->name,
                 'franchise_id' => $a->franchise_id,
+                'shares_with_id' => $a->shares_with_id,
                 'zip_count' => $a->zips->count(),
                 // Derived, never stored. An area "differs" because its rows
                 // differ, so the two can never disagree — see the spec on why
@@ -350,6 +354,105 @@ class SchedulingAreasController extends Controller
         return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
     }
 
+    /**
+     * PUT /api/v1/scheduling/areas/{area}/shares-with {shares_with_id: uuid|null}
+     *
+     * Books this area into another area's availability pool (Eve, 2026-09-29:
+     * "give 2 service areas, the same availability pool"); null gives it its
+     * own week back. Same franchise only, one level only: the lead does not
+     * share, and an area others share into cannot share itself.
+     */
+    public function sharesWith(Request $request, string $area): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+
+        $data = $request->validate(['shares_with_id' => ['present', 'nullable', 'uuid']]);
+        $leadId = $data['shares_with_id'];
+
+        if ($leadId !== null) {
+            $lead = $this->reachable($request)->find($leadId);
+
+            $refusal = match (true) {
+                $lead === null || $lead->franchise_id !== $row->franchise_id => 'Pick an area of the same franchise.',
+                $lead->id === $row->id => 'An area cannot share with itself.',
+                $lead->shares_with_id !== null => "{$lead->name} already shares another area's availability. Pick that area instead.",
+                ServiceArea::query()->where('shares_with_id', $row->id)->exists() => "Other areas share {$row->name}'s availability. Stop them sharing first.",
+                default => null,
+            };
+
+            if ($refusal !== null) {
+                throw ValidationException::withMessages(['shares_with_id' => $refusal]);
+            }
+        }
+
+        $row->update(['shares_with_id' => $leadId]);
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    /**
+     * PUT /api/v1/scheduling/areas/{area}/scheduled/{date} {slots: [...]}
+     *
+     * A weekly pattern that takes over from {date} (Eve, 2026-09-29: "change
+     * automatically starting from October 30, going forward"). Replaces any
+     * version already scheduled for that date. The date must be tomorrow or
+     * later in the organization's clock: today's pattern is edited directly.
+     * The slots are validated exactly like the weekly pattern's.
+     */
+    public function scheduleChange(Request $request, string $area, string $date): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+        $day = $this->day($date);
+
+        $tomorrow = Openings::tomorrow((string) app(SettingsResolver::class)
+            ->get('timezone', $request->user()->organization))->toDateString();
+        if ($day < $tomorrow) {
+            throw ValidationException::withMessages([
+                'date' => 'A scheduled change starts tomorrow or later. Change the current week directly.',
+            ]);
+        }
+
+        $data = $request->validate([
+            'slots' => ['required', 'array', 'min:1'],
+            'slots.*.weekday' => ['required', 'integer', 'between:0,6'],
+            'slots.*.start_time' => ['required', 'date_format:H:i'],
+            'slots.*.end_time' => ['required', 'date_format:H:i'],
+            'slots.*.max_jobs' => ['required', 'integer', 'min:1', 'max:9999'],
+        ]);
+
+        $this->assertSlotsAreSane($data['slots']);
+
+        DB::transaction(function () use ($row, $day, $data) {
+            ServiceAreaScheduledSlot::where('service_area_id', $row->id)->where('starts_on', $day)->delete();
+
+            foreach ($data['slots'] as $slot) {
+                ServiceAreaScheduledSlot::create([
+                    'service_area_id' => $row->id,
+                    'starts_on' => $day,
+                    'weekday' => $slot['weekday'],
+                    'start_time' => $slot['start_time'],
+                    'end_time' => $slot['end_time'],
+                    'max_jobs' => $slot['max_jobs'],
+                ]);
+            }
+        });
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    /** DELETE /api/v1/scheduling/areas/{area}/scheduled/{date} */
+    public function cancelChange(Request $request, string $area, string $date): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+
+        ServiceAreaScheduledSlot::where('service_area_id', $row->id)->where('starts_on', $this->day($date))->delete();
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
     private function day(string $date): string
     {
         $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
@@ -585,6 +688,7 @@ class SchedulingAreasController extends Controller
             'name' => $area->name,
             'franchise_id' => $area->franchise_id,
             'available_from' => $area->available_from?->toDateString(),
+            'shares_with_id' => $area->shares_with_id,
             // weekday => jobs; absent is no limit. An object, not a list.
             'daily_limits' => (object) ServiceAreaDailyLimit::query()
                 ->where('service_area_id', $area->id)
@@ -605,6 +709,21 @@ class SchedulingAreasController extends Controller
                         'start_time' => substr((string) $o->start_time, 0, 5),
                         'end_time' => substr((string) $o->end_time, 0, 5),
                         'max_jobs' => $o->max_jobs,
+                    ])->values()->all(),
+                ])->values()->all(),
+            // Weekly patterns scheduled to take over, soonest first.
+            'scheduled' => ServiceAreaScheduledSlot::query()
+                ->where('service_area_id', $area->id)
+                ->orderBy('starts_on')->orderBy('weekday')->orderBy('start_time')
+                ->get()
+                ->groupBy(fn (ServiceAreaScheduledSlot $s) => $s->starts_on->toDateString())
+                ->map(fn ($rows, $startsOn) => [
+                    'starts_on' => $startsOn,
+                    'slots' => $rows->map(fn (ServiceAreaScheduledSlot $s) => [
+                        'weekday' => $s->weekday,
+                        'start_time' => substr((string) $s->start_time, 0, 5),
+                        'end_time' => substr((string) $s->end_time, 0, 5),
+                        'max_jobs' => $s->max_jobs,
                     ])->values()->all(),
                 ])->values()->all(),
             'zips' => $area->zips

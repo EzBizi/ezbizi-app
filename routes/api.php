@@ -1192,7 +1192,10 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
             Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
+            Route::put('scheduling/areas/{area}/shares-with', [SchedulingAreasController::class, 'sharesWith']);
             Route::put('scheduling/areas/{area}/limits', [SchedulingAreasController::class, 'limits']);
+            Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
+            Route::delete('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'cancelChange']);
             Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
