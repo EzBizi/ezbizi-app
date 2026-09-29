@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0309',
       date: '29 Sep 2026',
       items: [
-        'The dashboard no longer shows any money: no revenue on Jobs and no stock value on Inventory. Those figures stay in their own tabs.',
+        'The dashboard no longer shows any money: no revenue on Jobs and no stock value on Inventory. Stock value stays on the Inventory tab, and each job still shows its own amount.',
         'Human Resources, Records: new sections for pay rates, emergency contacts, notes and the equipment a person holds. Pay rates show only to administrators and to roles given See pay rates.',
       ],
     ),
