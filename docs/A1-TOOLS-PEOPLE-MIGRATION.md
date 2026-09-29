@@ -79,14 +79,14 @@ Not migrated, and they stay in the A1 backup:
 A1-Group has two new roles. Both were created on 2026-09-29 through the Roles API
 with Jose's administrator account as the actor, so they were validated and audited.
 Jose can change either in Settings.
-- **Recruiter** (for Brian Scheets): 13 permissions.
+- **Recruiter** (for Brian Scheets): 15 permissions.
   - dashboard.view
   - hr.view, hr.dashboard.view, hr.records.view, hr.invitations.view, hr.onboarding.view, hr.contracts.view
   - hr.create, hr.edit
   - time_clock.view, work_hours.view, work_hours.general.view
   - training.view
 
-  It is not `field.tracked`. That is Jose's call if he wants it.
+  Jose, 2026-09-29: "yes, it should be tracked too". So `field.tracked` and `field.view` were added the same way, making 15 permissions.
 - **Training** (7 people): a copy of Technician's 15 permissions, `field.tracked` included.
 
 The export writes a manifest (path, sha256, size) to `/root/a1-people-export/`
