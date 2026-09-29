@@ -122,6 +122,30 @@ void main() {
     );
   });
 
+  testWidgets('a customer shows every Workiz client number beside ours', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: [
+        {..._alice, 'workiz_client_ids': [4512, 4600]},
+      ],
+      onRequest: (request) => request.url.path.endsWith('/customers/c-1')
+          ? _json({
+              'data': {..._aliceDetail, 'workiz_client_ids': [4512, 4600]},
+            })
+          : null,
+    );
+
+    expect(find.text('Workiz'), findsOneWidget, reason: 'the column');
+    expect(find.text('#4512, #4600'), findsOneWidget);
+
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('C-1001 · Workiz #4512, #4600'), findsOneWidget);
+  });
+
   testWidgets('delete is refused in a sentence when the role cannot', (
     tester,
   ) async {

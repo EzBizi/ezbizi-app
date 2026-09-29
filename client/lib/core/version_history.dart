@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0316',
+      date: '29 Sep 2026',
+      items: [
+        'Jobs and Customers: a Workiz column beside the EzBizi number in both lists, and a job or customer panel shows its Workiz number under its name.',
+        'Settings, Roles: the Leads box that covers the LS Call and LS Text chips is now named LS Call and LS Text, instead of Google.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0315',
       date: '29 Sep 2026',
       items: [

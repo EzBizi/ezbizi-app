@@ -191,8 +191,9 @@ class JobsController extends Controller
                 'customer:id,name,number,owning_franchise_id',
                 'assignedRole:id,name',
                 'serviceArea',
-                // The row's money, with the toggle only: loaded per row otherwise.
-                ...($money ? ['workizJob'] : []),
+                // The row's money with the toggle; its Workiz job number always.
+                // Only the number without the toggle: the payload is the money.
+                ...($money ? ['workizJob'] : ['workizJob:id,job_id,serial_id']),
             ]);
 
         match ($when) {
@@ -681,6 +682,9 @@ class JobsController extends Controller
         $base = [
             'id'     => $job->id,
             'number' => $job->number,
+            // Workiz's own job number, its "Job #", beside EzBizi's (Jose,
+            // 2026-09-29). Null for a job Workiz does not have.
+            'workiz_job_number' => $job->workizJob?->serial_id,
             'title'  => $job->title,
             'status' => $job->status,
             'status_label' => $job->franchise
