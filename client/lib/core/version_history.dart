@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Human Resources, Records: drag the edge of the people list to resize it. Every empty personal box except middle name, and the start date, is amber and says Not filled in, and the list shows how many each person is missing.',
         'Leads: recorded calls are transcribed on the EzBizi server itself. The transcript shows right under the recording, four lines with Show all, and says Transcribing while it waits.',
+        'Web Management: a change to hours or values made in EzBizi shows on the website at once, instead of after up to two hours.',
+        'Web Management, SEO: in Edit hours on several websites, the websites are grouped by company, each group with its own Select all, and the review shows every website, those that change first, in green for what changes and red for what it replaces.',
       ],
     ),
     VersionRelease(
