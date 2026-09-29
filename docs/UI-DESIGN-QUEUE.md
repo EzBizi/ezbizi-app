@@ -2974,6 +2974,15 @@ a roles setting on `send_report`); phone **4**-**6** the same three. Every optio
 report (the rules whose active version sends it), which nobody serves yet. Asked Reports and Clock In /
 Work Hours which shape they would refuse and who serves it; `automation_builder.dart` is Automations'.
 
+**The owners, 2026-09-29:** neither Reports nor Clock In refuses any shape; both prefer **1**. Reports:
+the client calls both lists, each under its own gate (`reports.library.view`, `work_hours.reports.view`),
+so a refusal on one never blanks the other; and "No reports built yet" only when both are empty. Clock
+In: a Work Hours row only for holders of `work_hours.reports.view` (recipients are addresses, the
+preview is built within the reader's reach); **3** would re-key that grant for no gain. `sent_by`
+comes from a helper Automations owns, attached by each module to its own rows, with rule names and
+schedules only for `automations.view`, otherwise `sent_automatically`. The editor's bottom-sheet
+person picker became the search picker in `55b0ae42`.
+
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
 From the Jobs session, 2026-09-29: Jose approved estimates as EzBizi records in Jobs (child module
