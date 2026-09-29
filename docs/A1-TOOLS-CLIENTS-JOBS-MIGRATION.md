@@ -318,3 +318,31 @@ The deploy desk ran it on release 54e37fec (0.0.0313), 18:30:46 to 18:37:10 UTC.
 - **Next:**
   1. The Workiz backfill: `ezbizi:backfill-workiz` with the defaults and no dry run, repeated until it prints "Every branch is done."
   2. A follow-up import, `clients-unplaced.json`, of the unplaceable rows that can be placed. 21 of the 214 are placeable so far: 5 by their own estimates or lead, 16 by address state. The other 193 stay out unless an A1 lead record, tied to the row by A1's own key, names one franchise. Most of them are staff leads with no address (184 have no state).
+
+## Finished (desk, 2026-09-29, evening)
+
+**Split-owner rows.** a1_id 4098 and 21065 each had one unheld key, and their held keys already named two or three existing twins. Customers chose the survivor for each: 4098 → 01a0cffc-74a0-…, 21065 → 01a0cffb-140d-…. Their keys were registered through the importer's `register()`, with one `customer.imported` audit row. Rollback list: `/home/ubuntu/manual-dumps/a1-split2-run.log`.
+
+**Workiz backfill.** Runs 1 to 7, 18:44 to 20:59 UTC, defaults, ending "Every branch is done."
+- 48,838 jobs read, 39,923 new, 36,529 of them on existing customers (91.5%), 3,195 new customers.
+- New Jersey's first page needed more than Laravel's 30 s. Workiz's ef9432ca gives backfill pages 120 s; until it shipped, a warm-up request and a restart got past it.
+- Ohio drew one 429. It is a burst limit, not an hourly one, and a 10-minute pause cleared it.
+- The projection drained by 21:17. Every mirror row was projectable, and no job or customer event fired for a backfilled job (Workiz's check).
+- Dump before it: `/home/ubuntu/manual-dumps/before-workiz-backfill-20260929T184358Z.sql.gz`.
+
+**Unplaced clients.** `clients-unplaced.json`, 21 rows: 4 placed by their own estimates, 17 by address state.
+- Customers reviewed and approved all 13 phone+name matches. 8 were created: CT 3, DMV 1, GA 1, NY 1, TX 2.
+- Manifest: `a1-imports/clients-20260929-212005.jsonl`. Dump: `customers-before-a1-unplaced-import-20260929T212002Z`.
+- 193 stay out: 184 staff leads with no state, 6 with a state that has no franchise, 2 with an unrecognised state, and 1 that is not an A-1 client. a1_client 33260 (inspection report 28, estimate 2372) is among them. It stays A1-only unless Jose names a franchise.
+
+**Estimates.** `jobs:import-a1-estimates`, 21:20:53 UTC, on the combined manifest `a1-imports/clients-combined-20260929.jsonl` (both runs, 38,559 lines).
+- 2,231 created, batch `dc518ad1-bed8-42f6-97dc-a20c90e9b018`, totalling 534,535,827 cents. 152 skipped because their client was never placed. 0 currency refusals.
+- Rollback: `delete from estimates where source = 'a1' and import_batch = 'dc518ad1-bed8-42f6-97dc-a20c90e9b018'`. Dump: `estimates-before-a1-estimates-import-20260929T212029Z`.
+
+**Inspection reports.** `inspection:import-a1-reports` on 0.0.0315: 7 attached to their jobs, report 28 held in the archive. All 8 archived PDFs match the manifest's sha256.
+
+**Twins found after the backfill** (Workiz's check): 696 of the projection's new customers share a phone and name with an older customer.
+- The 426 cross-franchise pairs are left alone (desk and Customers): a customer has one owning franchise, as in Workiz.
+- The roughly 270 same-franchise pairs are to be merged by Workiz's command, on Customers' conditions: dump, manifest, soft-delete only, one audit row, skip anything a person has touched.
+
+**Staging deleted.** `/var/lib/a1-clients-export` is gone. The manifests and dumps named above are kept.
