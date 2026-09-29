@@ -15,12 +15,16 @@ import 'package:http/testing.dart';
 /// amount out, and the screens must draw nothing rather than a dash in every
 /// row or a "Total $0.00" nobody earned.
 void main() {
-  testWidgets('without Financials the list has no Amount column', (
+  testWidgets('without Financials the list has no money columns', (
     tester,
   ) async {
     await _open(tester, permissions: const ['jobs.view', 'jobs.edit']);
 
-    expect(find.text('Amount'), findsNothing);
+    // Queue 31 renamed Amount to Money and Due. Asserting only 'Amount' here
+    // would pass for ever, whatever the list drew, so every name is checked.
+    for (final heading in ['Amount', 'Money', 'Due']) {
+      expect(find.text(heading), findsNothing, reason: heading);
+    }
     expect(find.text('Chimney Sweep'), findsOneWidget, reason: 'the control');
   });
 
