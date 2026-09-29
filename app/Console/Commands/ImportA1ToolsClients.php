@@ -100,11 +100,19 @@ class ImportA1ToolsClients extends Command
             $this->errors[] = 'The file is not format '.self::FORMAT.'.';
         }
 
-        $organization = Organization::query()->where('name', $json['organization'] ?? '')->first();
+        // `name` is not unique -- only the slug is -- and first() of two would be
+        // an arbitrary one: thirty thousand customers in the wrong organization.
+        // Found when a test elsewhere left three committed "Alpha" organizations
+        // behind and this import quietly chose one of them.
+        $named = Organization::query()->where('name', $json['organization'] ?? '')->limit(2)->get();
 
-        if ($organization === null) {
-            return $this->refuse([...$this->errors, 'The organization the file names does not exist.']);
+        if ($named->count() !== 1) {
+            return $this->refuse([...$this->errors, $named->isEmpty()
+                ? 'The organization the file names does not exist.'
+                : 'More than one organization has the name the file gives; nothing was chosen.']);
         }
+
+        $organization = $named->sole();
 
         return $tenant->run($organization, fn () => $this->import($json['clients'] ?? null, $numbers, $audit));
     }
