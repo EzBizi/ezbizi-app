@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0318',
+      date: '29 Sep 2026',
+      items: [
+        'Customers: a person the old Workiz jobs added a second time, with the same phone, name and postal code as a customer already on file, is merged into that customer, jobs included, in any branch.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0317',
       date: '29 Sep 2026',
       items: [
