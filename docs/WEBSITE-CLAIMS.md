@@ -227,7 +227,7 @@ nothing here escalates. If you write a claim-to-fix into this document, also say
 it out loud to whoever owns the page, and do not assume the next reader will
 notice a note among rows that are mostly settled.
 
-**`www/google-ads-api/` — Local Services.** **2026-09-29: its sentence "nothing composes or sends a reply automatically" goes FALSE the moment the rule "Auto reply to new Google text leads" (A1-Group) is switched on** - Jose unblocked automated Google replies that day ("flip the block now, there's no need to tell google about it"), and the page was left as it was pending his word on it. That page describes what the Leads
+**`www/google-ads-api/` — Local Services.** **2026-09-29: the sentence "nothing composes or sends a reply automatically" was replaced** (Jose: "yes update the page") - he unblocked automated Google replies that day ("flip the block now, there's no need to tell google about it"). The page now names the automated first reply the customer writes; a person's reply is audited (`lead.replied`), an automated one is `is_automatic` on the conversation row and in `automation_runs`. That page describes what the Leads
 module *does with the API*, for Google's API reviewer, and the code does it:
 `app/Services/Leads/LocalServicesLeads.php` POSTs
 `customers/{id}/googleAds:search` with `FROM local_services_lead`, reached from
