@@ -2970,7 +2970,7 @@ States: Paid ok, Partly paid caution, Unpaid neutral, Overdue bad (due > 0 and d
 the reader's today), Credit info. Anything touching `job_detail_panel.dart` goes past Jobs before
 it is committed.
 
-### 30 · Leads · more room for the conversation — 🔨 **Jose picked 3 and 5**, being built by UI/UX
+### 30 · Leads · more room for the conversation — **Jose picked 3 and 5** — **BUILT** `0bf4a46d`; the rail's counts wait on Leads' `meta.unread_by_source`
 
 Jose, 2026-09-29, beside A1 Tools: *"ezbizi is taking a lot of space with tabs and filters from
 the chat ... not to copy a1tools but to make something in between, better than both"*.
