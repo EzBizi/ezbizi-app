@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
+import 'scheduling/overbooking_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_links.dart';
 
@@ -57,6 +58,12 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         session: widget.session,
         visible: _visible('schedule'),
       ),
+    ),
+    (
+      'overbooking',
+      'Overbooking',
+      Icons.warning_amber_outlined,
+      () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
     ),
     (
       'settings',

@@ -112,6 +112,7 @@ use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingDispatchController;
 use App\Http\Controllers\Api\SchedulingFranchiseLimitsController;
+use App\Http\Controllers\Api\SchedulingOverbookingController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
@@ -1140,6 +1141,11 @@ Route::prefix('v1')
          * are separate grants rather than one.
          */
         // The Schedule tab: one day's board, read-only.
+        // Scheduling › Overbooking (Jose, 2026-09-29).
+        Route::middleware('permission:scheduling.overbooking.view')->group(function () {
+            Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
+        });
+
         Route::middleware('permission:scheduling.schedule.view')->group(function () {
             Route::get('scheduling/board', [SchedulingBoardController::class, 'show']);
         });
