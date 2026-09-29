@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Settings, Roles: Scheduling and Work Hours list their tabs in the order their screens draw them, Overbooking and Reports before Settings.',
         'Reports: a role without the Reports tab no longer sees an empty library pane.',
+        'Settings, Roles: Estimates now needs Jobs Financials as well, and the editor says so when it is missing, since the Estimates tab only shows with both.',
+        'Jobs and Customers: the Workiz column shows only when the list holds a Workiz number, so an organization without Workiz sees no empty column.',
       ],
     ),
     VersionRelease(
