@@ -339,9 +339,9 @@ class ImportA1ToolsClients extends Command
             // Keys before phones: a key is the stronger identity, and one that
             // two rows share must be inserted once.
             $rows[$i] += match (true) {
-                ($of = $this->firstClaimed(array_keys($keys), $claimed)) !== null => ['status' => 'duplicate', 'of' => $of],
+                ($of = $this->firstClaimed(array_keys($keys), $claimed)) !== null => ['status' => 'duplicate', 'of' => $of, 'via' => 'key'],
                 $phone !== [] && $byPhone->has($phone[0]) => ['status' => 'phone', 'customer_id' => $byPhone[$phone[0]]],
-                ($of = $this->firstClaimed($phone, $claimed)) !== null => ['status' => 'duplicate', 'of' => $of],
+                ($of = $this->firstClaimed($phone, $claimed)) !== null => ['status' => 'duplicate', 'of' => $of, 'via' => 'phone'],
                 default => ['status' => 'new'],
             };
 
@@ -409,7 +409,7 @@ class ImportA1ToolsClients extends Command
                 if ($row['status'] !== 'new') {
                     $judged[$row['status']][] = ['a1_id' => $row['a1_id'], 'customer_id' => $customer, 'keys' => array_map(
                         fn (array $k) => ['franchise_id' => $k['franchise']->getKey(), 'client_id' => $k['client_id']], $row['register'])]
-                        + ($row['status'] === 'duplicate' ? ['same_as_a1_id' => $rows[$row['of']]['a1_id']] : []);
+                        + ($row['status'] === 'duplicate' ? ['same_as_a1_id' => $rows[$row['of']]['a1_id'], 'via' => $row['via']] : []);
                 }
 
                 fwrite($manifest, json_encode([

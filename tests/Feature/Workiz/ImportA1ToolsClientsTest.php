@@ -294,9 +294,11 @@ class ImportA1ToolsClientsTest extends TestCase
         // the audit row with the key it took: a wrong one can be undone.
         $audit = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'customer.imported')->sole());
         $this->assertEquals([
-            ['a1_id' => 2, 'customer_id' => $byA1[1]['customer_id'], 'keys' => [], 'same_as_a1_id' => 1],
-            ['a1_id' => 4, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [], 'same_as_a1_id' => 3],
-            ['a1_id' => 5, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [['franchise_id' => $this->ids['ct'], 'client_id' => 4600]], 'same_as_a1_id' => 3],
+            // By key: the same Workiz client, certainly one person.
+            ['a1_id' => 2, 'customer_id' => $byA1[1]['customer_id'], 'keys' => [], 'same_as_a1_id' => 1, 'via' => 'key'],
+            // By phone and name: a judgment, with the Sr/Jr risk -- the ones to review.
+            ['a1_id' => 4, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [], 'same_as_a1_id' => 3, 'via' => 'phone'],
+            ['a1_id' => 5, 'customer_id' => $byA1[3]['customer_id'], 'keys' => [['franchise_id' => $this->ids['ct'], 'client_id' => 4600]], 'same_as_a1_id' => 3, 'via' => 'phone'],
         ], $audit->metadata['duplicates']);
     }
 
