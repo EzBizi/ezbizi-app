@@ -8,7 +8,6 @@ use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Dashboard\Widgets\JobsByStatus;
-use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 
@@ -19,9 +18,11 @@ use App\Support\Tenancy\TenantContext;
  *
  * No money, deliberately: Jose ruled on 2026-09-29 that the dashboard shows no
  * financial information, because anybody who can open Jobs — a dispatcher —
- * sees this box. Revenue used to be a list and a per-currency line here; it
- * lives in Jobs and Reports now, behind their own gates. `line` left the
- * presentations with it, since the revenue series was the only thing it drew.
+ * sees this box. Revenue used to be a list and a per-currency line here; the
+ * widget that summed it went too, so no revenue total exists anywhere now --
+ * only each job's own amount, and `earned_at` to total it by when somebody
+ * asks. `line` left the presentations with it, since the revenue series was the
+ * only thing it drew.
  */
 final class JobsGlance extends DescribedGlance
 {
@@ -34,7 +35,6 @@ final class JobsGlance extends DescribedGlance
 
     public function __construct(
         private readonly JobsByStatus $jobsByStatus,
-        private readonly Revenue $revenue,
     ) {}
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
@@ -48,12 +48,6 @@ final class JobsGlance extends DescribedGlance
             $byStatus = $this->jobsByStatus->resolve($user, ['include_finished' => true]);
             $total = (int) ($byStatus['total'] ?? 0);
 
-            // Used only for the wire now — the prompt and the revenue series it
-            // once also fed left the dashboard on 2026-09-29 (no money here).
-            // The $options argument is not consulted for it at all, which is
-            // why it is not even captured by this closure.
-            $earned = $this->revenue->earnedStatuses($user);
-
             $statusChoices = array_column($byStatus['rows'], 'status');
 
             if ($total === 0) {
@@ -64,7 +58,7 @@ final class JobsGlance extends DescribedGlance
                     allowedPresentations: $this->allowedPresentations(),
                     snapshot: $this->snapshot(),
                     comingSoon: false,
-                    options: $this->wireOptions($earned),
+                    options: [],
                     data: [
                         'empty' => true,
                         'sentence' => 'No jobs to show.',
@@ -91,7 +85,6 @@ final class JobsGlance extends DescribedGlance
             // is operational: status, today, coming up. Revenue, its line and
             // the "earned" lines were removed rather than hidden behind a
             // permission, because the ruling names the surface, not a role.
-            // Revenue still lives in Jobs and Reports, where it is gated.
 
             $today = 0;
             $upcoming = 0;
@@ -127,52 +120,10 @@ final class JobsGlance extends DescribedGlance
                 allowedPresentations: $this->allowedPresentations(),
                 snapshot: $this->snapshot(),
                 comingSoon: false,
-                options: $this->wireOptions($earned),
+                options: [],
                 data: $data,
             );
         });
-    }
-
-    /**
-     * What the payload says is selected: the ORGANIZATION's list.
-     *
-     * Not whatever the reader's saved layout holds. Echoing the layout after
-     * the server stopped obeying it would draw a selection that decides
-     * nothing.
-     *
-     * **MEASURED 2026-09-23, AND IT DOES NOT REACH THE CLIENT.**
-     * `DashboardController:69` does `$payload['options'] = $options` after
-     * resolving, so a glance's own options are always discarded in favour of
-     * the saved layout's copy. Nothing is wrong today — with the chip strip
-     * deleted (`e55c99a4`) nothing writes a per-user earned list, so the loop
-     * is inert rather than lossy — but this method cannot ship.
-     *
-     * **AND THE OBVIOUS FIX IS THE §8.2 MISTAKE AGAIN, FROM THE OTHER SIDE.**
-     * Dashboard measured it and wrote it at their line, `445765e7`; I had
-     * assumed dropping :69 was all it needed and that is wrong. The client
-     * echoes `options` straight back on the next layout PUT (`_entryFor`) and
-     * `saveLayout` stores what it is sent — so letting the organization's value
-     * through here would write it into EVERY user's stored preference, per
-     * person, chosen by nobody. That is the same authority failure that made
-     * the chips a deletion rather than a repoint.
-     *
-     * One key is carrying two facts: what the BOX is configured with, and what
-     * this READER chose. The fix is two keys, which is a wire change and wants
-     * deciding rather than patching. Until then this stays correct and
-     * unreachable — do not "simplify" it away for being unobservable, and do
-     * not reach for the one-line version of the fix.
-     *
-     * (Provenance, because `git log` on this file will not tell you: the
-     * paragraphs above landed inside `498dd905`, whose subject is about a
-     * customer duplicates panel. A peer's `git commit --amend` ran while my
-     * commit was HEAD and replaced it, keeping the tree. Nothing is wrong with
-     * the content; the SHA that carries it simply does not say so.)
-     *
-     * @param  list<string>  $earned
-     */
-    private function wireOptions(array $earned): array
-    {
-        return $earned === [] ? [] : ['earned_statuses' => $earned];
     }
 
     /**
