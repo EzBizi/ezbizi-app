@@ -47,16 +47,16 @@ class MergeWorkizTwinsTest extends TestCase
     }
 
     /** A customer made at $at, as the import or the projection makes one: with Workiz keys and jobs. */
-    private function customer(string $at, string $name, string $phone, array $keys = [], int $jobs = 0, ?string $franchise = null, ?string $postal = '07030'): Customer
+    private function customer(string $at, string $name, string $phone, array $keys = [], int $jobs = 0, ?string $franchise = null, ?string $postal = '07030', ?string $street = null): Customer
     {
         Carbon::setTestNow($at);
 
         try {
-            return $this->inTenant($this->t['org'], function () use ($name, $phone, $keys, $jobs, $franchise, $postal) {
+            return $this->inTenant($this->t['org'], function () use ($name, $phone, $keys, $jobs, $franchise, $postal, $street) {
                 $franchise ??= $this->t['franchise']->id;
                 $customer = Customer::create([
                     'owning_franchise_id' => $franchise, 'number' => 'C-'.bin2hex(random_bytes(3)),
-                    'name' => $name, 'phone' => $phone, 'postal_code' => $postal, 'is_active' => true,
+                    'name' => $name, 'phone' => $phone, 'postal_code' => $postal, 'address_line1' => $street, 'is_active' => true,
                 ]);
 
                 foreach ($keys as $key) {
@@ -147,7 +147,7 @@ class MergeWorkizTwinsTest extends TestCase
         $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [4513], jobs: 1);
 
         // One expectation per output line: two that match the same line satisfy only one.
-        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge (0 in the same franchise, 0 in another), 0 at a different address left alone, 1 match several customers');
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge (0 in the same franchise, 0 in another), 0 at a different address left alone, 0 at a placeholder address left alone, 1 match several customers');
 
         $this->assertCount(3, $this->live());
     }
@@ -199,6 +199,17 @@ class MergeWorkizTwinsTest extends TestCase
 
         $this->assertSame($before, $this->live()->sort()->values()->all());
         $this->assertContains($late->id, $this->live()->all());
+    }
+
+    public function test_two_records_at_the_placeholder_address_are_not_a_persons_twins(): void
+    {
+        // Test records and staff bookers sit on 800 SE 4th Ave, however it is spelled.
+        $this->customer('2026-09-29 18:35:00', 'Test .', '+19545550100', [1], postal: '33009', street: '800 Southeast 4th Avenue');
+        $this->customer('2026-09-29 19:10:00', 'Test .', '+19545550100', [2], jobs: 1, postal: '33009', street: '800 SOUTHEAST 4TH AVE.');
+
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge (0 in the same franchise, 0 in another), 0 at a different address left alone, 1 at a placeholder address left alone');
+
+        $this->assertCount(2, $this->live());
     }
 
     public function test_a_dry_run_changes_nothing(): void

@@ -75,6 +75,15 @@ class MergeWorkizTwins extends Command
 
     protected $description = 'Fold the customer twins the Workiz backfill made back into the customer they are';
 
+    /**
+     * Street lines that are nobody's house: the placeholder A-1's test records
+     * and staff bookers sit on, across franchises (Customers, 2026-09-29). Two
+     * records meeting there are two junk records, not a person's twins, and
+     * whether they stay at all is Jose's to decide. The postal guard cannot see
+     * them: they all share 33009. Compared normalised, see street().
+     */
+    private const PLACEHOLDER_STREETS = ['800 se 4th ave'];
+
     public function handle(TenantContext $tenant, AuditLogger $audit): int
     {
         $window = [(string) $this->argument('from'), (string) $this->argument('to')];
@@ -123,7 +132,7 @@ class MergeWorkizTwins extends Command
         $there = [];
 
         foreach (Customer::query()->whereNotNull('phone')->where('created_at', '<', $window[0])
-            ->get(['id', 'phone', 'name', 'owning_franchise_id', 'postal_code']) as $customer) {
+            ->get(['id', 'phone', 'name', 'owning_franchise_id', 'postal_code', 'address_line1']) as $customer) {
             $key = $customer->phone.'|'.$norm($customer->name);
             $person[$key] = true;
 
@@ -140,7 +149,7 @@ class MergeWorkizTwins extends Command
 
         $named = $this->namedElsewhere($twins->modelKeys());
         $pairs = [];
-        $report = ['several' => [], 'address' => 0, 'touched' => [], 'named' => []];
+        $report = ['several' => [], 'address' => 0, 'placeholder' => 0, 'touched' => [], 'named' => []];
 
         foreach ($twins as $twin) {
             $key = $twin->phone.'|'.$norm($twin->name);
@@ -160,6 +169,9 @@ class MergeWorkizTwins extends Command
                 $report['address']++;
             } elseif (count($matches) > 1) {
                 $report['several'][] = $twin->getKey().' matches '.implode(', ', array_map(fn ($c) => $c->getKey(), $matches));
+            } elseif (in_array(self::street($twin->address_line1), self::PLACEHOLDER_STREETS, true)
+                || in_array(self::street($matches[0]->address_line1), self::PLACEHOLDER_STREETS, true)) {
+                $report['placeholder']++;
             } elseif ($twin->updated_at->gt($twin->created_at)) {
                 $report['touched'][] = $twin->getKey();
             } elseif (isset($named[$twin->getKey()])) {
@@ -170,10 +182,10 @@ class MergeWorkizTwins extends Command
         }
 
         $this->info(sprintf(
-            '%s%d twins: %d to merge (%d in the same franchise, %d in another), %d at a different address left alone, %d match several customers, %d changed by a person, %d named by something else.',
-            $dryRun ? '[dry run] ' : '', count($pairs) + $report['address'] + count($report['several']) + count($report['touched']) + count($report['named']),
+            '%s%d twins: %d to merge (%d in the same franchise, %d in another), %d at a different address left alone, %d at a placeholder address left alone, %d match several customers, %d changed by a person, %d named by something else.',
+            $dryRun ? '[dry run] ' : '', count($pairs) + $report['address'] + $report['placeholder'] + count($report['several']) + count($report['touched']) + count($report['named']),
             count($pairs), count(array_filter($pairs, fn ($p) => $p[0]->owning_franchise_id === $p[1]->owning_franchise_id)),
-            count(array_filter($pairs, fn ($p) => $p[0]->owning_franchise_id !== $p[1]->owning_franchise_id)), $report['address'],
+            count(array_filter($pairs, fn ($p) => $p[0]->owning_franchise_id !== $p[1]->owning_franchise_id)), $report['address'], $report['placeholder'],
             count($report['several']), count($report['touched']), count($report['named']),
         ));
 
@@ -231,6 +243,15 @@ class MergeWorkizTwins extends Command
      * @param  list<string>  $ids
      * @return array<string, true>
      */
+    /** "800 Southeast 4th Avenue" and "800 SE 4th Ave." alike: lower case, no punctuation, the usual short forms. */
+    private static function street(?string $line): string
+    {
+        $s = mb_strtolower(preg_replace('/[^a-z0-9 ]+/i', ' ', (string) $line));
+        $s = preg_replace(['/\bsouth\s*east\b/', '/\bavenue\b/', '/\bav\b/', '/\bfourth\b/'], ['se', 'ave', 'ave', '4th'], $s);
+
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
     private function namedElsewhere(array $ids): array
     {
         $columns = DB::table('information_schema.COLUMNS')
