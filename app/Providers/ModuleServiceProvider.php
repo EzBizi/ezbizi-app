@@ -1123,6 +1123,12 @@ class ModuleServiceProvider extends ServiceProvider
                 sidebar: false,
                 subject: new AutomationSubject(Estimate::class, 'Estimate'),
                 emits: [Estimate::class],
+                // EstimatePolicy refuses every estimates action without it, so
+                // granted alone an estimates tick has nothing behind it: the
+                // Jobs screen draws no Estimates tab. The roles editor now says
+                // so instead of saving it (the desk's permissions audit,
+                // 2026-09-29). Argued in RolesApiTest.
+                actionRequires: array_fill_keys(ModuleDefinition::DEFAULT_ACTIONS, ['jobs.financials']),
                 triggers: [
                     new TriggerDefinition(
                         key: 'estimate.accepted',

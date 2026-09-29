@@ -153,7 +153,15 @@ class RolesApiTest extends TestCase
         //            were HR's `hours.all` / `hours.correct` until Work Hours
         //            became its own module the same day; the argument moved
         //            with them and HR no longer declares any requirement.
-        $argued = ['reports', 'work_hours'];
+        //   estimates  every action requires `jobs.financials` (2026-09-29).
+        //            EstimatePolicy refuses each one without it -- an estimate
+        //            is money, and Jose ruled money is "a financials toggle" --
+        //            and the Jobs screen draws the Estimates tab only with both.
+        //            No automation action reaches an estimate, so unlike
+        //            `training.assign` nothing gets past the policy: the
+        //            requirement describes the product rather than making its
+        //            own premise true.
+        $argued = ['estimates', 'reports', 'work_hours'];
 
         $declaring = [];
 
