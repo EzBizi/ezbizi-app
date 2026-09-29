@@ -1,0 +1,317 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reports · every saved report</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. The report's name,
+   its four roles and its Sunday 8 PM rule are the real ones (the deploy desk, 2026-09-29);
+   the people, addresses, hours and the three Builder reports are invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+.cap b{color:var(--ink)}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:10px 20px 6px;display:flex;align-items:flex-end;gap:12px}
+.mh .t{font-size:21px;font-weight:800;line-height:1.1}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.tabs{display:flex;gap:8px;padding:2px 20px 10px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12.5px;background:var(--paper)}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.tab .c{color:var(--muted);font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 10px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{color:var(--muted);font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.grn{color:var(--ok)}
+.body{flex:1;min-height:0;display:flex}
+.lst{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.tbl{margin:0 20px 16px;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tr{display:grid;align-items:center;padding:0 16px;min-height:50px;border-bottom:1px solid var(--line2);font-size:12.5px;gap:12px}
+.tr:last-child{border-bottom:0}
+.tr.hd{min-height:30px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.sel{background:#e8f4f8}
+.tr .el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .two>b{display:block;font-size:12.5px}
+.tr .two>span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.link{color:var(--pri);font-weight:700;white-space:nowrap}
+.pan{width:460px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.pan .ph{padding:14px 18px 10px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:flex-start}
+.pan .ph .t{font-size:16px;font-weight:800}
+.pan .ph .s{font-size:11.5px;color:var(--muted)}
+.pan .pb{flex:1;min-height:0;overflow:hidden;padding:12px 18px;display:flex;flex-direction:column;gap:12px}
+.pan .pf{padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.roles{display:flex;flex-wrap:wrap;gap:5px}
+.role{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:var(--r);font-size:11.5px;font-weight:600;background:var(--pric);color:var(--prid);border:1px solid #a9d3e1}
+.role.plus{background:var(--okc);color:var(--ok);border-color:#bfe0c8}
+.role.minus{background:var(--neuc);color:var(--neu);border-color:#d3dae0}
+.role.off{background:var(--paper);color:var(--muted);border-color:var(--line)}
+.rule{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fbfdfe}
+.rule .g{flex:1;min-width:0}
+.rule .g b{display:block;font-size:12.5px}
+.rule .g span{font-size:11px;color:var(--muted)}
+.clock{width:30px;height:30px;border-radius:9px;background:var(--infoc);color:var(--info);display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+.hours{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.hours .seg{display:flex;gap:0;padding:8px 10px;border-bottom:1px solid var(--line2);background:#f7f9fa}
+.seg span{font-size:11.5px;font-weight:700;padding:4px 10px;border:1px solid var(--line);background:var(--paper);color:var(--muted)}
+.seg span:first-child{border-radius:8px 0 0 8px}
+.seg span:last-child{border-radius:0 8px 8px 0;border-left:0}
+.seg span.on{background:var(--pric);color:var(--prid);border-color:#a9d3e1}
+.hours .hr{display:flex;justify-content:space-between;padding:6px 12px;font-size:12px;border-bottom:1px solid var(--line2)}
+.hours .hr:last-child{border-bottom:0;font-weight:800}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+.card .g{flex:1;min-width:0}
+.card .g b{font-size:13.5px}
+.card .g .ln{font-size:11.5px;color:var(--muted);margin-top:2px}
+.sect{padding:4px 20px 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
+.stack{display:flex;flex-direction:column;gap:8px;padding:0 20px 12px}
+.kind{display:inline-block;font-size:10.5px;font-weight:800;border-radius:6px;padding:0 6px;margin-right:4px;background:var(--neuc);color:var(--neu);white-space:nowrap}
+.kind.wh{background:var(--warnc);color:var(--warn)}
+/* the automation step, as the builder draws it */
+.inset{border:1px dashed #93aab3;border-radius:14px;padding:12px 14px;background:#fbfdfe;margin-top:14px;width:1200px;max-width:100%}
+.inset .ih{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.step{display:flex;gap:12px;align-items:flex-start;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:760px}
+.step .num{width:24px;height:24px;border-radius:50%;background:var(--pric);color:var(--prid);font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.step .g{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.step .g .t{font-weight:800}
+.fld{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:36px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;overflow:hidden}
+.fld .l{font-size:10.5px;font-weight:700}
+.fld .v{color:var(--ink);font-weight:600}
+.covers{border-radius:10px;background:#f2f7f9;padding:8px 11px;font-size:12px;display:flex;flex-direction:column;gap:6px}
+.note{border-radius:10px;padding:8px 11px;font-size:11.5px;background:var(--warnc);color:var(--warn)}
+/* phones */
+.pairp{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.phn{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;background:var(--paper);flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.ab .t{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:8px 12px;flex:0 0 auto}
+.et{padding:10px 14px;border-bottom:1px solid var(--line2)}
+.et .l1{display:flex;gap:8px;align-items:center}
+.et .l1 .ti{font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.et .l2{font-size:11.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pscr{flex:1;min-height:0;overflow:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:11px;background:var(--paper)}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.psect{padding:10px 14px 4px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<h1>Reports · every saved report</h1>
+<p class="sub">Jose, 2026-09-29, on the “Weekly work hours report” automation: <i>“i should also be able to select which role gets reported or not or perhaps that's something that should show on the reports module, cause i see that it says on the which report weekly time report, so shouldn't i be able to see that existing report on reports?”</i></p>
+<p class="cap">Today “Weekly Time Report” is a <b>Work Hours</b> saved report (Work Hours › Reports). It already names its roles, the people added or left out, and who it goes to. Reports lists only what its own Builder made, so it says “No reports built yet”. Each option answers both questions: <b>where every report is seen</b>, and <b>how the automation step shows and changes who is reported</b>. A Work Hours report shows only to people who may already see Work Hours reports.</p>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>One library, every report, each edited where it lives <span class="rec">Recommended</span></h2>
+<p class="cap">Reports › Reports lists every saved report, whichever module made it. Each row says what kind it is, who it covers, and when an automation sends it. A Work Hours report opens beside the list with its week of hours and who is in it. “Edit who is in it” opens the same editor Work Hours uses, right here, so it changes everywhere that report is used. The automation step says who the chosen report covers, and has the same button.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Reports</div><div class="s">Everything saved, and what sends it.</div></div><span class="sp"></span><span class="btn f">+ New report</span></div>
+  <div class="tabs"><span class="tab on">📋 Reports</span><span class="tab">🔧 Builder</span><span class="tab">🧪 Experimental</span><span class="tab">📈 Google Ads</span><span class="tab">💵 Profit &amp; Loss</span></div>
+  <div class="chips"><span class="chip on">All <span class="c">4</span></span><span class="chip">Built here <span class="c">3</span></span><span class="chip">Work Hours <span class="c">1</span></span></div>
+  <div class="body">
+   <div class="lst">
+    <div class="tbl">
+     <div class="tr hd" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1.5fr)"><span>Report</span><span>Covers</span><span>Sent</span></div>
+     <div class="tr sel" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1.5fr)"><span class="two"><b>Weekly Time Report</b><span><span class="kind wh">Work Hours</span> hours each person worked, per week</span></span><span class="el">Administrator, Dispatcher, Marketing, Remote Dispatcher · + 1 · − 1</span><span class="two"><b>Sundays 8:00 PM</b><span>by “Weekly work hours report”</span></span></div>
+     <div class="tr" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1.5fr)"><span class="two"><b>Open jobs by franchise</b><span><span class="kind">Built here</span> jobs not done, per franchise</span></span><span class="el muted">Jobs you can reach</span><span class="two"><b>Mondays 7:00 AM</b><span>by “Monday digest”</span></span></div>
+     <div class="tr" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1.5fr)"><span class="two"><b>Leads by source, this month</b><span><span class="kind">Built here</span> every source, counted</span></span><span class="el muted">Leads you can reach</span><span class="muted">Not sent by any automation</span></div>
+     <div class="tr" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1.5fr)"><span class="two"><b>Reviews waiting for a reply</b><span><span class="kind">Built here</span> Google reviews with no reply</span></span><span class="el muted">Reviews you can reach</span><span class="muted">Not sent by any automation</span></div>
+    </div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">Weekly Time Report</div><div class="s">Work Hours · edited in Work Hours › Reports</div></div><span style="font-size:18px;color:var(--muted)">✕</span></div>
+    <div class="pb">
+     <div><div class="lbl">Who is in it</div><div class="roles"><span class="role">Administrator</span><span class="role">Dispatcher</span><span class="role">Marketing</span><span class="role">Remote Dispatcher</span><span class="role plus">+ Mia Torres</span><span class="role minus">− Ben Carter</span></div></div>
+     <div><div class="lbl">Goes to</div><div>payroll@example.com, Jose</div></div>
+     <div><div class="lbl">Sent by</div><div class="rule"><span class="clock">⏰</span><div class="g"><b>Weekly work hours report</b><span>Sundays 8:00 PM Eastern · next Sun, Oct 4 · on</span></div><span class="link">Open the rule ›</span></div></div>
+     <div class="hours"><div class="seg"><span class="on">Last week</span><span>This week so far</span></div><div class="hr"><span>Ana Ruiz</span><b>41.5 h</b></div><div class="hr"><span>Dev Patel</span><b>38.0 h</b></div><div class="hr"><span>Mia Torres</span><b>22.25 h</b></div><div class="hr"><span>Total (12 people)</span><span>402.5 h</span></div></div>
+    </div>
+    <div class="pf"><span class="btn q">Open in Work Hours</span><span class="sp"></span><span class="btn">Edit who is in it</span><span class="btn f">Send now</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<div class="inset"><div class="ih">In the automation: the step says who the report covers</div>
+ <div class="step"><span class="num">1</span><div class="g"><div class="t">Send the work hours report</div>
+  <div class="fld"><span class="l">Which report</span><span class="v">Weekly Time Report</span><span class="sp"></span>⌄</div>
+  <div class="covers"><div><b>Covers</b> Administrator, Dispatcher, Marketing, Remote Dispatcher · + Mia Torres · − Ben Carter</div><div><b>Goes to</b> payroll@example.com, Jose</div><div style="display:flex;gap:8px"><span class="btn s">Edit who is in it</span><span class="tiny" style="align-self:center">Changes the report everywhere it is sent.</span></div></div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>Grouped by where each was made, with a way there</h2>
+<p class="cap">The library has one section per module: what Reports built, then what Work Hours made. A Work Hours card shows who it covers and when it is sent, and “Open in Work Hours” takes you to that tab with the report selected. Reports shows no hours of its own. The automation step shows the same summary and the same way there.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Reports</div><div class="s">Everything saved, and what sends it.</div></div><span class="sp"></span><span class="btn f">+ New report</span></div>
+  <div class="tabs"><span class="tab on">📋 Reports</span><span class="tab">🔧 Builder</span><span class="tab">🧪 Experimental</span><span class="tab">📈 Google Ads</span><span class="tab">💵 Profit &amp; Loss</span></div>
+  <div style="flex:1;min-height:0;overflow:hidden">
+   <div class="sect">Built here <span class="muted" style="font-weight:600">3</span></div>
+   <div class="stack">
+    <div class="card"><div class="g"><b>Open jobs by franchise</b><div class="ln">Jobs not done, per franchise · Sent Mondays 7:00 AM by “Monday digest”</div></div><span class="muted">›</span></div>
+    <div class="card"><div class="g"><b>Leads by source, this month</b><div class="ln">Every source, counted · Not sent by any automation</div></div><span class="muted">›</span></div>
+    <div class="card"><div class="g"><b>Reviews waiting for a reply</b><div class="ln">Google reviews with no reply · Not sent by any automation</div></div><span class="muted">›</span></div>
+   </div>
+   <div class="sect">Made in Work Hours <span class="muted" style="font-weight:600">1</span></div>
+   <div class="stack">
+    <div class="card" style="border-color:#e8d3a6;background:#fffdf7"><div class="g"><b>Weekly Time Report</b><div class="ln"><b style="font-size:11.5px;color:var(--ink)">Covers</b> Administrator, Dispatcher, Marketing, Remote Dispatcher · + Mia Torres · − Ben Carter</div><div class="ln"><b style="font-size:11.5px;color:var(--ink)">Sent</b> Sundays 8:00 PM by “Weekly work hours report” · to payroll@example.com, Jose</div></div><span class="btn">Open in Work Hours ›</span></div>
+    <div class="tiny" style="padding:0 2px">Work Hours reports are edited and previewed in Work Hours › Reports.</div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<div class="inset"><div class="ih">In the automation: a summary and the way there</div>
+ <div class="step"><span class="num">1</span><div class="g"><div class="t">Send the work hours report</div>
+  <div class="fld"><span class="l">Which report</span><span class="v">Weekly Time Report</span><span class="sp"></span>⌄</div>
+  <div class="covers"><div><b>Covers</b> Administrator, Dispatcher, Marketing, Remote Dispatcher · + Mia Torres · − Ben Carter</div><div><span class="link">Change who is in it, in Work Hours ›</span></div></div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>Work hours reports move into Reports, and a rule can narrow one</h2>
+<p class="cap">Work Hours' Reports tab moves into Reports as a <b>Work hours</b> tab, the way Google Ads and Profit &amp; Loss sit there. It has the same list, editor, preview and Send now. Work Hours keeps one line that points here. The automation step gets its own role ticks, starting from the report's: a rule can send the report for Remote Dispatcher only, while another sends it for everyone. <b>Needs server work:</b> the step gains a roles setting.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Reports</div><div class="s">Everything saved, and what sends it.</div></div><span class="sp"></span><span class="btn f">+ New hours report</span></div>
+  <div class="tabs"><span class="tab">📋 Reports</span><span class="tab on">⏱ Work hours <span class="c">1</span></span><span class="tab">🔧 Builder</span><span class="tab">🧪 Experimental</span><span class="tab">📈 Google Ads</span><span class="tab">💵 Profit &amp; Loss</span></div>
+  <div class="body">
+   <div class="lst">
+    <div class="tbl">
+     <div class="tr hd" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,1.2fr) 110px"><span>Report</span><span>Covers</span><span>Sent</span><span></span></div>
+     <div class="tr sel" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,1.2fr) 110px"><span class="two"><b>Weekly Time Report</b><span>to payroll@example.com, Jose</span></span><span class="el">Administrator, Dispatcher, Marketing, Remote Dispatcher · + 1 · − 1</span><span class="two"><b>Sundays 8:00 PM</b><span>by “Weekly work hours report”</span></span><span style="text-align:right"><span class="btn s">Preview</span></span></div>
+    </div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">Weekly Time Report</div><div class="s">Hours each person worked, per week</div></div><span style="font-size:18px;color:var(--muted)">✕</span></div>
+    <div class="pb">
+     <div><div class="lbl">Roles</div><div class="roles"><span class="role">Administrator</span><span class="role">Dispatcher</span><span class="role">Marketing</span><span class="role">Remote Dispatcher</span><span class="role off">Technician</span><span class="role off">Office</span></div></div>
+     <div><div class="lbl">Also include</div><div class="roles"><span class="role plus">+ Mia Torres</span><span class="role off">+ Add a person</span></div></div>
+     <div><div class="lbl">Leave out</div><div class="roles"><span class="role minus">− Ben Carter</span><span class="role off">Leave someone out</span></div></div>
+     <div><div class="lbl">Send to</div><div class="roles"><span class="role minus">payroll@example.com</span><span class="role minus">Jose</span><span class="role off">+ Add</span></div></div>
+     <div><div class="lbl">Sent by</div><div class="rule"><span class="clock">⏰</span><div class="g"><b>Weekly work hours report</b><span>Sundays 8:00 PM Eastern · next Sun, Oct 4 · on</span></div><span class="link">Open the rule ›</span></div></div>
+    </div>
+    <div class="pf"><span class="btn q">Delete</span><span class="sp"></span><span class="btn">Preview</span><span class="btn f">Save</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<div class="inset"><div class="ih">In the automation: this rule's own roles</div>
+ <div class="step"><span class="num">1</span><div class="g"><div class="t">Send the work hours report</div>
+  <div class="fld"><span class="l">Which report</span><span class="v">Weekly Time Report</span><span class="sp"></span>⌄</div>
+  <div><div class="lbl">Roles this rule reports on</div><div class="roles"><span class="role off">Administrator</span><span class="role off">Dispatcher</span><span class="role off">Marketing</span><span class="role">Remote Dispatcher</span></div></div>
+  <div class="note">Only Remote Dispatcher in this rule. The report itself, and any other rule that sends it, still covers all four.</div>
+ </div></div>
+</div>
+
+<!-- ═════════ 4 ═════════ -->
+<h2><span class="n">4</span>Phone · every report in one list, a report opens in place <span class="rec">Recommended</span></h2>
+<p class="cap">Option 1 on a phone. One card per report says its kind, who it covers and when it is sent. A report opens in place with a back arrow and shows its week, who is in it, the rule that sends it, and Send now. Editing who is in it is the same panel Work Hours uses.</p>
+<div class="pairp">
+ <div><div class="pl">Reports</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Reports</span></div>
+  <div class="scr">
+   <div class="hs"><span class="tab on">Reports</span><span class="tab">Experimental</span><span class="tab">Google Ads</span></div>
+   <div class="hs" style="padding-top:0"><span class="chip on">All 4</span><span class="chip">Built here 3</span><span class="chip">Work Hours 1</span></div>
+   <div class="et"><div class="l1"><span class="ti">Weekly Time Report</span><span class="kind wh">Work Hours</span></div><div class="l2">Administrator, Dispatcher, Marketing, Remote Disp…</div><div class="l2">Sundays 8:00 PM · “Weekly work hours report”</div></div>
+   <div class="et"><div class="l1"><span class="ti">Open jobs by franchise</span><span class="kind">Built here</span></div><div class="l2">Jobs you can reach</div><div class="l2">Mondays 7:00 AM · “Monday digest”</div></div>
+   <div class="et"><div class="l1"><span class="ti">Leads by source, this month</span><span class="kind">Built here</span></div><div class="l2">Leads you can reach</div><div class="l2">Not sent by any automation</div></div>
+   <div class="et"><div class="l1"><span class="ti">Reviews waiting for a reply</span><span class="kind">Built here</span></div><div class="l2">Reviews you can reach</div><div class="l2">Not sent by any automation</div></div>
+   <div class="tiny" style="padding:12px 14px">Reports are built on a computer. You can run any of them here.</div>
+  </div>
+ </div></div>
+ <div><div class="pl">A Work Hours report</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Weekly Time Report</span></div>
+  <div class="pscr">
+   <div class="tiny">Work Hours · edited in Work Hours › Reports</div>
+   <div class="hours"><div class="seg"><span class="on">Last week</span><span>This week so far</span></div><div class="hr"><span>Ana Ruiz</span><b>41.5 h</b></div><div class="hr"><span>Dev Patel</span><b>38.0 h</b></div><div class="hr"><span>Mia Torres</span><b>22.25 h</b></div><div class="hr"><span>Total (12 people)</span><span>402.5 h</span></div></div>
+   <div><div class="lbl">Who is in it</div><div class="roles"><span class="role">Administrator</span><span class="role">Dispatcher</span><span class="role">Marketing</span><span class="role">Remote Dispatcher</span><span class="role plus">+ Mia Torres</span><span class="role minus">− Ben Carter</span></div></div>
+   <div><div class="lbl">Sent by</div><div class="rule"><span class="clock">⏰</span><div class="g"><b>Weekly work hours report</b><span>Sundays 8:00 PM · next Sun, Oct 4</span></div></div></div>
+  </div>
+  <div class="pbar"><span class="btn">Edit who is in it</span><span class="btn f">Send now</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════ 5 ═════════ -->
+<h2><span class="n">5</span>Phone · grouped by where each was made</h2>
+<p class="cap">Option 2 on a phone. The sections are headings in one list. A Work Hours card takes you to Work Hours › Reports.</p>
+<div class="pairp">
+ <div><div class="pl">Reports</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Reports</span></div>
+  <div class="scr">
+   <div class="hs"><span class="tab on">Reports</span><span class="tab">Experimental</span><span class="tab">Google Ads</span></div>
+   <div class="psect">Built here · 3</div>
+   <div class="et"><div class="l1"><span class="ti">Open jobs by franchise</span><span class="muted">›</span></div><div class="l2">Mondays 7:00 AM · “Monday digest”</div></div>
+   <div class="et"><div class="l1"><span class="ti">Leads by source, this month</span><span class="muted">›</span></div><div class="l2">Not sent by any automation</div></div>
+   <div class="et"><div class="l1"><span class="ti">Reviews waiting for a reply</span><span class="muted">›</span></div><div class="l2">Not sent by any automation</div></div>
+   <div class="psect">Made in Work Hours · 1</div>
+   <div class="et" style="background:#fffdf7"><div class="l1"><span class="ti">Weekly Time Report</span></div><div class="l2">Administrator, Dispatcher, Marketing, Remote Disp…</div><div class="l2">Sundays 8:00 PM · to payroll@example.com, Jose</div><div style="margin-top:8px"><span class="btn s">Open in Work Hours ›</span></div></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 6 ═════════ -->
+<h2><span class="n">6</span>Phone · a Work hours tab in Reports</h2>
+<p class="cap">Option 3 on a phone. You swipe the tabs to Work hours. A report opens in place with its editor, and Preview shows the week.</p>
+<div class="pairp">
+ <div><div class="pl">Work hours tab</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Reports</span><span class="btn f" style="height:30px">+ New</span></div>
+  <div class="scr">
+   <div class="hs"><span class="tab">Reports</span><span class="tab on">Work hours 1</span><span class="tab">Experimental</span></div>
+   <div class="et"><div class="l1"><span class="ti">Weekly Time Report</span><span class="muted">›</span></div><div class="l2">Administrator, Dispatcher, Marketing, Remote Disp…</div><div class="l2">Sundays 8:00 PM · to payroll@example.com, Jose</div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">A report, in place</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Weekly Time Report</span></div>
+  <div class="pscr">
+   <div><div class="lbl">Roles</div><div class="roles"><span class="role">Administrator</span><span class="role">Dispatcher</span><span class="role">Marketing</span><span class="role">Remote Dispatcher</span><span class="role off">Technician</span></div></div>
+   <div><div class="lbl">Also include</div><div class="roles"><span class="role plus">+ Mia Torres</span><span class="role off">+ Add a person</span></div></div>
+   <div><div class="lbl">Leave out</div><div class="roles"><span class="role minus">− Ben Carter</span></div></div>
+   <div><div class="lbl">Send to</div><div class="roles"><span class="role minus">payroll@example.com</span><span class="role minus">Jose</span></div></div>
+   <div><div class="lbl">Sent by</div><div class="rule"><span class="clock">⏰</span><div class="g"><b>Weekly work hours report</b><span>Sundays 8:00 PM · next Sun, Oct 4</span></div></div></div>
+  </div>
+  <div class="pbar"><span class="btn">Preview</span><span class="btn f">Save</span></div>
+ </div></div>
+</div>
+
+<p class="cap" style="margin-top:36px">All six show a Work Hours report only to someone who may already see Work Hours reports. “Sent” lists every automation whose current version sends that report. A rule that is off says so, and one that is edited to send something else drops off the list.</p>
+</div>
