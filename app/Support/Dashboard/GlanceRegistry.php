@@ -31,7 +31,7 @@ use App\Support\Tenancy\TenantContext;
 /**
  * Every glance the platform knows about (spec §4, §9).
  *
- * Declared, not scanned — same reason as ModuleDefinition and WidgetRegistry.
+ * Declared, not scanned — same reason as ModuleDefinition.
  * ORDER matches the sidebar's tab modules minus dashboard. A key with no class
  * yet is skipped; later tasks only add a class, they do not restack the list.
  */

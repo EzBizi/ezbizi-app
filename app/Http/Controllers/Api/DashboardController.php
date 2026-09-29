@@ -2,15 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Franchise;
-use App\Models\Job;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlanceRegistry;
 use App\Support\Dashboard\GlancePayload;
-use App\Support\Scoping\ViewScope;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Throwable;
@@ -64,7 +60,6 @@ class DashboardController extends Controller
             }
 
             $presentation = $this->declaredPresentation($glance, $entry['presentation'] ?? null);
-            $options = $this->asDeclared($glance, $entry['options'] ?? [], $user);
 
             /*
              * One glance must never take the dashboard down with it.
@@ -81,40 +76,17 @@ class DashboardController extends Controller
              * it is not silent to the reader either.
              */
             try {
-                $payload = $glance->resolve($user, $period, $options)->toArray();
+                $payload = $glance->resolve($user, $period, [])->toArray();
             } catch (Throwable $e) {
                 report($e);
                 $payload = $this->failedPanel($glance);
             }
             $payload['presentation'] = $presentation;
 
-            /*
-             * ONE KEY, TWO MEANINGS — and this line silently picks one.
-             *
-             * A glance's `resolve()` may put its own options in the payload:
-             * what the box is CONFIGURED with. This overwrites them with the
-             * saved layout's copy: what this PERSON chose. Both are called
-             * `options`, so the second always wins and the first can never
-             * ship. `JobsGlance::wireOptions()` returns the organization's
-             * real earned-status list today and no client will ever see it.
-             * Raised by Jobs (2026-09-23) after their own change made it
-             * visible; nothing is wrong right now, because with the chip
-             * strip gone nothing writes a per-user value and the loop is
-             * inert rather than lossy.
-             *
-             * DO NOT 'FIX' THIS BY DROPPING THE LINE. The client echoes
-             * `options` straight back on the next layout PUT (`_entryFor` in
-             * dashboard_screen.dart), and `saveLayout` stores what it is
-             * sent. So shipping the glance's own options here makes the
-             * ORGANIZATION's value round-trip into every user's stored
-             * preference — a setting nobody chose, written per person, and
-             * the authority mistake spec §8.2 exists to prevent.
-             *
-             * The real fix is two keys, because these are two facts: what
-             * the box is set to, and what this reader asked for. That is a
-             * wire change and wants deciding rather than patching.
-             */
-            $payload['options'] = $options;
+            // No glance takes options: the last one, Jobs' earned statuses, left
+            // with the money on 2026-09-29. Always empty, so whatever a glance
+            // puts here never round-trips into a person's saved layout.
+            $payload['options'] = [];
 
             $glances[] = $payload;
         }
@@ -165,8 +137,7 @@ class DashboardController extends Controller
         }
 
         // Period-only saves must not replace the stored layout. Sending `{hr}`
-        // (or an empty list) appends every other module at defaults and drops
-        // Jobs earned statuses copied from the old widgets preference.
+        // (or an empty list) appends every other module at defaults.
         if (array_key_exists('glances', $input)) {
             $seen = [];
             $layout = [];
@@ -177,7 +148,7 @@ class DashboardController extends Controller
                     continue;
                 }
                 $seen[$key] = true;
-                $layout[] = $this->storedEntry($entry, $this->registry->find($key, $user), $user);
+                $layout[] = $this->storedEntry($entry, $this->registry->find($key, $user));
             }
 
             foreach ($this->registry->availableTo($user) as $glance) {
@@ -224,54 +195,9 @@ class DashboardController extends Controller
                 ],
                 $this->registry->availableTo($user),
             );
-            $saved = $this->copyEarnedStatusesFromWidgets($user, $saved);
         }
 
         return $this->inSavedOrder($user, $saved);
-    }
-
-    /**
-     * One copy of an old `jobs.revenue` statuses list onto the Jobs glance, so
-     * nobody re-ticks them. Only when `dashboard.glances` is absent; after that
-     * `dashboard.widgets` is ignored.
-     *
-     * @param  list<array{key: string, presentation?: string, options?: array}>  $layout
-     * @return list<array{key: string, presentation?: string, options?: array}>
-     */
-    private function copyEarnedStatusesFromWidgets(User $user, array $layout): array
-    {
-        $widgets = $user->preferences['dashboard.widgets'] ?? null;
-        if (! is_array($widgets)) {
-            return $layout;
-        }
-
-        $statuses = null;
-        foreach ($widgets as $widget) {
-            if (($widget['key'] ?? null) !== 'jobs.revenue') {
-                continue;
-            }
-            $given = $widget['options']['statuses'] ?? null;
-            if (is_array($given)) {
-                $statuses = array_values($given);
-                break;
-            }
-        }
-
-        if ($statuses === null) {
-            return $layout;
-        }
-
-        foreach ($layout as $i => $entry) {
-            if (($entry['key'] ?? null) !== 'jobs') {
-                continue;
-            }
-            $layout[$i]['options'] = array_merge($entry['options'] ?? [], [
-                'earned_statuses' => $statuses,
-            ]);
-            break;
-        }
-
-        return $layout;
     }
 
     /**
@@ -315,7 +241,7 @@ class DashboardController extends Controller
      * @param  array{key: string, presentation?: mixed, options?: mixed}  $entry
      * @return array{key: string, presentation?: string, options?: array}
      */
-    private function storedEntry(array $entry, ?Glance $glance, User $user): array
+    private function storedEntry(array $entry, ?Glance $glance): array
     {
         if ($glance === null) {
             $row = ['key' => $entry['key']];
@@ -334,11 +260,6 @@ class DashboardController extends Controller
             'presentation' => $this->declaredPresentation($glance, $entry['presentation'] ?? null),
         ];
 
-        $options = $this->asDeclared($glance, is_array($entry['options'] ?? null) ? $entry['options'] : [], $user);
-        if ($options !== []) {
-            $row['options'] = $options;
-        }
-
         return $row;
     }
 
@@ -348,81 +269,12 @@ class DashboardController extends Controller
         $default = $glance->defaultPresentation();
 
         // Empty allowed list is sentence-only (coming soon). A kind the glance
-        // never offered drops to the default — the asDeclared rule.
+        // never offered drops to the default rather than refusing the save.
         if ($allowed === [] || ! is_string($given) || ! in_array($given, $allowed, true)) {
             return $default;
         }
 
         return $given;
-    }
-
-    /**
-     * Options reduced to what the glance actually uses.
-     *
-     * Jobs `earned_statuses` intersect the organization's current vocabulary.
-     * Dropped rather than refused: a renamed status would otherwise 422 somebody
-     * who had merely reordered the board, over a value they never chose.
-     *
-     * @param  array<string, mixed>  $given
-     * @return array<string, mixed>
-     */
-    private function asDeclared(Glance $glance, array $given, User $user): array
-    {
-        if ($glance->key() !== 'jobs' || ! array_key_exists('earned_statuses', $given)) {
-            return [];
-        }
-
-        $value = $given['earned_statuses'];
-        $offered = $this->jobStatuses($user);
-
-        // An empty list rather than a dropped name: Jobs reads "no statuses" as
-        // "count nothing", which is the safe answer, where dropping the name
-        // would quietly restore counting nothing anyway but would also hide that
-        // the control was set.
-        return [
-            'earned_statuses' => is_array($value)
-                ? array_values(array_filter(
-                    array_map(fn ($one) => $this->oneOffered($one, $offered), $value),
-                    fn ($one) => $one !== null,
-                ))
-                : [],
-        ];
-    }
-
-    /**
-     * The declared choice a value names, or null if it names none of them.
-     *
-     * Compared as text and answered with the DECLARED value, so a client that
-     * sends a string for a status is understood and what gets stored is the
-     * vocabulary the organization published.
-     */
-    private function oneOffered(mixed $value, array $offered): mixed
-    {
-        if (! is_scalar($value)) {
-            return null;
-        }
-
-        foreach ($offered as $choice) {
-            if (is_scalar($choice) && (string) $choice === (string) $value) {
-                return $choice;
-            }
-        }
-
-        return null;
-    }
-
-    /** @return string[] */
-    private function jobStatuses(User $user): array
-    {
-        return app(TenantContext::class)->run($user->organization, function () use ($user) {
-            $ids = ViewScope::forUser($user)->franchiseIds();
-            $franchise = $user->reachableFranchises()->whereIn('id', $ids)->first()
-                ?? $user->reachableFranchises()->first();
-
-            return $franchise instanceof Franchise
-                ? Job::allowedStatuses($franchise)
-                : [];
-        });
     }
 
     /**
@@ -436,12 +288,12 @@ class DashboardController extends Controller
      * partial deploy is the cause.
      *
      * `allowed_presentations` is empty so no chart menu sits on a broken box.
-     * What it does NOT do is reset `presentation` or `options`: the caller
-     * overwrites both with the person's own values after this returns, and
-     * that is load-bearing — the client echoes them straight back on the next
-     * reorder, so a failed panel carrying `text` and no options would ERASE
-     * this person's chart choice and saved options for that box because of an
-     * outage they did not cause and cannot see the cause of.
+     * What it does NOT do is reset `presentation`: the caller overwrites it
+     * with the person's own value after this returns, and that is
+     * load-bearing — the client echoes it straight back on the next reorder,
+     * so a failed panel carrying `text` would ERASE this person's chart choice
+     * for that box because of an outage they did not cause and cannot see the
+     * cause of.
      *
      * `key()` and `label()` are constants on every glance, so nothing here can
      * throw the same way resolve() just did.
