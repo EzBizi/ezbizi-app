@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/lead_thread.dart';
@@ -1282,7 +1283,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // other way round.
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
-    final source = lead['source'] as String?;
     final preview = lead['last_contact_preview'] as String?;
     /*
      * THE DOT IS UNREAD. Jose's ruling, 2026-09-15.
@@ -1392,7 +1392,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           // rule needs no list of sources: a fifth source with
                           // one channel gets the right answer for free.
                           if (channel != null &&
-                              channelWord(channel) != sourceBadgeWord(source)) ...[
+                              !leadSourceWord(lead).endsWith(channelWord(channel))) ...[
                             _Badge(
                               channelWord(channel),
                               call: channel == 'PHONE_CALL',
@@ -1430,7 +1430,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           // The source, the last mark on the row, in the neutral
                           // container so it never competes with Call and Text.
                           _SourceBadge(
-                            sourceBadgeWord(source),
+                            leadSourceWord(lead),
                             key: ValueKey('source-badge-$id'),
                           ),
                           ],
@@ -1522,6 +1522,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
+  'workiz' => 'Workiz',
   _ => 'Google',
 };
 
@@ -1534,24 +1535,54 @@ class _SourceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colours = sourceColours(context, text);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
+        color: colours.fill,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: scheme.onSurfaceVariant,
+          color: colours.ink,
         ),
       ),
     );
   }
 }
+
+/// The source tag's word: Google says which kind, as A1 Leads does - LS Call,
+/// LS Text or LS Booking (Jose, 2026-09-29).
+String leadSourceWord(Map<String, dynamic> lead) {
+  if (lead['source'] != 'local_services') {
+    return sourceBadgeWord(lead['source'] as String?);
+  }
+  return switch (lead['lead_type']) {
+    'PHONE_CALL' => 'LS Call',
+    'MESSAGE' => 'LS Text',
+    'BOOKING' => 'LS Booking',
+    _ => 'Google',
+  };
+}
+
+/// One colour per source, so the list can be read by colour (Jose,
+/// 2026-09-29: "give a color for each"). From the theme's palettes, AA in
+/// light and dark; no two sources share one.
+ToneColours sourceColours(BuildContext context, String word) => switch (word) {
+  'LS Call' => PersonColours.hue(context, 0), // blue
+  'LS Text' => PersonColours.hue(context, 2), // green
+  'LS Booking' => PersonColours.hue(context, 1), // teal
+  'Thumbtack' => PersonColours.hue(context, 5), // orange
+  'Chat' => PersonColours.hue(context, 4), // gold
+  'Form' => PersonColours.hue(context, 7), // brown
+  'Messenger' => PersonColours.hue(context, 6), // coral
+  'Instagram' => ToneColours.of(context, Tone.review), // purple
+  'Workiz' => PersonColours.hue(context, 3), // olive
+  _ => ToneColours.of(context, Tone.info),
+};
 
 /// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
 class _Badge extends StatelessWidget {

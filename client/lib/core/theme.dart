@@ -699,6 +699,12 @@ abstract final class PersonColours {
   static ToneColours of(BuildContext context, Object seed) =>
       forSeed(seed, Theme.of(context).brightness);
 
+  /// One hue by position, for a set that must not collide (Leads' source
+  /// tags, 2026-09-29): 0 blue, 1 teal, 2 green, 3 olive, 4 gold, 5 orange,
+  /// 6 coral, 7 brown.
+  static ToneColours hue(BuildContext context, int index) =>
+      (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[index % _light.length];
+
   static ToneColours forSeed(Object seed, Brightness brightness) {
     // Not hashCode, which promises nothing across runs; and small enough
     // arithmetic that the web's doubles and the VM's ints agree.

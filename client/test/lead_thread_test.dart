@@ -240,7 +240,8 @@ void main() {
       },
     );
 
-    expect(find.text('Account: A1 Chimney - Cleveland · Google: Active'), findsOneWidget);
+    expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
+    expect(find.text('Google: Active'), findsOneWidget);
     expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
   });
 

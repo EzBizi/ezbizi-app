@@ -1095,7 +1095,31 @@ class _LeadThreadState extends State<LeadThread> {
       key: const ValueKey('lead-details'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (facts.isNotEmpty) Text(facts.join(' · '), style: quiet),
+        // In colour, as A1 Tools draws them (Jose, 2026-09-29): the account
+        // in orange, Google's own status in its meaning.
+        if (facts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                if (d['account'] is String)
+                  _pill(
+                    '${d['account']}',
+                    PersonColours.hue(context, 5),
+                    icon: Icons.campaign_outlined,
+                    key: const ValueKey('lead-account'),
+                  ),
+                if (d['google_status'] is String)
+                  _pill(
+                    'Google: ${d['google_status']}',
+                    ToneColours.of(context, googleStatusTone(d['google_status'] as String)),
+                    key: const ValueKey('lead-google-status'),
+                  ),
+              ],
+            ),
+          ),
         if (!named && d['name'] is String)
           Text('Name, from the conversation: ${d['name']}', style: quiet),
         // Google placed the address exactly: show its version, marked.
@@ -1138,6 +1162,32 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     );
   }
+
+  Widget _pill(String text, ToneColours colours, {IconData? icon, Key? key}) => Container(
+    key: key,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: colours.fill,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: colours.ink),
+          const SizedBox(width: 4),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colours.ink),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _openAvailability(String? zip) async {
     final pane = AvailabilityPane(
@@ -1598,3 +1648,12 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     _ => Tone.info,
   },
 );
+
+/// Google's own lead status as a colour: booked and active are good news,
+/// declined is not, the rest is neutral.
+Tone googleStatusTone(String status) => switch (status.toLowerCase()) {
+  'booked' || 'active' => Tone.ok,
+  'new' => Tone.info,
+  'declined' || 'consumer declined' => Tone.bad,
+  _ => Tone.neutral,
+};

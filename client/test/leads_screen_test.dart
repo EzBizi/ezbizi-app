@@ -278,6 +278,34 @@ void main() {
     });
   }
 
+  // Jose, 2026-09-29: the Google tag says LS Call or LS Text, and every
+  // source has its own colour.
+  testWidgets('each source tag has its own word and colour', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        {..._lead('lead-1', 'A'), 'source': 'local_services', 'lead_type': 'PHONE_CALL'},
+        {..._lead('lead-2', 'B'), 'source': 'local_services', 'lead_type': 'MESSAGE'},
+        {..._lead('lead-3', 'C'), 'source': 'thumbtack'},
+        {..._lead('lead-4', 'D'), 'source': 'website_form'},
+      ],
+      connections: const [],
+    );
+
+    String word(String id) => tester
+        .widget<Text>(find.descendant(of: find.byKey(ValueKey('source-badge-$id')), matching: find.byType(Text)))
+        .data!;
+    Color? fill(String id) => ((tester.widget<Container>(find.descendant(
+      of: find.byKey(ValueKey('source-badge-$id')),
+      matching: find.byType(Container),
+    ).first)).decoration as BoxDecoration?)?.color;
+
+    expect([for (final id in ['lead-1', 'lead-2', 'lead-3', 'lead-4']) word(id)],
+        ['LS Call', 'LS Text', 'Thumbtack', 'Form']);
+    expect({for (final id in ['lead-1', 'lead-2', 'lead-3', 'lead-4']) fill(id)}, hasLength(4),
+        reason: 'no two sources share a colour');
+  });
+
   // Jose, 2026-09-28: a customer left waiting is marked red on the list.
   testWidgets('a lead waiting too long for a reply wears a red warning', (
     tester,
@@ -1437,7 +1465,8 @@ void _conversationRowTests() {
       findsNothing,
       reason: 'BOOKING fell through the channel switch and read as a message',
     );
-    expect(find.text('Booking'), findsOneWidget);
+    // One tag says both facts since 2026-09-29: Google, and a booking.
+    expect(find.text('LS Booking'), findsOneWidget);
   });
 }
 
