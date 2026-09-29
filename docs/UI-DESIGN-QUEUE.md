@@ -2958,6 +2958,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 32 · Jobs · estimates — 📐 **DRAWN, awaiting Jose**
+
+From the Jobs session, 2026-09-29: Jose approved estimates as EzBizi records in Jobs (child module
+`estimates`, `sidebar: false`, drawn by the Jobs screen; estimates.* ANDed with jobs.financials;
+API in 72b6e46a). `docs/previews/jobs-estimates-layouts.html`: desktop **1** a Jobs | Estimates
+switch, the estimates list as the jobs list's twin with the estimate docked and its lines as a
+small table (recommended); **2** no list, an Estimates section on the job and the customer that
+opens in place; **3** a board of Draft, Sent, Accepted and Declined with the total first; phone
+**4**-**6** the same three. Lines replace a total only while draft or sent, and an imported
+total-only estimate keeps A1's total until lines are added. Anything in `jobs_screen.dart` goes past
+Jobs before it is committed.
+
 ### 31 · Jobs · money on the list and the job — **Jose: "as you recommend" — 1 and 4** — **BUILT** `505af363`
 
 From the Jobs session, 2026-09-29, under Jose's rulings (money is the `jobs.financials` toggle;

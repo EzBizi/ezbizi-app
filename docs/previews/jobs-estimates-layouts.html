@@ -1,0 +1,375 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jobs · estimates</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. The status counts
+   and about $5.85M quoted are A1's (the Jobs session, 2026-09-29); the exact sums, the accepted
+   and per-column totals, customers, jobs and lines are invented.
+   Estimates need estimates.view and the Financials toggle; lines replace a total only while an
+   estimate is a draft or sent. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:760px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:10px 20px 6px;display:flex;align-items:flex-end;gap:12px}
+.mh .t{font-size:21px;font-weight:800;line-height:1.1}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.tabs{display:flex;gap:8px;padding:2px 20px 10px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12.5px;background:var(--paper)}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.tab .c{color:var(--muted);font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 8px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{color:var(--muted);font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.d-neu{background:#7b8791}.d-info{background:#1f8fb5}.d-warn{background:#c98a00}.d-ok{background:#2e9a4f}.d-bad{background:#c63d3d}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)}
+.p-bad{background:var(--badc);color:var(--bad)}
+.fld{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:34px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;overflow:hidden}
+.fld .v{color:var(--ink);font-weight:600}
+.sum{display:flex;gap:18px;align-items:center;padding:0 20px 10px;font-size:12.5px}
+.sum b{font-size:13.5px}
+.tbl{flex:1;min-height:0;overflow:hidden;background:var(--paper);border-top:1px solid var(--line)}
+.tr{display:grid;align-items:center;padding:0 20px;height:42px;border-bottom:1px solid var(--line2);font-size:12.5px;gap:10px}
+.tr.hd{height:30px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tr.sel{background:#e8f4f8}
+.tr .num{color:var(--muted)}
+.tr .el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .r{text-align:right;white-space:nowrap}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.grn{color:var(--ok)} .red{color:var(--bad)}
+.body{flex:1;min-height:0;display:flex}
+.lst{flex:1;min-width:0;display:flex;flex-direction:column}
+.pan{width:470px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.pan .ph{padding:14px 18px 10px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:flex-start}
+.pan .ph .t{font-size:16px;font-weight:800}
+.pan .ph .s{font-size:11.5px;color:var(--muted)}
+.pan .pb{flex:1;min-height:0;overflow:hidden;padding:12px 18px;display:flex;flex-direction:column;gap:10px}
+.pan .pf{padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.in{border:1px solid var(--line);border-radius:var(--r);padding:6px 11px}
+.in .l{font-size:10.5px;font-weight:700;color:var(--muted)}
+.in .v{font-size:12.5px}
+.pair2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.steps{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--muted)}
+.steps .s{display:inline-flex;align-items:center;gap:5px}
+.steps .s i{width:9px;height:9px;border-radius:50%;background:#c9d4d9;display:inline-block}
+.steps .s.on{color:var(--prid)} .steps .s.on i{background:var(--pri)}
+.steps .s.done{color:var(--ok)} .steps .s.done i{background:#2e9a4f}
+.steps .ln{flex:1;height:2px;background:#dfe6ea;border-radius:2px}
+.lines{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.lines .lh{display:grid;grid-template-columns:1fr 54px 86px 86px 22px;gap:8px;padding:6px 10px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa;border-bottom:1px solid var(--line2)}
+.lines .lr{display:grid;grid-template-columns:1fr 54px 86px 86px 22px;gap:8px;padding:6px 10px;align-items:center;border-bottom:1px solid var(--line2);font-size:12px}
+.lines .lr .x{color:var(--muted);text-align:center}
+.cell{border:1px solid var(--line);border-radius:8px;padding:4px 7px;background:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell.r{text-align:right}
+.lines .add{padding:8px 10px;color:var(--pri);font-weight:700;font-size:12px}
+.tot{display:flex;justify-content:space-between;font-size:12px;padding:3px 2px}
+.tot.big{font-size:15px;font-weight:800;border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+.note{border-radius:10px;padding:8px 11px;font-size:11.5px;background:var(--warnc);color:var(--warn)}
+.sec{border-top:1px solid var(--line);padding-top:10px}
+.sec .h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13.5px;margin-bottom:8px}
+.ecard{border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:10px;margin-bottom:6px;background:#fbfdfe}
+.ecard .g{flex:1;min-width:0}
+.ecard .g b{display:block;font-size:12.5px}
+.ecard .g span{font-size:11px;color:var(--muted)}
+.board{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 20px 14px}
+.col{background:#eef2f5;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
+.col .ch{display:flex;align-items:center;gap:6px;font-weight:800;font-size:12.5px;padding:2px 4px 4px}
+.col .ch .c{color:var(--muted);font-weight:600}
+.kc{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.kc .t1{display:flex;gap:6px;align-items:center;font-size:12.5px;font-weight:700}
+.kc .t2{font-size:11px;color:var(--muted)}
+.kc.sel{outline:2px solid var(--pri)}
+.bigtotal{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fbfdfe}
+.bigtotal .k{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.bigtotal .v{font-size:26px;font-weight:800}
+.fold{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;font-weight:700;font-size:12.5px}
+/* phones */
+.pairp{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.phn{width:360px;height:760px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;background:var(--paper);flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.ab .t{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:8px 12px;flex:0 0 auto}
+.et{padding:10px 14px;border-bottom:1px solid var(--line2)}
+.et .l1{display:flex;gap:8px;align-items:center}
+.et .l1 .ti{font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.et .l2{display:flex;gap:6px;align-items:center;margin-top:3px;font-size:11.5px;color:var(--muted)}
+.pscr{flex:1;min-height:0;overflow:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.lcard{border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:flex;gap:10px;align-items:flex-start}
+.lcard .g{flex:1;min-width:0}
+.lcard .g b{display:block;font-size:12.5px}
+.lcard .g span{font-size:11px;color:var(--muted)}
+.ptabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+.ptabs span{flex:1;text-align:center;padding:9px 0;font-size:12px;font-weight:600;color:var(--muted);position:relative}
+.ptabs span.on{color:var(--pri)}
+.ptabs span.on:after{content:"";position:absolute;left:22%;right:22%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--pri)}
+</style>
+
+<div class="wrap">
+<h1>Jobs · estimates</h1>
+<p class="sub">The Jobs session's ask, 2026-09-29: Jose approved estimates as EzBizi records living in Jobs. Where they live, and the editor with lines. Most of A1's 2,388 have a total and no lines.</p>
+<p class="cap">Every option needs estimates.view and the Financials toggle; the job and the customer come from the same franchise, and lines can change only while an estimate is a draft or sent.</p>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>Estimates beside Jobs, a list of their own <span class="rec">Recommended</span></h2>
+<p class="cap">Jobs gets two tabs, Jobs and Estimates. The estimates list is the jobs list's twin: status chips with counts, what is quoted and accepted, and the estimate docked beside it. The editor is the lines as a small table you type into, with the total under them and the next step at the foot.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ New estimate</span></div>
+  <div class="tabs"><span class="tab">🧰 Jobs <span class="c">8,552</span></span><span class="tab on">🧾 Estimates <span class="c">2,388</span></span></div>
+  <div class="body">
+   <div class="lst">
+    <div class="chips"><span class="chip on">All <span class="c">2,388</span></span><span class="chip"><span class="dot d-neu"></span>Draft <span class="c">46</span></span><span class="chip"><span class="dot d-info"></span>Sent <span class="c">52</span></span><span class="chip"><span class="dot d-ok"></span>Accepted <span class="c">275</span></span><span class="chip"><span class="dot d-bad"></span>Declined <span class="c">61</span></span><span class="chip"><span class="dot d-warn"></span>Archived <span class="c">1,954</span></span></div>
+    <div class="sum"><div class="fld" style="width:240px">🔍 Number or customer</div><span>Quoted <b>$5,850,212</b></span><span>Accepted <b class="grn">$1,106,480</b></span></div>
+    <div class="tbl">
+     <div class="tr hd" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span>Estimate</span><span>Customer</span><span>Job</span><span>Issued</span><span>Status</span><span class="r">Total</span></div>
+     <div class="tr sel" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">EST-0431</span><span class="el b">Brian Moss</span><span class="muted">J-10479</span><span>Sep 26</span><span><span class="pill p-info">Sent</span></span><span class="r b">$3,850.00</span></div>
+     <div class="tr" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">EST-0430</span><span class="el b">Karen Holt</span><span class="muted">—</span><span>Sep 25</span><span><span class="pill p-neu">Draft</span></span><span class="r b">$1,240.00</span></div>
+     <div class="tr" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">EST-0428</span><span class="el b">Olivia Chen</span><span class="muted">J-10471</span><span>Sep 22</span><span><span class="pill p-ok">Accepted</span></span><span class="r b">$450.00</span></div>
+     <div class="tr" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">EST-0425</span><span class="el b">Derek Ruiz</span><span class="muted">—</span><span>Sep 19</span><span><span class="pill p-bad">Declined</span></span><span class="r b">$6,900.00</span></div>
+     <div class="tr" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">A1-2291</span><span class="el b">Paula Grant</span><span class="muted">—</span><span>Mar 3</span><span><span class="pill p-warn">Archived</span></span><span class="r b">$2,600.00</span></div>
+     <div class="tr" style="grid-template-columns:78px 1.4fr 90px 88px 86px 96px"><span class="num">A1-2290</span><span class="el b">Sam Wilder</span><span class="muted">—</span><span>Mar 2</span><span><span class="pill p-ok">Accepted</span></span><span class="r b">$780.00</span></div>
+    </div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">EST-0431 · Brian Moss</div><div class="s">Georgia · for job J-10479 Liner install</div></div><span class="pill p-info">Sent</span></div>
+    <div class="pb">
+     <div class="steps"><span class="s done"><i></i>Draft</span><span class="ln"></span><span class="s on"><i></i>Sent</span><span class="ln"></span><span class="s"><i></i>Accepted</span></div>
+     <div class="pair2"><div class="in"><div class="l">Issued</div><div class="v">Sat, Sep 26</div></div><div class="in"><div class="l">Job</div><div class="v">J-10479 Liner install</div></div></div>
+     <div class="lines">
+      <div class="lh"><span>Line</span><span style="text-align:right">Qty</span><span style="text-align:right">Price</span><span style="text-align:right">Amount</span><span></span></div>
+      <div class="lr"><span class="cell">Stainless steel liner, 25 ft</span><span class="cell r">1</span><span class="cell r">$2,400.00</span><span style="text-align:right">$2,400.00</span><span class="x">✕</span></div>
+      <div class="lr"><span class="cell">Liner installation labor</span><span class="cell r">1</span><span class="cell r">$1,200.00</span><span style="text-align:right">$1,200.00</span><span class="x">✕</span></div>
+      <div class="lr"><span class="cell">Chimney cap, black</span><span class="cell r">1</span><span class="cell r">$250.00</span><span style="text-align:right">$250.00</span><span class="x">✕</span></div>
+      <div class="add">+ Add a line · or pick a service</div>
+     </div>
+     <div class="tot big"><span>Total</span><span>$3,850.00</span></div>
+     <div class="in"><div class="l">Note for the customer</div><div class="v">Includes haul-away of the old clay liner.</div></div>
+    </div>
+    <div class="pf"><span class="btn q">Archive</span><span class="sp"></span><span class="btn">Declined</span><span class="btn f">Mark accepted</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>Estimates where the work is: on the job and the customer</h2>
+<p class="cap">No list of their own: a job's panel and a customer's panel each carry an Estimates section with the ones made for them and a New estimate button. The estimate opens in the same panel with a way back, and the editor is lines as cards, each changed in place.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ Add job</span></div>
+  <div class="body">
+   <div class="lst">
+    <div class="chips"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted <span class="c">412</span></span><span class="chip"><span class="dot d-warn"></span>Pending <span class="c">318</span></span><span class="chip"><span class="dot d-ok"></span>Done <span class="c">7,410</span></span></div>
+    <div class="tbl">
+     <div class="tr hd" style="grid-template-columns:70px 1.5fr 1.1fr 100px"><span>Job</span><span>Title</span><span>Customer</span><span>Status</span></div>
+     <div class="tr" style="grid-template-columns:70px 1.5fr 1.1fr 100px"><span class="num">J-10482</span><span class="el b">Chimney sweep &amp; inspection</span><span class="el">Karen Holt</span><span><span class="pill p-info">In progress</span></span></div>
+     <div class="tr sel" style="grid-template-columns:70px 1.5fr 1.1fr 100px"><span class="num">J-10479</span><span class="el b">Liner install</span><span class="el">Brian Moss</span><span><span class="pill p-warn">Pending</span></span></div>
+     <div class="tr" style="grid-template-columns:70px 1.5fr 1.1fr 100px"><span class="num">J-10471</span><span class="el b">Cap replacement</span><span class="el">Olivia Chen</span><span><span class="pill p-neu">Submitted</span></span></div>
+     <div class="tr" style="grid-template-columns:70px 1.5fr 1.1fr 100px"><span class="num">J-10455</span><span class="el b">Crown repair</span><span class="el">Derek Ruiz</span><span><span class="pill p-ok">Done</span></span></div>
+    </div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">Liner install</div><div class="s">J-10479 · Brian Moss · Georgia</div></div><span class="pill p-warn">Pending</span></div>
+    <div class="pb">
+     <div class="in"><div class="l">What is the job</div><div class="v">Liner install</div></div>
+     <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+     <div class="sec">
+      <div class="h">Estimates <span class="sp"></span><span class="btn s">+ New estimate</span></div>
+      <div class="ecard"><div class="g"><b>EST-0431 · $3,850.00</b><span>Issued Sep 26 · 3 lines</span></div><span class="pill p-info">Sent</span><span class="muted">›</span></div>
+      <div class="ecard"><div class="g"><b>EST-0402 · $4,600.00</b><span>Issued Aug 30 · superseded</span></div><span class="pill p-warn">Archived</span><span class="muted">›</span></div>
+     </div>
+     <div class="sec">
+      <div class="h" style="color:var(--muted);font-size:12px">Opened, in place of the job ↓</div>
+      <div style="border:1px dashed #b7c5cc;border-radius:12px;padding:10px">
+       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="btn q s">← Liner install</span><span class="sp"></span><span class="pill p-info">Sent</span></div>
+       <div class="lcard"><div class="g"><b>Stainless steel liner, 25 ft</b><span>1 × $2,400.00</span></div><b>$2,400.00</b></div>
+       <div class="lcard" style="margin-top:6px"><div class="g"><b>Liner installation labor</b><span>1 × $1,200.00</span></div><b>$1,200.00</b></div>
+       <div class="tot big"><span>Total</span><span>$3,850.00</span></div>
+      </div>
+     </div>
+    </div>
+    <div class="pf"><span class="btn q">Cancel</span><span class="sp"></span><span class="btn f">Save</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>A pipeline: estimates as a board</h2>
+<p class="cap">The Estimates tab is a board of what is moving: Draft, Sent, Accepted and Declined, each card a customer and a total; archived ones behind a switch. The editor puts the total first, big, with the lines folded under it, because most of A1's have no lines at all.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ New estimate</span></div>
+  <div class="tabs"><span class="tab">🧰 Jobs <span class="c">8,552</span></span><span class="tab on">🧾 Estimates <span class="c">434 open</span></span><span class="sp"></span><span class="tiny" style="align-self:center">Show the 1,954 archived ☐</span></div>
+  <div class="body">
+   <div class="lst">
+    <div class="board">
+     <div class="col"><div class="ch"><span class="dot d-neu"></span>Draft <span class="c">46 · $184,300</span></div>
+      <div class="kc"><div class="t1">Karen Holt</div><div class="t2">EST-0430 · $1,240.00</div></div>
+      <div class="kc"><div class="t1">Ali Hassan</div><div class="t2">EST-0427 · $820.00</div></div>
+      <div class="kc"><div class="t1">June Park</div><div class="t2">EST-0419 · $4,200.00</div></div>
+     </div>
+     <div class="col"><div class="ch"><span class="dot d-info"></span>Sent <span class="c">52 · $296,040</span></div>
+      <div class="kc sel"><div class="t1">Brian Moss</div><div class="t2">EST-0431 · $3,850.00 · J-10479</div></div>
+      <div class="kc"><div class="t1">Rita Owens</div><div class="t2">EST-0426 · $1,640.00</div></div>
+     </div>
+     <div class="col"><div class="ch"><span class="dot d-ok"></span>Accepted <span class="c">275</span></div>
+      <div class="kc"><div class="t1">Olivia Chen</div><div class="t2">EST-0428 · $450.00 · J-10471</div></div>
+      <div class="kc"><div class="t1">Sam Wilder</div><div class="t2">A1-2290 · $780.00</div></div>
+     </div>
+     <div class="col"><div class="ch"><span class="dot d-bad"></span>Declined <span class="c">61</span></div>
+      <div class="kc"><div class="t1">Derek Ruiz</div><div class="t2">EST-0425 · $6,900.00</div></div>
+     </div>
+    </div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">EST-0431 · Brian Moss</div><div class="s">Georgia · for job J-10479</div></div><span class="pill p-info">Sent</span></div>
+    <div class="pb">
+     <div class="bigtotal"><div class="k">Total</div><div class="v">$3,850.00</div><div class="tiny">3 lines · issued Sat, Sep 26</div></div>
+     <div class="fold">▾ Lines</div>
+     <div class="lines" style="margin-top:-4px">
+      <div class="lr"><span class="cell">Stainless steel liner, 25 ft</span><span class="cell r">1</span><span class="cell r">$2,400.00</span><span style="text-align:right">$2,400.00</span><span class="x">✕</span></div>
+      <div class="lr"><span class="cell">Liner installation labor</span><span class="cell r">1</span><span class="cell r">$1,200.00</span><span style="text-align:right">$1,200.00</span><span class="x">✕</span></div>
+      <div class="lr"><span class="cell">Chimney cap, black</span><span class="cell r">1</span><span class="cell r">$250.00</span><span style="text-align:right">$250.00</span><span class="x">✕</span></div>
+      <div class="add">+ Add a line</div>
+     </div>
+     <div class="note">An estimate brought over from A1 Tools with a total and no lines keeps that total. Adding lines replaces it with their sum.</div>
+    </div>
+    <div class="pf"><span class="btn q">Archive</span><span class="sp"></span><span class="btn">Declined</span><span class="btn f">Mark accepted</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 4 ═════════ -->
+<h2><span class="n">4</span>Phone · the Estimates tab, and the estimate in place <span class="rec">Recommended</span></h2>
+<p class="cap">1 on a phone: the two tabs at the top, the status chips swiped, one line per estimate. An estimate opens in place; its lines are cards, the total stays in view, and the next step is at the bottom.</p>
+<div class="pairp">
+ <div><div class="pl">List</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Jobs</span><span class="btn f" style="height:30px">+ New</span></div>
+  <div class="scr">
+   <div class="hs"><span class="tab">Jobs</span><span class="tab on">Estimates <span class="c">2,388</span></span></div>
+   <div class="hs" style="padding-top:0"><span class="chip on">All</span><span class="chip"><span class="dot d-neu"></span>Draft 46</span><span class="chip"><span class="dot d-info"></span>Sent 52</span><span class="chip"><span class="dot d-ok"></span>Accepted</span></div>
+   <div style="padding:0 12px 8px;font-size:12px">Quoted <b>$5.85M</b> · Accepted <b class="grn">$1.11M</b></div>
+   <div class="et"><div class="l1"><span class="ti">Brian Moss</span><b>$3,850.00</b></div><div class="l2"><span>EST-0431 · J-10479 · Sep 26</span><span class="sp"></span><span class="pill p-info">Sent</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Karen Holt</span><b>$1,240.00</b></div><div class="l2"><span>EST-0430 · Sep 25</span><span class="sp"></span><span class="pill p-neu">Draft</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Olivia Chen</span><b>$450.00</b></div><div class="l2"><span>EST-0428 · J-10471 · Sep 22</span><span class="sp"></span><span class="pill p-ok">Accepted</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Derek Ruiz</span><b>$6,900.00</b></div><div class="l2"><span>EST-0425 · Sep 19</span><span class="sp"></span><span class="pill p-bad">Declined</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Paula Grant</span><b>$2,600.00</b></div><div class="l2"><span>A1-2291 · Mar 3 · from A1 Tools</span><span class="sp"></span><span class="pill p-warn">Archived</span></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">An estimate</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">EST-0431 · Brian Moss</span><span class="pill p-info">Sent</span></div>
+  <div class="pscr">
+   <div class="steps"><span class="s done"><i></i>Draft</span><span class="ln"></span><span class="s on"><i></i>Sent</span><span class="ln"></span><span class="s"><i></i>Accepted</span></div>
+   <div class="in"><div class="l">Job</div><div class="v">J-10479 Liner install</div></div>
+   <div class="lcard"><div class="g"><b>Stainless steel liner, 25 ft</b><span>1 × $2,400.00</span></div><b>$2,400.00</b></div>
+   <div class="lcard"><div class="g"><b>Liner installation labor</b><span>1 × $1,200.00</span></div><b>$1,200.00</b></div>
+   <div class="lcard"><div class="g"><b>Chimney cap, black</b><span>1 × $250.00</span></div><b>$250.00</b></div>
+   <span class="btn" style="align-self:flex-start">+ Add a line</span>
+   <div class="tot big"><span>Total</span><span>$3,850.00</span></div>
+  </div>
+  <div class="pbar"><span class="btn">Declined</span><span class="btn f">Mark accepted</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════ 5 ═════════ -->
+<h2><span class="n">5</span>Phone · estimates in the job</h2>
+<p class="cap">2 on a phone: a job's page carries its estimates as cards; New estimate starts one for that customer and job, and it opens in place of the job.</p>
+<div class="pairp">
+ <div><div class="pl">A job</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Liner install</span><span class="pill p-warn">Pending</span></div>
+  <div class="pscr">
+   <div class="tiny">J-10479 · Brian Moss · Georgia</div>
+   <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+   <div class="sec">
+    <div class="h">Estimates <span class="sp"></span><span class="btn s">+ New</span></div>
+    <div class="ecard"><div class="g"><b>EST-0431 · $3,850.00</b><span>Issued Sep 26 · 3 lines</span></div><span class="pill p-info">Sent</span></div>
+    <div class="ecard"><div class="g"><b>EST-0402 · $4,600.00</b><span>Issued Aug 30</span></div><span class="pill p-warn">Archived</span></div>
+   </div>
+  </div>
+  <div class="pbar"><span class="btn">Cancel</span><span class="btn f">Save</span></div>
+ </div></div>
+ <div><div class="pl">Its estimate</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Liner install · EST-0431</span></div>
+  <div class="pscr">
+   <div style="display:flex;gap:8px;align-items:center"><span class="pill p-info">Sent</span><span class="tiny">Issued Sat, Sep 26</span></div>
+   <div class="lcard"><div class="g"><b>Stainless steel liner, 25 ft</b><span>1 × $2,400.00</span></div><b>$2,400.00</b></div>
+   <div class="lcard"><div class="g"><b>Liner installation labor</b><span>1 × $1,200.00</span></div><b>$1,200.00</b></div>
+   <div class="lcard"><div class="g"><b>Chimney cap, black</b><span>1 × $250.00</span></div><b>$250.00</b></div>
+   <div class="tot big"><span>Total</span><span>$3,850.00</span></div>
+  </div>
+  <div class="pbar"><span class="btn">Declined</span><span class="btn f">Mark accepted</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════ 6 ═════════ -->
+<h2><span class="n">6</span>Phone · the pipeline as tabs</h2>
+<p class="cap">3 on a phone: Draft, Sent, Accepted and Declined as tabs, each with its count and sum; the estimate opens total first with its lines folded.</p>
+<div class="pairp">
+ <div><div class="pl">Pipeline</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Estimates</span><span class="btn f" style="height:30px">+ New</span></div>
+  <div class="scr">
+   <div class="ptabs"><span>Draft 46</span><span class="on">Sent 52</span><span>Accepted</span><span>Declined</span></div>
+   <div style="padding:8px 14px;font-size:12px"><b>$296,040</b> <span class="muted">out for an answer</span></div>
+   <div class="et"><div class="l1"><span class="ti">Brian Moss</span><b>$3,850.00</b></div><div class="l2"><span>EST-0431 · J-10479 · sent 3 days ago</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Rita Owens</span><b>$1,640.00</b></div><div class="l2"><span>EST-0426 · sent 6 days ago</span></div></div>
+   <div class="et"><div class="l1"><span class="ti">Hank Doyle</span><b>$275.00</b></div><div class="l2"><span>EST-0418 · sent 12 days ago</span></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">An estimate</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">EST-0431 · Brian Moss</span><span class="pill p-info">Sent</span></div>
+  <div class="pscr">
+   <div class="bigtotal"><div class="k">Total</div><div class="v">$3,850.00</div><div class="tiny">3 lines · issued Sat, Sep 26</div></div>
+   <div class="fold">▸ Lines</div>
+   <div class="in"><div class="l">Note for the customer</div><div class="v">Includes haul-away of the old clay liner.</div></div>
+  </div>
+  <div class="pbar"><span class="btn">Declined</span><span class="btn f">Mark accepted</span></div>
+ </div></div>
+</div>
+
+</div>
