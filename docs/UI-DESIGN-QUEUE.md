@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 32 · Jobs · estimates — 📐 **DRAWN, awaiting Jose**
+### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
 From the Jobs session, 2026-09-29: Jose approved estimates as EzBizi records in Jobs (child module
 `estimates`, `sidebar: false`, drawn by the Jobs screen; estimates.* ANDed with jobs.financials;
@@ -2969,6 +2969,13 @@ opens in place; **3** a board of Draft, Sent, Accepted and Declined with the tot
 **4**-**6** the same three. Lines replace a total only while draft or sent, and an imported
 total-only estimate keeps A1's total until lines are added. Anything in `jobs_screen.dart` goes past
 Jobs before it is committed.
+
+**Built:** `lib/screens/jobs/estimates_tab.dart` (EstimatesTab, EstimatePanel) and the Jobs | Estimates
+bar in `jobs_screen.dart`, which Jobs OK'd on one condition: both tabs stay alive (Offstage, for
+automations_screen's semantics reason) so a look at the estimates keeps a docked job's unsaved
+edits, and Estimates is built on its first open. The search is Jobs' `?search=` (93e2c02f). The
+estimate panel is a docked `SidePanel`, which gained `onBack`: drawn in place on a phone it has a ←
+where its ✕ was, so Android Back finds it. Unsaved edits refuse another row, as on the jobs list.
 
 ### 31 · Jobs · money on the list and the job — **Jose: "as you recommend" — 1 and 4** — **BUILT** `505af363`
 
