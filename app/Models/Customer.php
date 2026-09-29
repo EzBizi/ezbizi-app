@@ -71,6 +71,14 @@ class Customer extends Model implements HoldsPersonalData
         'none@msn.com', 'none@noemail.com', 'none@ymail.com', 'none@gmail.com',
         'cxdeclined@gmail.com', 'cxdeclinedemail@gmail.com', 'refuse@g.c',
         'fhfg@gmail.com', 'ghfg@gmail.com',
+        // A1 Tools' client list (2026-09-29), each on 5 to 504 rows. The Workiz
+        // client-list export it came from required an email.
+        'nomail@yahoo.com', 'nomail@gmail.com', 'refused@gmail.com', 'naa@gmail.com',
+        'no@mail.com', 'no@aol.com', 'na@gmail.com', 'refused@mail.com',
+        'nomail@yahoo.con', 'nomail@yaho.com', 'nonail@yahoo.com', 'nomaol@yahoo.com',
+        'nomail@yhaoo.com', 'no@tek.net', 'no@net.swk', 'n@gmail.com', 'nomail@tahoo.com',
+        'no@gmail.fr', 'noname@gmail.com', 'notavaliable11@gmail.com', 'refused@yahoo.com',
+        'refuse@gmail.com', 'nm@gmsil.com',
     ];
 
     /**
@@ -87,6 +95,29 @@ class Customer extends Model implements HoldsPersonalData
         return $normal === '' || in_array($normal, self::PLACEHOLDER_EMAILS, true)
             ? null
             : trim((string) $email);
+    }
+
+    /**
+     * Numbers typed into the phone box that are not the customer's, in E.164.
+     *
+     * Measured 2026-09-29: each sat on 5 to 388 records of A1 Tools' client list,
+     * or 10 to 28 live customers here, and on every one of them a different name
+     * at a different address, across branches -- a relay or office line. Texting
+     * one reaches a stranger, and as an identity it makes the duplicate sweep
+     * report dozens of strangers as one person.
+     *
+     * ponytail: a list, as PLACEHOLDER_EMAILS is and for the same reason.
+     */
+    public const PLACEHOLDER_PHONES = [
+        '+18187482055', '+19547109003', '+19527777291', '+12109636961', '+18777711892',
+        '+16266244006', '+12168590559', '+14636764568', '+16099035648', '+18886219148',
+        '+13236761570', '+12723942201',
+    ];
+
+    /** An E.164 number worth keeping, or null for a blank or a known placeholder. */
+    public static function realPhone(?string $e164): ?string
+    {
+        return $e164 === null || $e164 === '' || in_array($e164, self::PLACEHOLDER_PHONES, true) ? null : $e164;
     }
 
     // ── §9 data inventory ────────────────────────────────────────
