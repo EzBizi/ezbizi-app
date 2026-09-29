@@ -47,6 +47,48 @@ class Customer extends Model implements HoldsPersonalData
         return ['is_active' => 'boolean'];
     }
 
+    /**
+     * Addresses typed into the email box to mean "none", measured on A-1's live
+     * book (2026-09-29) and listed exactly as found.
+     *
+     * They are not harmless filler. `no@gmail.com` alone sat on 451 customers:
+     * as an identity it makes the duplicate sweep report 451 strangers as one
+     * person, and as an address it is a real Gmail mailbox somebody owns, so an
+     * email automation would send 451 customers' messages to a stranger. The
+     * box is optional in EzBizi, so there is nothing a placeholder stands in
+     * for -- it is legacy from a system that required one.
+     *
+     * An explicit list rather than a pattern like /^no/: "nora@", "nm-roofing@"
+     * and "none.such@" are real people, and a cleanup that blanks an address has
+     * to be able to say exactly which ones it meant.
+     *
+     * ponytail: a list, so a placeholder nobody has seen yet gets through. Add
+     * it here when an import surfaces a new one -- the importers read this.
+     */
+    public const PLACEHOLDER_EMAILS = [
+        'no@gmail.com', 'nm@m.com', 'nm@gmail.com', 'no@me.com', 'n@m.com',
+        'no@net.tek', 'noemai@gmail.com', 'noemail1@gmail.com',
+        'none@msn.com', 'none@noemail.com', 'none@ymail.com', 'none@gmail.com',
+        'cxdeclined@gmail.com', 'cxdeclinedemail@gmail.com', 'refuse@g.c',
+        'fhfg@gmail.com', 'ghfg@gmail.com',
+    ];
+
+    /**
+     * An email worth keeping, or null for a blank or a known placeholder.
+     *
+     * For anything that WRITES a customer from another system's data -- the
+     * Workiz projection, the A1 import -- so a placeholder never becomes an
+     * address to begin with.
+     */
+    public static function realEmail(?string $email): ?string
+    {
+        $normal = strtolower(trim((string) $email));
+
+        return $normal === '' || in_array($normal, self::PLACEHOLDER_EMAILS, true)
+            ? null
+            : trim((string) $email);
+    }
+
     // ── §9 data inventory ────────────────────────────────────────
 
     public static function personalDataPurpose(): string
