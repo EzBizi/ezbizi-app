@@ -77,7 +77,7 @@ const moneyStates = <(String, String, Tone?)>[
 
 /// Minor units as money: `$1,925.00`, `−$45.00`, or `EUR 12.00` off dollars.
 /// Without [cents], whole units: a total of five million needs no pennies.
-String formatMinor(int minor, {String currency = 'USD', bool cents = true}) {
+String formatMoney(int minor, {String currency = 'USD', bool cents = true}) {
   final negative = minor < 0;
   final abs = minor.abs();
   final units = formatCount(cents ? abs ~/ 100 : (abs / 100).round());
@@ -98,5 +98,5 @@ String shortMinor(int minor, {String currency = 'USD'}) {
   if (units.abs() >= 10000) {
     return '$symbol${(units / 1000).toStringAsFixed(1)}K';
   }
-  return formatMinor(minor, currency: currency, cents: false);
+  return formatMoney(minor, currency: currency, cents: false);
 }

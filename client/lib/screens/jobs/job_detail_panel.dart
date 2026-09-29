@@ -679,7 +679,7 @@ class _MoneyCard extends StatelessWidget {
     final late = money.overdue(today);
     final lines = money.lines;
     final tax = money.total - money.subtotal;
-    String amount(int minor) => formatMinor(minor, currency: money.currency);
+    String amount(int minor) => formatMoney(minor, currency: money.currency);
 
     Widget figure(String label, String value, {Tone? tone}) => Expanded(
       child: Container(

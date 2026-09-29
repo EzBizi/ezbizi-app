@@ -17,7 +17,9 @@ import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
+import 'jobs/estimates_tab.dart';
 import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_where.dart';
@@ -67,6 +69,18 @@ class _JobsScreenState extends State<JobsScreen> {
   Map<String, Map<String, int>> _moneyTotals = const {};
 
   bool get _seesMoney => widget.session.me?.can('jobs.financials') ?? false;
+
+  /// Jobs or Estimates (queue 32). Estimates are money: their own permission
+  /// and the Financials toggle, and without both there is no bar at all.
+  int _tab = 0;
+
+  /// Estimates is built on its first open, so it fetches nothing before
+  /// anyone looks, and then kept, as the Jobs tab is.
+  bool _estimatesOpened = false;
+
+  bool get _seesEstimates =>
+      _seesMoney && (widget.session.me?.can('estimates.view') ?? false);
+
   // Discovered from the rows themselves rather than fetched, because every
   // job already carries its role (Task 5) and a catalogue call would only
   // duplicate data already on the page. Accumulated across loads: narrowing
@@ -279,6 +293,50 @@ class _JobsScreenState extends State<JobsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_seesEstimates) return _jobsTab(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            labels: const [
+              ('Jobs', Icons.construction_outlined),
+              ('Estimates', Icons.request_quote_outlined),
+            ],
+            selected: _tab,
+            onSelected: (tab) => setState(() {
+              _tab = tab;
+              _estimatesOpened |= tab == 1;
+            }),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          // Both tabs stay alive: a look at the estimates must not drop a
+          // docked job's unsaved edits, which the list itself refuses to
+          // switch away from. Offstage rather than IndexedStack, for the
+          // reason automations_screen gives: hidden, a tab leaves the
+          // semantics tree too.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Offstage(offstage: _tab != 0, child: _jobsTab(context)),
+              Offstage(
+                offstage: _tab != 1,
+                child: _estimatesOpened
+                    ? EstimatesTab(api: widget.api, session: widget.session)
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _jobsTab(BuildContext context) {
     final me = widget.session.me!;
 
     // The permission first, because it is the one the button is named after.
@@ -528,7 +586,7 @@ class _JobsScreenState extends State<JobsScreen> {
             children: [
               TextSpan(
                 text: wide
-                    ? formatMinor(minor, currency: currency, cents: false)
+                    ? formatMoney(minor, currency: currency, cents: false)
                     : shortMinor(minor, currency: currency),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -574,9 +632,6 @@ class _JobsScreenState extends State<JobsScreen> {
     return pill == null ? null : StatusPill(pill.$1, tone: pill.$2);
   }
 
-  static String _currencyOf(Map<String, dynamic> job) =>
-      '${(job['amount'] as Map?)?['currency'] ?? job['currency'] ?? 'USD'}';
-
   /// What is still due: red once it is late, a credit as the negative it is.
   Widget _dueCell(BuildContext context, Map<String, dynamic> job) {
     final money = JobMoney.of(job['money']);
@@ -589,7 +644,7 @@ class _JobsScreenState extends State<JobsScreen> {
         : null;
 
     return Text(
-      formatMinor(money.due, currency: _currencyOf(job)),
+      formatMoney(money.due, currency: money.currency),
       style: TextStyle(
         fontWeight: FontWeight.w700,
         color: tone == null ? null : ToneColours.of(context, tone).ink,
@@ -606,9 +661,8 @@ class _JobsScreenState extends State<JobsScreen> {
     final pill = money?.pill(DateTime.now());
     if (money == null || pill == null) return isShared ? shared : null;
 
-    final currency = _currencyOf(job);
     String whole(int minor) =>
-        formatMinor(minor, currency: currency, cents: false);
+        formatMoney(minor, currency: money.currency, cents: false);
     final words = switch (pill.$1) {
       'Paid' => 'Paid',
       'Credit' => '${whole(money.credit)} credit',

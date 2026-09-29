@@ -60,6 +60,7 @@ class SidePanel extends StatefulWidget {
     this.scrollable = true,
     this.docked = false,
     this.onClose,
+    this.onBack,
   });
 
   final String title;
@@ -77,6 +78,11 @@ class SidePanel extends StatefulWidget {
   /// panel [showSidePanel] opens and wrong for a docked one, which has no
   /// route of its own to pop — popping it would close the SCREEN.
   final VoidCallback? onClose;
+
+  /// Drawn in place of a list on a phone: a way back where the close button
+  /// was, so the system Back finds it (see pressInPageBack) and the page reads
+  /// as the list's next page rather than as something laid over it.
+  final VoidCallback? onBack;
 
   /// The panel's footer. Kept out of the body so the primary action stays
   /// visible no matter how far the form scrolls.
@@ -231,6 +237,14 @@ class _SidePanelState extends State<SidePanel> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.onBack != null) ...[
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back',
+                  onPressed: widget.onBack,
+                ),
+                const SizedBox(width: 4),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,14 +263,15 @@ class _SidePanelState extends State<SidePanel> {
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                // Named, because "Close" alone does not say close what when a
-                // panel sits over a page that also has controls.
-                tooltip: 'Close ${widget.title}',
-                onPressed:
-                    widget.onClose ?? () => Navigator.of(context).maybePop(),
-              ),
+              if (widget.onBack == null)
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  // Named, because "Close" alone does not say close what when a
+                  // panel sits over a page that also has controls.
+                  tooltip: 'Close ${widget.title}',
+                  onPressed:
+                      widget.onClose ?? () => Navigator.of(context).maybePop(),
+                ),
             ],
           ),
         ),

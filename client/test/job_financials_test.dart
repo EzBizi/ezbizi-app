@@ -84,7 +84,12 @@ void main() {
   });
 
   testWidgets('a row says its money, red once it is late', (tester) async {
-    await _open(tester, permissions: _money, jobs: _moneyJobs, meta: _moneyMeta);
+    await _open(
+      tester,
+      permissions: _money,
+      jobs: _moneyJobs,
+      meta: _moneyMeta,
+    );
 
     expect(find.text('Partly paid'), findsOneWidget);
     expect(find.text(r'$1,925.00'), findsOneWidget);
@@ -99,6 +104,31 @@ void main() {
     // A credit is the negative it is, in its own tone.
     final credit = tester.widget<Text>(find.text(r'−$45.00'));
     expect(credit.style?.color, ToneColours.of(context, Tone.info).ink);
+  });
+
+  testWidgets("a row's due is in its own money's currency", (tester) async {
+    // 2b34fa36: a row's money says its currency. The row's own `amount`
+    // says none here, so reading the currency from there would print dollars.
+    await _open(
+      tester,
+      permissions: _money,
+      jobs: [
+        {
+          ..._jobs.first,
+          'money': {
+            'total': 120000,
+            'due': 120000,
+            'state': 'unpaid',
+            'due_on': _day(9),
+            'currency': 'CAD',
+          },
+        },
+      ],
+      meta: _moneyMeta,
+    );
+
+    expect(find.text('CAD 1,200.00'), findsOneWidget);
+    expect(find.text(r'$1,200.00'), findsNothing);
   });
 
   testWidgets('without Financials there are no money chips or totals', (
@@ -147,7 +177,9 @@ void main() {
     // First after the status: above the job's own first field.
     expect(
       tester.getTopLeft(card).dy,
-      lessThan(tester.getTopLeft(find.widgetWithText(TextField, 'What is the job')).dy),
+      lessThan(
+        tester.getTopLeft(find.widgetWithText(TextField, 'What is the job')).dy,
+      ),
     );
 
     // The lines fold under it.
@@ -257,14 +289,24 @@ String _day(int offset) =>
 final _moneyJobs = [
   {
     ..._jobs.first,
-    'money': {'total': 385000, 'due': 192500, 'state': 'partial', 'due_on': _day(5)},
+    'money': {
+      'total': 385000,
+      'due': 192500,
+      'state': 'partial',
+      'due_on': _day(5),
+    },
   },
   {
     ..._jobs.first,
     'id': '2',
     'number': 'JOB-2',
     'title': 'Dryer vent cleaning',
-    'money': {'total': 18900, 'due': 18900, 'state': 'unpaid', 'due_on': _day(-8)},
+    'money': {
+      'total': 18900,
+      'due': 18900,
+      'state': 'unpaid',
+      'due_on': _day(-8),
+    },
   },
   {
     ..._jobs.first,
