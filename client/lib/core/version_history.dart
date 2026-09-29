@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Leads: opening a lead shows its newest message, the way a chat does.',
         'Leads: you can see who else has a lead open, and every reply says who sent it.',
+        'Leads and Human Resources: a list you drag wider or narrower stays that way after you leave the tab, and Leads opens with the list at 30 percent of the screen.',
       ],
     ),
     VersionRelease(

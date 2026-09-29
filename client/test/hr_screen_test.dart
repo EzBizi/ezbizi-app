@@ -910,7 +910,8 @@ void main() {
   /// Jose, 2026-09-29: "I want to be able to resize the sidebar here on human
   /// resources".
   testWidgets('the list resizes by its edge, within limits', (tester) async {
-    await _pump(tester, _handler());
+    final kept = <Map<String, dynamic>>[];
+    await _pump(tester, _handler(onPreference: kept.add));
     await _tap(tester, _tab('Records'));
 
     final edge = find.byKey(const ValueKey('hr-list-edge'));
@@ -922,6 +923,8 @@ void main() {
     await tester.drag(edge, const Offset(150, 0));
     await tester.pumpAndSettle();
     expect(list(), greaterThan(400));
+    // Kept where it was left, so leaving the tab does not undo it.
+    expect(kept.last, {'hr.records.list_width': list().round()});
 
     await tester.drag(edge, const Offset(-2000, 0));
     await tester.pumpAndSettle();
@@ -935,12 +938,33 @@ void main() {
       reason: 'Nor can it push the record out.',
     );
 
-    // A double-click puts it back, which also leaves the next test at 300.
+    // A double-click puts it back, and keeps that too.
     await tester.tap(edge);
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(edge);
     await tester.pumpAndSettle();
     expect(list(), 300);
+    expect(kept.last, {'hr.records.list_width': 300});
+  });
+
+  testWidgets('the list opens at the width it was left at', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        me: {
+          ..._me,
+          'preferences': {'hr.records.list_width': 520},
+        },
+      ),
+    );
+    await _tap(tester, _tab('Records'));
+
+    final edge = find.byKey(const ValueKey('hr-list-edge'));
+    expect(
+      tester.getTopLeft(edge).dx -
+          tester.getTopLeft(find.byType(RecordsTab)).dx,
+      520,
+    );
   });
 
   /// What onboarding collected still opens full page, and comes back to the
@@ -1322,6 +1346,7 @@ MockClientHandler _handler({
   // The signed-in person, so a test can hold or lack a key. Defaults to the
   // administrator every other test in this file drives.
   Map<String, Object?> me = _me,
+  void Function(Map<String, dynamic> preferences)? onPreference,
   // A `sent_state` this build has never heard of, for the case where the
   // server is newer than the client reading it.
   String? createdState,
@@ -1332,6 +1357,14 @@ MockClientHandler _handler({
 }) {
   return (request) async {
     final path = request.url.path;
+
+    if (path.endsWith('/me/preferences')) {
+      onPreference?.call(
+        ((jsonDecode(request.body) as Map)['preferences'] as Map)
+            .cast<String, dynamic>(),
+      );
+      return _json({'data': <String, dynamic>{}});
+    }
 
     if (path.endsWith('/me')) return _json({'data': me});
 

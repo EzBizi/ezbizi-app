@@ -108,11 +108,9 @@ class _RecordsTabState extends State<RecordsTab> {
   String? _selected;
 
   /// The list's width, dragged by its edge (Jose, 2026-09-29: "I want to be
-  /// able to resize the sidebar"). Static, so it is where it was left after a
-  /// visit to another module. ponytail: forgotten when the app closes; a
-  /// PreferenceRegistry key, like navigation.width, if that turns out to
-  /// matter.
-  static double _listWidth = 300;
+  /// able to resize the sidebar"), kept as a preference so it is where it
+  /// was left after leaving the tab or closing the app.
+  late double _listWidth = widget.session.me?.hrRecordsListWidth ?? 300;
 
   /// Which onboarding of theirs is being read, full page. Replaces the record
   /// rather than opening beside it: a page of collected answers is not a pane.
@@ -297,7 +295,10 @@ class _RecordsTabState extends State<RecordsTab> {
                     () => _listWidth =
                         _listWidth.clamp(240.0, widest) + d.delta.dx,
                   ),
-                  onDoubleTap: () => setState(() => _listWidth = 300),
+                  onHorizontalDragEnd: (_) => _keepWidth(
+                    _listWidth.clamp(240.0, widest),
+                  ),
+                  onDoubleTap: () => _keepWidth(300),
                   child: const SizedBox(
                     width: 8,
                     child: Center(child: VerticalDivider(width: 1)),
@@ -314,6 +315,11 @@ class _RecordsTabState extends State<RecordsTab> {
             : _record(context, narrow: true);
       },
     );
+  }
+
+  void _keepWidth(double width) {
+    setState(() => _listWidth = width);
+    widget.session.setPreference('hr.records.list_width', width.round());
   }
 
   // ── the list ─────────────────────────────────────────────────────

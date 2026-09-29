@@ -234,6 +234,44 @@ void main() {
     expect(tester.getTopLeft(divider).dx, lessThanOrEqualTo(width - 460));
     expect(tester.takeException(), isNull);
   });
+  /// Jose, 2026-09-29: "resizing the sidebar - chat has no permanence it
+  /// resets after u leave the tab, default should be 30 - 70".
+  testWidgets('the divider starts at 30-70, and a drag is kept', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+
+    final divider = find.byKey(const ValueKey('pane-divider'));
+    final width = tester.getSize(find.byType(LeadsScreen)).width;
+    expect(tester.getTopLeft(divider).dx, closeTo(width * 0.3, 1));
+    expect(_preferences, isEmpty, reason: 'nothing is saved before a drag');
+
+    await tester.drag(divider, const Offset(150, 0));
+    await tester.pumpAndSettle();
+
+    expect(_preferences.single.keys, ['leads.list_percent']);
+    expect(_preferences.single['leads.list_percent'], greaterThan(30));
+  });
+
+  testWidgets('the divider opens where it was last left', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      preferences: {'leads.list_percent': 45},
+    );
+
+    final width = tester.getSize(find.byType(LeadsScreen)).width;
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('pane-divider'))).dx,
+      closeTo(width * 0.45, 1),
+    );
+  });
+
   _triageTests();
 
   // Jose, 2026-09-28: "there is some overflow issues when u put the app on 50%
@@ -1488,6 +1526,7 @@ void _conversationRowTests() {
 
 final _posts = <String>[];
 final _patches = <String, Map<String, dynamic>>{};
+final _preferences = <Map<String, dynamic>>[];
 Map<String, String> _lastListQuery = const {};
 
 Future<void> _pump(
@@ -1510,9 +1549,11 @@ Future<void> _pump(
   Size size = const Size(1200, 900),
   String? initialSource,
   String? initialLeadId,
+  Map<String, dynamic> preferences = const {},
 }) async {
   _posts.clear();
   _patches.clear();
+  _preferences.clear();
   _lastListQuery = const {};
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1627,10 +1668,26 @@ Future<void> _pump(
         );
       }
 
+      if (request.url.path.endsWith('/me/preferences')) {
+        _preferences.add(
+          ((jsonDecode(request.body) as Map)['preferences'] as Map)
+              .cast<String, dynamic>(),
+        );
+        return http.Response(
+          '{"data":{}}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.url.path.endsWith('/me')) {
         return http.Response(
           jsonEncode({
-            'data': {..._me, 'permissions': permissions},
+            'data': {
+              ..._me,
+              'permissions': permissions,
+              'preferences': preferences,
+            },
           }),
           200,
           headers: {'content-type': 'application/json'},

@@ -7,6 +7,7 @@ import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_recording_player.dart';
@@ -72,6 +73,30 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
     await tester.pumpAndSettle();
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+  });
+
+  // The dispatchers, via Jose, 2026-09-29: copy and paste.
+  testWidgets('a message copies in one press', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied = (call.arguments as Map)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+    await tester.tap(find.byKey(const ValueKey('copy-c-in')));
+    await tester.pump();
+
+    expect(copied, 'Is Saturday ok?');
+    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == 'Is Saturday ok?'), findsOneWidget,
+        reason: 'part of a message can be selected too');
   });
 
   // Jose, 2026-09-29: who sent what, and who else has the lead open.
