@@ -682,6 +682,11 @@ abstract final class PersonColours {
     ToneColours(Color(0xFFFFE6D2), Color(0xFF8A3A00)), // orange
     ToneColours(Color(0xFFFDE2DE), Color(0xFF8E2418)), // coral
     ToneColours(Color(0xFFEFE3D8), Color(0xFF5E3B22)), // brown
+    // Two more for tag sets, never for a person (see forSeed): rose is the
+    // nearest this palette comes to Instagram's pink without being the purple
+    // this file rules out, and slate is a colour that belongs to nothing.
+    ToneColours(Color(0xFFFCE4EC), Color(0xFF9A1B4B)), // rose
+    ToneColours(Color(0xFFE6EBF0), Color(0xFF3A4A5A)), // slate
   ];
 
   static const _dark = [
@@ -693,7 +698,13 @@ abstract final class PersonColours {
     ToneColours(Color(0xFF44250C), Color(0xFFFFBE8C)),
     ToneColours(Color(0xFF4A1A15), Color(0xFFFFAA9E)),
     ToneColours(Color(0xFF3A2819), Color(0xFFE3C2A6)),
+    ToneColours(Color(0xFF4A1627), Color(0xFFFFA8C5)),
+    ToneColours(Color(0xFF27313B), Color(0xFFC3CFDB)),
   ];
+
+  /// People get the first eight, so adding a tag hue never moves anybody's
+  /// avatar to a different colour.
+  static const int _people = 8;
 
   /// [seed] is the person's id. A bot is not a person: give it Tone.neutral.
   static ToneColours of(BuildContext context, Object seed) =>
@@ -701,7 +712,7 @@ abstract final class PersonColours {
 
   /// One hue by position, for a set that must not collide (Leads' source
   /// tags, 2026-09-29): 0 blue, 1 teal, 2 green, 3 olive, 4 gold, 5 orange,
-  /// 6 coral, 7 brown.
+  /// 6 coral, 7 brown, 8 rose, 9 slate.
   static ToneColours hue(BuildContext context, int index) =>
       (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[index % _light.length];
 
@@ -714,7 +725,7 @@ abstract final class PersonColours {
     }
     final table = brightness == Brightness.dark ? _dark : _light;
 
-    return table[hash % table.length];
+    return table[hash % _people];
   }
 
   /// Both tables, for the contrast test.
