@@ -190,3 +190,20 @@ What the importer does with it:
 ```
 php artisan worktime:import-a1-tools /path/to/worktime.json --organization=A1-Group --dry-run --per-person
 ```
+
+## Decisions made during the build (deploy desk, 2026-09-29)
+
+The exporter's dry run on prod (counts only; every decrypt succeeded):
+- 79 accounts, which make 76 or 77 people
+- 330 bundle files, 305.6 MB
+- 2,664 time_records (27 open) and 514 day statuses
+- 2 vehicles, 33 Workiz links
+- SSN 8 plaintext / 37 encrypted, bank 9 / 43, EIN 3
+
+Rules:
+- **People already in EzBizi (the 12) keep their EzBizi role and assignments.** The importer skips role and scope for them and never refuses on an unmapped A1 role or a null scope. Eve (A1 `administrator`) and Bar (no A1 company access) are in this set.
+- **The person key is the EzBizi email.** The exporter maps A1 accounts through a crosswalk: email, then phone digits, then exact full name. It matches against `/home/ubuntu/a1-migration/ezbizi-users.json` (0600, 13 users), so the 6 people matched by phone or name land on the right users.
+- **The pair of accounts with different emails (188 and 195)** is merged only if the full names are identical. The email of the account with the latest activity is kept.
+- **161 orphan clock-ins** under 16 retired usernames that no account links to are dropped. They stay in A1's backup.
+- **Extras** (vehicles, Workiz links): Fleet and Workiz read the exporter's provisional shape as it is.
+- **Security:** A1's PII "encryption" used a fallback key committed in the a1_tools repo, so treat A1's encrypted values as readable. EzBizi re-encrypts with its own key. After verification, the desk recommends that Jose purge A1's PII tables and backups.
