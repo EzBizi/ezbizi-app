@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0308',
+      date: '29 Sep 2026',
+      items: [
+        'Notifications: clicking a desktop notification opens what it is about.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0307',
       date: '29 Sep 2026',
       items: [
