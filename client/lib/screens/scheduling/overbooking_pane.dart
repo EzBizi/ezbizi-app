@@ -28,6 +28,10 @@ class _OverbookingPaneState extends State<OverbookingPane> {
   ];
 
   int _days = 30;
+
+  /// One day on its own, picked to fix it (Jose, 2026-09-29); null is the
+  /// span in [_days].
+  String? _date;
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
@@ -52,9 +56,10 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       _error = null;
     });
 
-    final response = await widget.api.get('/scheduling/overbooking', {
-      'days': '$_days',
-    });
+    final response = await widget.api.get(
+      '/scheduling/overbooking',
+      _date == null ? {'days': '$_days'} : {'date': _date!},
+    );
     if (!mounted || ticket != _request) return;
 
     setState(() {
@@ -65,6 +70,23 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       }
       _data = response.body['data'] as Map<String, dynamic>?;
     });
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date == null ? now : DateTime.parse(_date!),
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked == null || !mounted) return;
+    setState(
+      () => _date =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-'
+          '${picked.day.toString().padLeft(2, '0')}',
+    );
+    _load();
   }
 
   static String _day(String ymd) {
@@ -167,20 +189,44 @@ class _OverbookingPaneState extends State<OverbookingPane> {
                       for (final n in _spans)
                         ChoiceChip(
                           label: Text('$n days'),
-                          selected: _days == n,
+                          selected: _date == null && _days == n,
                           onSelected: (_) {
-                            setState(() => _days = n);
+                            setState(() {
+                              _days = n;
+                              _date = null;
+                            });
                             _load();
                           },
                         ),
+                      _date == null
+                          ? ActionChip(
+                              key: const Key('overbooking-pick-date'),
+                              avatar: const Icon(Icons.event, size: 18),
+                              label: const Text('Pick a date'),
+                              onPressed: _pickDate,
+                            )
+                          : InputChip(
+                              key: const Key('overbooking-pick-date'),
+                              avatar: const Icon(Icons.event, size: 18),
+                              label: Text(_day(_date!)),
+                              selected: true,
+                              onPressed: _pickDate,
+                              deleteButtonTooltipMessage: 'Clear the date',
+                              onDeleted: () {
+                                setState(() => _date = null);
+                                _load();
+                              },
+                            ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   if (over.isEmpty)
                     _allClear(
                       theme,
-                      'No overbooked days from today through the next $_days '
-                      'days.',
+                      _date != null
+                          ? 'Nothing is overbooked on ${_day(_date!)}.'
+                          : 'No overbooked days from today through the next '
+                                '$_days days.',
                     )
                   else
                     for (final e in byDate.entries) ...[

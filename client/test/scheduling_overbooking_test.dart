@@ -41,6 +41,31 @@ void main() {
     expect(asked.last.queryParameters['days'], '7');
   });
 
+  /// Jose, 2026-09-29: "pick a date and it shows me the overbooking for that
+  /// specific date so that way i can fix it".
+  testWidgets(
+    'a picked date asks for that one day, and clearing it goes back',
+    (tester) async {
+      final asked = <Uri>[];
+      await _pump(tester, _data, asked);
+
+      await tester.tap(find.byKey(const Key('overbooking-pick-date')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+      expect(asked.last.queryParameters, {'date': today});
+
+      await tester.tap(find.byTooltip('Clear the date'));
+      await tester.pumpAndSettle();
+      expect(asked.last.queryParameters, {'days': '30'});
+    },
+  );
+
   testWidgets('a quiet week says so rather than showing nothing', (
     tester,
   ) async {
