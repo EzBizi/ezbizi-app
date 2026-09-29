@@ -19,6 +19,7 @@ use App\Support\Automations\EventEmitter;
 use App\Services\Leads\CallTranscripts;
 use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
+use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
@@ -301,9 +302,13 @@ class LeadsController extends Controller
             ? $this->customersByNumber(array_map(fn (Lead $l) => $l->phone_digits, $leads->items()))
             : [];
 
+        $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
+
         return response()->json([
             'data' => array_map(fn (Lead $l) => [
                 ...$this->present($l),
+                // Who else has it open right now (Jose, 2026-09-29).
+                'viewers' => $viewers[(string) $l->id] ?? [],
                 'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
@@ -392,6 +397,11 @@ class LeadsController extends Controller
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
         // Customers screen uses for its duplicate warning; advisory only.
+        // Reading the lead says I have it open: the thread re-reads it on its
+        // own timer, so this is the check-in (LeadPresence).
+        LeadPresence::checkIn((string) $lead->id, request()->user());
+        $data['viewers'] = LeadPresence::others([(string) $lead->id], request()->user())[(string) $lead->id] ?? [];
+
         $matches = $this->customerMatches($lead);
         $data['customer_matches'] = $matches
             ->map(fn (Customer $c) => ['id' => $c->id, 'number' => $c->number, 'name' => $c->name, 'phone' => $c->phone])

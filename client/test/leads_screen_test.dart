@@ -306,6 +306,22 @@ void main() {
         reason: 'no two sources share a colour');
   });
 
+  // Jose, 2026-09-29: the list shows who else has a lead open.
+  testWidgets('a lead somebody else has open says who', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        {..._lead('lead-1', 'A'), 'viewers': ['Tanya Ruiz', 'Marco Diaz']},
+        {..._lead('lead-2', 'B'), 'viewers': <String>[]},
+      ],
+      connections: const [],
+    );
+
+    expect(find.byKey(const ValueKey('viewers-lead-1')), findsOneWidget);
+    expect(find.text('Tanya Ruiz +1'), findsOneWidget);
+    expect(find.byKey(const ValueKey('viewers-lead-2')), findsNothing);
+  });
+
   // Jose, 2026-09-28: a customer left waiting is marked red on the list.
   testWidgets('a lead waiting too long for a reply wears a red warning', (
     tester,

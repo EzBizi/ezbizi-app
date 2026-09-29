@@ -1378,6 +1378,32 @@ class _LeadsScreenState extends State<LeadsScreen> {
                               lead['status'],
                               key: ValueKey('status-pill-$id'),
                             ),
+                          // Somebody else has it open right now.
+                          if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
+                            Tooltip(
+                              message: '${(lead['viewers'] as List).join(', ')} '
+                                  'viewing this lead',
+                              child: Row(
+                                key: ValueKey('viewers-$id'),
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    size: 15,
+                                    color: ToneColours.of(context, Tone.caution).ink,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${(lead['viewers'] as List).first}'
+                                    '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: ToneColours.of(context, Tone.caution).ink,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           // This number is already a customer.
                           if (lead['customer'] is Map) ...[
                             _Badge(

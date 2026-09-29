@@ -201,6 +201,33 @@ class LeadsApiTest extends TestCase
         $this->assertNull($first['reaction']);
     }
 
+    /**
+     * Who else has a lead open (Jose, 2026-09-29): opening it checks in, the
+     * others see the name - on the list and on the lead - and nobody sees
+     * themselves. A check-in lasts 45 seconds.
+     */
+    public function test_somebody_else_with_the_lead_open_is_named(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $lead = $this->lead($t);
+        $other = $this->userWithRole($t, 'Dispatcher', ['leads.view', 'leads.local_services.view']);
+
+        $this->signedInAs($other)->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk();
+
+        $this->signedInAs($t['admin']);
+        $this->assertSame([$other->name], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+        $this->assertSame([$other->name], $this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data.viewers'));
+
+        // The dispatcher sees the admin now, never themselves.
+        $this->signedInAs($other);
+        $this->assertSame([$t['admin']->name], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+
+        // Past its 45 seconds, a check-in no longer counts - well inside the
+        // cache's own lifetime, so it is the rule doing this, not expiry.
+        $this->travel(50)->seconds();
+        $this->assertSame([], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+    }
+
     public function test_a_lead_is_listed_for_somebody_who_may_see_it(): void
     {
         $t = $this->provisionTenant('A1-Group');
