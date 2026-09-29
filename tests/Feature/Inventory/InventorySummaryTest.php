@@ -164,6 +164,34 @@ class InventorySummaryTest extends TestCase
         $this->assertSame(500, $counts['stock_value_minor']);
     }
 
+    /** 1.5 on hand at 2.50 is 3.75 — the quantity is rounded, never truncated to 1. */
+    public function test_stock_value_rounds_fractional_on_hand_not_truncated_qty(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $location = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+                'last_cost_minor' => 250,
+            ]);
+            InventoryBalance::create([
+                'organization_id' => $tenant['org']->id,
+                'item_id' => $item->id,
+                'location_id' => $location->id,
+                'qty_on_hand' => '1.500',
+            ]);
+        });
+
+        $this->assertSame(375, $this->countsFor($admin)['stock_value_minor']);
+    }
+
     /** @return array<string, int> */
     private function countsFor(User $user): array
     {

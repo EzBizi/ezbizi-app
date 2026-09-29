@@ -11,7 +11,6 @@ use App\Support\Dashboard\Widgets\Hr\Headcount;
 use App\Support\Dashboard\Widgets\Hr\InvitationsStalled;
 use App\Support\Dashboard\Widgets\Hr\OnboardingsInFlight;
 use App\Support\Dashboard\Widgets\Hr\StartersAndLeavers;
-use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Dashboard\Widgets\UpcomingJobs;
 
 /**
@@ -27,7 +26,6 @@ class WidgetRegistry
     private const WIDGETS = [
         JobsByStatus::class,
         UpcomingJobs::class,
-        Revenue::class,
         CustomersAdded::class,
         AutomationHealth::class,
 
@@ -77,7 +75,6 @@ class WidgetRegistry
     private const ON_BY_DEFAULT = [
         JobsByStatus::class,
         UpcomingJobs::class,
-        Revenue::class,
         CustomersAdded::class,
         AutomationHealth::class,
     ];

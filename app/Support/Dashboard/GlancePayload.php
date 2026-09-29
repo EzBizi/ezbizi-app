@@ -17,11 +17,11 @@ final class GlancePayload
      * It asks whether this box is a STATEMENT or a READING. It is not a
      * sentence count and it is not a hint.
      *
-     *   true   the client draws NO chart and NO money lines, whatever the
+     *   true   the client draws NO chart, whatever the
      *          payload carries, and sets every sentence in the muted note
      *          style. With no sentence at all it writes "Nothing to show."
      *   false  a chart when there is something to plot, every sentence as
-     *          ordinary text, and a line for every money list.
+     *          ordinary text.
      *
      * **Both render every sentence.** They did not until 2026-09-11: the
      * `true` branch drew the FIRST one and silently discarded the rest. That
@@ -49,11 +49,11 @@ final class GlancePayload
      *
      * ── A decision already taken, so the next person does not retake it ──
      *
-     * This one boolean gates FOUR unrelated things: the chart, the money
-     * lines, the sentence styling and the fallback. Two traps in two days, in
-     * opposite directions, is not bad luck with a flag — it is what happens
-     * when four decisions read one key. Every one of the four is a legitimate
-     * reason to set it, and setting it for one hands you the other three
+     * This one boolean gates THREE unrelated things (four until the money
+     * lines left, 2026-09-29): the chart, the sentence styling and the
+     * fallback. Two traps in two days, in opposite directions, is not bad
+     * luck with a flag — it is what happens when several decisions read one key. Every one of the four is a legitimate
+     * reason to set it, and setting it for one hands you the others
      * whether you considered them or not. Email wanted "no chart" and would
      * have accepted "muted" without noticing they had chosen it.
      *
@@ -83,7 +83,12 @@ final class GlancePayload
      *   slices           pie and bar, drawn when one total is above zero
      *   series           line and timeline, each with `points`
      *   status_choices   the Jobs earned-status chips
-     *   any list of {amount_minor, currency}   drawn as money, under ANY key
+     *
+     * NO MONEY, under any key (Jose, 2026-09-29: "do not show any financial
+     * info on the dashboard widgets" — a dispatcher who can open Jobs sees
+     * the Jobs box). The client draws none, and
+     * `DashboardTest::test_no_glance_sends_money_to_the_dashboard` fails if
+     * any glance sends an amount. Money belongs in its module's tab, gated.
      *
      * ── DECIDED 2026-09-15: do not send what nothing draws ──────────
      *
