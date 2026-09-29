@@ -40,6 +40,10 @@ class TranscribeLeadCallsTest extends TestCase
             'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
             'services.google_ads.client_secret' => 'secret',
             'services.google_ads.developer_token' => 'dev-token',
+            // The app box HAS Whisper (/opt/whisper), and the gate runs there:
+            // off unless a test turns it on, or every Google-path test here
+            // quietly takes the local path instead (0.0.0307's gate).
+            'services.whisper.python' => '',
         ]);
 
         Http::fake([
