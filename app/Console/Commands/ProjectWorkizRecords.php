@@ -299,12 +299,15 @@ class ProjectWorkizRecords extends Command
                     'owning_franchise_id' => $franchise->getKey(),
                     'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
                     'name' => $client->name ?: ($client->company ?: 'Workiz client '.$client->client_id),
-                    'email' => $client->email,
+                    // A placeholder typed to satisfy a required box ("no@gmail.com",
+                    // a relay line on dozens of strangers) is nobody's contact:
+                    // Customers' lists, so one never becomes an address or a number.
+                    'email' => Customer::realEmail($client->email),
                     // Workiz sends bare digits and this column holds E.164 --
                     // the API, the database and Twilio all key on it, so a bare
                     // ten is the wrong value for calling somebody, not just an
                     // unformatted one. See PhoneE164 for the production census.
-                    'phone' => PhoneE164::from($client->phone),
+                    'phone' => Customer::realPhone(PhoneE164::from($client->phone)),
                     'address_line1' => $client->address,
                     'address_line2' => $client->unit,
                     'city' => $client->city,

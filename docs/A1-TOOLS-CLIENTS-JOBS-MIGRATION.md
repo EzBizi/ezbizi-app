@@ -92,3 +92,97 @@ Jobs builds Phase 1:
 - the A1 estimates import, after the clients import
 
 A1's 1,488 CSV invoices are skipped, because they would double-count the backfilled jobs' money.
+
+## Clients importer (`customers:import-a1-tools`): the file it reads
+
+Written by Workiz, 2026-09-29. It is for the Dismantler, who writes the file, and for the desk, who runs it. A key the importer does not know refuses the whole run before anything is written.
+
+### The file
+
+One UTF-8 JSON file. It goes to a staging directory like the people bundle's: owned by www-data, 0700, and deleted once the import is verified.
+
+```json
+{
+  "format": "ezbizi.a1-clients/1",
+  "exported_at": "2026-09-30T14:00:00Z",
+  "organization": "A1-Group",
+  "clients": [
+    {
+      "a1_id": 18234,
+      "franchise": "NJ",
+      "workiz": [{ "franchise": "NJ", "client_id": 4512 }],
+      "first_name": "Ann", "last_name": "Lee",
+      "display_name": null, "company_name": null,
+      "email": "ann@example.com",
+      "phone": "(201) 555-0100", "phone_secondary": null,
+      "address_line1": "12 Oak St", "address_line2": null,
+      "city": "Hoboken", "state": "NJ", "zip": "07030",
+      "notes": null,
+      "client_since": "2025-10-14"
+    }
+  ]
+}
+```
+
+Rules for the exporter:
+
+- **Export every client, the matched ones too.** Leave out only the 151 test rows.
+  - The importer decides who is already in EzBizi, against the live database at run time.
+  - The ~5,855 matched rows are how the desk checks the counts against the inventory.
+- **`a1_id`** is `crm_clients.id`, unique. It is not stored on the customer. The manifest keeps it (below).
+- **`franchise`** is required. It is an A1 code from HR's table: CT, GA, IL, NJ, OH, TX, DMV, NY or Nationwide.
+  - A CSV row takes the branch of its file, and Full.csv becomes `Nationwide`.
+  - Any other row takes A1's franchise link, or else the franchise of its A1 jobs.
+  - A row with neither cannot be placed. Leave it out and report the count. A null refuses the run.
+- **`workiz`** lists every Workiz key the row is known by: a franchise code plus the Workiz client number, as an integer.
+  - A CSV row: its `workiz:<n>` tag, with the branch of its `import:<file>` tag. There are several when A1 merged rows across files.
+  - A sync row: the location and ClientId in its A1 jobs' payloads.
+  - `[]` when there are none.
+- **Text is a string or null.**
+  - Null, not a placeholder: NA, N/A, none, `-` and empty all become null.
+  - Numbers go as strings, because a zip sent as a number loses its leading 0.
+- **Emails and phones go as A1 holds them.** The importer blanks placeholders itself, using `Customer::PLACEHOLDER_EMAILS` and `PLACEHOLDER_PHONES`, so the list lives in one place.
+- **`client_since`** is A1's `created_at` as `YYYY-MM-DD`. On CSV rows that is Workiz's own client date. It goes into `customers.customer_since`, the column Customers added for it.
+- **`notes`** is A1's `notes`, unchanged.
+
+### What the importer does
+
+- **It checks the whole file first.** Any of these refuses the run, and nothing is written:
+  - an unknown key or a franchise code it does not know
+  - a repeated `a1_id` or a bad date
+  - a value longer than its column
+- **It gives each row one outcome, checked in this order:**
+  1. `workiz`: one of the row's keys is already in `workiz_clients`. Matched.
+  2. `phone`: a live customer has the same phone **and** the same name, ignoring case and spacing. Matched.
+     - Phone alone is not a match. A1's own import already merged rows with the same phone and first name, so every same-phone group left is different people (inventory D).
+     - Matching on phone alone would skip about 290 of them.
+  3. `duplicate`: an earlier row in the file created the same key, or the same phone and name. The two become one customer.
+  4. Otherwise, created.
+- **A matched customer is never written to**, not even a blank field.
+  - A phone match registers no key, because merging automatically on phone is refused.
+  - Nothing is enriched. The matched rows' second phones and company names sit on Workiz clients whose payloads EzBizi already mirrors.
+- **A created customer is built like this:**
+  - Name: first + last; else the display name; else the company; else "A1 Tools client <a1_id>".
+  - Email and phone are blanked when they are placeholders. The state goes through StateCode. The owning franchise comes from `franchise`.
+  - Notes, one line for each value that is present:
+
+    ```
+    From A1 Tools, Workiz client #4512 (New Jersey).
+    Company: …
+    Second phone: …
+    <A1's notes>
+    ```
+
+  - It gets one `workiz_clients` row per key, in the same transaction. The projection then attaches the client's next Workiz job to this customer instead of creating a second one.
+- **It runs under the Workiz projection's lock.** `--wait` sets how long to wait for a pass already running; the default is 120 s. The rows are matched again under the lock.
+- **It raises no automation event.** It writes one `customer.imported` audit row per run, with `source: a1tools`, the counts and the manifest path.
+- **It writes a manifest.**
+  - Path: `storage/app/private/a1-imports/clients-<time>.jsonl`, one line per row, written as each row lands: `{"a1_id", "status", "customer_id", "workiz_client_ids"}`.
+  - The `created` lines are the exact list a rollback needs.
+  - Every line maps an A1 client to its EzBizi customer. The A1 estimates import needs that map. Keep the file.
+- **It prints counts only:** each outcome, the created customers per franchise, and the placeholders blanked. No name, phone or email.
+- **Running it twice creates no second copy of any row with a key, or with a phone and a name.** Only a row that has none of these would be created again.
+
+```
+php8.4 -d memory_limit=1G artisan customers:import-a1-tools /path/to/clients.json --dry-run
+```

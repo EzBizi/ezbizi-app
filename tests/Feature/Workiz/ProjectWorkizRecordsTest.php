@@ -1231,4 +1231,21 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->artisan('ezbizi:project-workiz')->assertSuccessful();
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Job::query()->count()));
     }
+
+    /**
+     * Workiz required an email and a phone, so dispatch typed placeholders. As
+     * a customer's contact they reach a stranger: Customers' lists, applied at
+     * the one place a Workiz client becomes a customer.
+     */
+    public function test_a_placeholder_email_or_phone_never_reaches_the_customer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->mirror($tenant, [], ['Email' => ' NM@gmail.com', 'Phone' => '8187482055']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $customer = $this->inTenant($tenant['org'], fn () => Customer::query()->sole());
+        $this->assertNull($customer->email);
+        $this->assertNull($customer->phone);
+    }
 }
