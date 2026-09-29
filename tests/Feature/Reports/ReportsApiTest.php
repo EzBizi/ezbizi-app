@@ -218,6 +218,103 @@ class ReportsApiTest extends TestCase
         $this->assertArrayNotHasKey('users', $body, 'hr.view was not granted');
     }
 
+    // ── money needs jobs.financials (Jose, 2026-09-29) ─────────────
+
+    /**
+     * A SAVED REPORT WITH A JOB AMOUNT IS REFUSED TO WHOEVER LACKS FINANCIALS.
+     *
+     * The author (an administrator) holds every permission; the person
+     * running it holds jobs.view and not jobs.financials. Before this the run
+     * printed every amount - the one way out Jobs' toggle had left, since the
+     * export already drops the same columns.
+     *
+     * Both halves in one test: the SAME report, the SAME runner, granted
+     * financials, runs - so the refusal is about the money and nothing else.
+     */
+    public function test_a_job_amount_needs_the_financials_permission_to_run(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, ['title' => 'Sweep']);
+
+        $report = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports', [
+                'company_id' => $tenant['company']->id,
+                'name' => 'Takings',
+                'definition' => [
+                    'root' => 'jobs',
+                    'columns' => [
+                        ['resource' => 'jobs', 'column' => 'title'],
+                        ['resource' => 'jobs', 'column' => 'amount_minor'],
+                    ],
+                    'filters' => [],
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $without = $this->userWithRole($tenant, 'Runner', ['reports.view', 'reports.library.view', 'jobs.view']);
+
+        $this->signedInAs($without)
+            ->postJson('/api/v1/reports/'.$report['id'].'/run')
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.definition.0', "'Amount' needs the jobs.financials permission, which you do not have.");
+
+        $with = $this->userWithRole($tenant, 'Bookkeeper', [
+            'reports.view', 'reports.library.view', 'jobs.view', 'jobs.financials',
+        ]);
+
+        $this->signedInAs($with)
+            ->postJson('/api/v1/reports/'.$report['id'].'/run')
+            ->assertOk()
+            ->assertJsonPath('data.count', 1);
+    }
+
+    /** Filtering on the amount reads it too, so it is refused the same way. */
+    public function test_filtering_on_a_job_amount_needs_financials_too(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $report = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports', [
+                'company_id' => $tenant['company']->id,
+                'name' => 'Big jobs',
+                'definition' => [
+                    'root' => 'jobs',
+                    'columns' => [['resource' => 'jobs', 'column' => 'title']],
+                    'filters' => [['resource' => 'jobs', 'column' => 'amount_minor', 'op' => 'gt', 'value' => 500000]],
+                ],
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $without = $this->userWithRole($tenant, 'Runner', ['reports.view', 'reports.library.view', 'jobs.view']);
+
+        $this->signedInAs($without)
+            ->postJson('/api/v1/reports/'.$report['id'].'/run')
+            ->assertUnprocessable();
+    }
+
+    /** The picker does not offer what the run would refuse. */
+    public function test_the_field_list_offers_job_money_only_with_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $plain = $this->userWithRole($tenant, 'Builder', ['reports.view', 'reports.builder.view', 'jobs.view']);
+        $money = $this->userWithRole($tenant, 'Money', ['reports.view', 'reports.builder.view', 'jobs.view', 'jobs.financials']);
+
+        $columns = fn ($user) => array_keys($this->signedInAs($user)
+            ->getJson('/api/v1/reports/fields')
+            ->assertOk()
+            ->json('data.jobs.columns'));
+
+        $this->assertNotContains('amount_minor', $columns($plain));
+        $this->assertNotContains('currency', $columns($plain));
+        $this->assertContains('title', $columns($plain));
+
+        $this->assertContains('amount_minor', $columns($money));
+        $this->assertContains('currency', $columns($money));
+    }
+
     public function test_building_is_refused_without_the_build_permission(): void
     {
         $tenant = $this->provisionTenant('Alpha');

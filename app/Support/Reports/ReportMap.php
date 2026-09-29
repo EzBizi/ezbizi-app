@@ -147,8 +147,11 @@ final class ReportMap
                     'scheduled_for' => ['label' => 'Scheduled', 'type' => 'datetime'],
                     'earned_at' => ['label' => 'Earned',    'type' => 'datetime'],
                     'duration_minutes' => ['label' => 'Minutes',   'type' => 'integer'],
-                    'amount_minor' => ['label' => 'Amount',    'type' => 'money'],
-                    'currency' => ['label' => 'Currency',  'type' => 'string'],
+                    // Money needs jobs.financials (Jose, 2026-09-29: "a
+                    // financials toggle"), the same two columns the export
+                    // drops - ResourceMap's `money` entry for jobs.
+                    'amount_minor' => ['label' => 'Amount',    'type' => 'money', 'permission' => 'jobs.financials'],
+                    'currency' => ['label' => 'Currency',  'type' => 'string', 'permission' => 'jobs.financials'],
                     'created_at' => ['label' => 'Created',   'type' => 'datetime'],
                 ],
                 'relations' => [

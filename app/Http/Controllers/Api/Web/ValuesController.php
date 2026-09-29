@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Support\Web\Hours\WebsiteHours;
+use App\Support\Web\Hours\WeekEdit;
+use App\Support\Web\HoursWeek;
 use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\SiteRefresh;
@@ -57,6 +60,8 @@ class ValuesController extends Controller
             'path' => ['sometimes', 'string', 'max:191'],
             'values' => ['required', 'array'],
             'values.*' => ['nullable', 'string', 'max:2000'],
+            // The zone `values.hours` was typed in; converted into the site's own.
+            'hours_timezone' => ['nullable', 'timezone:all'],
         ]);
 
         /*
@@ -120,6 +125,16 @@ class ValuesController extends Controller
             ], 422);
         }
 
+        if (($input['hours_timezone'] ?? null) !== null && trim((string) ($input['values']['hours'] ?? '')) !== '') {
+            $converted = $this->convertHours($site, $input);
+
+            if (is_string($converted)) {
+                $input['values']['hours'] = $converted;
+            } else {
+                return $converted;
+            }
+        }
+
         DB::transaction(function () use ($site, $path, $input): void {
             foreach ($input['values'] as $key => $value) {
                 $value = is_string($value) ? trim($value) : null;
@@ -150,6 +165,41 @@ class ValuesController extends Controller
         return response()->json([
             'data' => $this->editorPayload($site),
         ]);
+    }
+
+    /**
+     * The hours as typed in another zone, as this site's own wall clock.
+     *
+     * The bulk editor's conversion (WeekEdit), for one site: Rodrigo asked for
+     * the same "Convert hours from" on a single site's hours.
+     */
+    private function convertHours(WebSite $site, array $input): string|JsonResponse
+    {
+        $week = HoursWeek::parse(trim($input['values']['hours']));
+        $zone = trim((string) ($input['values']['timezone'] ?? (new WebsiteHours)->effective($site, 'timezone')));
+
+        if ($week === null) {
+            return response()->json(['message' => 'Only hours set day by day can be converted.'], 422);
+        }
+
+        if ($zone === '') {
+            return response()->json(['message' => 'This site has no time zone, so its hours cannot be converted. Set its time zone first.'], 422);
+        }
+
+        $plan = WeekEdit::plan(
+            null,
+            array_map(fn (array $d) => $d['closed']
+                ? ['action' => WeekEdit::CLOSED, 'open' => null, 'close' => null]
+                : ['action' => WeekEdit::SET, 'open' => $d['open'], 'close' => $d['close']], $week),
+            $zone,
+            $input['hours_timezone'],
+            null,
+            now()->toDateTimeImmutable(),
+        );
+
+        return $plan['week'] === null
+            ? response()->json(['message' => implode(' ', $plan['reasons'])], 422)
+            : HoursWeek::format($plan['week']);
     }
 
     /**

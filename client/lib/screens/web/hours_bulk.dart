@@ -87,7 +87,7 @@ const _dayNames = [
 
 /// ponytail: the US zones, which is every tenant today. Read the settings
 /// registry's timezone options instead when a tenant outside the US appears.
-const _zones = <(String, String)>[
+const hourZones = <(String, String)>[
   ('America/New_York', 'Eastern Time (ET)'),
   ('America/Chicago', 'Central Time (CT)'),
   ('America/Denver', 'Mountain Time (MT)'),
@@ -850,7 +850,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
                 value: null,
                 label: 'No — each website\'s own time',
               ),
-              for (final (id, label) in _zones)
+              for (final (id, label) in hourZones)
                 SearchOption<String?>(value: id, label: label),
             ],
             onChanged: (zone) => setState(() => _zone = zone),

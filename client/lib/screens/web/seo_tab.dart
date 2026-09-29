@@ -829,6 +829,9 @@ class _SiteDetailState extends State<_SiteDetail> {
   String? _error;
   String? _saved;
 
+  /// The zone the hours were typed in, when not the site's own (Rodrigo).
+  String? _hoursZone;
+
   /// null, 'rotate' or 'remove' — the inline confirm row standing in for the
   /// dialog §6 forbids.
   String? _confirming;
@@ -908,8 +911,16 @@ class _SiteDetailState extends State<_SiteDetail> {
       _inherited = _asMap(data['inherited'])
           .map((k, v) => MapEntry(k, (v as String?) ?? ''));
 
+      /*
+       * Page fields and templates belong to the Pages and Templates screens.
+       * Holding them here sent every page's text back as SITE-WIDE on Save,
+       * which the server refuses, so on a site with page text (every one the
+       * A1 swap filled) this Save could never succeed — Rodrigo, 2026-09-29.
+       */
       _fields = (data['fields'] as List<dynamic>? ?? const [])
-          .cast<Map<String, dynamic>>();
+          .cast<Map<String, dynamic>>()
+          .where((f) => f['section'] != 'page' && f['section'] != 'template')
+          .toList();
 
       for (final field in _fields) {
         final key = field['key'] as String;
@@ -943,13 +954,20 @@ class _SiteDetailState extends State<_SiteDetail> {
       'values': {
         for (final entry in _controllers.entries) entry.key: entry.value.text,
       },
+      'hours_timezone': ?_hoursZone,
     });
 
     if (!mounted) return;
 
     setState(() {
       if (response.ok) {
-        _saved = 'Saved. Websites pick this up within a few minutes.';
+        _saved = 'Saved. The website shows it within a few seconds.';
+        if (_hoursZone != null) {
+          // Now in the site's own time: show what was stored, and stop converting.
+          final values = _asMap(_asMap(response.body['data'])['values']);
+          _controllers['hours']?.text = (values['hours'] as String?) ?? '';
+          _hoursZone = null;
+        }
       } else {
         _error = firstApiError(response);
       }
@@ -1160,6 +1178,32 @@ class _SiteDetailState extends State<_SiteDetail> {
                 inherited: _inherited['hours'] ?? '',
                 inheritedFrom: _primaryHost,
               ),
+              if (widget.canEdit)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 320),
+                    child: SearchPickerField<String?>(
+                      key: const Key('seo-hours-zone'),
+                      value: _hoursZone,
+                      label: 'Convert hours from',
+                      helperText: _hoursZone == null
+                          ? "The hours above are in this website's own time."
+                          : 'The hours above are in this zone; Save converts '
+                                "them into this website's time.",
+                      helperMaxLines: 3,
+                      options: [
+                        const SearchOption<String?>(
+                          value: null,
+                          label: "No — this website's own time",
+                        ),
+                        for (final (id, label) in hourZones)
+                          SearchOption<String?>(value: id, label: label),
+                      ],
+                      onChanged: (zone) => setState(() => _hoursZone = zone),
+                    ),
+                  ),
+                ),
               if (widget.onBulkHours != null)
                 Align(
                   alignment: AlignmentDirectional.centerStart,

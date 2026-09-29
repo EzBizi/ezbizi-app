@@ -1,0 +1,408 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jobs · money on the list and the job</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. Billed, paid, due,
+   and the paid, partly paid and credit counts are production's (Jobs, 2026-09-29); overdue, the
+   status counts, customers, jobs and lines are invented. Money is Workiz's and read only, and
+   appears only for a role with the Financials toggle. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:760px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex}
+.lst{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:10px 20px 8px;display:flex;align-items:flex-end;gap:12px}
+.mh .t{font-size:21px;font-weight:800;line-height:1.1}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 8px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--ink)}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{color:var(--muted);font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.d-neu{background:#7b8791}.d-info{background:#1f8fb5}.d-warn{background:#c98a00}.d-ok{background:#2e9a4f}.d-bad{background:#c63d3d}.d-rev{background:#6b7c8a}
+.filters{display:flex;gap:10px;padding:0 20px 10px;align-items:center;flex-wrap:wrap}
+.fld{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:34px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;overflow:hidden}
+.fld .v{color:var(--ink);font-weight:600}
+.seg{display:inline-flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden;height:32px}
+.seg span{padding:0 11px;display:flex;align-items:center;font-size:12px;font-weight:600;color:#33404a;border-right:1px solid #93aab3;background:var(--paper);white-space:nowrap}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)}
+.p-bad{background:var(--badc);color:var(--bad)}
+.tbl{flex:1;min-height:0;overflow:hidden;background:var(--paper);border-top:1px solid var(--line)}
+.gh{padding:7px 20px;font-size:11.5px;font-weight:800;color:var(--neu);background:#f7f9fa;border-bottom:1px solid var(--line2);display:flex;gap:10px}
+.gh .c{color:var(--muted);font-weight:500}
+.tr{display:grid;align-items:center;padding:0 20px;height:42px;border-bottom:1px solid var(--line2);font-size:12.5px;gap:10px}
+.tr.hd{height:30px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tr.sel{background:#e8f4f8}
+.tr .num{color:var(--muted)}
+.tr .ti{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .r{text-align:right;white-space:nowrap}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)}
+.b{font-weight:700}
+.red{color:var(--bad)} .grn{color:var(--ok)} .blu{color:var(--info)}
+
+/* the docked panel */
+.pan{width:430px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.pan .ph{padding:14px 18px 10px;border-bottom:1px solid var(--line2)}
+.pan .ph .t{font-size:16px;font-weight:800}
+.pan .ph .s{font-size:11.5px;color:var(--muted)}
+.pan .pb{flex:1;min-height:0;overflow:hidden;padding:12px 18px;display:flex;flex-direction:column;gap:10px}
+.pan .pf{padding:10px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.in{border:1px solid var(--line);border-radius:var(--r);padding:6px 11px;position:relative}
+.in .l{font-size:10.5px;font-weight:700;color:var(--muted)}
+.in .v{font-size:12.5px}
+.sec{border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+.sec .h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13.5px;margin-bottom:8px}
+.src{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.card{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fbfdfe}
+.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fig{border-radius:10px;padding:8px 10px;background:var(--paper);border:1px solid var(--line2)}
+.fig .k{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.fig .v{font-size:17px;font-weight:800;margin-top:1px}
+.bar{height:8px;border-radius:99px;background:var(--neuc);overflow:hidden;margin:10px 0 6px}
+.bar i{display:block;height:100%;background:#2e9a4f;border-radius:99px}
+.lines .ln{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12px}
+.lines .ln .g{flex:1;min-width:0}
+.lines .ln .g .d{font-size:11px;color:var(--muted)}
+.lines .ln .a{white-space:nowrap;text-align:right}
+.tot{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
+.tot.big{font-size:14px;font-weight:800;border-top:1px solid var(--line);margin-top:4px;padding-top:7px}
+.fold{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;font-weight:700;font-size:12.5px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 20px 10px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 14px;height:74px}
+.tile .k{font-size:11px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:6px}
+.tile .v{font-size:20px;font-weight:800;margin-top:3px}
+.tile .c{font-size:11px;color:var(--muted)}
+.tile.on{background:var(--pric);border-color:#a9d3e1}
+.sum{display:flex;gap:18px;align-items:center;padding:8px 20px;font-size:12.5px;background:var(--paper);border-top:1px solid var(--line)}
+.sum b{font-size:13.5px}
+
+/* phones */
+.pair{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.phn{width:360px;height:760px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;background:var(--paper);flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.ab .t{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:8px 12px;flex:0 0 auto}
+.jt{padding:10px 14px;border-bottom:1px solid var(--line2)}
+.jt .l1{display:flex;gap:8px;align-items:center}
+.jt .l1 .ti{font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jt .l2{display:flex;gap:6px;align-items:center;margin-top:3px;font-size:11.5px;color:var(--muted)}
+.mstrip{display:flex;gap:0;margin:0 12px 8px;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:0 0 auto}
+.mstrip span{flex:1;padding:7px 8px;border-right:1px solid var(--line2);font-size:10.5px;color:var(--muted);font-weight:700}
+.mstrip span:last-child{border-right:0}
+.mstrip span b{display:block;font-size:14px;color:var(--ink)}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.pscr{flex:1;min-height:0;overflow:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
+</style>
+
+<div class="wrap">
+<h1>Jobs · money on the list and the job</h1>
+<p class="sub">The Jobs session's ask, 2026-09-29, under Jose's rulings: money is a <b>Financials</b> toggle on the role, and Workiz stays the truth, shown live and read only.</p>
+<p class="cap">Each option shows the list's money filter and totals with the job panel's money together; a list from one and a panel from another combine fine. Everything money here disappears for a role without the toggle.</p>
+
+<!-- ═════════════════ 1 ═════════════════ -->
+<h2><span class="n">1</span>Money chips, and three figures on the job <span class="rec">Recommended</span></h2>
+<p class="cap">A second row of chips, the money states with their counts, beside the status chips it narrows with; one line of totals over the table. On the job, the money is first after the status: paid, due, and a bar between them, with the lines folded under.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="lst">
+   <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ Add job</span></div>
+   <div class="chips"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted <span class="c">412</span></span><span class="chip"><span class="dot d-warn"></span>Pending <span class="c">318</span></span><span class="chip"><span class="dot d-info"></span>In progress <span class="c">96</span></span><span class="chip"><span class="dot d-ok"></span>Done <span class="c">7,410</span></span><span class="chip"><span class="dot d-bad"></span>Canceled <span class="c">316</span></span></div>
+   <div class="chips"><span class="tiny b" style="align-self:center;margin-right:2px">MONEY</span><span class="chip on">Any</span><span class="chip">Unpaid <span class="c">198</span></span><span class="chip">Partly paid <span class="c">227</span></span><span class="chip"><span class="dot d-bad"></span>Overdue <span class="c">131</span></span><span class="chip"><span class="dot d-ok"></span>Paid <span class="c">2,593</span></span><span class="chip"><span class="dot d-info"></span>Credit <span class="c">102</span></span></div>
+   <div class="filters"><div class="fld" style="width:260px">🔍 Job number, title or customer</div><div class="fld" style="width:160px"><span class="v">Every franchise</span></div><span class="seg"><span>Upcoming</span><span>Past</span><span class="on">All</span></span></div>
+   <div class="sum"><span>Billed <b>$5,089,246</b></span><span>Paid <b class="grn">$4,370,740</b></span><span>Due <b>$718,506</b></span><span>Overdue <b class="red">$212,380</b></span><span class="sp"></span><span class="tiny">From Workiz · updated every minute</span></div>
+   <div class="tbl">
+    <div class="tr hd" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span>Job</span><span>Title</span><span>Customer</span><span>Status</span><span class="r">Money</span><span class="r">Due</span></div>
+    <div class="gh">Today · Tue, Sep 29 <span class="c">3 jobs</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10482</span><span class="ti">Chimney sweep &amp; inspection</span><span class="el">Karen Holt</span><span><span class="pill p-info">In progress</span></span><span class="r"><span class="pill p-neu">Unpaid</span></span><span class="r b">$425.00</span></div>
+    <div class="tr sel" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10479</span><span class="ti">Liner install</span><span class="el">Brian Moss</span><span><span class="pill p-warn">Pending</span></span><span class="r"><span class="pill p-warn">Partly paid</span></span><span class="r b">$1,925.00</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10471</span><span class="ti">Cap replacement</span><span class="el">Olivia Chen</span><span><span class="pill p-neu">Submitted</span></span><span class="r"><span class="pill p-neu">Unpaid</span></span><span class="r b">$450.00</span></div>
+    <div class="gh">Yesterday · Mon, Sep 28 <span class="c">4 jobs</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10455</span><span class="ti">Crown repair</span><span class="el">Derek Ruiz</span><span><span class="pill p-ok">Done</span></span><span class="r"><span class="pill p-ok">Paid</span></span><span class="r muted">—</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10449</span><span class="ti">Dryer vent cleaning</span><span class="el">Nina Patel</span><span><span class="pill p-ok">Done</span></span><span class="r"><span class="pill p-bad">Overdue</span></span><span class="r b red">$189.00</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10441</span><span class="ti">Chimney sweep</span><span class="el">Sam Wilder</span><span><span class="pill p-bad">Canceled</span></span><span class="r"><span class="pill p-neu">Unpaid</span></span><span class="r b">$300.00</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 120px 110px"><span class="num">J-10438</span><span class="ti">Masonry repoint</span><span class="el">Paula Grant</span><span><span class="pill p-ok">Done</span></span><span class="r"><span class="pill p-info">Credit</span></span><span class="r b blu">−$45.00</span></div>
+   </div>
+  </div>
+  <div class="pan">
+   <div class="ph"><div class="t">Liner install</div><div class="s">J-10479 · Brian Moss · Georgia</div></div>
+   <div class="pb">
+    <div style="display:flex;gap:8px"><span class="pill p-warn">Pending</span></div>
+    <div class="card">
+     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="font-size:13.5px">Money</b><span class="pill p-warn">Partly paid</span><span class="sp"></span><span class="src">From Workiz · read only</span></div>
+     <div class="figs"><div class="fig"><div class="k">Total</div><div class="v">$3,850.00</div></div><div class="fig"><div class="k">Paid</div><div class="v grn">$1,925.00</div></div><div class="fig"><div class="k">Due</div><div class="v">$1,925.00</div></div></div>
+     <div class="bar"><i style="width:50%"></i></div>
+     <div class="tiny">Due by <b style="color:var(--ink)">Sat, Oct 3</b> · half paid</div>
+     <div class="fold" style="margin-top:10px">▸ 3 lines · subtotal $3,700.00 · tax $150.00</div>
+    </div>
+    <div class="in"><div class="l">What is the job</div><div class="v">Liner install</div></div>
+    <div class="in"><div class="l">Status</div><div class="v">Pending</div></div>
+    <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+    <div class="in"><div class="l">Notes</div><div class="v">25 ft stainless, customer wants the cap in black.</div></div>
+   </div>
+   <div class="pf"><span class="btn" style="border-color:transparent">Cancel</span><span class="btn f">Save</span></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════ 2 ═════════════════ -->
+<h2><span class="n">2</span>Four tiles that filter, and an invoice on the job</h2>
+<p class="cap">The totals are four equal tiles, and clicking one is the filter: Due shows what is owed, Overdue what is late, Paid what is settled; credits are a link beside them. On the job, the money reads as Workiz's invoice, line by line, after the job's own fields.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="lst">
+   <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ Add job</span></div>
+   <div class="chips"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted <span class="c">412</span></span><span class="chip"><span class="dot d-warn"></span>Pending <span class="c">318</span></span><span class="chip"><span class="dot d-info"></span>In progress <span class="c">96</span></span><span class="chip"><span class="dot d-ok"></span>Done <span class="c">7,410</span></span><span class="chip"><span class="dot d-bad"></span>Canceled <span class="c">316</span></span></div>
+   <div class="tiles">
+    <div class="tile"><div class="k">Billed</div><div class="v">$5,089,246</div><div class="c">3,045 jobs</div></div>
+    <div class="tile"><div class="k"><span class="dot d-ok"></span>Paid</div><div class="v grn">$4,370,740</div><div class="c">2,593 jobs</div></div>
+    <div class="tile on"><div class="k"><span class="dot d-warn"></span>Due</div><div class="v">$718,506</div><div class="c">425 jobs · showing</div></div>
+    <div class="tile"><div class="k"><span class="dot d-bad"></span>Overdue</div><div class="v red">$212,380</div><div class="c">131 jobs</div></div>
+   </div>
+   <div class="filters"><div class="fld" style="width:260px">🔍 Job number, title or customer</div><div class="fld" style="width:160px"><span class="v">Every franchise</span></div><span class="seg"><span>Upcoming</span><span>Past</span><span class="on">All</span></span><span class="sp"></span><span class="tiny" style="font-weight:700;color:var(--info)">102 jobs in credit</span></div>
+   <div class="tbl">
+    <div class="tr hd" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span>Job</span><span>Title</span><span>Customer</span><span>Status</span><span class="r">Due</span></div>
+    <div class="gh">Today · Tue, Sep 29 <span class="c">3 jobs</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10482</span><span class="ti">Chimney sweep &amp; inspection</span><span class="el">Karen Holt</span><span><span class="pill p-info">In progress</span></span><span class="r"><b>$425.00</b> <span class="tiny">of $425</span></span></div>
+    <div class="tr sel" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10479</span><span class="ti">Liner install</span><span class="el">Brian Moss</span><span><span class="pill p-warn">Pending</span></span><span class="r"><b>$1,925.00</b> <span class="tiny">of $3,850</span></span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10471</span><span class="ti">Cap replacement</span><span class="el">Olivia Chen</span><span><span class="pill p-neu">Submitted</span></span><span class="r"><b>$450.00</b> <span class="tiny">of $450</span></span></div>
+    <div class="gh">Yesterday · Mon, Sep 28 <span class="c">2 jobs</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10449</span><span class="ti">Dryer vent cleaning</span><span class="el">Nina Patel</span><span><span class="pill p-ok">Done</span></span><span class="r"><span class="pill p-bad">8 days late</span> <b class="red">$189.00</b></span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10441</span><span class="ti">Chimney sweep</span><span class="el">Sam Wilder</span><span><span class="pill p-bad">Canceled</span></span><span class="r"><b>$300.00</b> <span class="tiny">of $300</span></span></div>
+    <div class="gh">Fri, Sep 25 <span class="c">1 job</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 170px"><span class="num">J-10402</span><span class="ti">Liner inspection camera</span><span class="el">Hank Doyle</span><span><span class="pill p-ok">Done</span></span><span class="r"><span class="pill p-bad">12 days late</span> <b class="red">$275.00</b></span></div>
+   </div>
+  </div>
+  <div class="pan">
+   <div class="ph"><div class="t">Liner install</div><div class="s">J-10479 · Brian Moss · Georgia</div></div>
+   <div class="pb">
+    <div style="display:flex;gap:8px"><span class="pill p-warn">Pending</span><span class="pill p-warn">Partly paid · $1,925 due</span></div>
+    <div class="in"><div class="l">What is the job</div><div class="v">Liner install</div></div>
+    <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+    <div class="sec">
+     <div class="h">Invoice <span class="src">From Workiz · read only</span></div>
+     <div class="lines">
+      <div class="ln"><div class="g">Stainless steel liner<div class="d">25 ft, 6 in · taxable</div></div><div class="a">1 × $2,400.00</div></div>
+      <div class="ln"><div class="g">Liner installation labor<div class="d">Two technicians</div></div><div class="a">1 × $1,050.00</div></div>
+      <div class="ln"><div class="g">Chimney cap<div class="d">Black · taxable</div></div><div class="a">1 × $250.00</div></div>
+     </div>
+     <div class="tot" style="margin-top:6px"><span class="muted">Subtotal</span><span>$3,700.00</span></div>
+     <div class="tot"><span class="muted">Tax</span><span>$150.00</span></div>
+     <div class="tot"><span class="muted">Total</span><span class="b">$3,850.00</span></div>
+     <div class="tot"><span class="muted">Paid</span><span class="grn b">$1,925.00</span></div>
+     <div class="tot big"><span>Due by Sat, Oct 3</span><span>$1,925.00</span></div>
+    </div>
+   </div>
+   <div class="pf"><span class="btn" style="border-color:transparent">Cancel</span><span class="btn f">Save</span></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════ 3 ═════════════════ -->
+<h2><span class="n">3</span>One money picker, and a line on the job</h2>
+<p class="cap">Money is one more picker in the filter row, like franchise, with the totals said in a sentence above the table. On the job it is a single line under the status, and the full figures and lines open in place when it is clicked.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="lst">
+   <div class="mh"><div><div class="t">Jobs</div><div class="s">Every job, booked, done and billed.</div></div><span class="sp"></span><span class="btn f">+ Add job</span></div>
+   <div class="chips"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted <span class="c">412</span></span><span class="chip"><span class="dot d-warn"></span>Pending <span class="c">318</span></span><span class="chip"><span class="dot d-info"></span>In progress <span class="c">96</span></span><span class="chip"><span class="dot d-ok"></span>Done <span class="c">7,410</span></span><span class="chip"><span class="dot d-bad"></span>Canceled <span class="c">316</span></span></div>
+   <div class="filters"><div class="fld" style="width:240px">🔍 Job number, title or customer</div><div class="fld" style="width:150px"><span class="v">Every franchise</span></div><div class="fld" style="width:150px;border-color:#a9d3e1;background:var(--pric)"><span class="v" style="color:var(--prid)">Money: Overdue</span></div><span class="seg"><span>Upcoming</span><span>Past</span><span class="on">All</span></span></div>
+   <div style="padding:0 20px 10px;font-size:12.5px"><b class="red">131 jobs are overdue by $212,380</b> <span class="muted">· of $718,506 due on $5,089,246 billed</span></div>
+   <div class="tbl">
+    <div class="tr hd" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span>Job</span><span>Title</span><span>Customer</span><span>Status</span><span class="r">Amount</span></div>
+    <div class="gh">Mon, Sep 28 <span class="c">1 job</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span class="num">J-10449</span><span class="ti">Dryer vent cleaning</span><span class="el">Nina Patel</span><span><span class="pill p-ok">Done</span></span><span class="r">$189.00 <span class="red b" style="font-size:11px">· $189 late</span></span></div>
+    <div class="gh">Fri, Sep 25 <span class="c">2 jobs</span></div>
+    <div class="tr sel" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span class="num">J-10402</span><span class="ti">Liner inspection camera</span><span class="el">Hank Doyle</span><span><span class="pill p-ok">Done</span></span><span class="r">$275.00 <span class="red b" style="font-size:11px">· $275 late</span></span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span class="num">J-10398</span><span class="ti">Smoke chamber parge</span><span class="el">Rita Owens</span><span><span class="pill p-ok">Done</span></span><span class="r">$1,640.00 <span class="red b" style="font-size:11px">· $820 late</span></span></div>
+    <div class="gh">Tue, Sep 22 <span class="c">2 jobs</span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span class="num">J-10360</span><span class="ti">Chimney sweep</span><span class="el">Ali Hassan</span><span><span class="pill p-bad">Canceled</span></span><span class="r">$300.00 <span class="red b" style="font-size:11px">· $300 late</span></span></div>
+    <div class="tr" style="grid-template-columns:70px 1.6fr 1.1fr 92px 150px"><span class="num">J-10351</span><span class="ti">Crown rebuild</span><span class="el">June Park</span><span><span class="pill p-ok">Done</span></span><span class="r">$4,200.00 <span class="red b" style="font-size:11px">· $2,100 late</span></span></div>
+   </div>
+  </div>
+  <div class="pan">
+   <div class="ph"><div class="t">Liner inspection camera</div><div class="s">J-10402 · Hank Doyle · Illinois</div></div>
+   <div class="pb">
+    <div style="display:flex;gap:8px"><span class="pill p-ok">Done</span></div>
+    <div class="fold" style="border-color:#e8b7b7;background:var(--badc);color:var(--bad)">▾ $275.00 due · 12 days late, since Sep 17<span class="sp"></span><span class="src" style="color:var(--bad);border-color:#e8b7b7">Workiz</span></div>
+    <div class="card" style="margin-top:-4px">
+     <div class="tot"><span class="muted">Total</span><span class="b">$275.00</span></div>
+     <div class="tot"><span class="muted">Paid</span><span>$0.00</span></div>
+     <div class="lines" style="margin-top:6px">
+      <div class="ln"><div class="g">Camera inspection<div class="d">Level 2 · taxable</div></div><div class="a">1 × $275.00</div></div>
+     </div>
+     <div class="tiny" style="margin-top:6px">Read only. It changes in Workiz and shows here within a minute.</div>
+    </div>
+    <div class="in"><div class="l">What is the job</div><div class="v">Liner inspection camera</div></div>
+    <div class="in"><div class="l">Status</div><div class="v">Done</div></div>
+    <div class="in"><div class="l">Scheduled for</div><div class="v">Fri, Sep 25 · 2:00 PM</div></div>
+   </div>
+   <div class="pf"><span class="btn" style="border-color:transparent">Cancel</span><span class="btn f">Save</span></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════ 4 ═════════════════ -->
+<h2><span class="n">4</span>Phone · money chips and the three figures <span class="rec">Recommended</span></h2>
+<p class="cap">1 on a phone: the money chips swipe under the status chips, the totals are one strip, and each job's line says what is due. The job opens with its money first.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Jobs</span><span class="btn f" style="height:30px">+ Add</span></div>
+  <div class="scr">
+   <div class="hs"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted</span><span class="chip"><span class="dot d-warn"></span>Pending</span><span class="chip"><span class="dot d-ok"></span>Done</span></div>
+   <div class="hs" style="padding-top:0"><span class="chip">Any</span><span class="chip on">Due <span class="c">425</span></span><span class="chip"><span class="dot d-bad"></span>Overdue <span class="c">131</span></span><span class="chip"><span class="dot d-ok"></span>Paid</span><span class="chip">Credit</span></div>
+   <div class="mstrip"><span>Billed<b>$5.09M</b></span><span>Paid<b class="grn">$4.37M</b></span><span>Due<b>$718.5K</b></span><span>Overdue<b class="red">$212.4K</b></span></div>
+   <div class="gh">Today · Tue, Sep 29</div>
+   <div class="jt"><div class="l1"><span class="ti">Chimney sweep &amp; inspection</span><span class="pill p-neu">Unpaid</span></div><div class="l2"><span>J-10482 · Karen Holt</span><span class="sp"></span><b style="color:var(--ink)">$425.00 due</b></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Liner install</span><span class="pill p-warn">Partly paid</span></div><div class="l2"><span>J-10479 · Brian Moss</span><span class="sp"></span><b style="color:var(--ink)">$1,925.00 due</b></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Cap replacement</span><span class="pill p-neu">Unpaid</span></div><div class="l2"><span>J-10471 · Olivia Chen · Submitted</span><span class="sp"></span><b style="color:var(--ink)">$450.00 due</b></div></div>
+   <div class="gh">Yesterday · Mon, Sep 28</div>
+   <div class="jt"><div class="l1"><span class="ti">Dryer vent cleaning</span><span class="pill p-bad">Overdue</span></div><div class="l2"><span>J-10449 · Nina Patel</span><span class="sp"></span><b class="red">$189.00 due</b></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Chimney sweep</span><span class="pill p-neu">Unpaid</span></div><div class="l2"><span>J-10441 · Sam Wilder · <span class="red b">Canceled</span></span><span class="sp"></span><b style="color:var(--ink)">$300.00 due</b></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">The job</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Liner install</span></div>
+  <div class="pscr">
+   <div class="tiny">J-10479 · Brian Moss · Georgia</div>
+   <div style="display:flex;gap:8px"><span class="pill p-warn">Pending</span></div>
+   <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>Money</b><span class="pill p-warn">Partly paid</span><span class="sp"></span><span class="src">Workiz</span></div>
+    <div class="figs"><div class="fig"><div class="k">Total</div><div class="v" style="font-size:14px">$3,850</div></div><div class="fig"><div class="k">Paid</div><div class="v grn" style="font-size:14px">$1,925</div></div><div class="fig"><div class="k">Due</div><div class="v" style="font-size:14px">$1,925</div></div></div>
+    <div class="bar"><i style="width:50%"></i></div>
+    <div class="tiny">Due by <b style="color:var(--ink)">Sat, Oct 3</b></div>
+    <div class="fold" style="margin-top:10px">▸ 3 lines · tax $150.00</div>
+   </div>
+   <div class="in"><div class="l">What is the job</div><div class="v">Liner install</div></div>
+   <div class="in"><div class="l">Status</div><div class="v">Pending</div></div>
+   <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+  </div>
+  <div class="pbar"><span class="btn">Cancel</span><span class="btn f">Save</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════════════ 5 ═════════════════ -->
+<h2><span class="n">5</span>Phone · tiles that filter, and the invoice</h2>
+<p class="cap">2 on a phone: the four totals as two rows of tiles you tap to filter; the job's invoice, line by line, under its fields.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Jobs</span><span class="btn f" style="height:30px">+ Add</span></div>
+  <div class="scr">
+   <div class="hs"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted</span><span class="chip"><span class="dot d-warn"></span>Pending</span><span class="chip"><span class="dot d-ok"></span>Done</span></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 10px">
+    <div class="tile" style="height:62px;padding:8px 12px"><div class="k">Billed</div><div class="v" style="font-size:16px">$5.09M</div></div>
+    <div class="tile" style="height:62px;padding:8px 12px"><div class="k"><span class="dot d-ok"></span>Paid</div><div class="v grn" style="font-size:16px">$4.37M</div></div>
+    <div class="tile on" style="height:62px;padding:8px 12px"><div class="k"><span class="dot d-warn"></span>Due · 425</div><div class="v" style="font-size:16px">$718,506</div></div>
+    <div class="tile" style="height:62px;padding:8px 12px"><div class="k"><span class="dot d-bad"></span>Overdue · 131</div><div class="v red" style="font-size:16px">$212,380</div></div>
+   </div>
+   <div class="gh">Today · Tue, Sep 29</div>
+   <div class="jt"><div class="l1"><span class="ti">Chimney sweep &amp; inspection</span><b>$425.00</b></div><div class="l2"><span>J-10482 · Karen Holt · In progress</span><span class="sp"></span><span>of $425</span></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Liner install</span><b>$1,925.00</b></div><div class="l2"><span>J-10479 · Brian Moss · Pending</span><span class="sp"></span><span>of $3,850</span></div></div>
+   <div class="gh">Yesterday · Mon, Sep 28</div>
+   <div class="jt"><div class="l1"><span class="ti">Dryer vent cleaning</span><b class="red">$189.00</b></div><div class="l2"><span>J-10449 · Nina Patel · Done</span><span class="sp"></span><span class="pill p-bad">8 days late</span></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Chimney sweep</span><b>$300.00</b></div><div class="l2"><span>J-10441 · Sam Wilder · <span class="red b">Canceled</span></span><span class="sp"></span><span>of $300</span></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">The job</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Liner install</span></div>
+  <div class="pscr">
+   <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill p-warn">Pending</span><span class="pill p-warn">Partly paid · $1,925 due</span></div>
+   <div class="in"><div class="l">Scheduled for</div><div class="v">Tue, Sep 29 · 11:30 AM</div></div>
+   <div class="sec">
+    <div class="h">Invoice <span class="src">From Workiz · read only</span></div>
+    <div class="lines">
+     <div class="ln"><div class="g">Stainless steel liner<div class="d">25 ft, 6 in · taxable</div></div><div class="a">$2,400.00</div></div>
+     <div class="ln"><div class="g">Liner installation labor<div class="d">Two technicians</div></div><div class="a">$1,050.00</div></div>
+     <div class="ln"><div class="g">Chimney cap<div class="d">Black · taxable</div></div><div class="a">$250.00</div></div>
+    </div>
+    <div class="tot" style="margin-top:6px"><span class="muted">Subtotal</span><span>$3,700.00</span></div>
+    <div class="tot"><span class="muted">Tax</span><span>$150.00</span></div>
+    <div class="tot"><span class="muted">Paid</span><span class="grn b">$1,925.00</span></div>
+    <div class="tot big"><span>Due by Sat, Oct 3</span><span>$1,925.00</span></div>
+   </div>
+  </div>
+  <div class="pbar"><span class="btn">Cancel</span><span class="btn f">Save</span></div>
+ </div></div>
+</div>
+
+<!-- ═════════════════ 6 ═════════════════ -->
+<h2><span class="n">6</span>Phone · one money picker, and a line on the job</h2>
+<p class="cap">3 on a phone: money is one picker beside the search; the sentence above the list says what the choice adds up to. The job carries one money line that opens in place.</p>
+<div class="pair">
+ <div><div class="pl">List</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>☰</span><span class="t">Jobs</span><span class="btn f" style="height:30px">+ Add</span></div>
+  <div class="scr">
+   <div class="hs"><span class="chip on">All <span class="c">8,552</span></span><span class="chip"><span class="dot d-neu"></span>Submitted</span><span class="chip"><span class="dot d-warn"></span>Pending</span><span class="chip"><span class="dot d-ok"></span>Done</span></div>
+   <div style="display:flex;gap:8px;padding:0 12px 8px"><div class="fld" style="flex:1">🔍 Search jobs</div><div class="fld" style="border-color:#a9d3e1;background:var(--pric)"><span class="v" style="color:var(--prid)">Overdue</span></div></div>
+   <div style="padding:0 12px 10px;font-size:12px"><b class="red">131 overdue · $212,380</b> <span class="muted">of $718,506 due</span></div>
+   <div class="gh">Mon, Sep 28</div>
+   <div class="jt"><div class="l1"><span class="ti">Dryer vent cleaning</span><b class="red">$189.00</b></div><div class="l2"><span>J-10449 · Nina Patel · Done</span><span class="sp"></span><span class="red b">late</span></div></div>
+   <div class="gh">Fri, Sep 25</div>
+   <div class="jt"><div class="l1"><span class="ti">Liner inspection camera</span><b class="red">$275.00</b></div><div class="l2"><span>J-10402 · Hank Doyle · Done</span><span class="sp"></span><span class="red b">late</span></div></div>
+   <div class="jt"><div class="l1"><span class="ti">Smoke chamber parge</span><b class="red">$820.00</b></div><div class="l2"><span>J-10398 · Rita Owens · Done</span><span class="sp"></span><span class="muted">of $1,640</span></div></div>
+   <div class="gh">Tue, Sep 22</div>
+   <div class="jt"><div class="l1"><span class="ti">Chimney sweep</span><b class="red">$300.00</b></div><div class="l2"><span>J-10360 · Ali Hassan · <span class="red b">Canceled</span></span><span class="sp"></span><span class="red b">late</span></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">The job</div><div class="phn">
+  <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="ab"><span>←</span><span class="t">Liner inspection camera</span></div>
+  <div class="pscr">
+   <div class="tiny">J-10402 · Hank Doyle · Illinois</div>
+   <div style="display:flex;gap:8px"><span class="pill p-ok">Done</span></div>
+   <div class="fold" style="border-color:#e8b7b7;background:var(--badc);color:var(--bad)">▾ $275.00 due · 12 days late</div>
+   <div class="card" style="margin-top:-4px">
+    <div class="tot"><span class="muted">Total</span><span class="b">$275.00</span></div>
+    <div class="tot"><span class="muted">Paid</span><span>$0.00</span></div>
+    <div class="lines" style="margin-top:6px"><div class="ln"><div class="g">Camera inspection<div class="d">Level 2 · taxable</div></div><div class="a">$275.00</div></div></div>
+    <div class="tiny" style="margin-top:6px">From Workiz, read only.</div>
+   </div>
+   <div class="in"><div class="l">What is the job</div><div class="v">Liner inspection camera</div></div>
+   <div class="in"><div class="l">Status</div><div class="v">Done</div></div>
+  </div>
+  <div class="pbar"><span class="btn">Cancel</span><span class="btn f">Save</span></div>
+ </div></div>
+</div>
+
+</div>

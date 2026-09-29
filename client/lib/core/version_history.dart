@@ -16,6 +16,7 @@ class VersionHistory {
         'Leads: All has a switch for each source, and leaves LS Call out until you switch it on.',
         'Automations: a rule can reply to a new Google text lead, so EzBizi can send the first reply instead of another tool.',
         'Jobs: job amounts and service lines now show only to administrators and to roles with the new Financials toggle, on the Jobs row in Settings, Roles. Every other role stops seeing them until you turn it on.',
+        'Reports: a job Amount and Currency in a report also need the Financials toggle; without it the builder leaves them out.',
       ],
     ),
     VersionRelease(

@@ -2958,6 +2958,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 31 · Jobs · money on the list and the job — 📐 **DRAWN, awaiting Jose**
+
+From the Jobs session, 2026-09-29, under Jose's rulings (money is the `jobs.financials` toggle;
+Workiz stays the truth, live and read only; spec `docs/superpowers/specs/2026-09-29-jobs-billing-design.md`).
+`docs/previews/jobs-money-layouts.html`: desktop **1** money chips beside the status chips, a
+totals line, and three figures with a paid bar first on the job (recommended); **2** four tiles
+that are the filter, and the job's money as Workiz's invoice; **3** one money picker with the
+totals in a sentence, and one folded money line on the job; phone **4**-**6** the same three.
+States: Paid ok, Partly paid caution, Unpaid neutral, Overdue bad (due > 0 and due_on before
+the reader's today), Credit info. Anything touching `job_detail_panel.dart` goes past Jobs before
+it is committed.
+
 ### 30 · Leads · more room for the conversation — 📐 **DRAWN, awaiting Jose**
 
 Jose, 2026-09-29, beside A1 Tools: *"ezbizi is taking a lot of space with tabs and filters from

@@ -171,6 +171,22 @@ class HoursBatchTest extends TestCase
         \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->method() === 'POST' && $r->url() === 'https://nj.a-1chimney.com/wp-json/ezbizi/v1/refresh');
     }
 
+    public function test_one_sites_hours_convert_from_another_zone_on_save(): void
+    {
+        [$editor, $site] = $this->siteWithHours();
+
+        // Typed in Central time, saved on a New York site: an hour later there.
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", [
+            'values' => ['hours' => "Mon\u{2013}Sun 8:00 AM \u{2013} 5:00 PM"], 'hours_timezone' => 'America/Chicago',
+        ])->assertOk();
+        $this->assertSame("Mon\u{2013}Sun 9:00 AM \u{2013} 6:00 PM", $this->hours($site));
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", [
+            'values' => ['hours' => "Mon\u{2013}Sun 8:00 PM \u{2013} 11:30 PM"], 'hours_timezone' => 'America/Chicago',
+        ])->assertStatus(422);
+        $this->assertSame("Mon\u{2013}Sun 9:00 AM \u{2013} 6:00 PM", $this->hours($site), 'a refused conversion writes nothing');
+    }
+
     public function test_a_review_that_went_stale_is_not_applied(): void
     {
         [$editor, $site] = $this->siteWithHours();
