@@ -131,7 +131,7 @@ class PhoneUsageTest extends TestCase
     public function test_usage_reads_back_totalled_by_currency(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         $this->artisan('ezbizi:phone-usage', ['--date' => '2026-08-27'])->assertSuccessful();
@@ -161,7 +161,7 @@ class PhoneUsageTest extends TestCase
     public function test_totals_is_an_object_even_when_there_is_no_usage(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         // Deliberately no import run, which is every tenant's first day.
@@ -178,7 +178,7 @@ class PhoneUsageTest extends TestCase
     public function test_seeing_the_bill_needs_the_authority_that_spends_it(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view', 'phone.settings.view']);
         $this->connect($t);
 
         $this->signedInAs($viewer)->getJson('/api/v1/phone/usage?'.http_build_query([

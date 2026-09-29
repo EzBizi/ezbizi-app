@@ -4,6 +4,8 @@ namespace Tests\Feature\TimeClock;
 
 use App\Mail\WorkHoursReportMail;
 use App\Models\AuditEvent;
+use App\Models\Automation;
+use App\Models\AutomationVersion;
 use App\Models\Organization;
 use App\Models\TimeClockReport;
 use App\Models\TimeClockShift;
@@ -163,6 +165,40 @@ class TimeClockReportsTest extends TestCase
         $this->signedInAs($reader)->postJson('/api/v1/hr/time-clock/reports', ['name' => 'Mine'])->assertForbidden();
 
         Mail::assertNothingSent();
+    }
+
+    /**
+     * The list says which rules send each report; rule names and schedules
+     * only to a reader who holds automations.view. The control is a second
+     * report no rule sends.
+     */
+    public function test_the_list_says_which_rules_send_a_report_to_readers_of_automations(): void
+    {
+        [$alpha, $manager] = $this->tenant();
+        $sent = $this->report($alpha['org'], ['name' => 'A sent']);
+        $this->report($alpha['org'], ['name' => 'B by hand']);
+
+        $rule = $this->inTenant($alpha['org'], function () use ($alpha, $sent) {
+            $rule = Automation::create(['organization_id' => $alpha['org']->id, 'name' => 'Sunday hours',
+                'trigger_key' => 'automation.schedule_reached', 'is_active' => true,
+                'schedule' => ['kind' => 'weekly', 'days' => ['sunday'], 'time' => '20:00', 'timezone' => 'America/New_York']]);
+            $v = AutomationVersion::create(['organization_id' => $alpha['org']->id, 'automation_id' => $rule->id, 'version' => 1,
+                'conditions' => null, 'actions' => [['type' => 'send_report', 'report_id' => $sent->id]], 'created_at' => now()]);
+            $rule->forceFill(['active_version_id' => $v->id])->save();
+
+            return $rule;
+        });
+
+        $plain = $this->signedInAs($manager)->getJson('/api/v1/hr/time-clock/reports')->assertOk();
+        $this->assertSame([true, false], array_column($plain->json('data'), 'sent_automatically'));
+        $this->assertSame([null, null], array_column($plain->json('data'), 'sent_by'), 'no rule names without automations.view');
+
+        $both = $this->userWithRole($alpha, 'Ops', ['work_hours.general.view', 'work_hours.reports.view', 'automations.view'], 'ops@alpha.test');
+        $full = $this->signedInAs($both)->getJson('/api/v1/hr/time-clock/reports')->assertOk();
+        $this->assertSame($rule->id, $full->json('data.0.sent_by.0.id'));
+        $this->assertSame('Sunday hours', $full->json('data.0.sent_by.0.name'));
+        $this->assertArrayHasKey('disabled_at', $full->json('data.0.sent_by.0'));
+        $this->assertSame([], $full->json('data.1.sent_by'));
     }
 
     public function test_saving_refuses_a_person_outside_reach_and_a_bad_address(): void

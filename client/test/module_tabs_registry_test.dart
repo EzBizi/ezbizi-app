@@ -109,7 +109,6 @@ void main() {
 /// Disagreements that exist today, each with whoever owns the fix. The list
 /// may only shrink: a module here that starts agreeing fails until removed.
 const _knownDrift = {
-  'phone': 'Communication draws 5 tabs the registry lacks — Communication',
   // Not drift: Work and Materials are the job detail panel's panes (0051),
   // drawn as sections of the panel, not as a strip. The screen's own strip is
   // Jobs · Estimates, and Estimates is a child module. jobs_materials_test.dart

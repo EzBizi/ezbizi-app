@@ -23,7 +23,7 @@ class PhoneTrustTest extends TestCase
     public function test_trust_get_does_not_500_without_a_profile(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Trust viewer', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Trust viewer', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], function () use ($t) {
             return PhoneConnection::factory()->create([
@@ -52,7 +52,7 @@ class PhoneTrustTest extends TestCase
     public function test_trust_post_submits_and_returns_pending(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Trust editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Trust editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], function () use ($t) {
             return PhoneConnection::factory()->create([

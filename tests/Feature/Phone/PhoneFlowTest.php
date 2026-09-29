@@ -77,7 +77,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_line_can_be_pointed_at_a_menu_and_refuses_a_foreign_one(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         [$number, $flow, $foreign] = $this->inTenant($t['org'], function () use ($t, $connection, $group) {
             $flow = PhoneFlow::query()->create([
@@ -166,7 +166,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_menu_with_no_playable_step_says_so_and_is_marked_skipped(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $number = $this->inTenant($t['org'], function () use ($t, $connection, $group) {
             // Everything a working menu has, except the node the renderer
@@ -228,7 +228,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_menu_is_stored_in_the_shape_the_renderer_reads(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,
@@ -261,7 +261,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_menu_can_end_the_call_when_nobody_presses_a_key(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,
@@ -299,7 +299,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_menu_without_the_setting_still_rings_the_line(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,
@@ -357,7 +357,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_key_can_ring_one_person_by_extension(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $bar = $this->inTenant($t['org'], function () use ($t, $connection) {
             $role = Role::query()->firstOrCreate(
@@ -447,7 +447,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_key_with_digits_that_are_not_an_extension_shape_is_refused(): void
     {
         [$t, $connection, ] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,
@@ -472,7 +472,7 @@ class PhoneFlowTest extends TestCase
     public function test_two_options_cannot_share_a_key(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,
@@ -492,7 +492,7 @@ class PhoneFlowTest extends TestCase
     public function test_a_ring_group_from_another_phone_account_is_refused(): void
     {
         [$t, $connection, ] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $stranger = $this->inTenant($t['org'], function () use ($t) {
             $other = new PhoneConnection([
@@ -538,7 +538,7 @@ class PhoneFlowTest extends TestCase
     public function test_deleting_a_menu_clears_the_lines_that_played_it(): void
     {
         [$t, $connection, $group] = $this->connectedCompany();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
             'connection_id' => $connection->id,

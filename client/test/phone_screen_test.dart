@@ -29,6 +29,28 @@ void main() {
     expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-29: Communication had View and Edit only, "which means
+  /// everyone can view the settings". A role now sees the tabs it holds.
+  testWidgets('only the granted Communication tabs are drawn', (tester) async {
+    await _pump(
+      tester,
+      tabs: const ['phone.phone.view', 'phone.records.view'],
+    );
+
+    expect(_chips(tester), ['Phone', 'Records']);
+  });
+
+  /// With the module and none of its tabs, a sentence rather than a blank.
+  testWidgets('no Communication tab says so', (tester) async {
+    await _pump(tester, tabs: const []);
+
+    expect(_chips(tester), isEmpty);
+    expect(
+      find.textContaining('You do not have access to any part of Communication'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a granted Phone sidebar tab opens the real screen', (
     tester,
   ) async {
@@ -2453,6 +2475,7 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onImport,
   Size size = const Size(1280, 900),
   List<String> permissions = const ['phone.view', 'phone.edit'],
+  List<String> tabs = _allPhoneTabs,
   List<Map<String, Object?>> connections = const [],
   Map<String, Object?>? scope,
   List<Map<String, Object?>>? companies,
@@ -2492,6 +2515,7 @@ Future<void> _pump(
     client: MockClient(
       _handler(
         permissions: permissions,
+        tabs: tabs,
         connections: connections,
         scope: scope,
         companies: companies,
@@ -2589,6 +2613,7 @@ MockClientHandler _handler({
   List<Map<String, Object?>> schedules = const [],
   void Function(Map<String, dynamic> body)? onImport,
   List<String> permissions = const ['phone.view', 'phone.edit'],
+  List<String> tabs = _allPhoneTabs,
   List<Map<String, Object?>> connections = const [],
   Map<String, Object?>? scope,
   List<Map<String, Object?>>? companies,
@@ -2628,7 +2653,8 @@ MockClientHandler _handler({
       return _json({
         'data': {
           ..._me,
-          'permissions': permissions,
+          // The tab grants ride beside the module ones; see _allPhoneTabs.
+          'permissions': [...permissions, ...tabs],
           'scope': ?scope,
           'companies': ?companies,
         },
@@ -2852,6 +2878,16 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: {'content-type': 'application/json'},
 );
+
+/// Every Communication tab (Jose, 2026-09-29). Tests about one pane get all
+/// of them; the tab-gating tests pass their own.
+const _allPhoneTabs = [
+  'phone.phone.view',
+  'phone.users.view',
+  'phone.records.view',
+  'phone.reports.view',
+  'phone.settings.view',
+];
 
 const _me = {
   'id': 'u-1',

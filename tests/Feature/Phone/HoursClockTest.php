@@ -111,7 +111,7 @@ class HoursClockTest extends TestCase
     public function test_creating_from_a_franchise_number_defaults_the_franchise_timezone(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->inTenant($t['org'], function () use ($t) {
             $t['franchise']->forceFill(['timezone' => 'America/Chicago'])->save();
@@ -161,7 +161,7 @@ class HoursClockTest extends TestCase
     public function test_hours_crud_lists_updates_and_deletes(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
@@ -203,7 +203,7 @@ class HoursClockTest extends TestCase
     public function test_viewer_without_edit_cannot_create_hours(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'Technician', ['phone.view']);
+        $viewer = $this->userWithRole($t, 'Technician', ['phone.view', 'phone.settings.view']);
 
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
@@ -237,7 +237,7 @@ class HoursClockTest extends TestCase
                 'name' => 'Company phone',
                 'is_system' => false,
             ]);
-            $role->syncPermissionKeys(['phone.view', 'phone.edit']);
+            $role->syncPermissionKeys(['phone.view', 'phone.settings.view', 'phone.edit']);
 
             $user = User::create([
                 'organization_id' => $t['org']->id,
