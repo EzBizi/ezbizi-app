@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0309',
+      date: '29 Sep 2026',
+      items: [
+        'The dashboard no longer shows any money: no revenue on Jobs and no stock value on Inventory. Those figures stay in their own tabs.',
+        'Human Resources, Records: new sections for pay rates, emergency contacts, notes and the equipment a person holds. Pay rates show only to administrators and to roles given See pay rates.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0308',
       date: '29 Sep 2026',
       items: [
