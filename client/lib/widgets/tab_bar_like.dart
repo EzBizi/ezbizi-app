@@ -69,55 +69,71 @@ class TabBarLike extends StatelessWidget {
       'rather than the position.',
     );
 
+    final chips = [
+      for (var i = 0; i < labels.length; i++)
+        ChoiceChip(
+          avatar: Icon(labels[i].$2, size: 16),
+          label: switch (missing?[i] ?? 0) {
+            0 => Text(labels[i].$1),
+            final count => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(labels[i].$1),
+                const SizedBox(width: 6),
+                MissingCount(
+                  count,
+                  tooltip:
+                      '$count ${count == 1 ? 'field' : 'fields'} '
+                      'not filled in',
+                ),
+              ],
+            ),
+          },
+          selected: i == selected,
+          // No checkmark, because it is not drawn BESIDE the icon — it
+          // is drawn ON it.
+          //
+          // A Material chip that has both an avatar and a checkmark
+          // paints the tick over the avatar, and darkens the avatar
+          // first so the tick can be read against it — Flutter's own
+          // `_kSelectScrimColor`, a 37% black filled through
+          // `avatarBorder`, which is a circle. So the selected tab's own
+          // icon disappeared under a grey disc, and because it follows
+          // the SELECTION rather than
+          // the pointer it appeared on a tab nobody was hovering — which
+          // is exactly how it was reported: "regardless if I'm hovering
+          // over that tab or any tab".
+          //
+          // Nothing is lost by removing it. A selected chip already
+          // carries a filled background, and the icon is the thing that
+          // tells the tabs apart — covering it to say "this one" is
+          // spending the identifier to state what the fill has said.
+          showCheckmark: false,
+          onSelected: (_) => onSelected(i),
+        ),
+    ];
+
+    // Sideways only on a phone, where a thumb swipes the strip. Anywhere wider
+    // the chips wrap: a mouse cannot drag a sideways strip, so on a desktop a
+    // chip past the edge was out of reach (Jose, 2026-09-29, on the hours
+    // review: "on desktop you should just be able to see all the websites").
+    if (MediaQuery.sizeOf(context).width >= 600) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Wrap(spacing: 8, runSpacing: 8, children: chips),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          for (var i = 0; i < labels.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                avatar: Icon(labels[i].$2, size: 16),
-                label: switch (missing?[i] ?? 0) {
-                  0 => Text(labels[i].$1),
-                  final count => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(labels[i].$1),
-                      const SizedBox(width: 6),
-                      MissingCount(
-                        count,
-                        tooltip:
-                            '$count ${count == 1 ? 'field' : 'fields'} '
-                            'not filled in',
-                      ),
-                    ],
-                  ),
-                },
-                selected: i == selected,
-                // No checkmark, because it is not drawn BESIDE the icon — it
-                // is drawn ON it.
-                //
-                // A Material chip that has both an avatar and a checkmark
-                // paints the tick over the avatar, and darkens the avatar
-                // first so the tick can be read against it — Flutter's own
-                // `_kSelectScrimColor`, a 37% black filled through
-                // `avatarBorder`, which is a circle. So the selected tab's own
-                // icon disappeared under a grey disc, and because it follows
-                // the SELECTION rather than
-                // the pointer it appeared on a tab nobody was hovering — which
-                // is exactly how it was reported: "regardless if I'm hovering
-                // over that tab or any tab".
-                //
-                // Nothing is lost by removing it. A selected chip already
-                // carries a filled background, and the icon is the thing that
-                // tells the tabs apart — covering it to say "this one" is
-                // spending the identifier to state what the fill has said.
-                showCheckmark: false,
-                onSelected: (_) => onSelected(i),
-              ),
-            ),
+          for (final chip in chips)
+            Padding(padding: const EdgeInsets.only(right: 8), child: chip),
         ],
       ),
     );

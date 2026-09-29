@@ -89,6 +89,7 @@ void main() {
     http.Response Function()? apply,
     List<Map<String, Object?>> sites = sites,
     VoidCallback? onClose,
+    Map<String, Object?>? reviewed,
   }) async {
     final posted = <String, Map<String, dynamic>>{};
     http.Response json(Object body, [int status = 200]) => http.Response(
@@ -105,7 +106,7 @@ void main() {
 
       return switch (path) {
         '/web/sites' => json({'data': sites}),
-        '/web/hours/review' => json({'data': review}),
+        '/web/hours/review' => json({'data': reviewed ?? review}),
         '/web/hours/apply' =>
           apply?.call() ??
               json({
@@ -225,6 +226,75 @@ void main() {
       find.text('Sat: Closed now, so opening it needs both times.'),
       findsOneWidget,
     );
+  });
+
+  /// Jose, 2026-09-29, on forty-nine websites: "it seems like it was designed
+  /// for phone but on desktop you should just be able to see all the
+  /// websites". The strip scrolled sideways, which a mouse cannot do.
+  testWidgets('on a desktop every website is on show, changes first', (
+    tester,
+  ) async {
+    Map<String, Object?> place(String host, String status) => {
+      'site_id': 'site-$host',
+      'host': host,
+      'timezone': 'America/Chicago',
+      'status': status,
+      'reasons': status == 'blocked' ? ['No time zone set.'] : [],
+      'days': [
+        day(
+          'Mon',
+          was: nineToSix,
+          requested: status == 'change' ? {'open': '08:00', 'close': null} : null,
+          fin: status == 'change'
+              ? {'closed': false, 'open': '08:00', 'close': '18:00'}
+              : null,
+          changed: status == 'change',
+        ),
+      ],
+    };
+
+    await pump(
+      tester,
+      reviewed: {
+        'token': 'tok',
+        // Alphabetical, as the server sends them: the two that matter last.
+        'places': [
+          for (var i = 10; i < 30; i++) place('site$i.a-1chimney.com', 'unchanged'),
+          place('y.com', 'blocked'),
+          place('z.com', 'change'),
+        ],
+        'summary': {'change': 1, 'unchanged': 20, 'blocked': 1},
+      },
+    );
+    await tap(tester, segment(5, 'Closed all day'));
+    await tap(tester, find.byKey(const Key('hours-bulk-review')));
+
+    // Every chip is inside the window, the last one included.
+    final screen = Offset.zero & tester.view.physicalSize;
+    for (final label in [
+      'z.com · 1',
+      'y.com · blocked',
+      'site10.a-1chimney.com',
+      'site29.a-1chimney.com',
+    ]) {
+      final chip = tester.getRect(find.widgetWithText(ChoiceChip, label));
+      expect(
+        screen.contains(chip.topLeft) && screen.contains(chip.bottomRight),
+        isTrue,
+        reason: '$label is drawn at $chip, outside the window.',
+      );
+    }
+
+    // The one that changes leads, then the one not written, then the rest.
+    double x(String label) =>
+        tester.getTopLeft(find.widgetWithText(ChoiceChip, label)).dx;
+    double y(String label) =>
+        tester.getTopLeft(find.widgetWithText(ChoiceChip, label)).dy;
+    expect(y('z.com · 1'), y('y.com · blocked'));
+    expect(x('z.com · 1'), lessThan(x('y.com · blocked')));
+    expect(x('y.com · blocked'), lessThan(x('site10.a-1chimney.com')));
+    // And it is the one open.
+    expect(find.text('8:00 AM – 6:00 PM'), findsOneWidget);
   });
 
   testWidgets('the results list every website that was ticked', (tester) async {

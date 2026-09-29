@@ -201,10 +201,25 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     });
   }
 
-  List<Map<String, dynamic>> get _places =>
-      ((_review?['places'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
+  /// What needs a look first: the websites that will change, then the ones
+  /// not written, then the rest, each group in the server's order. Forty-nine
+  /// alphabetical chips hid the six that change among the thirty-nine that
+  /// do not.
+  List<Map<String, dynamic>> get _places {
+    final all = ((_review?['places'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    int rank(Map<String, dynamic> place) => switch (place['status']) {
+      'change' => 0,
+      'blocked' => 1,
+      'unchanged' => 2,
+      _ => 3,
+    };
+
+    return [
+      for (var r = 0; r < 4; r++) ...all.where((place) => rank(place) == r),
+    ];
+  }
 
   int get _willChange => _places.where((p) => p['status'] == 'change').length;
 
@@ -364,20 +379,21 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
 
   // ── the form ─────────────────────────────────────────────────────
 
-  Widget _page({required List<Widget> children}) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-    children: [
-      Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 880),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children,
+  Widget _page({double maxWidth = 880, required List<Widget> children}) =>
+      ListView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            ),
           ),
-        ),
-      ),
-    ],
-  );
+        ],
+      );
 
   Widget _form(BuildContext context) {
     final theme = Theme.of(context);
@@ -756,7 +772,10 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       count('blocked', 'not written'),
     ].where((s) => s.isNotEmpty).join(' · ');
 
+    // Wider than the form: every website's chip is on show at once (Jose,
+    // 2026-09-29), and 880 fitted four to a line.
     return _page(
+      maxWidth: 1200,
       children: [
         if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 12)],
         Text(line, style: theme.textTheme.titleSmall),
