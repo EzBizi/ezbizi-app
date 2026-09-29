@@ -946,11 +946,17 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _thread(ThemeData theme) {
     final items = threadItems(_conversations);
 
+    // Opens on the NEWEST message, as a chat does (the dispatchers, via Jose,
+    // 2026-09-29: "it sends them to the top ... it should be sending them to
+    // the bottom"). A reversed list starts at its end without scrolling, so a
+    // long thread never has to be built to its bottom first.
     return ListView.builder(
+    key: const ValueKey('thread-list'),
+    reverse: true,
     padding: const EdgeInsets.all(14),
     itemCount: items.length,
     itemBuilder: (context, i) {
-      final item = items[i];
+      final item = items[items.length - 1 - i];
       if (item is String) return _dayDivider(theme, item);
       final c = item as Map<String, dynamic>;
       final mine = c['from'] == 'ADVERTISER';

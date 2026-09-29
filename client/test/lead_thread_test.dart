@@ -74,6 +74,37 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
   });
 
+  // The dispatchers, via Jose, 2026-09-29: opening a lead showed the FIRST
+  // message; it must open on the newest, like a chat.
+  testWidgets('a long thread opens on its newest message', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      conversations: [
+        for (var i = 0; i < 60; i++)
+          {
+            'id': 'm-$i',
+            'channel': 'MESSAGE',
+            'from': i.isEven ? 'CONSUMER' : 'ADVERTISER',
+            'occurred_at': DateTime.utc(2026, 9, 28, 12, i).toIso8601String(),
+            'duration_ms': null,
+            'text': 'Message $i',
+            'attachments': <String>[],
+            'has_recording': false,
+          },
+      ],
+    );
+
+    expect(find.text('Message 59'), findsOneWidget, reason: 'the newest is on screen');
+    expect(find.text('Message 0'), findsNothing, reason: 'the oldest is not');
+    expect(
+      tester.getTopLeft(find.text('Message 59')).dy,
+      greaterThan(tester.getTopLeft(find.text('Message 58')).dy),
+      reason: 'newest at the bottom, as the conversation happened',
+    );
+  });
+
   testWidgets('a call waiting its turn says Transcribing', (tester) async {
     await _pump(
       tester,
@@ -507,6 +538,7 @@ Future<void> _pump(
   Map<String, dynamic>? details,
   String? callTranscript = 'Hi, my fireplace smokes when I light it.',
   bool transcriptPending = false,
+  List<Map<String, dynamic>>? conversations,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -575,7 +607,7 @@ Future<void> _pump(
               'can_suggest': suggestion != null,
               'customer': customer,
               'details': details,
-              'conversations': [
+              'conversations': conversations ?? [
                 {
                   'id': 'c-call',
                   'channel': 'PHONE_CALL',
