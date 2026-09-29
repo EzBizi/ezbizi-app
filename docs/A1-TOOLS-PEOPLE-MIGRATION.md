@@ -19,7 +19,7 @@ His answers, 2026-09-29. Each is the option he picked, or the text he wrote:
 | Question | Answer |
 |---|---|
 | Brian Scheets (A1 "Management", no EzBizi equivalent) | "Make a new role for him called Recruiter" |
-| The 9 remote dispatchers | Dispatcher |
+| The 9 remote dispatchers | Dispatcher. Later the same day, Jose: "make a Remote Dispatcher role and put the ones that had the remote role in there as well". Done: Remote Dispatcher is a copy of Dispatcher's 30 permissions, and the 9 were moved to it through the HR people screen's update, audited as `user.role_changed`. |
 | The 7 people in Training | New Training role |
 | The 30 people who have left | "No, current staff only" |
 | A company assignment also reaches its sub-companies (A-1 Chimney → AngiSweep, Chimney Star) | "Yes, that's fine" |
@@ -99,7 +99,8 @@ The rest of the mapping:
 | A1 role | EzBizi role |
 |---|---|
 | technician | Technician |
-| dispatcher, remote_dispatcher, customer_experience | Dispatcher |
+| dispatcher, customer_experience | Dispatcher |
+| remote_dispatcher | Remote Dispatcher (Jose, later on 2026-09-29; they were Dispatchers until then) |
 | local_manager | Local Manager |
 | marketing | Marketing |
 | accounting_manager | Accounting |
