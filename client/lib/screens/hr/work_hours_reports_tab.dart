@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 
 class WorkHoursReportsTab extends StatefulWidget {
@@ -351,31 +352,22 @@ class _ReportEditorState extends State<_ReportEditor> {
     Navigator.of(context).pop(true);
   }
 
-  Future<String?> _pickPerson(Set<String> except) async {
-    final options = [
+  /// The house person picker, not a bottom sheet (Jose, 2026-09-17: a list of
+  /// people is a search picker). It searches once the list is long enough to
+  /// need it.
+  Future<String?> _pickPerson(Set<String> except) => showSearchPicker<String>(
+    context,
+    title: 'Choose a person',
+    options: [
       for (final p in widget.people)
-        if (!except.contains('${p['id']}')) p,
-    ];
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final p in options)
-              ListTile(
-                title: Text('${p['name']}'),
-                subtitle: Text('${p['email'] ?? ''}'),
-                onTap: () => Navigator.of(context).pop('${p['id']}'),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    return picked;
-  }
+        if (!except.contains('${p['id']}'))
+          SearchOption(
+            value: '${p['id']}',
+            label: '${p['name']}',
+            detail: '${p['email'] ?? ''}'.isEmpty ? null : '${p['email']}',
+          ),
+    ],
+  );
 
   Widget _heading(String text, [String? hint]) {
     final theme = Theme.of(context);
