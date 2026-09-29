@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0307',
       date: '29 Sep 2026',
       items: [
-        'Human Resources, Records: drag the edge of the people list to resize it. Every empty personal box, and the start date, is amber and says Not filled in, and the list shows how many each person is missing.',
+        'Human Resources, Records: drag the edge of the people list to resize it. Every empty personal box except middle name, and the start date, is amber and says Not filled in, and the list shows how many each person is missing.',
       ],
     ),
     VersionRelease(
