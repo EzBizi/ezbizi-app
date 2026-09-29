@@ -78,7 +78,7 @@ class TimeClockShift extends Model implements HoldsPersonalData
                     .'says somebody punched without saying when, which is worse than '
                     .'keeping times against an already-anonymised account. Do not invent '
                     .'an out time on erasure.')),
-            new PersonalDataEntry('scheduled_end_at, extensions, outside_schedule, ended_by',
+            new PersonalDataEntry('scheduled_end_at, extensions, outside_schedule, ended_by, import_ref',
                 PersonalDataEntry::ACTIVITY,
                 'What the schedule said about this shift and who closed it.',
                 Erasure::keep('Facts about the punch, not about the person; they go with the row.')),
@@ -94,7 +94,7 @@ class TimeClockShift extends Model implements HoldsPersonalData
 
     protected $fillable = [
         'organization_id', 'user_id', 'clocked_in_at', 'clocked_out_at',
-        'scheduled_end_at', 'extensions', 'outside_schedule', 'ended_by',
+        'scheduled_end_at', 'extensions', 'outside_schedule', 'ended_by', 'import_ref',
     ];
 
     protected function casts(): array

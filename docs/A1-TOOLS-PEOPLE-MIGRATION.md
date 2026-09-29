@@ -140,3 +140,53 @@ already Lead Manager.
 5. The real runs, then verification.
 6. Jose is told the result. The emails go out, clock-in moves to EzBizi, and A1's clock-in retires.
 7. The staging export is deleted.
+
+## Clock In export format (`worktime:import-a1-tools`)
+
+Added by Clock In, 2026-09-29. One JSON object, UTF-8, written to the staging
+directory beside HR's bundle. Current staff only; former staff are skipped
+anyway, because they have no EzBizi account to match.
+
+```json
+{
+  "time_records": [
+    {
+      "id": 4812,
+      "email": "person@example.com",
+      "clock_in": "2026-09-01 12:00:00",
+      "clock_out": "2026-09-01 20:30:00"
+    }
+  ],
+  "day_statuses": [
+    { "email": "person@example.com", "date": "2026-09-07", "status": "absent" }
+  ]
+}
+```
+
+- `time_records`: one per A1 `time_records` row. `id` is A1's row id and is
+  REQUIRED: it becomes `import_ref = a1tools:<id>`, which is what makes a
+  second run (the cut-over) write only new rows. `clock_in` and `clock_out`
+  are UTC exactly as A1 stores them, `Y-m-d H:i:s`. `clock_out` is `null` for
+  an open shift. For a person with two A1 accounts, write both accounts' rows
+  under the one shared email.
+- `day_statuses`: one per A1 `time_day_status` row. `date` is `Y-m-d`, the
+  day as A1 recorded it. `status` is passed through as A1 has it; only
+  `absent` is imported (`other` has no EzBizi tag).
+- `email` is matched case-insensitively to the users `hr:import-a1-tools`
+  created, so this import runs AFTER HR's.
+
+What the importer does with it:
+- An A1 shift overlapping any EzBizi shift of the same person is skipped
+  (EzBizi wins). Two A1 shifts overlapping each other keep the earlier.
+- An open A1 shift is imported open, with the org's cap
+  (`time_clock.max_hours`, 16) as its end, unless the person already has an
+  open shift. One started longer ago than the cap is imported closed at the
+  cap, `ended_by = schedule`.
+- `absent` is written as the day's tag only if the person has no shift that
+  day and the day carries no tag, note or extra hours already.
+- Output is counts, plus EzBizi user ids with `--per-person`. It prints no
+  name, email or time.
+
+```
+php artisan worktime:import-a1-tools /path/to/worktime.json --organization=A1-Group --dry-run --per-person
+```
