@@ -399,7 +399,7 @@ class DashboardTest extends TestCase
         $this->assertContains('inventory', $keys);
     }
 
-    public function test_old_dashboard_widgets_do_not_500_and_copy_earned_statuses(): void
+    public function test_old_dashboard_widgets_do_not_500(): void
     {
         $this->inTenant(fn () => User::withoutGlobalScopes()->find($this->alpha['admin']->id)
             ->forceFill(['preferences' => ['dashboard.widgets' => [
@@ -407,7 +407,7 @@ class DashboardTest extends TestCase
             ]]])->save());
         $jobs = collect($this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances'))
             ->firstWhere('key', 'jobs');
-        $this->assertSame(['completed'], $jobs['options']['earned_statuses'] ?? null);
+        $this->assertSame([], $jobs['options']);
     }
 
     public function test_surface_on_a_layout_save_is_ignored(): void
@@ -467,24 +467,6 @@ class DashboardTest extends TestCase
 
         $jobs = collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'jobs');
         $this->assertSame('pie', $jobs['presentation']);
-    }
-
-    public function test_a_choice_no_longer_offered_is_dropped_rather_than_refusing_the_save(): void
-    {
-        $this->as($this->alpha['admin'])
-            ->patchJson('/api/v1/settings/jobs.statuses?scope_type=organization&scope_id='
-                .$this->alpha['org']->id, ['value' => ['booked', 'invoiced']])
-            ->assertOk();
-
-        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'jobs', 'options' => [
-                'earned_statuses' => ['completed', 'invoiced'],
-            ]]],
-        ])->assertOk();
-
-        $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])
-            ->firstWhere('key', 'jobs');
-        $this->assertSame(['invoiced'], $stored['options']['earned_statuses']);
     }
 
     public function test_a_layout_survives_losing_the_permission_it_was_built_with(): void
@@ -616,29 +598,8 @@ class DashboardTest extends TestCase
         $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])
             ->firstWhere('key', 'jobs');
         $this->assertSame('bar', $stored['presentation']);
-        $this->assertSame(['completed'], $stored['options']['earned_statuses']);
+        $this->assertArrayNotHasKey('options', $stored, 'no glance takes options, so none are stored');
         $this->assertSame('week', $this->preferencesOf($this->alpha['admin'])['dashboard.period']);
-    }
-
-    public function test_a_period_save_does_not_drop_earned_statuses_copied_from_widgets(): void
-    {
-        $this->inTenant(fn () => User::withoutGlobalScopes()->find($this->alpha['admin']->id)
-            ->forceFill(['preferences' => ['dashboard.widgets' => [
-                ['key' => 'jobs.revenue', 'options' => ['statuses' => ['completed']]],
-            ]]])->save());
-
-        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'period' => 'year',
-        ])->assertOk();
-
-        $this->assertArrayNotHasKey(
-            'dashboard.glances',
-            $this->preferencesOf($this->alpha['admin']),
-        );
-
-        $jobs = collect($this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances'))
-            ->firstWhere('key', 'jobs');
-        $this->assertSame(['completed'], $jobs['options']['earned_statuses'] ?? null);
     }
 
     public function test_the_dashboard_echoes_the_chosen_period(): void
