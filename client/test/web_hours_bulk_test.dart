@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/web/hours_bulk.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -212,7 +213,7 @@ void main() {
     // One tab per website, with its count, as drawn.
     expect(find.text('a.com · 1'), findsOneWidget);
     expect(find.text('b.com · blocked'), findsOneWidget);
-    expect(find.text('opening moved'), findsOneWidget);
+    expect(find.text('Opening moved'), findsOneWidget);
     expect(find.text('6:00 AM – 6:00 PM'), findsOneWidget);
     // Only the website that will change counts toward the button.
     expect(find.text('Update 1 website'), findsOneWidget);
@@ -295,6 +296,48 @@ void main() {
     expect(x('y.com · blocked'), lessThan(x('site10.a-1chimney.com')));
     // And it is the one open.
     expect(find.text('8:00 AM – 6:00 PM'), findsOneWidget);
+  });
+
+  /// Jose, 2026-09-29: "add some colors, green red, for the changes ... make
+  /// it more lively".
+  testWidgets('a change is green and what it replaces is red', (tester) async {
+    await pump(tester);
+    await tap(tester, segment(5, 'Closed all day'));
+    await tap(tester, find.byKey(const Key('hours-bulk-review')));
+
+    final context = tester.element(find.byType(HoursBulkPane));
+    final ok = ToneColours.of(context, Tone.ok);
+    final bad = ToneColours.of(context, Tone.bad);
+
+    // Monday changes: the new hours green, the old ones struck through red.
+    final fin = tester.widget<Text>(find.text('6:00 AM – 6:00 PM'));
+    expect(fin.style?.color, ok.ink);
+    final was = tester.widgetList<Text>(find.text('9:00 AM – 6:00 PM')).toList();
+    expect(was.first.style?.color, bad.ink);
+    expect(was.first.style?.decoration, TextDecoration.lineThrough);
+    // The control: Tuesday does not change and is neither.
+    expect(was[1].style?.decoration, isNot(TextDecoration.lineThrough));
+    expect(was[1].style?.color, isNot(bad.ink));
+
+    // The row behind Monday is green; Tuesday's has nothing behind it.
+    final rows = tester.widget<Table>(find.byType(Table)).children;
+    expect((rows[1].decoration as BoxDecoration?)?.color, ok.fill);
+    expect(rows[2].decoration, isNull);
+
+    // The counts, and each website's chip, in their status's colour.
+    StatusPill pill(String label) => tester.widget<StatusPill>(
+      find.ancestor(of: find.text(label), matching: find.byType(StatusPill)),
+    );
+    expect(pill('1 will change').tone, Tone.ok);
+    expect(pill('1 not written').tone, Tone.caution);
+    Icon icon(String chip) => tester.widget<Icon>(
+      find.descendant(
+        of: find.widgetWithText(ChoiceChip, chip),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon('a.com · 1').color, ok.ink);
+    expect(icon('b.com · blocked').color, ToneColours.of(context, Tone.caution).ink);
   });
 
   testWidgets('the results list every website that was ticked', (tester) async {

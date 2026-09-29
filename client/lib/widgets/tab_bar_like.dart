@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme.dart';
 import 'not_filled_in.dart';
 
 /// A simple segmented row of destinations.
@@ -19,6 +20,7 @@ class TabBarLike extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.missing,
+    this.tones,
   });
 
   final List<(String, IconData)> labels;
@@ -28,6 +30,10 @@ class TabBarLike extends StatelessWidget {
   /// How many boxes under each tab are empty, as the amber count beside its
   /// label (HR's record, 2026-09-29). None drawn at zero or when null.
   final List<int>? missing;
+
+  /// Each chip's icon in its tone's colour, for a status beside the name
+  /// (the hours review, 2026-09-29: a website that changes, green).
+  final List<Tone?>? tones;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +78,14 @@ class TabBarLike extends StatelessWidget {
     final chips = [
       for (var i = 0; i < labels.length; i++)
         ChoiceChip(
-          avatar: Icon(labels[i].$2, size: 16),
+          avatar: Icon(
+            labels[i].$2,
+            size: 16,
+            color: switch (tones?[i]) {
+              final tone? => ToneColours.of(context, tone).ink,
+              null => null,
+            },
+          ),
           label: switch (missing?[i] ?? 0) {
             0 => Text(labels[i].$1),
             final count => Row(

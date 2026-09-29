@@ -749,28 +749,18 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
   // ── the review ───────────────────────────────────────────────────
 
   static (String, Tone) _reviewPill(String? status) => switch (status) {
-    'change' => ('Will change', Tone.info),
+    'change' => ('Will change', Tone.ok),
     'unchanged' => ('Unchanged', Tone.neutral),
     'blocked' => ('Not written', Tone.caution),
     _ => ('Not available', Tone.neutral),
   };
 
   Widget _reviewBody(BuildContext context) {
-    final theme = Theme.of(context);
     final places = _places;
     final wide = MediaQuery.sizeOf(context).width >= 760;
     final summary = (_review?['summary'] as Map?) ?? const {};
 
-    String count(String key, String word) {
-      final n = (summary[key] as num?)?.toInt() ?? 0;
-      return n == 0 ? '' : '$n $word';
-    }
-
-    final line = [
-      count('change', 'will change'),
-      count('unchanged', 'unchanged'),
-      count('blocked', 'not written'),
-    ].where((s) => s.isNotEmpty).join(' · ');
+    int count(String key) => (summary[key] as num?)?.toInt() ?? 0;
 
     // Wider than the form: every website's chip is on show at once (Jose,
     // 2026-09-29), and 880 fitted four to a line.
@@ -778,11 +768,29 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       maxWidth: 1200,
       children: [
         if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 12)],
-        Text(line, style: theme.textTheme.titleSmall),
+        // The counts in the colours their websites carry below (Jose,
+        // 2026-09-29: "add some colors, green red, for the changes ... make
+        // it more lively").
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (key, word) in [
+              ('change', 'will change'),
+              ('unchanged', 'unchanged'),
+              ('blocked', 'not written'),
+            ])
+              if (count(key) > 0)
+                StatusPill('${count(key)} $word', tone: _reviewPill(key).$2),
+          ],
+        ),
         const SizedBox(height: 12),
         if (wide && places.length > 1) ...[
           TabBarLike(
-            labels: [for (final p in places) (_tabLabel(p), Icons.language)],
+            labels: [for (final p in places) (_tabLabel(p), _placeIcon(p))],
+            tones: [
+              for (final p in places) _reviewPill(p['status'] as String?).$2,
+            ],
             selected: _tab.clamp(0, places.length - 1),
             onSelected: (i) => setState(() => _tab = i),
           ),
@@ -796,6 +804,13 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       ],
     );
   }
+
+  static IconData _placeIcon(Map<String, dynamic> place) =>
+      switch (place['status']) {
+        'change' => Icons.edit_calendar_outlined,
+        'blocked' => Icons.error_outline,
+        _ => Icons.language,
+      };
 
   /// "la.everdoors.com · 5", or "· blocked", as drawn.
   String _tabLabel(Map<String, dynamic> place) {
@@ -826,7 +841,13 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       key: ValueKey('hours-bulk-place-${place['site_id']}'),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        // Edged in its status's colour all round: a website that changes
+        // green, one that cannot be written amber.
+        border: Border.all(
+          color: tone == Tone.neutral
+              ? theme.colorScheme.outlineVariant
+              : ToneColours.of(context, tone).ink.withValues(alpha: 0.35),
+        ),
         borderRadius: BorderRadius.circular(14),
       ),
       padding: const EdgeInsets.all(14),
@@ -898,19 +919,41 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     };
   }
 
-  String? _noteFor(Map<String, dynamic> day) {
-    if (day['error'] != null) return '${day['error']}';
-    if (day['adjusted'] == true) {
-      return _notBefore == null
-          ? 'opening moved'
-          : 'not before ${_clock(_notBefore!)}';
+  /// The end of a day's row: why, in red, when it cannot be written; a pill
+  /// when there is something else to know; quiet words when there is not.
+  Widget _note(BuildContext context, Map<String, dynamic> day) {
+    if (day['error'] != null) {
+      return Text(
+        '${day['error']}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: ToneColours.of(context, Tone.bad).ink,
+        ),
+      );
     }
-    if (day['changed'] != true) return 'no change';
-    return null;
+    if (day['adjusted'] == true) {
+      return StatusPill(
+        _notBefore == null
+            ? 'Opening moved'
+            : 'Not before ${_clock(_notBefore!)}',
+        tone: Tone.caution,
+      );
+    }
+    if (day['changed'] == true) {
+      return const StatusPill('Changes', tone: Tone.ok);
+    }
+    final theme = Theme.of(context);
+    return Text(
+      'no change',
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 
   Widget _dayTable(BuildContext context, List<Map<String, dynamic>> days) {
     final theme = Theme.of(context);
+    final ok = ToneColours.of(context, Tone.ok);
+    final bad = ToneColours.of(context, Tone.bad);
     final head = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
@@ -918,39 +961,62 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     final quiet = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final loud = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurface,
+    );
 
     TableRow row(Map<String, dynamic> day) {
       final changed = day['changed'] == true;
-      final note = _noteFor(day);
-      final style = changed
-          ? theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface,
-            )
-          : quiet;
+      final failed = day['error'] != null;
+      final style = changed || failed ? loud : quiet;
 
-      Widget cell(String text, {TextStyle? s}) => Padding(
+      Widget cell(Widget child) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-        child: Text(text, style: s ?? style),
+        child: child,
       );
 
+      Widget text(String value, [TextStyle? s]) =>
+          cell(Text(value, style: s ?? style));
+
       return TableRow(
+        // Green behind a day that changes, red behind one that cannot be
+        // written: the week reads at a glance.
+        decoration: changed || failed
+            ? BoxDecoration(
+                color: (failed ? bad : ok).fill,
+                borderRadius: BorderRadius.circular(8),
+              )
+            : null,
         children: [
-          cell('${day['day']}'),
-          cell(_span(day['existing'] as Map?)),
-          cell(_asked(day)),
-          cell(_pair(day['converted'])),
-          cell(
+          text(
+            '${day['day']}',
+            changed || failed
+                ? style?.copyWith(fontWeight: FontWeight.w600)
+                : null,
+          ),
+          // What goes, struck through in red, and what replaces it, in green.
+          text(
+            _span(day['existing'] as Map?),
+            changed
+                ? style?.copyWith(
+                    color: bad.ink,
+                    decoration: TextDecoration.lineThrough,
+                    decorationColor: bad.ink,
+                  )
+                : null,
+          ),
+          text(_asked(day)),
+          text(_pair(day['converted'])),
+          text(
             _span(day['final'] as Map?),
-            s: changed ? style?.copyWith(fontWeight: FontWeight.w700) : quiet,
+            changed
+                ? style?.copyWith(color: ok.ink, fontWeight: FontWeight.w700)
+                : null,
           ),
           cell(
-            note ?? '',
-            s: theme.textTheme.bodySmall?.copyWith(
-              color: day['error'] != null
-                  ? ToneColours.of(context, Tone.bad).ink
-                  : day['adjusted'] == true
-                  ? ToneColours.of(context, Tone.caution).ink
-                  : theme.colorScheme.onSurfaceVariant,
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: _note(context, day),
             ),
           ),
         ],
@@ -985,6 +1051,8 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
   /// On a phone: the days that change, one line each; the rest named once.
   Widget _dayLines(BuildContext context, List<Map<String, dynamic>> days) {
     final theme = Theme.of(context);
+    final ok = ToneColours.of(context, Tone.ok);
+    final bad = ToneColours.of(context, Tone.bad);
     final same = [
       for (final d in days)
         if (d['changed'] != true && d['error'] == null) '${d['day']}',
@@ -1010,7 +1078,9 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
                         TextSpan(
                           text: _span(d['existing'] as Map?),
                           style: theme.textTheme.bodySmall?.copyWith(
+                            color: bad.ink,
                             decoration: TextDecoration.lineThrough,
+                            decorationColor: bad.ink,
                           ),
                         ),
                         const TextSpan(text: '  →  '),
@@ -1019,20 +1089,19 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
                               ? 'not written'
                               : _span(d['final'] as Map?),
                           style: theme.textTheme.bodyMedium?.copyWith(
+                            color: d['error'] != null ? bad.ink : ok.ink,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (_noteFor(d) case final note?)
-                    Text(
-                      note,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: d['error'] != null
-                            ? ToneColours.of(context, Tone.bad).ink
-                            : ToneColours.of(context, Tone.caution).ink,
-                      ),
+                  // Every line here is a change, so only what is more than
+                  // that gets a pill.
+                  if (d['error'] != null || d['adjusted'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: _note(context, d),
                     ),
                 ],
               ),
