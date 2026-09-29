@@ -75,7 +75,9 @@ His answers, 2026-09-29:
 - Workiz builds a paced, resumable backfill that stops on the first 429.
 - It runs AFTER the clients import, so old jobs attach to the imported customers.
 - Hard rule: no automation events and no customer-facing side effects. Old jobs landing as Done must not send review requests, texts, emails or notifications.
-- Built: `ezbizi:backfill-workiz [--since=2023-01-01] [--pages=100] [--pause=10] [--restart]` (Workiz).
+- Built: `ezbizi:backfill-workiz [--since=2023-01-01] [--pages=100] [--pause=10] [--restart] [--dry-run]` (Workiz).
+  - Every run reports, per branch: jobs read, jobs new to the mirror, how many of those attach to an existing customer, and how many distinct clients will become new customers.
+  - `--dry-run` reads and counts the same way and lands nothing. Its progress is its own, so it never moves the real run, but it spends the same API calls.
   - It reads each branch's pages from the farthest future back to `--since`, with a pause between pages and a page budget per run.
   - It stops on the first refusal. The next page per branch is saved after every page, and a resumed branch starts one page back.
   - It lands only jobs the mirror does not have, and writes nothing but the mirror. The projection then creates the jobs, and creating a job raises no event.
@@ -164,7 +166,8 @@ Rules for the exporter:
   3. `duplicate`: an earlier row in the file created the same key, or the same phone and name. The two become one customer.
   4. Otherwise, created.
 - **A matched customer is never written to**, not even a blank field.
-  - A phone match registers no key, because merging automatically on phone is refused.
+  - A phone+name match, and an in-file duplicate, register the row's unclaimed Workiz keys to the customer they matched (Customers' ruling). Otherwise the backfill's old jobs would create their twin, and nothing in EzBizi can merge two customers. The run's audit row lists every phone+name pair (A1 id, customer, keys), so a wrong one can be found and undone.
+  - Keys are checked before phones, so a key that two rows share names one customer.
   - Nothing is enriched. The matched rows' second phones and company names sit on Workiz clients whose payloads EzBizi already mirrors.
 - **A created customer is built like this:**
   - Name: first + last; else the display name; else the company; else "A1 Tools client <a1_id>".
