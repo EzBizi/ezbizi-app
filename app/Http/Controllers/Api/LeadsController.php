@@ -194,6 +194,22 @@ class LeadsController extends Controller
          */
         $query->sourceVisibleTo($user);
 
+        // Unread per source for the rail (UI/UX, queue 30): the reader's
+        // leads before any source, status or search narrowing, keyed as the
+        // strip keys them - Google split into ls_call / ls_text.
+        $unreadBySource = (clone $query)
+            ->where(fn ($q) => $q->whereNull('lead_reads.read_at')
+                ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > lead_reads.read_at'))
+            ->reorder()
+            ->select(DB::raw("CASE WHEN leads.source = 'local_services' THEN "
+                ."(CASE WHEN leads.lead_type = 'PHONE_CALL' THEN 'ls_call' ELSE 'ls_text' END) "
+                .'ELSE leads.source END AS kind'))
+            ->selectRaw('COUNT(*) AS n')
+            ->groupBy('kind')
+            ->toBase()
+            ->pluck('n', 'kind')
+            ->map(fn ($n) => (int) $n);
+
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
         }
@@ -326,6 +342,7 @@ class LeadsController extends Controller
                 'current_page' => $leads->currentPage(),
                 'last_page' => $leads->lastPage(),
                 'connections' => $this->connectionState(),
+                'unread_by_source' => (object) $unreadBySource->all(),
                 /*
                  * "Google is refusing, so enquiries are late" - or null.
                  *

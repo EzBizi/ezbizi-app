@@ -152,8 +152,12 @@ without lines keep A1's total.
 - `PATCH /estimates/{id}`. A `lines` array replaces all lines, which avoids a lines CRUD.
 - `DELETE /estimates/{id}`, drafts only. Anything past draft is archived instead.
 
-**Permission.** Reading and writing both need `jobs.view` plus `jobs.financials`, and the
-franchise must be in reach.
+**Permission.** Every action needs `estimates.<action>` AND `jobs.financials`, and the
+franchise must be in reach. Estimates are a child module of Jobs (`parent: 'jobs'`): a
+ModuleDefinition holds one automation subject, and `estimate.accepted` is about an
+Estimate, so the registry refuses it on the Job subject. The module brings its own
+view/create/edit/delete toggles, and the Financials AND keeps Jose's rule that money
+is decided by that one toggle.
 
 **Transitions.** Draft goes to sent, and sent goes to accepted or declined. Anything can
 be archived. Accepting stamps `accepted_at`.

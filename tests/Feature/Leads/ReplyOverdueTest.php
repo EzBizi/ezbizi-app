@@ -116,5 +116,10 @@ class ReplyOverdueTest extends TestCase
         $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?sources=ls_text,thumbtack')->assertOk()->json('data'), 'contact_name'));
         $this->assertCount(2, $this->getJson('/api/v1/leads?sources=ls_text,ls_call')->assertOk()->json('data'));
         $this->assertSame([], $this->getJson('/api/v1/leads?sources=-')->assertOk()->json('data'), 'nothing ticked, nothing shown');
+
+        // Unread per source for the rail, whatever the list is narrowed to.
+        $this->postJson('/api/v1/leads/'.Lead::withoutGlobalScopes()->where('remote_id', 'c')->value('id').'/read')->assertSuccessful();
+        $meta = $this->getJson('/api/v1/leads?source=thumbtack')->assertOk()->json('meta.unread_by_source');
+        $this->assertSame(['ls_text' => 1], $meta, 'the read call is not counted, and the thumbtack filter does not narrow it');
     }
 }

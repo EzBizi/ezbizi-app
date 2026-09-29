@@ -63,6 +63,20 @@ class JobMoneyListTest extends TestCase
             $meta['money_totals']['USD']);
     }
 
+    /**
+     * The money chips' counts, faceted like the status chips: the money filter
+     * is left out, everything else kept. `unpaid` counts `late` and `today`
+     * too, since overdue is a date on top of a state; `overdue` is `late` only.
+     */
+    public function test_money_counts_are_faceted_like_the_chips(): void
+    {
+        $meta = $this->signedInAs($this->alpha['admin'])
+            ->getJson('/api/v1/jobs?money=paid&today=2026-09-29')->assertOk()->json('meta');
+
+        $this->assertSame(['unpaid' => 3, 'partial' => 1, 'overdue' => 1, 'paid' => 1, 'credit' => 1],
+            $meta['money_counts']);
+    }
+
     public function test_a_row_carries_its_money(): void
     {
         $row = collect($this->signedInAs($this->alpha['admin'])->getJson('/api/v1/jobs')->json('data'))
@@ -80,6 +94,7 @@ class JobMoneyListTest extends TestCase
 
         $body = $this->signedInAs($dispatcher)->getJson('/api/v1/jobs')->assertOk()->json();
         $this->assertArrayNotHasKey('money_totals', $body['meta']);
+        $this->assertArrayNotHasKey('money_counts', $body['meta']);
         $this->assertArrayNotHasKey('money', $body['data'][0]);
     }
 
