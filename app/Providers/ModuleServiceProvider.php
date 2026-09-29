@@ -135,21 +135,6 @@ class ModuleServiceProvider extends ServiceProvider
                 // itself. Self-serve signup and staff creation both live in the
                 // control plane (§4.2), outside tenant permissions.
                 actions: ['view', 'edit'],
-                /*
-                 * The Settings destination's own faces (settings_shell.dart).
-                 * Until 2026-09-29 two were drawn for everybody and the third
-                 * borrowed `marketing.view`, so `organizations.view` was a box
-                 * that controlled nothing. Roles keeps its own module gate.
-                 *
-                 * Integrations is still an AND with `marketing.view` on the
-                 * client: the tab opens the pane, the lists inside it are
-                 * Marketing's reads.
-                 */
-                tabs: [
-                    new TabDefinition('organization', 'Organization'),
-                    new TabDefinition('settings', 'Settings'),
-                    new TabDefinition('integrations', 'Integrations'),
-                ],
                 // SettingsController files every settings event against the
                 // tenant root, whatever level the value was written at, because
                 // that is the one of the three that can say where it sits.
@@ -1415,23 +1400,6 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Marketing',
                 auditActionPrefixes: ['social'],
                 actions: ['view', 'edit'],
-                /*
-                 * Social Media Management's own two panes, grantable one at a
-                 * time (Jose, 2026-09-29: tabs should be grantable "like all the
-                 * others"). Labels are the words its chip strip draws.
-                 *
-                 * `posts` is enforced on its routes. `accounts` is enforced on
-                 * the SCREEN only, deliberately: the connection routes serve
-                 * Settings > Integrations, Leads, Reports and Newsletter as well,
-                 * so a route gate there would take accounts away from people
-                 * who reach them another way (RequirePermission's docblock names
-                 * this case). What connecting and disconnecting CHANGE is
-                 * refused server-side without `connectPermission()` regardless.
-                 */
-                tabs: [
-                    new TabDefinition('posts', 'Posts'),
-                    new TabDefinition('accounts', 'Accounts'),
-                ],
                 triggers: [
                     /*
                      * Both are declared as never raised, because nothing sends a
@@ -1521,23 +1489,6 @@ class ModuleServiceProvider extends ServiceProvider
                 parent: 'marketing',
                 auditActionPrefixes: ['newsletter'],
                 actions: ['view', 'create', 'edit', 'delete', 'send'],
-                /*
-                 * The three panes, grantable one at a time (Jose, 2026-09-29).
-                 * Labels are the words the sub-tab strip draws.
-                 *
-                 * `composer` is enforced on every route that writes, previews or
-                 * sends. The LIST is read by Dashboard and Composer both - the
-                 * calendar and the picker are the same rows - so it answers to
-                 * either, inside NewslettersController::index. `settings` is the
-                 * Mailchimp connection, which Settings > Integrations reaches as
-                 * well, so it is enforced on the screen; connecting still needs
-                 * `newsletter.send` on the server.
-                 */
-                tabs: [
-                    new TabDefinition('dashboard', 'Dashboard'),
-                    new TabDefinition('composer', 'Composer'),
-                    new TabDefinition('settings', 'Settings'),
-                ],
                 /*
                  * One record type, and it really is one: both triggers pass a
                  * Newsletter. `newsletter.unsubscribed` fires from the public
@@ -1796,24 +1747,6 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
-                /*
-                 * Jose, 2026-09-29: "the communication right now is only view
-                 * and edit, which means everyone can view the settings, we need
-                 * to add the tab support like all the others". Labels are the
-                 * tab bar's in phone_screen.dart, in its order.
-                 *
-                 * What each one closes on the server is listed in routes/api.php
-                 * beside the routes. Records has no route of its own to close:
-                 * its calls and texts are the same endpoints the Phone tab's
-                 * history and customer panel read.
-                 */
-                tabs: [
-                    new TabDefinition('phone', 'Phone'),
-                    new TabDefinition('users', 'Users'),
-                    new TabDefinition('records', 'Records'),
-                    new TabDefinition('reports', 'Reports'),
-                    new TabDefinition('settings', 'Settings'),
-                ],
                 triggers: [
                     new TriggerDefinition(
                         key: 'phone.call.started',
