@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0333',
+      date: '30 Sep 2026',
+      items: [
+        'Leads, Manage, Templates: redesigned, with companies, their templates and the open template side by side, Insert buttons for the placeholders, a live preview, drag to reorder, and copy to other companies.',
+        'Leads, Manage: a new Dashboard tab shows leads, answer rate, first-reply time and booked, per day and per person.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0332',
       date: '30 Sep 2026',
       items: [
