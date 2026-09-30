@@ -452,6 +452,29 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
+     * /me names the new starter's own unfinished onboarding, which is how the
+     * app draws "Your paperwork" for a role with no HR tab (session.dart
+     * onboardingId). The client read the key for weeks and the server never
+     * sent it: a new starter had no way to reach their form (2026-09-30).
+     */
+    public function test_me_names_the_starters_own_unfinished_onboarding_until_it_is_done(): void
+    {
+        [$alpha, $employee, $id] = $this->completeForm();
+
+        $mine = fn (User $who) => $this->as($who)->getJson('/api/v1/me')->assertOk()->json('data.onboarding');
+
+        $this->assertSame(['id' => $id], $mine($employee));
+        // The control: the employer RUNS it and is not its subject.
+        $this->assertNull($mine($alpha['admin']));
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
+        $this->assertSame(['id' => $id], $mine($employee), 'Their own signature is still owed.');
+
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+        $this->assertNull($mine($employee), 'A finished form stayed on their screen.');
+    }
+
+    /**
      * A signature is against what the signer READ, or it is against nothing.
      *
      * The client sends back the fingerprint of the document it was handed. If the
