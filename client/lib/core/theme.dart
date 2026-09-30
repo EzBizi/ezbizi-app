@@ -18,11 +18,13 @@ class EzBiziTheme {
   static const _line = Color(0x1A060808);
   static const _surfaceAlt = Color(0xFFF5F8FA);
 
-  /// Field map status colours (Jose, 2026-10-01: "literally use colors that
+  /// Field map status colours (Jose, 2026-09-30: "literally use colors that
   /// stand out: green, red, yellow, blue, white/dark"). Map pins sit on busy
   /// tiles in both modes, so these are the loud, saturated versions and read
-  /// the same on light and dark. The fifth, white/dark, is
-  /// `colorScheme.onSurface`, which already flips with the mode.
+  /// the same on light and dark tiles. As TEXT on a light panel they do not:
+  /// on white, yellow is 1.5:1, green 2.3:1, blue and red under 4:1. The
+  /// fifth, white/dark, is `colorScheme.onSurface`, which already flips with
+  /// the mode.
   static const fieldGreen = Color(0xFF22C55E);
   static const fieldRed = Color(0xFFEF4444);
   static const fieldYellow = Color(0xFFFACC15);
