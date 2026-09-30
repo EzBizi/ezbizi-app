@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.23.2
+Stable tag: 1.23.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.23.3 =
+* FIX: on a site connected to EzBizi, an Elementor form whose email step fails
+  no longer tells the visitor it failed; the enquiry is in EzBizi Leads.
 
 = 1.23.2 =
 * FIX: a second click on Send while the robot check was still working sent

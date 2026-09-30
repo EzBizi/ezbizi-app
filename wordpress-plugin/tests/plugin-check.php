@@ -127,6 +127,9 @@ function esc_url_raw($s) { return (string) $s; }
 function is_email($s) { return filter_var($s, FILTER_VALIDATE_EMAIL) !== false ? $s : false; }
 function register_setting($g, $n, $a = []) { $GLOBALS['settings'][$n] = $a; }
 function add_filter($hook, $cb, $p = 10, $a = 1) { $GLOBALS['filters'][$hook][] = $cb; }
+function remove_filter($hook, $cb, $p = 10) { $GLOBALS['filters'][$hook] = array_values(array_filter($GLOBALS['filters'][$hook] ?? [], fn ($x) => $x !== $cb)); return true; }
+function wp_doing_ajax() { return ! empty($GLOBALS['doing_ajax']); }
+function wp_mail($to, $subject, $message, $headers = '', $attachments = []) { $GLOBALS['mail_calls'] = ($GLOBALS['mail_calls'] ?? 0) + 1; return $GLOBALS['mail_ok'] ?? true; }
 function apply_filters($hook, $value) {
     foreach ($GLOBALS['filters'][$hook] ?? [] as $cb) { $value = $cb($value); }
     return $value;
@@ -2175,6 +2178,23 @@ $GLOBALS['actions']['shutdown'] = [];
 ezbizi_elementor_form_record($record);
 do_action('shutdown');
 check('a site with no token sends nothing', $GLOBALS['post_calls'], 1);
+
+echo PHP_EOL . "A form whose email fails still thanks the visitor" . PHP_EOL;
+$mail = ['to' => 'info@x.test', 'subject' => 's', 'message' => 'm', 'headers' => '', 'attachments' => []];
+$GLOBALS['opt']['ezbizi_token'] = 'tok';
+$GLOBALS['doing_ajax'] = false;
+check('other mail is left alone', ezbizi_form_mail(null, $mail), null);
+$GLOBALS['doing_ajax'] = true;
+$_POST = ['action' => 'elementor_pro_forms_send_form'];
+$GLOBALS['mail_ok'] = false;
+$GLOBALS['mail_calls'] = 0;
+check('a failed form email is still a sent enquiry', ezbizi_form_mail(null, $mail), true);
+check('because the email was still tried', $GLOBALS['mail_calls'], 1);
+$GLOBALS['opt']['ezbizi_token'] = '';
+check('but not on a site EzBizi does not hear from', ezbizi_form_mail(null, $mail), null);
+$GLOBALS['doing_ajax'] = false;
+$GLOBALS['mail_ok'] = true;
+$_POST = [];
 
 echo PHP_EOL . "An Elementor form without the robot check's answer is refused" . PHP_EOL;
 $solve = function (array $c) {

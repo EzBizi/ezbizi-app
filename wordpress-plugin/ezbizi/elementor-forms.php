@@ -25,6 +25,32 @@ if (! defined('ABSPATH')) {
 add_action('elementor_pro/forms/new_record', 'ezbizi_elementor_form_record', 20, 2);
 
 /*
+ * ── A form whose email fails still thanks the visitor ──
+ *
+ * The hosting refused these sites' mail for weeks (2026-09), so Elementor's
+ * Email step failed on every enquiry and told each visitor "Your submission
+ * failed because of a server error" — while the enquiry reached EzBizi Leads
+ * all along. People sent again, and some surely gave up. On a site connected
+ * to EzBizi, Leads is where the enquiry lands, so a failed email is not a
+ * failed submission: the email is still tried, and the answer is "sent".
+ */
+add_filter('pre_wp_mail', 'ezbizi_form_mail', 10, 2);
+
+function ezbizi_form_mail($short, $atts) {
+    // phpcs:ignore WordPress.Security.NonceVerification -- only reads which action this request is
+    if ($short !== null || ! wp_doing_ajax() || (isset($_POST['action']) ? $_POST['action'] : '') !== 'elementor_pro_forms_send_form'
+        || ezbizi_settings()['token'] === '') {
+        return $short;
+    }
+
+    remove_filter('pre_wp_mail', 'ezbizi_form_mail', 10);
+    wp_mail($atts['to'], $atts['subject'], $atts['message'], $atts['headers'], $atts['attachments']);
+    add_filter('pre_wp_mail', 'ezbizi_form_mail', 10, 2);
+
+    return true;
+}
+
+/*
  * ── The robot check on every Elementor form ──
  *
  * Jose, 2026-09-30, after A-1's forms took a night of Russian spam straight
