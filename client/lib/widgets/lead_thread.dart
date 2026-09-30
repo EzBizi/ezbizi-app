@@ -11,6 +11,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../screens/customers/customer_detail_panel.dart';
 import '../screens/jobs/job_detail_panel.dart';
+import '../screens/phone/call_tab.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import '../screens/scheduling/availability_pane.dart';
@@ -147,6 +148,11 @@ class _LeadThreadState extends State<LeadThread> {
 
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
+
+  /// Canned replies beside Send, already filled in for this customer and
+  /// brand (`leads.reply_templates`). A tap puts the text in the box to read
+  /// first; it never sends by itself.
+  List<Map<String, dynamic>> _templates = const [];
   bool _suggesting = false;
 
   /// How often an OPEN conversation re-reads itself.
@@ -311,6 +317,8 @@ class _LeadThreadState extends State<LeadThread> {
       _canReply = data['can_reply'] == true;
       _cannotReplyBecause = data['cannot_reply_because'] as String?;
       _canSuggest = data['can_suggest'] == true;
+      _templates = (data['reply_templates'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
       _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
@@ -375,6 +383,13 @@ class _LeadThreadState extends State<LeadThread> {
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
       if (widget.onStatusChanged != null) _moves(lead),
+      if (_canCall(lead))
+        OutlinedButton.icon(
+          key: const ValueKey('lead-call'),
+          onPressed: () => _call(lead['phone'] as String),
+          icon: const Icon(Icons.call_outlined, size: 18),
+          label: const Text('Call'),
+        ),
       if (_canBook)
         FilledButton(
           key: const ValueKey('book-open'),
@@ -382,6 +397,21 @@ class _LeadThreadState extends State<LeadThread> {
           child: const Text('Book'),
         ),
     ],
+  );
+
+  /// "When can I call you?" answered by calling them, from EzBizi's own
+  /// phone, rather than by sending our number (Jose, 2026-09-30).
+  bool _canCall(Map<String, dynamic> lead) =>
+      (lead['phone'] as String?)?.isNotEmpty == true &&
+      (widget.session?.me?.permissions.contains('phone.phone.view') ?? false);
+
+  Future<void> _call(String phone) => showSidePanel<void>(
+    context,
+    builder: (_) => CallTab(
+      api: widget.api,
+      session: widget.session!,
+      initialNumber: phone,
+    ),
   );
 
   bool get _canBook =>
@@ -637,6 +667,32 @@ class _LeadThreadState extends State<LeadThread> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.error,
               ),
+            ),
+          ),
+        if (_templates.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final t in _templates)
+                  ActionChip(
+                    key: ValueKey('reply-template-${t['name']}'),
+                    avatar: const Icon(Icons.bolt_outlined, size: 16),
+                    label: Text('${t['name']}'),
+                    tooltip: '${t['text']}',
+                    onPressed: _sending
+                        ? null
+                        : () => _compose.value = TextEditingValue(
+                            text: '${t['text']}',
+                            selection: TextSelection.collapsed(
+                              offset: '${t['text']}'.length,
+                            ),
+                          ),
+                  ),
+              ],
             ),
           ),
         Row(

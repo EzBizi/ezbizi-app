@@ -419,6 +419,26 @@ void main() {
     expect(find.textContaining('Chimney sweep · Done'), findsOneWidget);
   });
 
+  // Jose, 2026-09-30: "templates ... next to the send button". A tap fills
+  // the box to read first; it does not send.
+  testWidgets('a reply template fills the box and sends nothing', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      templates: [
+        {'name': 'Thank you', 'text': 'Hi Marcus, thank you for contacting A-1 Chimney!'},
+      ],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('reply-template-Thank you')));
+    await tester.pump();
+
+    final box = tester.widget<TextField>(find.byKey(const ValueKey('reply-box')));
+    expect(box.controller!.text, 'Hi Marcus, thank you for contacting A-1 Chimney!');
+    expect(_sent, isEmpty);
+  });
+
   test('the number shows under any name, the customer one included', () {
     expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);
@@ -609,6 +629,7 @@ Future<void> _pump(
   bool transcriptPending = false,
   List<Map<String, dynamic>>? conversations,
   List<String> viewers = const [],
+  List<Map<String, String>> templates = const [],
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -678,6 +699,7 @@ Future<void> _pump(
               'customer': customer,
               'details': details,
               'viewers': viewers,
+              'reply_templates': templates,
               'conversations': conversations ?? [
                 {
                   'id': 'c-call',

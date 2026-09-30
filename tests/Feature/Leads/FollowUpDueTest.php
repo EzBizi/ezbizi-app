@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Leads;
 
-use App\Console\Commands\LeadsFollowUpDue;
 use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
@@ -97,9 +96,9 @@ class FollowUpDueTest extends TestCase
 
     public function test_first_name(): void
     {
-        $this->assertSame('Mark', LeadsFollowUpDue::firstName('mark Morrow'));
-        $this->assertNull(LeadsFollowUpDue::firstName('+1 (202) 250-1749'));
-        $this->assertNull(LeadsFollowUpDue::firstName(null));
+        $this->assertSame('Mark', Lead::firstNameOf('mark Morrow'));
+        $this->assertNull(Lead::firstNameOf('+1 (202) 250-1749'));
+        $this->assertNull(Lead::firstNameOf(null));
     }
 
     public function test_source_name_is_the_word_a_person_reads(): void

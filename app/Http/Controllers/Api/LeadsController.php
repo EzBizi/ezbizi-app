@@ -23,6 +23,7 @@ use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
@@ -414,6 +415,18 @@ class LeadsController extends Controller
         // heard of.
         $data['can_reply'] = $this->replies->canReply($lead);
         $data['cannot_reply_because'] = $this->replies->whyNot($lead);
+
+        // Canned replies beside Send, filled in for this customer and brand.
+        $first = Lead::firstNameOf($lead->contact_name);
+        $data['reply_templates'] = ! $data['can_reply'] ? [] : collect(
+            app(SettingsResolver::class)->get('leads.reply_templates', $lead->company ?? request()->user()->organization)
+        )->map(fn ($t) => [
+            'name' => (string) ($t['label'] ?? $t),
+            'text' => strtr((string) ($t['value'] ?? $t), [
+                '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
+                '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
+            ]),
+        ])->values()->all();
 
         // A draft is offered only where a reply can go and the model is on.
         $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();

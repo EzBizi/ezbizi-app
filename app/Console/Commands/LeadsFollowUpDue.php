@@ -64,7 +64,7 @@ class LeadsFollowUpDue extends Command
                     }
 
                     $lead->forceFill(['follow_up_raised_at' => now()])->save();
-                    $first = self::firstName($lead->contact_name);
+                    $first = Lead::firstNameOf($lead->contact_name);
                     $events->emit('lead.follow_up_due', $lead, [
                         'after' => [
                             'source' => $lead->source,
@@ -103,13 +103,5 @@ class LeadsFollowUpDue extends Command
         }
 
         return $first;
-    }
-
-    /** "Mark" from "Mark Morrow"; null for a phone number or an initial. */
-    public static function firstName(?string $name): ?string
-    {
-        $word = preg_replace("/[^A-Za-z'’-]/u", '', explode(' ', trim((string) $name))[0]);
-
-        return mb_strlen($word) < 2 ? null : ucfirst(mb_strtolower($word));
     }
 }

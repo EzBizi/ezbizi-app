@@ -75,6 +75,7 @@ class SettingRegistry
             'ai_assistance' => ['AI Assistance',  $this->assistant()],
             'field' => ['Field',              $this->field()],
             'phone' => ['Communication',      $this->phone()],
+            'leads' => ['Leads',              $this->leads()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -1027,6 +1028,36 @@ class SettingRegistry
                 editPermission: 'phone.edit',
                 help: 'A card with the caller and Accept or Ignore, which can be dragged out of '
                     .'the way. The strip at the top of the screen appears either way.',
+            ),
+        ];
+    }
+
+    private function leads(): array
+    {
+        return [
+            /*
+             * Canned replies beside Send on a lead (Jose, 2026-09-30: "tiara
+             * should have first replied with a Thank you for contacting
+             * (company name)"). A list of name + text: the name is the chip,
+             * the text goes into the reply box to be read before sending -
+             * never sent by itself. Per company, because each brand signs
+             * with its own name.
+             */
+            new SettingDefinition(
+                key: 'leads.reply_templates',
+                label: 'Reply templates',
+                type: SettingDefinition::TYPE_LIST,
+                default: [[
+                    'label' => 'Thank you',
+                    'value' => '{{greeting}}, thank you for contacting {{company}}! A dispatcher will '
+                        .'follow up with you shortly. Could you share the service address and a day '
+                        .'that works best for you?',
+                ]],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                editPermission: 'leads.edit',
+                help: 'Shown beside Send on a lead. The name is the button; the text is put in the '
+                    .'reply box to check before sending. {{greeting}} becomes "Hi Mark" (or "Hi '
+                    .'there"), {{company}} the company name.',
             ),
         ];
     }

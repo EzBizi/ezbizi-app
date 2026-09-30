@@ -32,6 +32,7 @@ class CallTab extends StatefulWidget {
     required this.session,
     this.service,
     this.view = CallView.dial,
+    this.initialNumber,
   });
 
   final ApiClient api;
@@ -42,6 +43,9 @@ class CallTab extends StatefulWidget {
   final PhoneCallService? service;
 
   final CallView view;
+
+  /// Typed into the pad on open - a lead's Call button (Jose, 2026-09-30).
+  final String? initialNumber;
 
   static const double splitAbove = 600;
 
@@ -132,6 +136,7 @@ class _CallTabState extends State<CallTab> {
     // built fresh every time somebody opens Communication — which is exactly
     // the moment the old pin was lost.
     _customerPinned = widget.session.me?.phoneCustomerPanelPinned ?? false;
+    _destination.text = widget.initialNumber ?? '';
 
     _load();
   }

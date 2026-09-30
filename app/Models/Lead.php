@@ -519,6 +519,14 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * `{{source}}` is the wire value a condition compares (Jose, 2026-09-30: a
      * notification said "local_services"; "Local Services").
      */
+    /** "Mark" from "Mark Morrow"; null for a phone number or an initial. */
+    public static function firstNameOf(?string $name): ?string
+    {
+        $word = preg_replace("/[^A-Za-z'’-]/u", '', explode(' ', trim((string) $name))[0]);
+
+        return mb_strlen($word) < 2 ? null : ucfirst(mb_strtolower($word));
+    }
+
     public function getSourceNameAttribute(): string
     {
         return match ($this->source) {
