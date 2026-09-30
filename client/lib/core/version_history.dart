@@ -14,6 +14,7 @@ class VersionHistory {
         'Reports: every saved report is listed, including the Work Hours weekly hours reports, with who each covers and the automation that sends it. A Work Hours report opens beside the list with its week of hours, and who is in it can be changed right there. The Send the work hours report step in an automation says who the chosen report covers.',
         'Your profile: while anything is missing, the picture in the top bar glows and pulses and its menu says what is missing; the empty boxes on your profile are amber until filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',
+        'Human Resources, Records: the dates on a record are typed into boxes with the calendar inline instead of a pop-up, and date of birth and start date are amber while empty.',
       ],
     ),
     VersionRelease(
