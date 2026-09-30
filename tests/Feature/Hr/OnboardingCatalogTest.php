@@ -135,10 +135,28 @@ class OnboardingCatalogTest extends TestCase
         $field = $contract('Field Technician (hourly)');
         $office = $contract('Accounting (salary)');
 
+        // A version from before the home address moved to the profile still
+        // declares it, which FieldSet now refuses: on production this stopped
+        // the run after one contract (2026-09-30).
+        $legacy = $contract('Accounting (hourly)');
+        $this->inTenant($alpha['org'], function () use ($legacy) {
+            $c = Contract::findOrFail($legacy);
+            $fields = $c->currentVersion->fields;
+            array_unshift($fields, ['key' => 'address', 'label' => 'Home address', 'type' => 'text',
+                'options' => [], 'filled_by' => 'either', 'required' => true, 'sensitive' => false, 'retired' => false]);
+            $v = ContractVersion::create(['contract_id' => $c->getKey(), 'version' => 2, 'fields' => $fields,
+                'body' => $c->currentVersion->body, 'created_by' => $c->created_by]);
+            $c->forceFill(['current_version_id' => $v->getKey()])->save();
+        });
+
+        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Accounting (hourly): adds 11 as version 3')
+            ->assertSuccessful();
+
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
 
-        $this->inTenant($alpha['org'], function () use ($field, $office) {
+        $this->inTenant($alpha['org'], function () use ($field, $office, $legacy) {
             $f = Contract::findOrFail($field)->currentVersion;
             $o = Contract::findOrFail($office)->currentVersion;
             $this->assertSame(2, (int) $f->version, 'A second run published again.');
@@ -153,6 +171,10 @@ class OnboardingCatalogTest extends TestCase
                 Contract::findOrFail($field)->versions()->where('version', 1)->value('body'),
                 $f->body,
             );
+
+            $l = Contract::findOrFail($legacy)->currentVersion;
+            $this->assertSame(3, (int) $l->version);
+            $this->assertNotContains('address', array_column($l->fields, 'key'), 'The profile field stayed on the contract.');
         });
     }
 
