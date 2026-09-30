@@ -18,6 +18,7 @@ class VersionHistory {
       date: '30 Sep 2026',
       items: [
         'Field, Map: a legend along the bottom explains every pin, job and line colour (a Legend button on phones), and the technician bar is colour-coded, with red for low battery, a phone gone quiet or poor GPS.',
+        'Suggestions: say which sidebar tab a suggestion is about, and attach up to five screenshots, pictures, PDFs or .md and .txt notes.',
       ],
     ),
     VersionRelease(
