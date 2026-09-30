@@ -442,6 +442,20 @@ class EzBiziTheme {
   static const Color accent = _cyan;
   static const Color accentDark = _cyanDark;
 
+  /// The fixed dark surface outside the app proper: the sign-in page's
+  /// identity panel (auth_shell.dart draws the same three stops) and the Clock
+  /// In lock screen. It looks the same in light and dark by design, so what
+  /// sits on it is drawn with [dark]'s colours.
+  static const LinearGradient brandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF071018), Color(0xFF0A2233), Color(0xFF06384E)],
+  );
+
+  /// A card on [brandGradient]: white at 6%, edged at 12%.
+  static const Color brandCard = Color(0x0FFFFFFF);
+  static const Color brandEdge = Color(0x1FFFFFFF);
+
   /// The review-faces widget's two faces, as the WordPress plugin paints
   /// them (`ezbizi_review_faces_shortcode`), so the preview matches the page.
   static const Color reviewHappy = Color(0xFF22B24C);

@@ -6,7 +6,10 @@ import '../core/api_client.dart';
 import '../core/clock_window.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../core/ui_strings.dart';
+import '../widgets/logo_badge.dart';
+import '../widgets/user_avatar.dart';
 
 /// Replaces the shell while the server says `lock` (design 2026-09-08 §10.2).
 ///
@@ -124,94 +127,293 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
     widget.session.signOut();
   }
 
+  /// UI queue 36, Jose's 1 + 4 (2026-09-30: "the clock in lock screen could
+  /// also use some love, show the app logo, etc." - "go with ur
+  /// recommendations"): the sign-in page's dark surface, one card with the
+  /// app's mark, a large clock and the date, the person and today's shift in
+  /// the organization's own clock, then Clock In. On a phone the card is the
+  /// screen, with Clock In at the foot.
   @override
   Widget build(BuildContext context) {
+    // Always the dark theme: the surface is the brand's, not the reader's
+    // setting, and in light mode "Bizi" and every line on it would be drawn
+    // dark on dark.
+    return Theme(
+      data: EzBiziTheme.dark(),
+      child: Builder(builder: _page),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     final me = widget.session.me;
     final today = me?.timeClock.today;
-    final now = TimeOfDay.now().format(context);
+    final formats = me?.display ?? DisplayFormats.fallback;
+    final clock = DateTime.now();
     final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    // Past the end of the day, Clock In is not "start your day" - it is one
+    // extension, and the sweep closes it. Two people pressed it at 5 PM to get
+    // their machine back and were billed sixteen hours for it (2026-09-24).
+    final sentence = me != null && me.timeClock.afterHours && today != null
+        ? UiStrings.t('time_clock.after_hours')
+              .replaceAll('{end}', today.end)
+              .replaceAll('{minutes}', '${me.timeClock.extensionMinutes}')
+        : UiStrings.t('time_clock.lock_sentence');
+
+    final top = <Widget>[
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            child: Image.asset(
+              'assets/logo/app-icon-120.png',
+              key: const ValueKey('lock-app-icon'),
+              width: 34,
+              height: 34,
+            ),
+          ),
+          const SizedBox(width: 10),
+          EzBiziTheme.wordmark(context, size: 24),
+        ],
+      ),
+      const SizedBox(height: 22),
+      Text(
+        formats.formatTime(clock.hour, clock.minute),
+        key: const ValueKey('lock-clock'),
+        textAlign: TextAlign.center,
+        style: theme.textTheme.displayMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1.5,
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        _dayOf(clock),
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+      ),
+      const SizedBox(height: 22),
+      if (me != null)
+        UserAvatar(
+          api: widget.api,
+          userId: me.id,
+          name: me.name,
+          radius: 28,
+          hasAvatar: me.hasAvatar,
+        ),
+      const SizedBox(height: 10),
+      Text(
+        me?.name ?? '',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      if ((me?.roleName ?? '').isNotEmpty)
+        Text(
+          me!.roleName!,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+        ),
+      const SizedBox(height: 10),
+      _shift(context, today, formats),
+    ];
+
+    final bottom = <Widget>[
+      Text(sentence, textAlign: TextAlign.center),
+      const SizedBox(height: 12),
+      SizedBox(
+        height: 48,
+        child: FilledButton.icon(
+          onPressed: _busy ? null : _clockIn,
+          style: FilledButton.styleFrom(
+            backgroundColor: EzBiziTheme.clockIn(context),
+          ),
+          icon: const Icon(Icons.login),
+          label: Text(UiStrings.t('time_clock.clock_in')),
+        ),
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: 12),
+        Text(
+          _error!,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
+      ],
+      const SizedBox(height: 12),
+      TextButton(
+        onPressed: _busy ? null : _signOut,
+        child: Text(UiStrings.t('time_clock.sign_out')),
+      ),
+    ];
+
+    final organization = me == null
+        ? null
+        : Row(
+            key: const ValueKey('lock-organization'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LogoBadge(
+                api: widget.api,
+                path: me.scope.logoPath,
+                version: me.scope.logoVersion,
+                hasOwn: false,
+                mayEdit: false,
+                bare: true,
+                aspect: me.scope.logoAspect,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                me.organization.name,
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            ],
+          );
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'EzBizi',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  now,
-                  textAlign: TextAlign.center,
-                  // displayMedium: theme.dart fills it now (UI/UX), so the
-                  // clock is 40 rather than a section heading's 28.
-                  style: theme.textTheme.displayMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  me?.name ?? '',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  today == null
-                      ? UiStrings.t('time_clock.day_off')
-                      : '${today.start} – ${today.end}',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  // Past the end of the day, Clock In is not "start your day"
-                  // — it is one extension, and the sweep closes it. Two people
-                  // pressed it at 5 PM to get their machine back and were
-                  // billed sixteen hours for it (2026-09-24).
-                  me != null && me.timeClock.afterHours && today != null
-                      ? UiStrings.t('time_clock.after_hours')
-                            .replaceAll('{end}', today.end)
-                            .replaceAll(
-                              '{minutes}',
-                              '${me.timeClock.extensionMinutes}',
-                            )
-                      : UiStrings.t('time_clock.lock_sentence'),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _clockIn,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: EzBiziTheme.clockIn(context),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: EzBiziTheme.brandGradient),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              // A phone: the card is the screen, and Clock In sits at the
+              // foot where a thumb is.
+              if (box.maxWidth < 600) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: box.maxHeight),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 40, 24, 20),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final w in top) Center(child: w),
+                            const Spacer(),
+                            const SizedBox(height: 24),
+                            ...bottom,
+                            if (organization != null)
+                              Center(child: organization),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.login),
-                  label: Text(UiStrings.t('time_clock.clock_in')),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: theme.colorScheme.error),
+                );
+              }
+
+              return Stack(
+                children: [
+                  Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Container(
+                        key: const ValueKey('lock-card'),
+                        width: 440,
+                        padding: const EdgeInsets.fromLTRB(30, 28, 30, 18),
+                        decoration: BoxDecoration(
+                          color: EzBiziTheme.brandCard,
+                          border: Border.all(color: EzBiziTheme.brandEdge),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final w in top) Center(child: w),
+                            const SizedBox(height: 20),
+                            ...bottom,
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
+                  if (organization != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 16,
+                      child: Center(child: organization),
+                    ),
                 ],
-                const SizedBox(height: 24),
-                TextButton(
-                  onPressed: _busy ? null : _signOut,
-                  child: Text(UiStrings.t('time_clock.sign_out')),
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
     );
+  }
+
+  /// Today's shift as a chip, in the organization's own clock: it read a raw
+  /// 08:00 - 17:00 whatever the organization's setting.
+  Widget _shift(
+    BuildContext context,
+    TimeClockWindow? today,
+    DisplayFormats f,
+  ) {
+    final theme = Theme.of(context);
+    final text = today == null
+        ? UiStrings.t('time_clock.day_off')
+        : UiStrings.t('time_clock.today_hours')
+              .replaceAll('{start}', f.formatWallClock(today.start))
+              .replaceAll('{end}', f.formatWallClock(today.end));
+
+    return Container(
+      key: const ValueKey('lock-shift'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.brandEdge),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (today != null) ...[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: EzBiziTheme.clockIn(context),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(text, style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  /// "Wednesday, September 30".
+  static String _dayOf(DateTime at) {
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${days[at.weekday - 1]}, ${months[at.month - 1]} ${at.day}';
   }
 }

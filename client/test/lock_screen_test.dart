@@ -20,6 +20,34 @@ void main() {
     expect(find.text('Sign out'), findsOneWidget);
   });
 
+  /// UI queue 36, Jose's 1 + 4 (2026-09-30: "show the app logo, etc."):
+  /// the app's mark, the date, the organization, and the shift written in the
+  /// organization's own clock - it read a raw 08:00 - 17:00.
+  testWidgets('the lock screen carries the app, the day and the shift in the '
+      'organization clock', (tester) async {
+    await _pump(
+      tester,
+      display: const {'date_format': 'M/D/YYYY', 'time_format': '12h'},
+    );
+
+    expect(find.byKey(const ValueKey('lock-app-icon')), findsOneWidget);
+    expect(find.byKey(EzBiziTheme.wordmarkKey), findsOneWidget);
+    expect(find.text('Today 8:00 AM – 5:00 PM'), findsOneWidget);
+    expect(find.text('Everdoors'), findsOneWidget);
+    expect(find.byKey(const ValueKey('lock-card')), findsOneWidget);
+  });
+
+  testWidgets('on a phone Clock In sits at the foot', (tester) async {
+    await _pump(tester, size: const Size(390, 844));
+
+    expect(find.byKey(const ValueKey('lock-card')), findsNothing);
+    final button = tester.getRect(
+      find.widgetWithText(FilledButton, 'Clock In'),
+    );
+    expect(button.bottom, greaterThan(844 * 0.7));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a refused punch shows the server sentence', (tester) async {
     await _pump(
       tester,
@@ -126,7 +154,14 @@ void main() {
 Future<Session> _pump(
   WidgetTester tester, {
   Future<http.Response?> Function(http.Request)? onRequest,
+  Map<String, Object?>? display,
+  Size? size,
 }) async {
+  if (size != null) {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+  }
   final api = ApiClient(
     client: MockClient((request) async {
       final handled = await onRequest?.call(request);
@@ -143,6 +178,7 @@ Future<Session> _pump(
               'permissions': ['time_clock.view', 'time_clock.lock_screen'],
               'modules': <Map<String, Object?>>[],
               'preferences': <String, dynamic>{},
+              'display': ?display,
               'organization': {
                 'id': 'o',
                 'name': 'Everdoors',
