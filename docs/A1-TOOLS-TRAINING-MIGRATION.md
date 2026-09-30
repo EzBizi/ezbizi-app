@@ -53,4 +53,24 @@ Earlier parts: `docs/A1-TOOLS-PEOPLE-MIGRATION.md` (staff) and `docs/A1-TOOLS-CL
 
 ## Inventory
 
-Waiting on the Dismantler.
+The Dismantler's counts, 2026-09-30. Everything is A-1 Chimney.
+
+- **Guides:** 3 guides, 193 pages, stored as plain-text JSON blocks. 178 pages fit EzBizi's one-media screen as they are; 15 need splitting.
+- **Tests:** 2 tests, 100 questions. All are single-choice with exactly one correct answer, so they fit TrainingTest.questions entirely.
+- **Media:** 147 images on A1's own server (7.4 MB), which must be copied, and 73 Vimeo videos, which are hosted on Vimeo, not on A1.
+- **Assignments and certificates:** none.
+- **History:**
+  - 54 test results, with per-answer detail
+  - 3,085 page completions
+  - 520 rows of videos watched
+- **People:** 71 in total.
+  - 41 match an A1-Group user by email.
+  - 3 are current staff who are not in EzBizi.
+  - The rest are people no longer on staff. Their history is counted and left out, because no user is created.
+
+## Desk decisions (2026-09-30)
+
+- **Content:** all guides and tests are imported. The 15 long pages are split into consecutive screens, in order.
+- **Images:** copied into private storage with checksums. **Vimeo videos stay Vimeo links.** They do not live on A1's server, but they do depend on the Vimeo account staying open.
+- **History** (attempts and progress): imported for the 41 matched people. For anyone not in EzBizi it is counted, never created.
+- **The 3 current staff not in EzBizi:** the Dismantler reports why, as counts and roles only. If they should have come over with the staff migration, they are imported first, and their training history follows.
