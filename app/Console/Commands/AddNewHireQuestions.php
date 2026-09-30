@@ -7,11 +7,13 @@ use App\Models\ContractVersion;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\FieldSet;
 use App\Support\Hr\OnboardingCatalog\FieldLibrary;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Add the new-hire questions (tax, bank, documents) to every live contract
@@ -50,14 +52,24 @@ class AddNewHireQuestions extends Command
                 return self::FAILURE;
             }
 
-            $changed = 0;
+            // Every contract is planned and validated first, and nothing is
+            // written unless all of them pass: a dry run predicts exactly what
+            // the write would refuse, and a refusal never leaves the run half done.
+            $plans = [];
+            $refused = [];
             foreach (Contract::query()->whereNull('archived_at')->with('currentVersion')->orderBy('name')->get() as $contract) {
                 $current = $contract->currentVersion;
                 if ($current === null) {
                     continue;
                 }
 
-                $fields = $current->fieldSet()->toArray();
+                // Keys the profile now owns (the home address, since
+                // 2026-09) are dropped, as the catalog's --replace drops them:
+                // FieldSet refuses a contract that still declares one.
+                $fields = array_values(array_filter(
+                    $current->fieldSet()->toArray(),
+                    fn (array $f) => ! CommonCore::claims((string) ($f['key'] ?? '')),
+                ));
                 $have = array_column($fields, 'key');
                 $fieldRole = collect(self::FIELD_ROLE_NAMES)->contains(fn ($n) => str_starts_with($contract->name, $n));
                 $adding = array_values(array_filter(
@@ -65,23 +77,49 @@ class AddNewHireQuestions extends Command
                     fn (array $f) => ! in_array($f['key'], $have, true),
                 ));
 
-                $this->line(sprintf('%s: %s', $contract->name, $adding === []
-                    ? 'already has them'
-                    : 'adds '.count($adding).' as version '.($current->version + 1)));
+                if ($adding === []) {
+                    $this->line("{$contract->name}: already has them");
 
-                if ($adding === [] || $this->option('dry-run')) {
                     continue;
                 }
 
                 // Before the signature lines, which stay last on the form.
                 $signatures = array_filter($fields, fn ($f) => ($f['type'] ?? '') === 'signature');
                 $others = array_filter($fields, fn ($f) => ($f['type'] ?? '') !== 'signature');
-                $set = FieldSet::fromInput(
-                    [...array_values($others), ...$adding, ...array_values($signatures)],
-                    $contract->pinnedKeyProperties(),
-                );
 
-                DB::transaction(function () use ($contract, $current, $set, $author, $audit, $adding) {
+                try {
+                    $set = FieldSet::fromInput(
+                        [...array_values($others), ...$adding, ...array_values($signatures)],
+                        $contract->pinnedKeyProperties(),
+                    );
+                } catch (ValidationException $e) {
+                    $refused[] = "{$contract->name}: ".collect($e->errors())->flatten()->implode(' ');
+
+                    continue;
+                }
+
+                $this->line(sprintf('%s: adds %d as version %d', $contract->name, count($adding),
+                    (int) $contract->versions()->max('version') + 1));
+                $plans[] = [$contract, $current, $set, $adding];
+            }
+
+            if ($refused !== []) {
+                foreach ($refused as $line) {
+                    $this->error($line);
+                }
+                $this->error(count($refused).' contracts would be refused. Nothing written.');
+
+                return self::FAILURE;
+            }
+
+            if ($this->option('dry-run')) {
+                $this->info('Dry run. Nothing written.');
+
+                return self::SUCCESS;
+            }
+
+            DB::transaction(function () use ($plans, $author, $audit) {
+                foreach ($plans as [$contract, $current, $set, $adding]) {
                     $version = ContractVersion::create([
                         'contract_id' => $contract->getKey(),
                         'version' => (int) $contract->versions()->max('version') + 1,
@@ -98,11 +136,10 @@ class AddNewHireQuestions extends Command
                     $audit->log('contract.version_published', $contract, metadata: [
                         'fields_added' => array_column($adding, 'key'),
                     ], actor: $author);
-                });
-                $changed++;
-            }
+                }
+            });
 
-            $this->info($this->option('dry-run') ? 'Dry run. Nothing written.' : "{$changed} contracts given a new version.");
+            $this->info(count($plans).' contracts given a new version.');
 
             return self::SUCCESS;
         });
