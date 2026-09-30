@@ -28,9 +28,12 @@ void main() {
     await _pump(
       tester,
       display: const {'date_format': 'M/D/YYYY', 'time_format': '12h'},
+      date: '2026-09-30',
     );
 
     expect(find.byKey(const ValueKey('lock-app-icon')), findsOneWidget);
+    // The organization's day, from the server, not the device's clock.
+    expect(find.text('Wednesday, September 30'), findsOneWidget);
     expect(find.byKey(EzBiziTheme.wordmarkKey), findsOneWidget);
     expect(find.text('Today 8:00 AM – 5:00 PM'), findsOneWidget);
     expect(find.text('Everdoors'), findsOneWidget);
@@ -156,6 +159,7 @@ Future<Session> _pump(
   Future<http.Response?> Function(http.Request)? onRequest,
   Map<String, Object?>? display,
   Size? size,
+  String? date,
 }) async {
   if (size != null) {
     tester.view.physicalSize = size;
@@ -200,6 +204,7 @@ Future<Session> _pump(
                 'open': null,
                 'lock': true,
                 'today': {'start': '08:00', 'end': '17:00'},
+                'date': ?date,
               },
             },
           }),

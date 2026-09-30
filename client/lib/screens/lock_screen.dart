@@ -148,7 +148,14 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
     final me = widget.session.me;
     final today = me?.timeClock.today;
     final formats = me?.display ?? DisplayFormats.fallback;
+    // The big clock is the device's: it is decoration. The day is the
+    // organization's, from the server, so a device in another zone - or one
+    // just past midnight - cannot name the wrong one (Clock In, 2026-09-30).
     final clock = DateTime.now();
+    final day = switch (me?.timeClock.date) {
+      final String iso => parseCalendarDay(iso),
+      _ => null,
+    };
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
 
@@ -188,12 +195,15 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
           letterSpacing: -1.5,
         ),
       ),
-      const SizedBox(height: 4),
-      Text(
-        _dayOf(clock),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodyMedium?.copyWith(color: muted),
-      ),
+      if (day != null) ...[
+        const SizedBox(height: 4),
+        Text(
+          _dayOf(day),
+          key: const ValueKey('lock-day'),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+        ),
+      ],
       const SizedBox(height: 22),
       if (me != null)
         UserAvatar(
