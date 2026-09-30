@@ -962,6 +962,37 @@ void main() {
     expect(box('Gender').decoration?.hintText, isNull);
   });
 
+  // Jose, 2026-09-30: "it should highlight all the missing stuff", not only
+  // Personal. No emergency contact, no pay rate and no schedule count; no
+  // equipment and no notes do not, since most people have none of either.
+  testWidgets('an empty contact, pay and schedule light up their tabs', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(payRates: const []));
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    for (final lit in ['Emergency contacts', 'Pay', 'Work']) {
+      expect(
+        find.descendant(of: _section(lit), matching: find.text('1')),
+        findsOneWidget,
+        reason: '$lit carries no count',
+      );
+    }
+    for (final quiet in ['Equipment', 'Notes']) {
+      expect(
+        find.descendant(of: _section(quiet), matching: find.text('1')),
+        findsNothing,
+        reason: 'no $quiet is not a gap',
+      );
+    }
+
+    for (final section in ['Emergency contacts', 'Pay', 'Work']) {
+      await _tap(tester, _section(section));
+      expect(find.text('Not filled in'), findsOneWidget, reason: section);
+    }
+  });
+
   /// Jose, 2026-09-29: "I want to be able to resize the sidebar here on human
   /// resources".
   testWidgets('the list resizes by its edge, within limits', (tester) async {

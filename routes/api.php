@@ -2711,6 +2711,17 @@ Route::prefix('v1')
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
 
+                    // The unfinished onboarding this person is the SUBJECT of:
+                    // the client draws "Your paperwork" from it (session.dart
+                    // onboardingId). Without it a new starter whose role has no
+                    // HR tab had no way to reach their own form.
+                    'onboarding' => \App\Models\Onboarding::query()
+                        ->where('user_id', $user->id)
+                        ->whereIn('status', [\App\Models\Onboarding::IN_PROGRESS, \App\Models\Onboarding::SUBMITTED])
+                        ->latest()
+                        ->first(['id'])
+                        ?->only('id'),
+
                     // This address has not been confirmed, so RequireVerifiedEmail
                     // refuses every write (TODO #22). Carried here for exactly the
                     // reason two_factor_enrolment_required above is: a refresh

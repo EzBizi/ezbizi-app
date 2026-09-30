@@ -147,9 +147,20 @@ class HrPeopleController extends Controller
             ->pluck('user_id')
             ->flip();
 
+        // Who on this page has at least one of the record's lists that count
+        // when empty. Pay only for a reader who may see pay: counting it for
+        // anybody else would tell them whether a rate exists.
+        $ids = collect($people->items())->map->getKey();
+        $holding = fn (string $model) => $model::query()->whereIn('user_id', $ids)
+            ->distinct()->pluck('user_id')->flip();
+        $contacts = $holding(EmergencyContact::class);
+        $paid = $actor->hasPermission('hr.pay.view') ? $holding(PayRate::class) : null;
+
         return response()->json([
             'data' => collect($people->items())->map(fn (User $p) => $this->present($p, $actor) + [
-                'missing' => $this->missing($p, $started->has($p->getKey())),
+                'missing' => $this->missing($p, $started->has($p->getKey()))
+                    + ($contacts->has($p->getKey()) ? 0 : 1)
+                    + ($paid === null || $paid->has($p->getKey()) ? 0 : 1),
             ]),
             'meta' => [
                 'total'        => $people->total(),
@@ -767,21 +778,25 @@ class HrPeopleController extends Controller
      * How many boxes on somebody's record are empty, for the counter beside
      * them on the list (Jose, 2026-09-29: "like we do on marketing SEO with
      * the counters on the list"). The rule the record lights its boxes amber
-     * by, in records_tab.dart `_blank`: the seven personal fields and the
-     * start date. Email is never empty, and no role already says so on the row.
+     * by, in records_tab.dart `_emptyIn`: the six personal fields, the start
+     * date and the work schedule here; no emergency contact and no pay rate
+     * are added by index(), which counts those lists for the whole page.
+     * Email is never empty, and no role already says so on the row.
+     * (Jose, 2026-09-30: "it should highlight all the missing stuff".)
      *
      * A count, never the values: the row stays short for show()'s reason.
      */
     private function missing(User $person, bool $started): int
     {
-        // Not middle_name. Most people do not have one, and nothing can record
-        // "has none" — so counting it flags them for ever, the count never
-        // reaches zero, and a counter that is never zero stops being read.
-        $empty = collect(['first_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'])
+        // The profile's own list, so the pulse and this count cannot disagree.
+        // It leaves out middle_name: most people do not have one, and nothing
+        // can record "has none", so counting it would never reach zero.
+        $empty = collect(User::PROFILE_FIELDS)
             ->filter(fn (string $field) => blank($person->getAttribute($field)))
             ->count();
 
-        return $empty + ($started ? 0 : 1);
+        // Not set is empty: the Work tab reads "No schedule set." for it.
+        return $empty + ($started ? 0 : 1) + ($person->work_schedule === null ? 1 : 0);
     }
 
     private function present(User $person, User $actor): array

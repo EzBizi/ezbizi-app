@@ -801,8 +801,15 @@ class _PersonRecordState extends State<_PersonRecord> {
   int _emptyIn(String section) => switch (section) {
     'personal' => _personalBoxes.where((key) => _blank(_person[key])).length,
     'employment' => _blank(_person['started_on']) ? 1 : 0,
+    // The lists that count when empty, by HrPeopleController::index's rule.
+    // Pay is null for a reader without pay, and then there is no Pay tab.
+    'contacts' => _isEmptyList(_person['emergency_contacts']) ? 1 : 0,
+    'pay' => _isEmptyList(_person['pay_rates']) ? 1 : 0,
+    'work' => _person['work_schedule'] == null ? 1 : 0,
     _ => 0,
   };
+
+  static bool _isEmptyList(Object? value) => value is List && value.isEmpty;
 
   Widget _header(BuildContext context) {
     final theme = Theme.of(context);
@@ -959,6 +966,7 @@ class _PersonRecordState extends State<_PersonRecord> {
         if (noEdit != null) ...[ErrorNote(noEdit), const SizedBox(height: 12)],
         _Field(
           label: UiStrings.t('time_clock.work_schedule'),
+          empty: schedule == null,
           child: Text(
             _describeSchedule(days),
             style: theme.textTheme.bodyMedium,
@@ -1255,22 +1263,36 @@ typedef _Saver = Future<bool> Function(Map<String, dynamic> change);
 /// A labelled read-only value, drawn like a field so a section reads as one
 /// form whether a line is editable or not.
 class _Field extends StatelessWidget {
-  const _Field({required this.label, required this.child, this.why});
+  const _Field({
+    required this.label,
+    required this.child,
+    this.why,
+    this.empty = false,
+  });
 
   final String label;
   final Widget child;
   final String? why;
 
+  /// Amber and "Not filled in", as an empty Personal box is.
+  final bool empty;
+
   @override
   Widget build(BuildContext context) => InputDecorator(
-    decoration: InputDecoration(
-      labelText: label,
-      helperText: why,
-      helperMaxLines: 3,
-      border: const OutlineInputBorder(),
-      enabled: false,
+    isEmpty: empty,
+    decoration: notFilledIn(
+      context,
+      InputDecoration(
+        labelText: label,
+        helperText: why,
+        helperMaxLines: 3,
+        border: const OutlineInputBorder(),
+        // Enabled while empty: a disabled box draws no amber border.
+        enabled: empty,
+      ),
+      empty: empty,
     ),
-    child: child,
+    child: empty ? const SizedBox.shrink() : child,
   );
 }
 
@@ -1830,6 +1852,7 @@ class _DetailKind {
     required this.subtitle,
     this.intro,
     this.returnable = false,
+    this.counted = false,
   });
 
   /// The `{kind}` in `hr/people/{user}/details/{kind}`.
@@ -1846,6 +1869,11 @@ class _DetailKind {
   /// of what was returned.
   final bool returnable;
 
+  /// Empty counts as not filled in: amber, and one on the list's number
+  /// (HrPeopleController::index). Not notes or equipment: most people have
+  /// none of either, and that is not a gap.
+  final bool counted;
+
   static String _date(Object? iso, DisplayFormats formats) {
     final at = DateTime.tryParse(iso?.toString() ?? '');
     return at == null ? '' : formats.formatDate(at);
@@ -1858,6 +1886,7 @@ class _DetailKind {
     path: 'emergency-contacts',
     noun: 'emergency contact',
     empty: 'No emergency contact recorded.',
+    counted: true,
     fields: const [
       _FieldSpec('name', 'Name', _FieldType.text, required: true),
       _FieldSpec('relationship', 'Relationship', _FieldType.text),
@@ -1879,6 +1908,7 @@ class _DetailKind {
     path: 'pay-rates',
     noun: 'pay rate',
     empty: 'No pay rate recorded.',
+    counted: true,
     intro:
         'A raise is a new rate from a new date; the old one stays as history. '
         'Seen and changed only by roles given pay.',
@@ -2087,7 +2117,18 @@ class _DetailListState extends State<_DetailList> {
           Text(widget.kind.intro!, style: theme.textTheme.bodySmall),
           const SizedBox(height: 12),
         ],
-        if (widget.rows.isEmpty)
+        if (widget.rows.isEmpty && widget.kind.counted)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _Field(
+              label:
+                  widget.kind.noun[0].toUpperCase() +
+                  widget.kind.noun.substring(1),
+              empty: true,
+              child: const SizedBox.shrink(),
+            ),
+          )
+        else if (widget.rows.isEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(widget.kind.empty),
