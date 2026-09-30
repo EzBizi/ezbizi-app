@@ -21,8 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
  * leads the list shows this reader (LeadsController::scopeToReader).
  *
  * Definitions (UI/UX's contract):
- *  - answerable: the customer wrote at least once - a call-only lead is not
- *    counted against anybody;
+ *  - answerable: the customer wrote at least once, somewhere a reply can go
+ *    - a call-only lead and a website form are not counted against anybody;
  *  - first reply: the first ADVERTISER message a PERSON sent after the
  *    customer's first message - automatic replies are counted apart;
  *  - people: credited through the `lead.replied` audit; a first reply with no
@@ -176,7 +176,10 @@ class LeadDashboardController extends Controller
                 }
             }
 
-            if ($firstCustomer === null) {
+            // A website form is answered by calling, never in the thread, so
+            // it is not counted against anybody (136 forms, 0 "answered", in
+            // the first week measured - 2026-09-30).
+            if ($firstCustomer === null || $lead->source === Lead::SOURCE_WEBSITE_FORM) {
                 continue;
             }
             $totals['answerable']++;

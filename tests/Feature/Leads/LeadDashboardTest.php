@@ -71,11 +71,21 @@ class LeadDashboardTest extends TestCase
 
             // A call: nothing written, so not answerable.
             $lead('c', 'PHONE_CALL', [[$C, '2026-09-30T15:20:00Z', false, 'PHONE_CALL']]);
+
+            // A website form: answered by calling, so not answerable either.
+            $form = Lead::create([
+                'organization_id' => $t['org']->id, 'source' => Lead::SOURCE_WEBSITE_FORM,
+                'remote_id' => 'form-1', 'status' => Lead::STATUS_NEW, 'received_at' => Carbon::parse('2026-09-30T15:30:00Z'),
+            ]);
+            LeadConversation::create([
+                'organization_id' => $t['org']->id, 'lead_id' => $form->id, 'remote_id' => 'form-1',
+                'channel' => 'FORM', 'participant' => $C, 'occurred_at' => Carbon::parse('2026-09-30T15:30:00Z'), 'text' => 'Name: x',
+            ]);
         });
 
         $d = $this->signedInAs($t['admin'])->getJson('/api/v1/leads/dashboard?period=today')->assertOk()->json('data');
 
-        $this->assertSame(3, $d['totals']['leads']);
+        $this->assertSame(4, $d['totals']['leads']);
         $this->assertSame(2, $d['totals']['answerable']);
         $this->assertSame(2, $d['totals']['answered']);
         $this->assertSame(1020, $d['totals']['first_reply_median_seconds']);
