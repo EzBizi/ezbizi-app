@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0320',
       date: '30 Sep 2026',
       items: [
+        'Your account: the home address is found with a lookup and kept in parts (street, unit, city, state, country and ZIP), and the profile fits a phone screen.',
         'Reports: every saved report is listed, including the Work Hours weekly hours reports, with who each covers and the automation that sends it. A Work Hours report opens beside the list with its week of hours, and who is in it can be changed right there. The Send the work hours report step in an automation says who the chosen report covers.',
         'Your profile: while anything is missing, the picture in the top bar glows and pulses and its menu says what is missing; the empty boxes on your profile are amber until filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',

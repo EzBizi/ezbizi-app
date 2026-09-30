@@ -177,7 +177,7 @@ void main() {
         .decoration
         ?.hintText;
 
-    for (final label in ['Phone number', 'Home address', 'Gender']) {
+    for (final label in ['Phone number', 'Street', 'City', 'ZIP', 'Gender']) {
       expect(hint(label), 'Not filled in', reason: label);
     }
     expect(hint('First name'), isNot('Not filled in'), reason: 'filled in');

@@ -9,6 +9,7 @@ import 'calendar_day_field.dart';
 import 'error_note.dart';
 import 'logo_cropper.dart';
 import 'side_panel.dart';
+import 'address_fields.dart';
 import 'not_filled_in.dart';
 import 'profile_aura.dart';
 import 'user_avatar.dart';
@@ -35,7 +36,14 @@ class _IdentityCardState extends State<IdentityCard> {
   final _middle = TextEditingController();
   final _last = TextEditingController();
   final _phone = TextEditingController();
-  final _address = TextEditingController();
+  // The home address in its parts, as the lookup fills them (Jose,
+  // 2026-09-30). The server composes the one line contracts print.
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
+  final _postal = TextEditingController();
+  final _country = TextEditingController();
   final _gender = TextEditingController();
   final _dob = TextEditingController();
 
@@ -62,7 +70,20 @@ class _IdentityCardState extends State<IdentityCard> {
 
   @override
   void dispose() {
-    for (final c in [_first, _middle, _last, _phone, _address, _gender, _dob]) {
+    for (final c in [
+      _first,
+      _middle,
+      _last,
+      _phone,
+      _line1,
+      _line2,
+      _city,
+      _state,
+      _postal,
+      _country,
+      _gender,
+      _dob,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -85,8 +106,20 @@ class _IdentityCardState extends State<IdentityCard> {
       _first.text = b['first_name'] as String? ?? '';
       _middle.text = b['middle_name'] as String? ?? '';
       _last.text = b['last_name'] as String? ?? '';
-      _phone.text = formatPhoneNumber(b['phone'] as String?);
-      _address.text = b['address'] as String? ?? '';
+      // Formatted even when stored as bare digits, as HR's record shows it.
+      _phone.text = formatPhoneNumber(
+        toE164(b['phone'] as String?) ?? b['phone'] as String?,
+      );
+      // A server from before the parts sends only the one line: it stays
+      // the street rather than the address appearing to be gone.
+      _line1.text =
+          b['address_line1'] as String? ??
+          (b.containsKey('address_line1') ? '' : b['address'] as String? ?? '');
+      _line2.text = b['address_line2'] as String? ?? '';
+      _city.text = b['city'] as String? ?? '';
+      _state.text = b['state'] as String? ?? '';
+      _postal.text = b['postal_code'] as String? ?? '';
+      _country.text = b['country'] as String? ?? '';
       _gender.text = b['gender'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
       _dob.text = b['date_of_birth'] as String? ?? '';
@@ -108,7 +141,16 @@ class _IdentityCardState extends State<IdentityCard> {
       'middle_name': _middle.text.trim().isEmpty ? null : _middle.text.trim(),
       // Stored as E.164, never as the pretty form the field is showing.
       'phone': toE164(_phone.text),
-      'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
+      // The parts; the server composes `address` from them.
+      for (final (key, c) in [
+        ('address_line1', _line1),
+        ('address_line2', _line2),
+        ('city', _city),
+        ('state', _state),
+        ('postal_code', _postal),
+        ('country', _country),
+      ])
+        key: c.text.trim().isEmpty ? null : c.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
       'date_of_birth': _dob.text.trim().isEmpty ? null : _dob.text.trim(),
     });
@@ -252,53 +294,80 @@ class _IdentityCardState extends State<IdentityCard> {
             Text('Who you are', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
 
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _photo(context, me),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Row(
+            // Beside the photo on a desk; under it on a phone, where the pairs
+            // stack too: beside a photo at 390, "Phone number" read "Phone …"
+            // and the ZIP lost its last digit.
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 560;
+
+                Widget pair(Widget a, Widget b) => narrow
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [a, const SizedBox(height: 12), b],
+                      )
+                    : Row(
                         children: [
-                          Expanded(
-                            child: _field(_first, 'First name', flag: true),
-                          ),
+                          Expanded(child: a),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: _field(_middle, 'Middle name (optional)'),
-                          ),
+                          Expanded(child: b),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _field(_last, 'Last name', flag: true),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _field(
-                              _phone,
-                              'Phone number',
-                              phone: true,
-                              flag: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                      );
+
+                final fields = Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    pair(
+                      _field(_first, 'First name', flag: true),
+                      _field(_middle, 'Middle name (optional)'),
+                    ),
+                    const SizedBox(height: 12),
+                    pair(
+                      _field(_last, 'Last name', flag: true),
                       _field(
-                        _address,
-                        'Home address',
-                        maxLines: 2,
+                        _phone,
+                        'Phone number',
+                        phone: true,
                         flag: true,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    AddressFields(
+                      api: widget.api,
+                      line1: _line1,
+                      line2: _line2,
+                      city: _city,
+                      state: _state,
+                      postal: _postal,
+                      country: _country,
+                      flagEmpty: true,
+                    ),
+                  ],
+                );
+
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _photo(context, me),
+                      ),
+                      const SizedBox(height: 12),
+                      fields,
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _photo(context, me),
+                    const SizedBox(width: 20),
+                    Expanded(child: fields),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 12),
