@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 38 · Leads · the Templates tab, and a Dashboard tab beside it — **out for decision** (`docs/previews/leads-templates-dashboard-layouts.html`)
+### 38 · Leads · the Templates tab, and a Dashboard tab beside it — **Jose: "as u recommend" — 1, 4, 7 and 10** — **BUILT** `f4101baa` (the Dashboard reads Leads' `GET /leads/dashboard`, contract sent 2026-09-30)
 
 Jose, 2026-09-30, with a screenshot of Manage › Templates: *"see if you can improve the leads template
 screen, it looks terrible"*, then *"also make a new tab called Dashboard which gathers info, reply
