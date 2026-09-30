@@ -150,7 +150,7 @@ class OnboardingCatalogTest extends TestCase
         });
 
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Accounting (hourly): adds 11 as version 3')
+            ->expectsOutputToContain('Accounting (hourly): adds 11, drops address as version 3')
             ->assertSuccessful();
 
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
@@ -175,7 +175,20 @@ class OnboardingCatalogTest extends TestCase
             $l = Contract::findOrFail($legacy)->currentVersion;
             $this->assertSame(3, (int) $l->version);
             $this->assertNotContains('address', array_column($l->fields, 'key'), 'The profile field stayed on the contract.');
+
+            // A contract with every question that still declares a profile
+            // key gets a version without it, so every contract ends the same.
+            $fields = $l->fields;
+            array_unshift($fields, ['key' => 'address', 'label' => 'Home address', 'type' => 'text',
+                'options' => [], 'filled_by' => 'either', 'required' => true, 'sensitive' => false, 'retired' => false]);
+            $v = ContractVersion::create(['contract_id' => $legacy, 'version' => 4, 'fields' => $fields,
+                'body' => $l->body, 'created_by' => $l->created_by]);
+            Contract::findOrFail($legacy)->forceFill(['current_version_id' => $v->getKey()])->save();
         });
+
+        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('Accounting (hourly): drops address as version 5')
+            ->assertSuccessful();
     }
 
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void

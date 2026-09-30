@@ -66,10 +66,12 @@ class AddNewHireQuestions extends Command
                 // Keys the profile now owns (the home address, since
                 // 2026-09) are dropped, as the catalog's --replace drops them:
                 // FieldSet refuses a contract that still declares one.
+                $all = $current->fieldSet()->toArray();
                 $fields = array_values(array_filter(
-                    $current->fieldSet()->toArray(),
+                    $all,
                     fn (array $f) => ! CommonCore::claims((string) ($f['key'] ?? '')),
                 ));
+                $dropping = array_values(array_diff(array_column($all, 'key'), array_column($fields, 'key')));
                 $have = array_column($fields, 'key');
                 $fieldRole = collect(self::FIELD_ROLE_NAMES)->contains(fn ($n) => str_starts_with($contract->name, $n));
                 $adding = array_values(array_filter(
@@ -77,7 +79,7 @@ class AddNewHireQuestions extends Command
                     fn (array $f) => ! in_array($f['key'], $have, true),
                 ));
 
-                if ($adding === []) {
+                if ($adding === [] && $dropping === []) {
                     $this->line("{$contract->name}: already has them");
 
                     continue;
@@ -98,9 +100,11 @@ class AddNewHireQuestions extends Command
                     continue;
                 }
 
-                $this->line(sprintf('%s: adds %d as version %d', $contract->name, count($adding),
-                    (int) $contract->versions()->max('version') + 1));
-                $plans[] = [$contract, $current, $set, $adding];
+                $this->line(sprintf('%s: %s as version %d', $contract->name, implode(', ', array_filter([
+                    $adding === [] ? null : 'adds '.count($adding),
+                    $dropping === [] ? null : 'drops '.implode(', ', $dropping),
+                ])), (int) $contract->versions()->max('version') + 1));
+                $plans[] = [$contract, $current, $set, $adding, $dropping];
             }
 
             if ($refused !== []) {
@@ -119,7 +123,7 @@ class AddNewHireQuestions extends Command
             }
 
             DB::transaction(function () use ($plans, $author, $audit) {
-                foreach ($plans as [$contract, $current, $set, $adding]) {
+                foreach ($plans as [$contract, $current, $set, $adding, $dropping]) {
                     $version = ContractVersion::create([
                         'contract_id' => $contract->getKey(),
                         'version' => (int) $contract->versions()->max('version') + 1,
@@ -135,6 +139,7 @@ class AddNewHireQuestions extends Command
                     $contract->forceFill(['current_version_id' => $version->getKey()])->save();
                     $audit->log('contract.version_published', $contract, metadata: [
                         'fields_added' => array_column($adding, 'key'),
+                        'fields_dropped' => $dropping,
                     ], actor: $author);
                 }
             });
