@@ -21,6 +21,7 @@ class VersionHistory {
         'Availability beside a lead or on a phone: the three choices read Zip, Area and Calendar.',
         'Notifications: each one shows the icon of the module it is about and when it happened.',
         'Field, Map: the jobs of the day appear as pins, with a searchable Jobs list by number or customer. Pick a job to see the nearest technicians by live drive time, and pick one for the route, the minutes and a sentence to copy for the caller. Tap a technician for battery, speed, miles, next job, device and app version.',
+        'Human Resources, Records: deactivated people are now called inactive.',
       ],
     ),
     VersionRelease(
