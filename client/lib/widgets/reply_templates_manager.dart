@@ -149,8 +149,9 @@ class _ManagerState extends State<_Manager> {
         Text(
           'Shown beside Send on a lead. A tap puts the text in the reply box '
           'to read first; nothing is sent by itself. {{greeting}} becomes '
-          '"Hi Mark" (or "Hi there"), {{company}} the company name, and '
-          '{{missing}} asks only for what the customer has not given yet.',
+          '"Hi Mark" (or "Hi there"), {{company}} the company name, '
+          '{{missing}} asks only for what the customer has not given yet, and '
+          '{{availability}} names the first open day for their ZIP.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

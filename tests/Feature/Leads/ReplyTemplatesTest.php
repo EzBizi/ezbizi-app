@@ -83,4 +83,51 @@ class ReplyTemplatesTest extends TestCase
             ['name' => 'x', 'text' => 'y'],
         ]])->assertForbidden();
     }
+
+    /**
+     * {{availability}} reads the area covering the ZIP the customer wrote and
+     * names its first day with room (Jose, 2026-09-30, Karyle Thornton, 44313).
+     */
+    public function test_availability_is_filled_from_the_customers_zip(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-09-30T15:00:00Z'); // a Wednesday
+        $t = $this->provisionTenant('A1-Group');
+
+        $lead = $this->inTenant($t['org'], function () use ($t) {
+            $area = \App\Models\ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Cleveland']);
+            foreach (range(0, 6) as $day) {
+                \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => $day, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 2]);
+                \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => $day, 'start_time' => '14:00', 'end_time' => '17:00', 'max_jobs' => 2]);
+            }
+            \App\Models\ServiceAreaZip::create(['organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'service_area_id' => $area->id, 'zip' => '44313']);
+
+            $row = SocialConnection::create([
+                'organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id, 'provider' => SocialProvider::GoogleAds->value,
+                'remote_id' => '4941850746', 'display_name' => 'A1 Chimney - Cleveland',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+            $lead = Lead::create([
+                'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'connection_id' => $row->id,
+                'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'MESSAGE', 'remote_id' => 'L-2', 'contact_name' => 'Karyle Thornton',
+                'status' => Lead::STATUS_NEW, 'received_at' => now(),
+            ]);
+            \App\Models\LeadConversation::create([
+                'organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'c-1',
+                'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'occurred_at' => now(),
+                'text' => '435 Armante Court, Akron, Ohio 44313',
+            ]);
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.reply_templates', $t['company'], [
+                ['label' => 'Availability', 'value' => 'The soonest availability we have is {{availability}}.'],
+            ]);
+
+            return $lead;
+        });
+
+        $data = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data');
+        $this->assertSame('44313', $data['details']['zip']);
+        $this->assertSame([], $data['reply_templates'] === [] ? ['cannot reply'] : [], 'a chat lead can be replied to');
+        $this->assertSame('The soonest availability we have is Thursday, October 1: 8-11am or 2-5pm.', $data['reply_templates'][0]['text']);
+    }
 }

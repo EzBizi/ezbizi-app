@@ -10,6 +10,7 @@ use App\Models\AdsAccountState;
 use App\Models\AuditEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -23,6 +24,7 @@ use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
+use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
@@ -440,6 +442,9 @@ class LeadsController extends Controller
                 '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
+                '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
+                    ? $this->availabilityFor($data['details']['zip'] ?? null)
+                    : '',
             ]),
         ])->values()->all();
 
@@ -1294,6 +1299,61 @@ class LeadsController extends Controller
         $since = $c->last_reached_at ?? $c->created_at;
 
         return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
+    }
+
+    /**
+     * `{{availability}}` in a reply template: the first day with room in the
+     * area covering the customer's ZIP and its open windows - "Thursday,
+     * October 8: 11am-2pm or 2-5pm" - as the Availability pane shows it
+     * (Jose, 2026-09-30: "we do have her zip code, so the system could fill up
+     * the template"). A blank to fill in when the ZIP or its area is unknown.
+     *
+     * Cached a minute per area: the open thread re-reads the lead every ten
+     * seconds, and the answer is a year's walk through the calendar.
+     */
+    private function availabilityFor(?string $zip): string
+    {
+        $blank = '___: 8-11am, 11am-2pm or 2-5pm';
+        $digits = preg_replace('/\D+/', '', (string) $zip);
+
+        if (strlen($digits) < 4) {
+            return $blank;
+        }
+
+        $area = ServiceAreaZip::query()->where('zip', str_pad(substr($digits, 0, 5), 5, '0', STR_PAD_LEFT))->first()?->serviceArea;
+
+        if ($area === null || ! Openings::hasCapacity($area)) {
+            return $blank;
+        }
+
+        return Cache::remember('lead-availability:'.$area->getKey(), 60, function () use ($area, $blank) {
+            $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', request()->user()->organization));
+            $first = app(Openings::class)->next($area, $from, 0)['first'];
+
+            if ($first === null) {
+                return $blank;
+            }
+
+            $windows = collect($first['windows'])->filter(fn ($w) => $w['remaining'] > 0)
+                ->map(fn ($w) => self::window((string) $w['start_time'], (string) $w['end_time']))
+                ->values()->all();
+            $last = array_pop($windows);
+
+            return Carbon::parse($first['date'])->format('l, F j').': '
+                .($windows === [] ? $last : implode(', ', $windows).' or '.$last);
+        });
+    }
+
+    /** "8-11am", "11am-2pm": the way the dispatchers write a window. */
+    private static function window(string $start, string $end): string
+    {
+        $a = Carbon::parse($start);
+        $b = Carbon::parse($end);
+        $hour = fn (Carbon $t) => $t->minute === 0 ? $t->format('g') : $t->format('g:i');
+
+        return $a->format('a') === $b->format('a')
+            ? $hour($a).'-'.$hour($b).$b->format('a')
+            : $hour($a).$a->format('a').'-'.$hour($b).$b->format('a');
     }
 
     /** Whether the reader starred it: joined in on the list, asked for otherwise. */
