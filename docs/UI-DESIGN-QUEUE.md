@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 36 · Clock In · the lock screen — **drawn, waiting on Jose**
+### 36 · Clock In · the lock screen — **Jose: "go with ur recommendations for the lock layout" — 1 and 4** — **BUILT** `51fb15c1`
 
 Jose, 2026-09-30, with a screenshot of the lock screen: *"the clock in lock screen could also use some
 love, show the app logo, etc."* Today: "EzBizi" in plain type, the time, the name, a raw 08:00 – 17:00,
