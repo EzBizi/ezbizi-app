@@ -22,6 +22,7 @@ use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Hr\CannotActOnInvitation;
 use App\Support\Hr\InvitationActions;
+use App\Support\Hr\OnboardingToRecord;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\PdfRenderer;
 use App\Support\Notifications\NotificationDispatcher;
@@ -1080,8 +1081,20 @@ class HrOnboardingsController extends Controller
             'completed_at' => now(),
         ])->save();
 
+        // The contract's pay, start date, schedule and equipment into the
+        // record (Jose, 2026-09-30). A failure there must not cost anybody
+        // their signature, so it is reported and the completion stands;
+        // Records then shows the gaps amber.
+        try {
+            $filled = app(OnboardingToRecord::class)->apply($onboarding);
+        } catch (\Throwable $e) {
+            report($e);
+            $filled = [];
+        }
+
         $this->audit->log('onboarding.completed', $onboarding, metadata: [
             'signatures' => count($signed),
+            'filled'     => $filled,
         ]);
 
         /*
