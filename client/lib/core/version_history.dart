@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Leads: the Availability reply fills in the first open day for the ZIP of the customer.',
         'Onboarding: contracts now ask for a tax ID, bank details, a W-4 or W-9, the driver licence and a uniform photo, plus car photos for field roles.',
+        'Work Hours: ask for a correction to one of your own shifts; whoever manages Work Hours approves or declines it, and you are told either way.',
+        'Training: Fullscreen on a video fills the screen on Windows.',
       ],
     ),
     VersionRelease(
