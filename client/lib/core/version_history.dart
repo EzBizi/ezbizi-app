@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0322',
+      date: '30 Sep 2026',
+      items: [
+        'Leads: a reply sent outside EzBizi, from A1 Tools or Google directly, now shows as a red bubble in the conversation.',
+        'Onboarding: a new starter now sees Your paperwork and reaches their onboarding form; it did not appear before.',
+        'Human Resources, Records: a missing emergency contact, pay rate or work schedule shows amber and counts toward what is missing; pay counts only for people allowed to see pay.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0321',
       date: '30 Sep 2026',
       items: [
