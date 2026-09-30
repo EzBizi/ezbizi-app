@@ -104,6 +104,15 @@ class CampaignPerformance
      *     to: string,
      * }
      */
+    private const CHANNEL_LABELS = [
+        'LOCAL_SERVICES' => 'Local Services',
+        'SEARCH' => 'Search (PPC)',
+        'PERFORMANCE_MAX' => 'Performance Max',
+        'DISPLAY' => 'Display',
+        'VIDEO' => 'Video',
+        'SMART' => 'Smart',
+    ];
+
     public function forConnection(
         SocialConnection $connection,
         Carbon $from,
@@ -171,6 +180,17 @@ class CampaignPerformance
                 ]),
                 $campaigns,
             ),
+            // Spend by kind of campaign - Local Services beside Search (PPC),
+            // Performance Max and the rest - as A1 Leads' Channel Performance
+            // table showed it (Jose, 2026-09-30).
+            'channels' => collect($campaigns)
+                ->groupBy(fn (array $r) => (string) ($r['campaign']['advertisingChannelType'] ?? 'UNKNOWN'))
+                ->map(fn ($rows, string $channel) => $this->totals($rows->all(), $currency, [
+                    'channel' => $channel,
+                    'label' => self::CHANNEL_LABELS[$channel] ?? ucwords(strtolower(str_replace('_', ' ', $channel))),
+                ]))
+                ->values()
+                ->all(),
             'currency' => $currency,
             'is_manager' => ($account[0]['customer']['manager'] ?? false) === true,
             'from' => $from->format('Y-m-d'),

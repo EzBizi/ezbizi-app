@@ -369,10 +369,11 @@ class CampaignPerformanceTest extends TestCase
             ],
         ]);
 
-        $campaigns = $this->signedInAs($t['admin']->fresh())
+        $data = $this->signedInAs($t['admin']->fresh())
             ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk()
-            ->json('data.0.campaigns');
+            ->json('data.0');
+        $campaigns = $data['campaigns'];
 
         $this->assertCount(2, $campaigns);
 
@@ -402,6 +403,14 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame(0, $campaigns[1]['clicks'], 'a campaign with no activity reports zero, not null');
         $this->assertEquals(0, $campaigns[1]['cost']);
         $this->assertSame('PAUSED', $campaigns[1]['status']);
+
+        // Spend by kind of campaign, as A1 Leads' Channel Performance table
+        // showed it (Jose, 2026-09-30).
+        $channels = collect($data['channels'])->keyBy('channel');
+        $this->assertSame('Search (PPC)', $channels['SEARCH']['label']);
+        $this->assertEquals(900.0, $channels['SEARCH']['cost']);
+        $this->assertSame(300, $channels['SEARCH']['clicks']);
+        $this->assertEquals(0, $channels['DISPLAY']['cost']);
     }
 
     /**
