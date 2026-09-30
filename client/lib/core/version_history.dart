@@ -20,6 +20,7 @@ class VersionHistory {
         'Addresses: booking a lead, adding or editing a customer, the company form and the emergency address of a phone all suggest the address as you type and keep street, unit, city, state and ZIP; the customer made from a booked lead gets every part.',
         'Dates with a time: 16 typed on a 12-hour clock becomes 4 PM instead of being dropped, and an hour or minute no clock has says so.',
         'Invitations: the paperwork can start with the invite, switched on per person.',
+        'Leads, Manage: a Connections page instead of the side panel - each provider with how many accounts need attention, their accounts in a table you can narrow to what needs attention or never sent a lead, and an account opened beside the list to name it, move its leads, read its certification or disconnect it.',
         'Onboarding: signing the contract fills in the start date, pay rate, work schedule and issued equipment of the person in Records.',
         'Leads on a phone: booking, a job, a customer and availability open in the side panel instead of a separate screen.',
         'Leads: reconnecting Thumbtack brings its earlier enquiries back straight away.',
