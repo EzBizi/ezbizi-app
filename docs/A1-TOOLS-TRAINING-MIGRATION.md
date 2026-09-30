@@ -219,3 +219,30 @@ Run on 0.0.0324 (a04ea003, which carries 42de4013) from the Dismantler's bundle 
 - **Kept:** the dump `training-before-a1-import-20260930T155710Z` (six tables).
 - **Deleted:** the staging folder `/var/lib/a1-training-export`.
 
+
+## Dead videos removed (2026-09-30, 19:47 UTC)
+
+15 of A1's 72 distinct Vimeo videos are deleted on Vimeo (oEmbed 404) and did not play in A1 either (A1 recorded it on 2026-08-07). Jose: "get rid of them for now, if i find them we'll reupload them and include them again."
+
+- **Removed from the Dispatcher Training Guide: 16 video blocks.** 1108951083 was used twice.
+- **9 topics held only a video, so the topics went too.** They were the old topics 11–19:
+  - Perfect Booking Call (1109403456)
+  - Booking with Price Resistance (1109403386)
+  - Booking with Availability Resistance (1109408246)
+  - Call With Question About Inspection Level (1108968637)
+  - Missed Emergency Booking Due to Slow Response (1108968729)
+  - Lost Booking from Time Overstatement and No Same-Day Booking (1108968713)
+  - Lost Booking from Poor Call Flow (1108968683)
+  - Lost Booking Due to Uncertainty (1109662447)
+  - Complaint Scenario (1109403539)
+- **The video block alone was removed from these topics:**
+  - Scheduling a Job in Workiz (1108947101)
+  - Job Source Identifying (1101908014)
+  - Job Rescheduling Guide (1101919473)
+  - Client ETA Call Protocol (1108951083)
+  - Complaint Handling Guide (1108951083)
+  - Cancellation Request Protocol (1101946492)
+  - Navigating the RingCentral App for Outgoing Calls (1108946113)
+- **Progress:** 17 learners' `last_screen` moved down by the number of removed topics at or before it, so nobody gained or lost a completed topic. The guide now has 18 topics; all 16 people who had completed it still have, and every one of them is at topic 17.
+- **Record:** one `training.dead_videos_removed` audit row with every removed block, topic and progress change. The guide and its progress as they were before are backed up at `/var/www/ezbizi-backups/training-before-dead-videos-20260930T194656.json` on the app box.
+- **To put a video back:** re-upload it, then add it in Training › Settings › the guide, as a Video block (for a removed topic, add a topic in the same place, under chapter/section "Dispatcher Essentials"). Unlisted links carry their hash (`?h=`) and play.
