@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'map_overlays.dart';
 
@@ -326,12 +327,16 @@ class _FieldMapTabState extends State<FieldMapTab> {
     });
   }
 
+  /// Green reporting, blue at a job, red stopped too long, yellow not
+  /// reporting. The legend reads the same four.
   Color _colour(Map<String, dynamic> p, ColorScheme scheme) {
-    if (p['silent'] == true || p['fresh'] != true) return scheme.outline;
-    if (p['stopped'] == true) return scheme.error;
-    if (p['at_job'] != null) return scheme.tertiary;
+    if (p['silent'] == true || p['fresh'] != true) {
+      return EzBiziTheme.fieldYellow;
+    }
+    if (p['stopped'] == true) return EzBiziTheme.fieldRed;
+    if (p['at_job'] != null) return EzBiziTheme.fieldBlue;
 
-    return scheme.primary;
+    return EzBiziTheme.fieldGreen;
   }
 
   @override
@@ -384,7 +389,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
                     Polyline(
                       points: _trail,
                       strokeWidth: 4,
-                      color: scheme.primary,
+                      color: EzBiziTheme.fieldBlue,
                     ),
                   ],
                 ),
@@ -394,7 +399,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
                     Polyline(
                       points: _road,
                       strokeWidth: 5,
-                      color: scheme.tertiary,
+                      color: EzBiziTheme.fieldGreen,
                       pattern: StrokePattern.dashed(segments: const [10, 6]),
                     ),
                   ],
@@ -410,7 +415,10 @@ class _FieldMapTabState extends State<FieldMapTab> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: scheme.surface,
-                          border: Border.all(color: scheme.primary, width: 3),
+                          border: Border.all(
+                            color: EzBiziTheme.fieldBlue,
+                            width: 3,
+                          ),
                         ),
                       ),
                     ),
@@ -426,10 +434,10 @@ class _FieldMapTabState extends State<FieldMapTab> {
                           child: FieldJobPin(
                             label: '${j['customer'] ?? '#${j['number']}'}',
                             colour: j['job_id'] == _jobId
-                                ? scheme.tertiary
+                                ? scheme.onSurface
                                 : j['tech'] == null
-                                ? scheme.outline
-                                : scheme.secondary,
+                                ? EzBiziTheme.fieldYellow
+                                : EzBiziTheme.fieldBlue,
                             selected: j['job_id'] == _jobId,
                           ),
                         ),
