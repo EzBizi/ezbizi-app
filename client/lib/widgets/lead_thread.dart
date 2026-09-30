@@ -329,73 +329,81 @@ class _LeadThreadState extends State<LeadThread> {
     });
   }
 
-  /// A New lead's two moves, Archive and Not a lead; any other lead's way
-  /// back. Book is the third move and has its own button. Almost every lead
-  /// is New (43,184 of 43,190 on Google), so these are verbs rather than a
-  /// four-word list nobody opened.
+  /// Where the lead stands, and the way to move it, as one control: Archive,
+  /// Not a lead, Lead, with the one it is now filled (Jose, 2026-09-30: "we
+  /// should also add Lead as well to mark if something is a lead or not").
+  /// It replaced two verbs on a New lead and a Back to New on any other, which
+  /// left no way to say a lead IS one. A booked lead is a lead.
   Widget _moves(Map<String, dynamic> lead, {bool fill = false}) {
-    void to(String status) => widget.onStatusChanged!(status);
+    final current = switch ('${lead['status'] ?? 'new'}') {
+      'archived' => 'archived',
+      'not_a_lead' => 'not_a_lead',
+      _ => 'new',
+    };
 
-    if ((lead['status'] ?? 'new') != 'new') {
-      return Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: TextButton.icon(
-          key: const ValueKey('status-back-to-new'),
-          onPressed: () => to('new'),
-          icon: const Icon(Icons.undo, size: 18),
-          label: const Text('Back to New'),
+    final control = SegmentedButton<String>(
+      key: const ValueKey('status-moves'),
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: 'archived',
+          label: Text('Archive', key: ValueKey('status-archive')),
         ),
-      );
-    }
-
-    final archive = OutlinedButton(
-      key: const ValueKey('status-archive'),
-      onPressed: () => to('archived'),
-      child: const Text('Archive'),
+        ButtonSegment(
+          value: 'not_a_lead',
+          label: Text('Not a lead', key: ValueKey('status-not-a-lead')),
+        ),
+        ButtonSegment(
+          value: 'new',
+          label: Text('Lead', key: ValueKey('status-lead')),
+        ),
+      ],
+      selected: {current},
+      onSelectionChanged: (picked) {
+        if (picked.first != current) widget.onStatusChanged!(picked.first);
+      },
     );
-    final notALead = OutlinedButton(
-      key: const ValueKey('status-not-a-lead'),
-      onPressed: () => to('not_a_lead'),
-      child: const Text('Not a lead'),
-    );
 
-    return fill
-        ? Row(
-            children: [
-              Expanded(child: archive),
-              const SizedBox(width: 8),
-              Expanded(child: notALead),
-            ],
-          )
-        : Wrap(spacing: 8, children: [archive, notALead]);
+    return fill ? SizedBox(width: double.infinity, child: control) : control;
   }
 
   /// Below this a header's name line cannot hold the buttons as well, so
-  /// they go under the lines instead.
-  static const double _besideNameFrom = 640;
+  /// they go under the lines instead. 880 since the moves became three
+  /// (Archive, Not a lead, Lead) and a gap before Call and Book: at 640 the
+  /// name line overflowed by 11px in a 740-wide thread.
+  static const double _besideNameFrom = 880;
 
   /// Desktop: the moves, then Book, the one that matters most, last. On a
   /// phone Book is full width and the moves share a row under it.
+  /// Two groups, apart (Jose, 2026-09-30): where the lead stands - Archive,
+  /// Not a lead, Lead - and what to do about the customer - Call, Book.
   Widget _actions(Map<String, dynamic> lead) => Wrap(
-    spacing: 8,
+    spacing: 24,
     runSpacing: 8,
     alignment: WrapAlignment.end,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
       if (widget.onStatusChanged != null) _moves(lead),
-      if (_canCall(lead))
-        OutlinedButton.icon(
-          key: const ValueKey('lead-call'),
-          onPressed: () => _call(lead['phone'] as String),
-          icon: const Icon(Icons.call_outlined, size: 18),
-          label: const Text('Call'),
-        ),
-      if (_canBook)
-        FilledButton(
-          key: const ValueKey('book-open'),
-          onPressed: _openBooking,
-          child: const Text('Book'),
-        ),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (_canCall(lead))
+            OutlinedButton.icon(
+              key: const ValueKey('lead-call'),
+              onPressed: () => _call(lead['phone'] as String),
+              icon: const Icon(Icons.call_outlined, size: 18),
+              label: const Text('Call'),
+            ),
+          if (_canBook)
+            FilledButton(
+              key: const ValueKey('book-open'),
+              onPressed: _openBooking,
+              child: const Text('Book'),
+            ),
+        ],
+      ),
     ],
   );
 

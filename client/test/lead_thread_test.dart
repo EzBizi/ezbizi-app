@@ -1050,9 +1050,10 @@ void _autoRefreshTests() {
   });
 }
 
-/// Design 28 (Jose, "as u recommend"): the status is a pill beside the name,
-/// and changing it is a verb: Archive or Not a lead on a New lead, Back to New
-/// on any other. It was a search field alone in the corner that read as one.
+/// Design 28 (Jose, "as u recommend"): the status is a pill beside the name.
+/// Changing it is one control since 2026-09-30 - Archive, Not a lead, Lead,
+/// the one it is now filled - apart from Call and Book (Jose: "we should
+/// also add Lead as well to mark if something is a lead or not").
 void _statusTests() {
   Future<List<String>> pump(
     WidgetTester tester, {
@@ -1100,9 +1101,8 @@ void _statusTests() {
     return asked;
   }
 
-  testWidgets('a New lead shows a pill and offers Archive and Not a lead', (
-    tester,
-  ) async {
+  testWidgets('a New lead shows a pill, stands at Lead, and offers Archive '
+      'and Not a lead', (tester) async {
     final asked = await pump(tester);
 
     expect(
@@ -1112,26 +1112,35 @@ void _statusTests() {
       ),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('status-back-to-new')), findsNothing);
+    expect(
+      tester
+          .widget<SegmentedButton<String>>(
+            find.byKey(const ValueKey('status-moves')),
+          )
+          .selected,
+      {'new'},
+    );
 
+    // Where it already stands asks nothing.
+    await tester.tap(find.byKey(const ValueKey('status-lead')));
     await tester.tap(find.byKey(const ValueKey('status-archive')));
     await tester.tap(find.byKey(const ValueKey('status-not-a-lead')));
     expect(asked, ['archived', 'not_a_lead']);
   });
 
-  testWidgets('any other lead offers Back to New instead', (tester) async {
-    final asked = await pump(tester, status: 'archived');
+  testWidgets('a lead set aside can be marked a lead again', (tester) async {
+    final asked = await pump(tester, status: 'not_a_lead');
 
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('thread-status')),
-        matching: find.text('Archived'),
-      ),
-      findsOneWidget,
+      tester
+          .widget<SegmentedButton<String>>(
+            find.byKey(const ValueKey('status-moves')),
+          )
+          .selected,
+      {'not_a_lead'},
     );
-    expect(find.byKey(const ValueKey('status-archive')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('status-back-to-new')));
+    await tester.tap(find.byKey(const ValueKey('status-lead')));
     expect(asked, ['new']);
   });
 
@@ -1141,23 +1150,29 @@ void _statusTests() {
     await pump(tester, canChange: false);
 
     expect(find.byKey(const ValueKey('thread-status')), findsOneWidget);
-    expect(find.byKey(const ValueKey('status-archive')), findsNothing);
-    expect(find.byKey(const ValueKey('status-back-to-new')), findsNothing);
+    expect(find.byKey(const ValueKey('status-moves')), findsNothing);
   });
 
-  testWidgets('on a phone the two moves share one row, the same size', (
+  testWidgets('on a phone the three share one row, the same size', (
     tester,
   ) async {
     await pump(tester, size: const Size(390, 844));
 
-    final archive = tester.getRect(
-      find.byKey(const ValueKey('status-archive')),
+    Rect segment(String key) => tester.getRect(
+      find.ancestor(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
     );
-    final notALead = tester.getRect(
-      find.byKey(const ValueKey('status-not-a-lead')),
-    );
+    final archive = segment('status-archive');
+    final notALead = segment('status-not-a-lead');
+    final lead = segment('status-lead');
     expect(archive.top, notALead.top);
-    expect(archive.size, notALead.size);
+    expect(notALead.top, lead.top);
+    // Thirds of the row, to the rounding of a third.
+    expect(archive.width, closeTo(notALead.width, 0.01));
+    expect(notALead.width, closeTo(lead.width, 0.01));
+    expect(archive.height, notALead.height);
     expect(tester.takeException(), isNull);
   });
 }
