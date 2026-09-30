@@ -375,7 +375,8 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
         label: 'Waiting now',
         value: '$waiting',
         valueTone: waiting > 0 ? Tone.bad : null,
-        note: const _Note('over 10 min, still New'),
+        // The list's overdue mark, over the last 24 hours (eb010055).
+        note: const _Note('over 10 min, last 24 h'),
       ),
     ];
 

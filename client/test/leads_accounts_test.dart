@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -17,6 +18,7 @@ import 'package:http/testing.dart';
 /// of them. Twenty-one were invisible.
 final _deleted = <String>[];
 final _patched = <String, Map<String, dynamic>>{};
+final _posted = <Map<String, dynamic>>[];
 
 void main() {
   /// Twelve Thumbtack rows are one consent. Letting them all go is one
@@ -552,6 +554,86 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /// Jose, 2026-09-30: pausing a Google campaign from Manage as well as from
+  /// the Ads report. Pausing stops the account's leads, so it is asked once.
+  testWidgets('a campaign is paused after one question, and says so', (
+    tester,
+  ) async {
+    await _pump(tester, connections: [_withCampaign()]);
+    await _open(tester, 'Harbor');
+
+    expect(_pill(tester, 'camp-1'), 'Running');
+    await tester.tap(find.byKey(const ValueKey('campaign-pause-camp-1')));
+    await tester.pump();
+    expect(_posted, isEmpty, reason: 'asked first');
+    expect(find.textContaining('no new leads'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('campaign-pause-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(_posted.single, {
+      'connection_id': 'conn-lsa',
+      'campaign_ids': ['camp-1'],
+      'status': 'PAUSED',
+    });
+    expect(_pill(tester, 'camp-1'), 'Paused');
+    expect(
+      find.byKey(const ValueKey('campaign-resume-camp-1')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('campaign-said')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('campaign-resume-camp-1')));
+    await tester.pumpAndSettle();
+    expect(_posted.last['status'], 'ENABLED');
+    expect(_pill(tester, 'camp-1'), 'Running');
+  });
+
+  testWidgets('a pause Google refuses keeps the campaign running and says '
+      'why', (tester) async {
+    await _pump(
+      tester,
+      connections: [_withCampaign()],
+      campaignRefusal: 'The campaign is managed by another account.',
+    );
+    await _open(tester, 'Harbor');
+
+    await tester.tap(find.byKey(const ValueKey('campaign-pause-camp-1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('campaign-pause-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(_pill(tester, 'camp-1'), 'Running');
+    expect(
+      find.text('The campaign is managed by another account.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without the Ads permission the campaign is shown, not '
+      'offered', (tester) async {
+    await _pump(tester, connections: [_withCampaign(mayPause: false)]);
+    await _open(tester, 'Harbor');
+
+    expect(_pill(tester, 'camp-1'), 'Running');
+    expect(find.byKey(const ValueKey('campaign-pause-camp-1')), findsNothing);
+  });
+
+  testWidgets('a campaign not read yet says when it will be', (tester) async {
+    await _pump(
+      tester,
+      connections: [
+        {..._withCampaign(), 'campaigns': null},
+      ],
+    );
+    await _open(tester, 'Harbor');
+
+    expect(
+      find.textContaining('The hourly check fills this in'),
+      findsOneWidget,
+    );
+  });
+
   test('placements are counted, which is the number that changes', () {
     expect(
       placedCount([
@@ -566,6 +648,24 @@ void main() {
     );
   });
 }
+
+/// A Google Ads account with its Local Services campaign, as the hourly watch
+/// reads it into `meta.connections` (bb23c17b).
+Map<String, dynamic> _withCampaign({bool mayPause = true}) => {
+  ..._account('lsa', leads: 4, label: 'Harbor'),
+  'campaigns': [
+    {
+      'id': 'camp-1',
+      'name': 'Local Services',
+      'status': 'ENABLED',
+      'primary_status': 'ELIGIBLE',
+    },
+  ],
+  'may_pause': mayPause,
+};
+
+String? _pill(WidgetTester tester, String id) =>
+    tester.widget<StatusPill>(find.byKey(ValueKey('campaign-state-$id'))).label;
 
 /// Account rows, in the table or the list: both key a row `row-<id>`.
 Finder _rows() => find.byWidgetPredicate(
@@ -620,9 +720,11 @@ Future<void> _pump(
   Size size = const Size(1400, 900),
   Future<void> Function()? onChanged,
   VoidCallback? onBack,
+  String? campaignRefusal,
 }) async {
   _deleted.clear();
   _patched.clear();
+  _posted.clear();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -658,6 +760,20 @@ Future<void> _pump(
         _patched[request.url.path] = (jsonDecode(request.body) as Map)
             .cast<String, dynamic>();
         return _json({'data': <String, dynamic>{}});
+      }
+      if (request.url.path.endsWith('/ads/campaigns/status')) {
+        final body = (jsonDecode(request.body) as Map).cast<String, dynamic>();
+        _posted.add(body);
+        return _json({
+          'data': [
+            for (final id in body['campaign_ids'] as List)
+              {
+                'campaign_id': id,
+                'ok': campaignRefusal == null,
+                'because': campaignRefusal,
+              },
+          ],
+        });
       }
       if (request.url.path.endsWith('/leads/reply-templates')) {
         return _json({

@@ -1093,6 +1093,16 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
   /// What the last change actually did.
   String? _said;
 
+  /// Campaign id to status, as the last pause or resume here left it: the
+  /// connections list learns it only at the next hourly watch (:20).
+  final _campaignNow = <String, String>{};
+
+  /// The campaign whose pause is being confirmed. Pausing stops the account's
+  /// leads, so it is asked once, in the panel.
+  String? _pausing;
+  String? _campaignSaid;
+  String? _campaignError;
+
   @override
   void dispose() {
     _name.dispose();
@@ -1184,6 +1194,43 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
       _error = response.ok ? null : response.reason;
     });
     if (response.ok) await widget.onChanged();
+  }
+
+  /// Pause or resume one campaign, through the Ads report's own action (Jose,
+  /// 2026-09-30: "we would only be adding it here as well on manage").
+  Future<void> _setCampaign(String id, String status) async {
+    setState(() {
+      _busy = true;
+      _pausing = null;
+      _campaignSaid = null;
+      _campaignError = null;
+    });
+
+    final response = await widget.api.post('/ads/campaigns/status', {
+      'connection_id': _id,
+      'campaign_ids': [id],
+      'status': status,
+    });
+    if (!mounted) return;
+
+    final result = (response.body['data'] as List? ?? const [])
+        .cast<Map>()
+        .where((r) => '${r['campaign_id']}' == id)
+        .firstOrNull;
+    setState(() {
+      _busy = false;
+      if (response.ok && result?['ok'] == true) {
+        _campaignNow[id] = status;
+        _campaignSaid = status == 'PAUSED'
+            ? 'Paused. No new leads come from this account until it is '
+                  'resumed.'
+            : 'Running again.';
+      } else {
+        _campaignError = response.ok
+            ? '${result?['because'] ?? 'Google did not take the change.'}'
+            : response.reason;
+      }
+    });
   }
 
   String _franchiseName(String id) {
@@ -1364,6 +1411,35 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
             _certification(context, cert),
           ],
 
+          // The account's Local Services campaign, as the hourly watch read
+          // it, with the Ads report's pause and resume.
+          if (c['provider'] == 'google_ads' && c.containsKey('campaigns')) ...[
+            const SizedBox(height: 18),
+            label('Campaign'),
+            if (c['campaigns'] is! List)
+              Text(
+                'Not read from Google yet. The hourly check fills this in.',
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              )
+            else
+              for (final camp in (c['campaigns'] as List).cast<Map>())
+                _campaign(context, camp, mayPause: c['may_pause'] == true),
+            if (_campaignSaid != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _campaignSaid!,
+                key: const ValueKey('campaign-said'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+            if (_campaignError != null) ...[
+              const SizedBox(height: 8),
+              ErrorNote(_campaignError!),
+            ],
+          ],
+
           if (_confirming) ...[
             const SizedBox(height: 18),
             Text(
@@ -1426,6 +1502,113 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
                       'them. Checked daily.',
             style: theme.textTheme.bodySmall?.copyWith(color: colours.ink),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _campaign(BuildContext context, Map camp, {required bool mayPause}) {
+    final theme = Theme.of(context);
+    final id = '${camp['id']}';
+    final status = _campaignNow[id] ?? '${camp['status']}';
+    final running = status == 'ENABLED';
+    // Google's own word when it says more than running or paused, and only
+    // while it is not older than a change made here.
+    final primary = '${camp['primary_status'] ?? ''}';
+    final more =
+        _campaignNow.containsKey(id) ||
+            primary.isEmpty ||
+            primary == 'ELIGIBLE' ||
+            primary == 'PAUSED'
+        ? null
+        : primary[0] + primary.substring(1).toLowerCase().replaceAll('_', ' ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              StatusPill(
+                running
+                    ? 'Running'
+                    : status == 'PAUSED'
+                    ? 'Paused'
+                    : status[0] + status.substring(1).toLowerCase(),
+                key: ValueKey('campaign-state-$id'),
+                tone: running
+                    ? Tone.ok
+                    : status == 'PAUSED'
+                    ? Tone.caution
+                    : Tone.neutral,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${camp['name'] ?? 'Campaign'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (mayPause && _pausing != id)
+                running
+                    ? OutlinedButton(
+                        key: ValueKey('campaign-pause-$id'),
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() => _pausing = id),
+                        child: const Text('Pause'),
+                      )
+                    : FilledButton.tonal(
+                        key: ValueKey('campaign-resume-$id'),
+                        onPressed: _busy
+                            ? null
+                            : () => _setCampaign(id, 'ENABLED'),
+                        child: const Text('Resume'),
+                      ),
+            ],
+          ),
+          if (more != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Google: $more',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          if (_pausing == id) ...[
+            const SizedBox(height: 8),
+            _note(
+              context,
+              Tone.caution,
+              "Pausing stops this account's Local Services ads: no new leads "
+              'come from it until it is resumed.',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              children: [
+                TextButton(
+                  key: const ValueKey('campaign-keep'),
+                  onPressed: () => setState(() => _pausing = null),
+                  child: const Text('Keep running'),
+                ),
+                FilledButton(
+                  key: const ValueKey('campaign-pause-confirm'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.error,
+                    foregroundColor: theme.colorScheme.onError,
+                  ),
+                  onPressed: _busy ? null : () => _setCampaign(id, 'PAUSED'),
+                  child: const Text('Pause'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
