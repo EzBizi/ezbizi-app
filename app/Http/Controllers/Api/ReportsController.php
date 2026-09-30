@@ -280,6 +280,9 @@ class ReportsController extends Controller
             'company_id'   => $report->company_id,
             'franchise_id' => $report->franchise_id,
             'definition'   => $report->definition,
+            // The map's own word for what the report counts ("Branches", not
+            // "Franchises"), so the library's Covers column need not guess.
+            'root_label'   => ReportMap::get((string) ($report->definition['root'] ?? ''))['label'] ?? null,
         ];
     }
 }

@@ -345,6 +345,9 @@ class ReportsApiTest extends TestCase
 
         $this->assertFalse($rows['Unsent']['sent_automatically']);
         $this->assertSame([], $rows['Unsent']['sent_by']);
+
+        // What each counts, in the map's own word.
+        $this->assertSame('Jobs', $rows['Sent']['root_label']);
     }
 
     /** Without automations.view: yes or no, never the rule's name or schedule. */
