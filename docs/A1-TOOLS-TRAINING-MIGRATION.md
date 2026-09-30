@@ -111,7 +111,7 @@ Images are content-addressed: an image used on two pages is ONE file and one che
         { "type": "text",  "text": "Plain text.\nLine breaks kept." },
         { "type": "image", "file": "media/9f2c…e1.jpg", "sha256": "9f2c…e1", "a1_path": "training-media/2026/01/x.jpg" },
         { "type": "image_missing", "a1_path": "training-media/2026/02/y.jpg" },
-        { "type": "vimeo", "vimeo_id": "123456789" },
+        { "type": "vimeo", "vimeo_id": "123456789", "vimeo_hash": "4f1c2e9ab0" },
         { "type": "table", "rows": [["Level", "When"], ["1", "Annually"]] }
       ]
     }]
@@ -152,6 +152,7 @@ Images are content-addressed: an image used on two pages is ONE file and one che
 Two fields need the exporter to do something rather than copy a column:
 
 - **`vimeo_id`** — the bare numeric id, taken from either shape A1 holds (57 full `vimeo.com/<id>` URLs, 17 bare ids). The importer builds the URL, so one form reaches it.
+- **`vimeo_hash`** — optional, lowercase hex: an UNLISTED video's privacy hash (`vimeo.com/<id>/<hash>` or `?h=<hash>`). Without it Vimeo answers 403 "having a little trouble" (measured 2026-09-30: 1109403456 refuses, public 1115529948 plays). The importer stores `player.vimeo.com/video/<id>?h=<hash>` and the video page passes `h` through.
 - **`selected_text`** — the TEXT of the option the person chose, read as `answers_detail.options[selected_index]`, or `null` for a question they skipped (`selected_index` -1), which imports as unanswered. A1 shuffled options on screen, but the Dismantler measured the stored order as canonical in 2,620/2,620 answers (A1's client maps back before saving), so an index would also have been right; the importer matches by text so that it cannot drift either way.
 - **A1 ids** for guides, pages, tests and questions may be strings (`"Technician_kb"`); the importer treats every id as a string.
 - **One entry per person.** Two A1 accounts that reach the same EzBizi email are merged by the exporter: all attempts; completions unioned, earliest timestamp per page; the current page from the account with the latest activity.

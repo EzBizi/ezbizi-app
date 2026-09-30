@@ -64,7 +64,7 @@ class TrainingA1ImportTest extends TestCase
         $this->bundle();
 
         $this->artisan('training:import-a1-tools', ['dir' => $this->dir, '--dry-run' => true])
-            ->expectsOutputToContain('guide "Technician knowledge base": 3 topics, 3 images, 1 videos.')
+            ->expectsOutputToContain('guide "Technician knowledge base": 3 topics, 3 images, 2 videos.')
             ->expectsOutputToContain('A1 targeted it at: Technician')
             ->expectsOutputToContain('[dry run] Nothing was written.')
             ->assertSuccessful();
@@ -104,9 +104,11 @@ class TrainingA1ImportTest extends TestCase
             $this->assertSame(self::JPEG, Storage::disk($media->disk)->get($media->path), 'The bytes are copied, not linked.');
 
             // Page 2: text, a real table, and the Vimeo video.
-            $this->assertSame(['text', 'table', 'video'], array_column($t[1]['blocks'], 'type'));
+            $this->assertSame(['text', 'table', 'video', 'video'], array_column($t[1]['blocks'], 'type'));
             $this->assertSame([['Level', 'When'], ['1', 'Annually']], $t[1]['blocks'][1]['rows']);
             $this->assertSame('https://player.vimeo.com/video/123456', $t[1]['blocks'][2]['url']);
+            // Unlisted: the hash is what lets it play.
+            $this->assertSame('https://player.vimeo.com/video/1109403456?h=4f1c2e9ab0', $t[1]['blocks'][3]['url']);
 
             // Page 3: both pictures on the same topic.
             $this->assertSame(['text', 'image', 'image'], array_column($t[2]['blocks'], 'type'));
@@ -295,6 +297,7 @@ class TrainingA1ImportTest extends TestCase
                         ['type' => 'text', 'text' => 'Line A'],
                         ['type' => 'table', 'rows' => [['Level', 'When'], ['1', 'Annually']]],
                         ['type' => 'vimeo', 'vimeo_id' => '123456'],
+                        ['type' => 'vimeo', 'vimeo_id' => '1109403456', 'vimeo_hash' => '4F1C2E9AB0'],
                     ]],
                     ['a1_id' => 'topic_gallery', 'chapter' => 'C1', 'section' => 'S2', 'title' => 'Gallery', 'blocks' => [
                         ['type' => 'text', 'text' => 'Two pictures.'],

@@ -120,8 +120,13 @@ final class GuideScreens
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
         $path = (string) parse_url($url, PHP_URL_PATH);
 
-        if (str_ends_with($host, 'vimeo.com') && preg_match('~/(\d{5,})(?:/|$)~', $path, $m)) {
-            return route('training.video', ['platform' => 'vimeo', 'id' => $m[1]]);
+        if (str_ends_with($host, 'vimeo.com') && preg_match('~/(\d{5,})(?:/([0-9a-fA-F]{6,32}))?(?:/|$)~', $path, $m)) {
+            // An unlisted video's hash: `?h=` on a player link, or the path
+            // segment after the id on a vimeo.com link.
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+            $hash = strtolower((string) ($query['h'] ?? ($m[2] ?? '')));
+
+            return route('training.video', ['platform' => 'vimeo', 'id' => $m[1]] + (self::isVimeoHash($hash) ? ['h' => $hash] : []));
         }
 
         $youtube = null;
@@ -136,6 +141,11 @@ final class GuideScreens
         return is_string($youtube) && preg_match('/^[A-Za-z0-9_-]{6,20}$/', $youtube)
             ? route('training.video', ['platform' => 'youtube', 'id' => $youtube])
             : null;
+    }
+
+    public static function isVimeoHash(string $hash): bool
+    {
+        return preg_match('/^[0-9a-f]{6,32}$/', $hash) === 1;
     }
 
     /** @return array<string, mixed> */
