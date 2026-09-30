@@ -140,6 +140,7 @@ use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\TimeClockCorrectionsController;
 use App\Http\Controllers\Api\TimeClockReportsController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardController;
@@ -1436,6 +1437,10 @@ Route::prefix('v1')
         Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
+        // Ask for one of your own shifts to be corrected (2026-09-30). Answered
+        // under work_hours.manage below.
+        Route::get('time-clock/corrections', [TimeClockCorrectionsController::class, 'mine']);
+        Route::post('time-clock/corrections', [TimeClockCorrectionsController::class, 'store']);
 
         /*
          * ── The Work Hours tab, and only this tab ──
@@ -1488,6 +1493,9 @@ Route::prefix('v1')
             // Force clock out, and the day's tag / extra hours / note (2026-09-24).
             Route::post('hr/time-clock/shifts/{shift}/clock-out', [TimeClockController::class, 'forceClockOut']);
             Route::put('hr/time-clock/people/{user}/days/{date}', [TimeClockController::class, 'recordDay']);
+            Route::get('hr/time-clock/corrections', [TimeClockCorrectionsController::class, 'index']);
+            Route::post('hr/time-clock/corrections/{correction}/approve', [TimeClockCorrectionsController::class, 'approve']);
+            Route::post('hr/time-clock/corrections/{correction}/deny', [TimeClockCorrectionsController::class, 'deny']);
         });
 
         /*

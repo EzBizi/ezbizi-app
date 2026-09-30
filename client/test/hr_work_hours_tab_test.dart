@@ -900,6 +900,132 @@ void main() {
     expect(find.text('Total (1 employee)'), findsOneWidget);
     expect(find.text('Send now'), findsNothing);
   });
+
+  // ── Asking for a correction (Trey Brannan's suggestion, 2026-09-30) ──
+
+  testWidgets(
+    'without manage, your own shift offers only Request a correction, '
+    'and it sends the times with what happened',
+    (tester) async {
+      final writes = <http.Request>[];
+
+      await _pump(
+        tester,
+        timeClock: _clock(organizationEnabled: true),
+        onClock: (_, _) => _week(
+          people: [_person(id: 'u-1', name: 'Jose Silva')],
+        ),
+        onWrite: (request) {
+          writes.add(request);
+
+          return _json({
+            'data': {'id': 'r-1', 'status': 'pending'},
+          }, 201);
+        },
+      );
+
+      await _tap(tester, find.byTooltip('Shift actions'));
+      expect(find.text('Edit times'), findsNothing);
+      expect(find.text('Delete shift'), findsNothing);
+      await _tap(tester, find.text('Request a correction'));
+
+      final send = find.widgetWithText(FilledButton, 'Send for approval');
+      expect(
+        tester.widget<FilledButton>(send).onPressed,
+        isNull,
+        reason: 'what happened is required',
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('correction-reason')),
+        'Forgot to clock in.',
+      );
+      await tester.pumpAndSettle();
+      await _tap(tester, send);
+
+      expect(writes.single.method, 'POST');
+      expect(writes.single.url.path, '/api/v1/time-clock/corrections');
+      expect(jsonDecode(writes.single.body), {
+        'clocked_in_at': '2026-08-25 08:00',
+        'clocked_out_at': '2026-08-25 09:05',
+        'reason': 'Forgot to clock in.',
+        'shift_id': 's-1',
+      });
+      expect(find.text('Sent for approval.'), findsOneWidget);
+    },
+  );
+
+  testWidgets("without manage, somebody else's shift has no menu at all", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+
+    expect(find.byTooltip('Shift actions'), findsNothing);
+    expect(find.byTooltip('Day actions'), findsNothing);
+  });
+
+  testWidgets('a manager sees waiting requests on the week and approves one', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+    var waiting = true;
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => {
+        ..._week(people: [_person()]),
+        'correction_requests': [
+          if (waiting)
+            {
+              'id': 'r-1',
+              'user': {'id': 'u-2', 'name': 'Bea Okafor'},
+              'was_in': '2026-08-25 08:00',
+              'was_out': '2026-08-25 09:05',
+              'clocked_in': '2026-08-25 07:30',
+              'clocked_out': '2026-08-25 09:05',
+              'reason': 'Forgot to clock in.',
+              'status': 'pending',
+            },
+        ],
+      },
+      onWrite: (request) {
+        writes.add(request);
+        waiting = false;
+
+        return _json({
+          'data': {'id': 'r-1', 'status': 'approved'},
+        });
+      },
+    );
+
+    final card = find.byKey(const Key('correction-requests'));
+    expect(card, findsOneWidget);
+    expect(
+      find.descendant(of: card, matching: find.text('Forgot to clock in.')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text('Asks for: 2026-08-25 07:30 – 2026-08-25 09:05'),
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Approve'));
+
+    expect(
+      writes.single.url.path,
+      '/api/v1/hr/time-clock/corrections/r-1/approve',
+    );
+    expect(card, findsNothing, reason: 'the week came back without it');
+  });
 }
 
 Future<void> _pump(
