@@ -1247,9 +1247,33 @@ class LeadsController extends Controller
                     : $reachable->get($c->leads_franchise_id),
                 'leads_count' => (int) ($counts[$c->getKey()] ?? 0),
                 'certification' => self::certification($certifications->get($c->getKey())),
+                // Why it is broken, in the provider's words, when it is.
+                'status_reason' => $c->status_reason,
+                'sync_failing' => self::syncFailing($c),
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * "Connected" while nothing is being read. A Google Ads account is read
+     * every few minutes and each read stamps `last_reached_at`; one that has
+     * not been reached in SYNC_FAILING_AFTER_HOURS is failing every read
+     * (2026-09-30: a row with no lasting permission stayed "connected" while
+     * every tick refused it). Thumbtack is pushed to us, not read, so its
+     * stamp says nothing and it never counts.
+     */
+    private const SYNC_FAILING_AFTER_HOURS = 6;
+
+    private static function syncFailing(SocialConnection $c): bool
+    {
+        if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
+            return false;
+        }
+
+        $since = $c->last_reached_at ?? $c->created_at;
+
+        return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
     }
 
     /**
