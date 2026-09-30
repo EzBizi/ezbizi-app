@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/client_platform.dart';
 import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
+import '../core/timestamps.dart';
 import 'side_panel.dart';
 import 'tag.dart';
 
@@ -35,7 +36,13 @@ import 'tag.dart';
 /// likely to be wrong and the moment a person is most likely to look at it, and
 /// `resumed` is the only event that catches it.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api, this.onOpenModule});
+  const NotificationBell({
+    super.key,
+    required this.api,
+    this.onOpenModule,
+    this.iconOf,
+    this.formats,
+  });
 
   final ApiClient api;
 
@@ -54,6 +61,14 @@ class NotificationBell extends StatefulWidget {
   /// notification "always [opens] the newest lead, instead of the one it was
   /// spawned for".
   final void Function(String moduleKey, String? filter, String? recordId)? onOpenModule;
+
+  /// The glyph the sidebar draws for a module, so a notification wears the
+  /// icon of what it is about (Jose, 2026-09-30).
+  final IconData? Function(String moduleKey)? iconOf;
+
+  /// How this organization writes a clock and a date, for when each
+  /// notification happened. Null until /me has arrived.
+  final DisplayFormats? formats;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -415,24 +430,64 @@ class _NotificationBellState extends State<NotificationBell>
                   itemBuilder: (context, i) {
                     final n = _items[i];
                     final unread = n['read_at'] == null;
+                    final scheme = Theme.of(context).colorScheme;
+                    final module =
+                        (n['meta'] as Map<String, dynamic>?)?['module']
+                            as String?;
+                    final icon = module == null
+                        ? null
+                        : widget.iconOf?.call(module);
+                    final when = formatListStamp(
+                      n['created_at'],
+                      '',
+                      formats: widget.formats ?? DisplayFormats.fallback,
+                    );
 
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        unread ? Icons.circle : Icons.circle_outlined,
-                        size: 12,
-                        color: unread
-                            ? Theme.of(context).colorScheme.primary
+                      // The module it is about, with a dot while unread: every
+                      // row was the same circle, and "A new lead..." twenty
+                      // times over said nothing about when (Jose, 2026-09-30).
+                      leading: Badge(
+                        key: ValueKey('notification-icon-${n['id']}'),
+                        isLabelVisible: unread,
+                        smallSize: 8,
+                        backgroundColor: scheme.primary,
+                        child: Icon(
+                          icon ?? Icons.info_outline,
+                          size: 20,
+                          color: unread
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      title: Text(
+                        n['title'] as String,
+                        style: unread
+                            ? const TextStyle(fontWeight: FontWeight.w600)
                             : null,
                       ),
-                      title: Text(n['title'] as String),
                       subtitle: n['body'] != null
                           ? Text(n['body'] as String)
                           : null,
-                      trailing: (n['source'] == 'automation')
-                          ? const Tag('Rule')
-                          : null,
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (when.isNotEmpty)
+                            Text(
+                              when,
+                              key: ValueKey('notification-when-${n['id']}'),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          if (n['source'] == 'automation') ...[
+                            const SizedBox(height: 4),
+                            const Tag('Rule'),
+                          ],
+                        ],
+                      ),
                       onTap: () async {
                         if (unread) {
                           final r = await widget.api.post(

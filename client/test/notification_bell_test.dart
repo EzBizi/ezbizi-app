@@ -62,6 +62,46 @@ void main() {
     expect(find.text('4'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-30: twenty rows of "A new lead from Local Services has
+  /// arrived." with nothing to say when, each behind the same circle.
+  testWidgets('a notification wears the icon of its module and says when', (
+    tester,
+  ) async {
+    final at = DateTime.now().subtract(const Duration(minutes: 1));
+
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n1',
+        'source': 'automation',
+        'title': 'A new lead from Local Services has arrived.',
+        'body': null,
+        'subject': {'type': 'Lead', 'id': 'lead-1'},
+        'meta': {'module': 'leads', 'filter': null},
+        'read_at': null,
+        'created_at': at.toUtc().toIso8601String(),
+      },
+      onOpenModule: (_, _, _) {},
+      iconOf: (key) => key == 'leads' ? Icons.call_received_outlined : null,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('notification-icon-n1')),
+        matching: find.byIcon(Icons.call_received_outlined),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('notification-when-n1')),
+      findsOneWidget,
+      reason: 'when it happened, on the row',
+    );
+  });
+
   testWidgets('tapping a notification opens the module it is about', (
     tester,
   ) async {
@@ -222,6 +262,7 @@ Future<void> _pumpWithItem(
   required Map<String, dynamic> item,
   required void Function(String, String?, String?) onOpenModule,
   List<String>? posted,
+  IconData? Function(String)? iconOf,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
@@ -242,7 +283,13 @@ Future<void> _pumpWithItem(
       theme: EzBiziTheme.light(),
       home: Scaffold(
         appBar: AppBar(
-          actions: [NotificationBell(api: api, onOpenModule: onOpenModule)],
+          actions: [
+            NotificationBell(
+              api: api,
+              onOpenModule: onOpenModule,
+              iconOf: iconOf,
+            ),
+          ],
         ),
       ),
     ),
