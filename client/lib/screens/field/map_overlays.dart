@@ -367,17 +367,23 @@ class _PersonRow extends StatelessWidget {
                 if (job != null)
                   Text(
                     'At ${job['title'] ?? job['number'] ?? 'a job'}',
-                    style: muted?.copyWith(color: EzBiziTheme.fieldBlue),
+                    style: muted?.copyWith(
+                      color: fieldText(context, EzBiziTheme.fieldBlue),
+                    ),
                   ),
                 if (person['stopped'] == true)
                   Text(
                     'Stopped too long',
-                    style: muted?.copyWith(color: EzBiziTheme.fieldRed),
+                    style: muted?.copyWith(
+                      color: fieldText(context, EzBiziTheme.fieldRed),
+                    ),
                   ),
                 if (person['silent'] == true)
                   Text(
                     'Lost signal',
-                    style: muted?.copyWith(color: EzBiziTheme.fieldYellow),
+                    style: muted?.copyWith(
+                      color: fieldText(context, EzBiziTheme.fieldYellow),
+                    ),
                   ),
                 if (day != null)
                   Padding(
@@ -390,7 +396,7 @@ class _PersonRow extends StatelessWidget {
                           Icon(
                             Icons.timeline,
                             size: 14,
-                            color: EzBiziTheme.fieldBlue,
+                            color: fieldText(context, EzBiziTheme.fieldBlue),
                           ),
                           const SizedBox(width: 4),
                           Flexible(
@@ -399,14 +405,17 @@ class _PersonRow extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: muted?.copyWith(
-                                color: EzBiziTheme.fieldBlue,
+                                color: fieldText(
+                                  context,
+                                  EzBiziTheme.fieldBlue,
+                                ),
                               ),
                             ),
                           ),
                           Icon(
                             Icons.arrow_drop_down,
                             size: 16,
-                            color: EzBiziTheme.fieldBlue,
+                            color: fieldText(context, EzBiziTheme.fieldBlue),
                           ),
                         ],
                       ),
@@ -560,8 +569,9 @@ class FieldPersonBar extends StatelessWidget {
     final battery = device['battery_pct'];
     final next = person['next_job'] as Map?;
 
-    // Colour says something (Jose, 2026-10-01): red is a problem worth a
-    // call, the cyans and slate set the kinds of fact apart, grey is detail.
+    // Colour says something (Jose, 2026-09-30): green good, yellow watch,
+    // red a problem worth a call, blue plain information, grey detail.
+    // As TEXT it is the tone ink, which reads on a light panel too.
     final seenMinutes = seen == null
         ? null
         : DateTime.now().difference(seen).inMinutes;
@@ -575,10 +585,14 @@ class FieldPersonBar extends StatelessWidget {
         (
           Icons.login,
           'In ${fieldClock(clocked)} · ${fieldSpan(DateTime.now().difference(clocked))}',
-          EzBiziTheme.fieldBlue,
+          fieldText(context, EzBiziTheme.fieldBlue),
         )
       else if (since != null)
-        (Icons.play_arrow, 'Since ${fieldClock(since)}', EzBiziTheme.fieldBlue),
+        (
+          Icons.play_arrow,
+          'Since ${fieldClock(since)}',
+          fieldText(context, EzBiziTheme.fieldBlue),
+        ),
       if (battery is num)
         (
           charging
@@ -588,53 +602,55 @@ class FieldPersonBar extends StatelessWidget {
               : Icons.battery_std,
           '$battery%${charging ? ' charging' : ''}',
           battery <= 20 && !charging
-              ? EzBiziTheme.fieldRed
+              ? fieldText(context, EzBiziTheme.fieldRed)
               : charging || battery > 50
-              ? EzBiziTheme.fieldGreen
-              : EzBiziTheme.fieldYellow,
+              ? fieldText(context, EzBiziTheme.fieldGreen)
+              : fieldText(context, EzBiziTheme.fieldYellow),
         ),
       if (person['speed_mph'] is num)
         (
           Icons.speed,
           moving ? '${person['speed_mph']} mph now' : 'Not moving',
-          moving ? EzBiziTheme.fieldGreen : scheme.onSurfaceVariant,
+          moving
+              ? fieldText(context, EzBiziTheme.fieldGreen)
+              : scheme.onSurfaceVariant,
         ),
       if (person['avg_speed_mph'] is num)
         (
           Icons.show_chart,
           '${person['avg_speed_mph']} avg · ${person['top_speed_mph']} top',
-          EzBiziTheme.fieldBlue,
+          fieldText(context, EzBiziTheme.fieldBlue),
         ),
       (
         Icons.route,
         '${person['distance_mi'] ?? 0} mi today',
-        EzBiziTheme.fieldBlue,
+        fieldText(context, EzBiziTheme.fieldBlue),
       ),
       if (seen != null)
         (
           Icons.gps_fixed,
           'Seen ${fieldAgo(seen)}',
           seenMinutes! > 30
-              ? EzBiziTheme.fieldRed
+              ? fieldText(context, EzBiziTheme.fieldRed)
               : seenMinutes <= 5
-              ? EzBiziTheme.fieldGreen
-              : EzBiziTheme.fieldYellow,
+              ? fieldText(context, EzBiziTheme.fieldGreen)
+              : fieldText(context, EzBiziTheme.fieldYellow),
         ),
       if (accuracy is num)
         (
           Icons.my_location,
           '±$accuracy m',
           accuracy > 100
-              ? EzBiziTheme.fieldRed
+              ? fieldText(context, EzBiziTheme.fieldRed)
               : accuracy > 20
-              ? EzBiziTheme.fieldYellow
-              : EzBiziTheme.fieldGreen,
+              ? fieldText(context, EzBiziTheme.fieldYellow)
+              : fieldText(context, EzBiziTheme.fieldGreen),
         ),
       if (next != null)
         (
           Icons.event,
           'Next ${next['customer'] ?? '#${next['number']}'} ${fieldWallTime(next['scheduled_for'] as String?)}',
-          EzBiziTheme.fieldBlue,
+          fieldText(context, EzBiziTheme.fieldBlue),
         ),
       if (device['model'] != null || device['os_version'] != null)
         (
@@ -894,7 +910,7 @@ class FieldJobCard extends StatelessWidget {
 
 // ── The legend ────────────────────────────────────────────────────────────
 
-/// What each colour on the map means, along the bottom (Jose, 2026-10-01:
+/// What each colour on the map means, along the bottom (Jose, 2026-09-30:
 /// "I don't understand the difference in colors of each icon"). The colours
 /// here are read from the same scheme slots the pins use, so the two cannot
 /// drift apart.
@@ -1057,3 +1073,18 @@ List<LatLng> decodePolyline(String encoded) {
 Color fieldInk(Color fill) => fill.computeLuminance() > 0.4
     ? EzBiziTheme.fieldInkDark
     : EzBiziTheme.fieldInkLight;
+
+/// The readable version of a map colour, for words and small icons on a
+/// panel. The map colours are loud enough for pins on tiles and too light
+/// for text on white (yellow is 1.5:1); the tone inks are AA in both themes
+/// (UI/UX, 2026-10-01).
+Color fieldText(BuildContext context, Color field) => ToneColours.of(
+  context,
+  field == EzBiziTheme.fieldGreen
+      ? Tone.ok
+      : field == EzBiziTheme.fieldRed
+      ? Tone.bad
+      : field == EzBiziTheme.fieldYellow
+      ? Tone.caution
+      : Tone.info,
+).ink;
