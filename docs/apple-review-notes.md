@@ -135,6 +135,37 @@ EzBizi's own or entered by the customer about their own business.
 
 ---
 
+# App Privacy label — what to declare for the Field release
+
+App Store Connect -> App Privacy. Not reachable through the API, so this is a
+portal step. Decided 2026-09-30 against Apple's own definitions
+(developer.apple.com/app-store/app-privacy-details), not from memory.
+
+| Data type | Linked to user | Tracking | Purpose |
+|---|---|---|---|
+| Location -> **Precise Location** | Yes | No | App Functionality |
+| **Other Data Types** | Yes | No | App Functionality |
+
+"Other Data Types" covers what the iPhone sends while sharing location
+(5600d4e5): battery level and charging state, device model name, iOS version,
+EzBizi app version. Latest value only, shown to the technician's manager.
+
+Why not "Other Diagnostic Data": Apple defines it by PURPOSE - "collected for
+the purposes of measuring technical diagnostics related to the app". This is
+collected so a manager can see a technician's phone, which is App
+Functionality. "Other Data Types" is Apple's "any other data types not
+mentioned".
+
+Why not optional: Apple lets you skip a type only if collection is infrequent,
+outside primary functionality, and chosen by the user each time. This is
+routine and automatic, so it must be declared.
+
+Why no Device ID: measured, not assumed. The change sends modelName and
+systemVersion; it never reads identifierForVendor or any device-level id.
+If that ever changes, Identifiers -> Device ID must be added.
+
+---
+
 # Item 1 — the screen recording
 
 Apple asks for a recording **captured on a physical device running the latest
