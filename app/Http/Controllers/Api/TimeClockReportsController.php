@@ -43,7 +43,10 @@ class TimeClockReportsController extends Controller
 
         return response()->json([
             'data' => $saved->map(fn ($r) => $this->present($r) + [
-                'sent_automatically' => isset($senders[$r->id]),
+                // "Will this go out?" — Reports' definition: a rule switched
+                // off, or disabled after refusals, does not count.
+                'sent_automatically' => collect($senders[$r->id] ?? [])
+                    ->contains(fn (array $rule) => $rule['is_active'] && $rule['disabled_at'] === null),
                 'sent_by' => $seesRules ? ($senders[$r->id] ?? []) : null,
             ])->all(),
             'roles' => Role::query()->orderBy('name')->get(['id', 'name'])
