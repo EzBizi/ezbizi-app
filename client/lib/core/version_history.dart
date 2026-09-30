@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0324',
+      date: '30 Sep 2026',
+      items: [
+        'Automations: an automatic first reply only goes to an enquiry that just arrived, never to an older one brought in when an account is connected.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0323',
       date: '30 Sep 2026',
       items: [
