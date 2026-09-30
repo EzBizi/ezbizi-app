@@ -52,6 +52,7 @@ use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobLinesController;
 use App\Http\Controllers\Api\JobsController;
+use App\Http\Controllers\Api\LeadDashboardController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\MailboxesController;
@@ -830,6 +831,7 @@ Route::prefix('v1')
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::post('leads/read-all', [LeadsController::class, 'readAll']);
+        Route::get('leads/dashboard', [LeadDashboardController::class, 'show']);
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
         Route::get('leads', [LeadsController::class, 'index']);

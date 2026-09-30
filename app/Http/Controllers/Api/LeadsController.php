@@ -67,40 +67,14 @@ class LeadsController extends Controller
         private readonly LeadInsights $insights,
     ) {}
 
-    /** GET /api/v1/leads */
-    public function index(Request $request): JsonResponse
+    /**
+     * The leads this reader may see: their reach, the view they are in, a
+     * source still connected, a source their role shows. Shared by the list
+     * and the Leads dashboard (LeadDashboardController), so the two cannot
+     * count different leads.
+     */
+    public static function scopeToReader(\Illuminate\Database\Eloquent\Builder $query, \App\Models\User $user): \Illuminate\Database\Eloquent\Builder
     {
-        $this->authorize('viewAny', Lead::class);
-
-        $user = $request->user();
-
-        /*
-         * The reader's own mark rides along on a left join, so "unread" costs
-         * no query per row. Unread means no mark, or a mark older than the
-         * newest thing on the lead - a message after you read it makes it
-         * unread again, which is what a1tools does and what a person expects.
-         */
-        $query = Lead::query()
-            ->select('leads.*', 'lead_reads.read_at as read_by_me_at', 'lead_reads.starred_at as starred_by_me_at')
-            ->leftJoin('lead_reads', function ($join) use ($user) {
-                $join->on('lead_reads.lead_id', '=', 'leads.id')
-                    ->where('lead_reads.user_id', '=', $user->getKey());
-            })
-            ->with(['company:id,name', 'franchise:id,name', 'noteBy:id,name'])
-            /*
-             * Newest ACTIVITY first, not newest lead. Jose, 2026-09-08: leads
-             * that a1tools showed at the top "were not appearing" here. They
-             * were here, thirty rows down: a lead from three days ago with a
-             * text five minutes ago sorted by the day it arrived, while the
-             * dispatcher was looking for the text. A conversation list is
-             * ordered by its last message; this is one.
-             */
-            ->orderByRaw('COALESCE(leads.last_contact_at, leads.received_at) DESC')
-            ->orderByDesc('leads.created_at');
-
-        // Reach, not just tenancy. BelongsToTenant already filters to the
-        // organization; this narrows to the places this person can act on, so
-        // a branch manager sees their branch's enquiries and not the group's.
         $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
         $companyIds = $user->reachableCompanies()->pluck('id')->all();
 
@@ -196,6 +170,45 @@ class LeadsController extends Controller
          * been able to build from the screen anyway.
          */
         $query->sourceVisibleTo($user);
+
+        return $query;
+    }
+
+    /** GET /api/v1/leads */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Lead::class);
+
+        $user = $request->user();
+
+        /*
+         * The reader's own mark rides along on a left join, so "unread" costs
+         * no query per row. Unread means no mark, or a mark older than the
+         * newest thing on the lead - a message after you read it makes it
+         * unread again, which is what a1tools does and what a person expects.
+         */
+        $query = Lead::query()
+            ->select('leads.*', 'lead_reads.read_at as read_by_me_at', 'lead_reads.starred_at as starred_by_me_at')
+            ->leftJoin('lead_reads', function ($join) use ($user) {
+                $join->on('lead_reads.lead_id', '=', 'leads.id')
+                    ->where('lead_reads.user_id', '=', $user->getKey());
+            })
+            ->with(['company:id,name', 'franchise:id,name', 'noteBy:id,name'])
+            /*
+             * Newest ACTIVITY first, not newest lead. Jose, 2026-09-08: leads
+             * that a1tools showed at the top "were not appearing" here. They
+             * were here, thirty rows down: a lead from three days ago with a
+             * text five minutes ago sorted by the day it arrived, while the
+             * dispatcher was looking for the text. A conversation list is
+             * ordered by its last message; this is one.
+             */
+            ->orderByRaw('COALESCE(leads.last_contact_at, leads.received_at) DESC')
+            ->orderByDesc('leads.created_at');
+
+        // Reach, not just tenancy. BelongsToTenant already filters to the
+        // organization; this narrows to the places this person can act on, so
+        // a branch manager sees their branch's enquiries and not the group's.
+        self::scopeToReader($query, $user);
 
         // Unread per source for the rail (UI/UX, queue 30): the reader's
         // leads before any source, status or search narrowing, keyed as the
