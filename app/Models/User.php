@@ -200,6 +200,35 @@ class User extends Authenticatable implements HoldsPersonalData
 
     // ── relations ────────────────────────────────────────────────
 
+    /**
+     * The boxes a profile is incomplete without (Jose, 2026-09-30: A1 Tools'
+     * picture pulsed until they were filled). The same six HR counts beside a
+     * person (HrPeopleController::missing), so a profile and its HR record
+     * agree about what is missing; not middle_name, which most people do not
+     * have and nothing can record as "none".
+     */
+    public const PROFILE_FIELDS = ['first_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'];
+
+    /**
+     * What this person's profile still lacks: each empty field of
+     * PROFILE_FIELDS, then `photo` when there is no picture.
+     *
+     * @return list<string>
+     */
+    public function profileMissing(): array
+    {
+        $missing = array_values(array_filter(
+            self::PROFILE_FIELDS,
+            fn (string $field) => blank($this->getAttribute($field)),
+        ));
+
+        if ($this->avatar_path === null) {
+            $missing[] = 'photo';
+        }
+
+        return $missing;
+    }
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);

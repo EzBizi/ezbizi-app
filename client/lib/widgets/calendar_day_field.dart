@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/theme.dart';
 import '../core/timestamps.dart';
+import 'not_filled_in.dart';
 
 /// A calendar day, typed as three number boxes, with a calendar beside them.
 ///
@@ -33,6 +35,7 @@ class CalendarDayField extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.onChanged,
+    this.flagEmpty = false,
   });
 
   /// ISO day, or wall clock `YYYY-MM-DD HH:MM` when [withTime] is set. Empty
@@ -49,6 +52,10 @@ class CalendarDayField extends StatefulWidget {
   final DateTime? firstDate;
   final DateTime? lastDate;
   final ValueChanged<String>? onChanged;
+
+  /// Amber while there is no day, the look `notFilledIn` gives a box: for a
+  /// day somebody is expected to fill in, such as a profile's date of birth.
+  final bool flagEmpty;
 
   @override
   State<CalendarDayField> createState() => _CalendarDayFieldState();
@@ -384,7 +391,10 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final label = widget.label?.trim();
-    final note = _invalid ?? widget.helper;
+    final unfilled =
+        widget.flagEmpty && widget.controller.text.trim().isEmpty;
+    final note =
+        _invalid ?? widget.helper ?? (unfilled ? 'Not filled in' : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -462,6 +472,8 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: _invalid != null
                     ? theme.colorScheme.error
+                    : unfilled && widget.helper == null
+                    ? StateColour.of(context).caution
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -537,22 +549,36 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(max),
         ],
-        decoration: InputDecoration(
-          hintText: hint,
-          labelText: label,
-          // Above the box, small, with the format inside: resting in a box
-          // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: widget.dense ? 10 : 12,
+        decoration: _flagged(
+          InputDecoration(
+            hintText: hint,
+            labelText: label,
+            // Above the box, small, with the format inside: resting in a box
+            // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: widget.dense ? 10 : 12,
+            ),
           ),
         ),
         onChanged: (value) => _onPart(part, value),
       ),
     );
   }
+
+  /// Amber with [CalendarDayField.flagEmpty] and no day. The box keeps its
+  /// MM / DD / YYYY: "Not filled in" does not fit in one, so it goes under
+  /// the boxes instead.
+  InputDecoration _flagged(InputDecoration decoration) =>
+      widget.flagEmpty && widget.controller.text.trim().isEmpty
+      ? notFilledIn(
+          context,
+          decoration,
+          empty: true,
+        ).copyWith(hintText: decoration.hintText)
+      : decoration;
 
   Widget _timeBox({
     required TextEditingController controller,

@@ -9,6 +9,8 @@ import 'calendar_day_field.dart';
 import 'error_note.dart';
 import 'logo_cropper.dart';
 import 'side_panel.dart';
+import 'not_filled_in.dart';
+import 'profile_aura.dart';
 import 'user_avatar.dart';
 
 /// Who you are (plan §2.1 category 6).
@@ -260,7 +262,9 @@ class _IdentityCardState extends State<IdentityCard> {
                     children: [
                       Row(
                         children: [
-                          Expanded(child: _field(_first, 'First name')),
+                          Expanded(
+                            child: _field(_first, 'First name', flag: true),
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: _field(_middle, 'Middle name (optional)'),
@@ -270,15 +274,27 @@ class _IdentityCardState extends State<IdentityCard> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _field(_last, 'Last name')),
+                          Expanded(
+                            child: _field(_last, 'Last name', flag: true),
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: _field(_phone, 'Phone number', phone: true),
+                            child: _field(
+                              _phone,
+                              'Phone number',
+                              phone: true,
+                              flag: true,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _field(_address, 'Home address', maxLines: 2),
+                      _field(
+                        _address,
+                        'Home address',
+                        maxLines: 2,
+                        flag: true,
+                      ),
                     ],
                   ),
                 ),
@@ -349,14 +365,20 @@ class _IdentityCardState extends State<IdentityCard> {
         // purpose (§9: a guessable avatar URL says who works where). So it 401'd
         // every time: the upload succeeded, the button changed to "Change", and
         // the circle stayed empty.
-        UserAvatar(
-          api: widget.api,
-          userId: me.id,
-          name: me.name,
-          radius: 44,
-          hasAvatar: _hasAvatar,
-          version: _avatarVersion,
-          bytes: _avatarPreview,
+        // Marked, still, while there is none: the photo is one of the things
+        // the top bar's picture pulses about.
+        ProfileAura(
+          active: !_hasAvatar && _avatarPreview == null,
+          pulse: false,
+          child: UserAvatar(
+            api: widget.api,
+            userId: me.id,
+            name: me.name,
+            radius: 44,
+            hasAvatar: _hasAvatar,
+            version: _avatarVersion,
+            bytes: _avatarPreview,
+          ),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -369,20 +391,28 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
+  /// A box of the profile. [flag] is one of User::PROFILE_FIELDS, which turns
+  /// amber while it is empty (Jose, 2026-09-30): what the top bar's picture
+  /// pulses about.
   Widget _field(
     TextEditingController c,
     String label, {
     int maxLines = 1,
     bool phone = false,
+    bool flag = false,
   }) => TextField(
         controller: c,
         maxLines: maxLines,
         keyboardType: phone ? TextInputType.phone : null,
         inputFormatters: phone ? const [PhoneNumberInputFormatter()] : null,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-          border: const OutlineInputBorder(),
+        decoration: notFilledIn(
+          context,
+          InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+          empty: flag && c.text.trim().isEmpty,
         ),
         onChanged: (_) => setState(() {}),
       );
@@ -396,7 +426,7 @@ class _IdentityCardState extends State<IdentityCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _field(_gender, 'Gender (optional)'),
+        _field(_gender, 'Gender', flag: true),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
@@ -423,8 +453,10 @@ class _IdentityCardState extends State<IdentityCard> {
     final now = DateTime.now();
     return CalendarDayField(
       controller: _dob,
-      label: 'Date of birth (optional)',
+      label: 'Date of birth',
       formats: widget.session.me!.display,
+      flagEmpty: true,
+      onChanged: (_) => setState(() {}),
       firstDate: DateTime(now.year - 120),
       lastDate: DateTime(now.year, now.month, now.day),
     );

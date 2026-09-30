@@ -565,7 +565,11 @@ class FlowCanvas {
 /// rather than invented. A third state gets added here when a third screen
 /// needs one, not before.
 class StateColour {
-  const StateColour({required this.on, required this.caution});
+  const StateColour({
+    required this.on,
+    required this.caution,
+    required this.cautionGlow,
+  });
 
   /// Working, live, clocked in. Jose's words for the clock pip were *"Green in,
   /// red out"* — red is `colorScheme.error` and this is the other half.
@@ -575,9 +579,16 @@ class StateColour {
   /// plays nothing. Amber rather than red on purpose — neither is a fault.
   final Color caution;
 
+  /// The same state as LIGHT rather than ink: the glow of a profile picture
+  /// whose profile lacks something (ProfileAura; Jose, 2026-09-30, from A1
+  /// Tools). [caution] is a text colour, dark enough to read, and a glow in it
+  /// is a brown smudge.
+  final Color cautionGlow;
+
   static const StateColour light = StateColour(
     on: Color(0xFF1A7F37),
     caution: Color(0xFF8A5A00),
+    cautionGlow: Color(0xFFFF9F1C),
   );
 
   /// Lifted on the dark ground for the same reason every other slot is: the
@@ -585,6 +596,7 @@ class StateColour {
   static const StateColour dark = StateColour(
     on: Color(0xFF4CC46A),
     caution: Color(0xFFD9A441),
+    cautionGlow: Color(0xFFFFB547),
   );
 
   static StateColour of(BuildContext context) =>

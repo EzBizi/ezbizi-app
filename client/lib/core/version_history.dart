@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0320',
       date: '30 Sep 2026',
       items: [
+        'Your profile: while something is missing from it, your picture in the top bar glows and pulses, and the empty boxes on your profile are amber until they are filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',
       ],
     ),

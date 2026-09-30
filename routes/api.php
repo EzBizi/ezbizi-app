@@ -2671,6 +2671,10 @@ Route::prefix('v1')
                     // latter, and the picture only ever appeared on the profile
                     // screen that had just uploaded it.
                     'has_avatar' => $user->avatar_path !== null,
+                    // What the profile still lacks, so the top bar can pulse
+                    // the picture until it is complete (Jose, 2026-09-30, from
+                    // A1 Tools). Keys, never values. User::PROFILE_FIELDS.
+                    'profile_missing' => $user->profileMissing(),
                     // Carried here as well as on their own endpoint, so the app
                     // can paint the right theme on the first frame instead of
                     // flashing the wrong one while a second request lands.

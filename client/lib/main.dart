@@ -45,6 +45,7 @@ import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
 import 'widgets/notification_bell.dart';
+import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
@@ -1427,17 +1428,23 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               PopupMenuButton<String>(
                 tooltip:
-                    '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})',
+                    '${UiStrings.t('shell.your_account')} — ${me.name} (${me.email})'
+                    '${me.profileMissing.isEmpty ? '' : '. Missing from your profile: ${profileMissingWords(me.profileMissing)}'}',
                 // The photo, not just the initial. It was an initial always: the
                 // profile screen was the only place a picture appeared, and even
                 // there it did not, because it was fetched without the token the
                 // endpoint requires. This is the same widget that card uses.
-                icon: UserAvatar(
-                  api: widget.api,
-                  userId: me.id,
-                  name: me.name,
-                  radius: 15,
-                  hasAvatar: me.hasAvatar,
+                // Pulsing amber while the profile lacks something (Jose,
+                // 2026-09-30, from A1 Tools); still once it is complete.
+                icon: ProfileAura(
+                  active: me.profileMissing.isNotEmpty,
+                  child: UserAvatar(
+                    api: widget.api,
+                    userId: me.id,
+                    name: me.name,
+                    radius: 15,
+                    hasAvatar: me.hasAvatar,
+                  ),
                 ),
                 itemBuilder: (_) => [
                   PopupMenuItem(
@@ -1454,6 +1461,18 @@ class _HomeShellState extends State<HomeShell> {
                           Text(
                             me.roleName!,
                             style: const TextStyle(fontSize: 12),
+                          ),
+                        if (me.profileMissing.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Missing from your profile: '
+                              '${profileMissingWords(me.profileMissing)}.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: StateColour.of(context).caution,
+                              ),
+                            ),
                           ),
                       ],
                     ),

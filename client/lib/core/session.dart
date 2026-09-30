@@ -391,6 +391,7 @@ class Me {
     this.screenMonitoringExempt = false,
     this.timeClock = TimeClockStatus.absent,
     this.phoneIncomingPopup = true,
+    this.profileMissing = const [],
   });
 
   final String id;
@@ -402,6 +403,12 @@ class Me {
   /// there is one; without this it either requested an avatar for every user
   /// who has none, or never requested one at all.
   final bool hasAvatar;
+
+  /// What this person's own profile still lacks: `phone`, `address`,
+  /// `gender`, `date_of_birth`, the names, and `photo` (User::PROFILE_FIELDS).
+  /// Not empty, the top bar's picture pulses until it is (Jose, 2026-09-30,
+  /// from A1 Tools). Empty from a server that does not say.
+  final List<String> profileMissing;
 
   /// Every permission key this person's role holds (§4).
   ///
@@ -776,6 +783,7 @@ class Me {
     screenMonitoringExempt: screenMonitoringExempt,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
+    profileMissing: profileMissing,
   );
 
   /// A copy with the punch-clock chrome replaced after a successful POST.
@@ -801,6 +809,7 @@ class Me {
     screenMonitoringExempt: screenMonitoringExempt,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
+    profileMissing: profileMissing,
   );
 
   /// Never null and never unknown — an unrecognised stored value falls back to
@@ -879,6 +888,10 @@ class Me {
     email: json['email'] as String,
     roleName: (json['role'] as Map<String, dynamic>?)?['name'] as String?,
     hasAvatar: json['has_avatar'] == true,
+    profileMissing: [
+      for (final key in (json['profile_missing'] as List? ?? const []))
+        if (key is String) key,
+    ],
     permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
         .whereType<String>()
         .toSet(),
