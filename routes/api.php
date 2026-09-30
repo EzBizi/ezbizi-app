@@ -696,6 +696,7 @@ Route::prefix('v1')
         Route::post('suggestions', [SuggestionsController::class, 'store']);
         Route::patch('suggestions/{suggestion}', [SuggestionsController::class, 'update']);
         Route::delete('suggestions/{suggestion}', [SuggestionsController::class, 'destroy']);
+        Route::get('suggestions/{suggestion}/files/{index}', [SuggestionsController::class, 'file'])->whereNumber('index');
 
         // ── The vertical slice: Customer → Job (§18 Phase 2) ─────
         //
@@ -2978,6 +2979,7 @@ Route::prefix('v1/staff')
         // plane, behind the `staff` middleware, not `tenant`.
         Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
         Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
+        Route::get('suggestions/{suggestion}/files/{index}', [StaffSuggestionsController::class, 'file'])->whereNumber('index');
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);

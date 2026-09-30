@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/files.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
+import '../widgets/search_picker.dart';
+import '../widgets/suggestion_files.dart';
 
 /// The author's own tab — anybody signed in, correcting or withdrawing a
 /// suggestion while nobody has read it yet, and seeing EzBizi's answer once
@@ -41,9 +44,23 @@ import '../widgets/error_note.dart';
 /// the layout wins — the newest suggestion opens on load, the same way the
 /// queue opens on its own first row.
 class SuggestionsScreen extends StatefulWidget {
-  const SuggestionsScreen({super.key, required this.api, required this.formats});
+  const SuggestionsScreen({
+    super.key,
+    required this.api,
+    required this.formats,
+    this.tabs = const [],
+    this.pickFile = Files.pickBytes,
+  });
 
   final ApiClient api;
+
+  /// The sidebar tabs this person has, as (module key, label), for "Which tab
+  /// is it about?". Built by the shell from its own rail, so the list is what
+  /// they actually see. The server checks each key against ModuleRegistry.
+  final List<({String key, String label})> tabs;
+
+  /// The file dialog. A parameter so a test can hand back a file.
+  final Future<PickedBytes?> Function({String accept}) pickFile;
 
   /// The organization's own date and clock, from `/me`'s `display` block.
   ///
@@ -88,6 +105,16 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
   final _composeController = TextEditingController();
   bool _sending = false;
+
+  /// The tab the new suggestion is about; null is "Something new / not sure".
+  String? _composeModule;
+
+  /// Screenshots, photos, PDFs or .md/.txt notes going with the new one.
+  final List<PickedBytes> _composeFiles = [];
+
+  /// Same list and limit as Suggestion::FILE_EXTENSIONS / MAX_FILES.
+  static const _accept = '.png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.md,.txt';
+  static const _maxFiles = 5;
 
   /// One slot for every action's refusal — sending, saving an edit, or
   /// withdrawing — kept on the screen rather than a snack bar, because the
@@ -197,8 +224,16 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       _editingId = null;
       _actionError = null;
       _composeController.clear();
+      _composeModule = null;
+      _composeFiles.clear();
       _openNarrow = true;
     });
+  }
+
+  Future<void> _attach() async {
+    final picked = await widget.pickFile(accept: _accept);
+    if (picked == null || !mounted) return;
+    setState(() => _composeFiles.add(picked));
   }
 
   /// Unavailable when the list is empty — there is nowhere to cancel back to,
@@ -220,7 +255,15 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       _actionError = null;
     });
 
-    final response = await widget.api.post('/suggestions', {'body': body});
+    final fields = {'body': body, 'module': ?_composeModule};
+    final response = _composeFiles.isEmpty
+        ? await widget.api.post('/suggestions', fields)
+        : await widget.api.postFiles(
+            '/suggestions',
+            'files',
+            [for (final f in _composeFiles) (name: f.name, bytes: f.bytes)],
+            fields: fields,
+          );
 
     if (!mounted) return;
 
@@ -233,6 +276,8 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
     _composeController.clear();
     setState(() {
+      _composeModule = null;
+      _composeFiles.clear();
       _composing = false;
       // Clears the previous selection so `_load`'s own "nothing selected"
       // branch opens the pane on the row just sent — newest first, so it is
@@ -635,6 +680,23 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                     ),
                     const SizedBox(height: 20),
                   ],
+                  SearchPickerField<String?>(
+                    key: const Key('suggestion-tab'),
+                    label: 'Which tab is it about?',
+                    value: _composeModule,
+                    onChanged: _sending
+                        ? null
+                        : (v) => setState(() => _composeModule = v),
+                    options: [
+                      const SearchOption(
+                        value: null,
+                        label: 'Something new / not sure',
+                      ),
+                      for (final tab in widget.tabs)
+                        SearchOption(value: tab.key, label: tab.label),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   _composeBox(
                     context,
                     controller: _composeController,
@@ -643,6 +705,33 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                     autofocus: true,
                     onCancel: canCancel ? _cancelCompose : null,
                     onSend: _send,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final (i, f) in _composeFiles.indexed)
+                        InputChip(
+                          avatar: Icon(fileIcon(f.name), size: 18),
+                          label: Text(f.name),
+                          onDeleted: _sending
+                              ? null
+                              : () => setState(() => _composeFiles.removeAt(i)),
+                        ),
+                      if (_composeFiles.length < _maxFiles)
+                        OutlinedButton.icon(
+                          onPressed: _sending ? null : _attach,
+                          icon: const Icon(Icons.attach_file, size: 16),
+                          label: const Text('Attach a screenshot or file'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pictures, PDFs, or .md and .txt notes. Up to $_maxFiles.',
+                    style: theme.textTheme.bodySmall,
                   ),
                   if (_actionError != null) ...[
                     const SizedBox(height: 12),
@@ -848,6 +937,15 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                         color: theme.colorScheme.onSurface,
                       ),
                     ),
+                  if (!editingThis) ...[
+                    const SizedBox(height: 14),
+                    SuggestionAbout(
+                      key: ValueKey('about-$id'),
+                      api: widget.api,
+                      base: '/suggestions/$id',
+                      row: row,
+                    ),
+                  ],
                   if (editingThis && _actionError != null) ...[
                     const SizedBox(height: 12),
                     ErrorNote(_actionError!),

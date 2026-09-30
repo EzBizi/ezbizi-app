@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -69,13 +70,55 @@ class Suggestion extends Model implements HoldsPersonalData
     public const ANNOUNCED = [self::STATUS_APPROVED, self::STATUS_DENIED];
 
     protected $fillable = [
-        'organization_id', 'user_id', 'body', 'status',
+        'organization_id', 'user_id', 'body', 'module', 'files', 'status',
         'decision_note', 'decided_by', 'decided_at',
     ];
 
+    /** The one extra choice beside the module keys: Settings is pinned, not a module. */
+    public const MODULE_SETTINGS = 'settings';
+
+    /** Screenshots, photos, a PDF, or a written-up .md/.txt note. */
+    public const FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'pdf', 'md', 'txt'];
+
+    public const MAX_FILES = 5;
+
     protected function casts(): array
     {
-        return ['decided_at' => 'datetime'];
+        return ['decided_at' => 'datetime', 'files' => 'array'];
+    }
+
+    /** What the client is shown of the files: never the disk or the path. */
+    public function presentFiles(): array
+    {
+        return array_map(fn (array $f, int $i) => [
+            'index' => $i,
+            'name' => $f['name'],
+            'mime' => $f['mime'],
+            'size' => $f['size'],
+        ], $this->files ?? [], array_keys($this->files ?? []));
+    }
+
+    /** Label of the tab it is about, or null for "something new". */
+    public function moduleLabel(): ?string
+    {
+        if ($this->module === null) {
+            return null;
+        }
+
+        if ($this->module === self::MODULE_SETTINGS) {
+            return 'Settings';
+        }
+
+        return app(ModuleRegistry::class)->get($this->module)?->label ?? $this->module;
+    }
+
+    /** For the purge: the bytes go with the row. See Anonymiser::filesOf. */
+    public function personalDataFiles(): array
+    {
+        return array_map(
+            fn (array $f) => ['disk' => $f['disk'] ?? null, 'path' => $f['path'] ?? ''],
+            $this->files ?? [],
+        );
     }
 
     public function author(): BelongsTo
@@ -139,6 +182,9 @@ class Suggestion extends Model implements HoldsPersonalData
                     .'there is nobody to answer, and the column is NOT NULL and is what the '
                     .'list is queried by — an anonymised suggestion is one nobody could ever '
                     .'read or withdraw.')),
+            new PersonalDataEntry('files', PersonalDataEntry::CONTENT,
+                'Screenshots and files they attached, which can show anything that was on screen.',
+                Erasure::drop('They belong to the suggestion and go with the row above.')),
             new PersonalDataEntry('body, decision_note', PersonalDataEntry::CONTENT,
                 'What they asked for, and what we wrote back. Free text, so it can name a '
                 .'colleague or a customer rather than only the person who sent it.',

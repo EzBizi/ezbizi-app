@@ -50,6 +50,10 @@ class StaffOnly
             $this->tenant->forget();
         }
 
-        return $response->header('X-Correlation-Id', $this->audit->correlationId());
+        // `headers->set`, not `header()`: a file download is a Symfony
+        // StreamedResponse, which has no `header()` method.
+        $response->headers->set('X-Correlation-Id', $this->audit->correlationId());
+
+        return $response;
     }
 }
