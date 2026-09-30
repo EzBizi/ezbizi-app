@@ -15,6 +15,7 @@ class VersionHistory {
         'Leads: the customer card on a lead is one line until opened, and a Thumbtack connection whose permission has lapsed now shows as broken on every row that used it.',
         'Automations: a new trigger, A lead needs its follow-up, fires once when a customer goes quiet after the automatic first reply, and a message can name the lead source with {{source_name}}.',
         'Leads, Thumbtack: the connection renews itself every day, so a quiet spell with no Thumbtack leads no longer lets it lapse.',
+        'Connecting an account: while the sign-in is open, the button says Waiting for the sign-in instead of naming Google for every provider, and in the app the sign-in link can be copied.',
       ],
     ),
     VersionRelease(
