@@ -16,6 +16,7 @@ class VersionHistory {
         'Automations: a new trigger, A lead needs its follow-up, fires once when a customer goes quiet after the automatic first reply, and a message can name the lead source with {{source_name}}.',
         'Leads, Thumbtack: the connection renews itself every day, so a quiet spell with no Thumbtack leads no longer lets it lapse.',
         'Connecting an account: while the sign-in is open, the button says Waiting for the sign-in instead of naming Google for every provider, and in the app the sign-in link can be copied.',
+        'Leads: a reply sent outside EzBizi, from A1 Tools or Google directly, now shows as a red bubble in the conversation.',
       ],
     ),
     VersionRelease(
