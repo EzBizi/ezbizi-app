@@ -2958,6 +2958,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 34 · Leads · managing connections — **drawn, waiting on Jose**
+
+Jose, 2026-09-30, on Leads › Manage (the Connected sources panel): *"i feel we could also use a revamp
+on the manage of leads, see what you can do about it"*. Today one narrow panel stacks Google Ads (22
+accounts), Thumbtack and Website; every row carries Name it / Change / Disconnect, certification
+problems are loose red lines, Disconnect all sits beside the search. `docs/previews/leads-connections-layouts.html`:
+desktop **1** a Connections page in place (← back to the leads): providers on the left with counts and
+how many need attention, the provider's accounts as a table (Account, Goes to, Leads, Status) with chips
+All / Needs attention / Never sent a lead, the account beside it (name, where its leads go as a search
+picker, certification problems listed, Disconnect at the foot), Disconnect all at the table's foot
+(recommended); **2** the side panel kept but wider, providers as a switch, one line per account that
+opens in place; **3** what needs attention across providers first, provider cards, accounts as tiles;
+phone **4**-**6** the same three. Client only: "Needs attention" = certification `attention` or status
+`broken`/`revoked`, "Never sent" = `leads_count` 0, all served today. `leads_accounts.dart` and the
+Manage section of `leads_screen.dart` are Google API / Leads'.
+
 ### 33 · Reports · every saved report — **Jose: "as you recommend" — 1 and 4** — **BUILT** `59665c6c`
 
 From the deploy desk, 2026-09-29, Jose verbatim, on the "Weekly work hours report" rule: *"i should also
