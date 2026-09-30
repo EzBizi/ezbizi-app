@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0325',
+      date: '30 Sep 2026',
+      items: [
+        'Dial: recent calls are grouped by day and show a name when the number is a customer or a teammate. Repeated calls from one number fold into one row, Missed and Voicemail filter the list, and a missed call says when it was called back. The number box also takes a name and suggests customers and teammates. The keypad is larger, and the person panel shows the customer card over one timeline of calls and texts. On a phone, Dial opens on the calls, with the keypad a button away.',
+        'Availability beside a lead or on a phone: the three choices read Zip, Area and Calendar.',
+        'Notifications: each one shows the icon of the module it is about and when it happened.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0324',
       date: '30 Sep 2026',
       items: [
