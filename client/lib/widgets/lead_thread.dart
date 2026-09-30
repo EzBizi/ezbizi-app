@@ -996,7 +996,16 @@ class _LeadThreadState extends State<LeadThread> {
       } else if (c['channel'] == 'BOOKING') {
         body = _bookingRow(theme, when: when);
       } else {
-        body = _message(theme, c, mine: mine, who: who, when: when);
+        body = _message(
+          theme,
+          c,
+          mine: mine,
+          // Ours, not automatic, and nobody in EzBizi named as sending it:
+          // it went out from A1 Tools or Google directly.
+          outside: mine && c['automatic'] != true && c['sent_by'] == null,
+          who: who,
+          when: when,
+        );
       }
 
       final reactions = (c['_reactions'] as List? ?? const []).cast<String>();
@@ -1379,6 +1388,7 @@ class _LeadThreadState extends State<LeadThread> {
     required bool mine,
     required String who,
     required String when,
+    bool outside = false,
   }) {
     final attachments = (c['attachments'] as List? ?? const []).cast<String>();
 
@@ -1388,13 +1398,28 @@ class _LeadThreadState extends State<LeadThread> {
     // anywhere, on Jose's ruling of 2026-09-08. `primary` inverts between the
     // themes (dark teal / white in light, bright cyan / near-black in dark),
     // so both are pinned in lead_thread_colour_test.dart.
+    //
+    // A reply sent outside EzBizi is RED rather than ours (Jose,
+    // 2026-09-30: "make it so the sent outside ezbizi messages are red"):
+    // said from somewhere nobody here can see, so it stands out from the
+    // replies EzBizi sent.
     final scheme = theme.colorScheme;
-    final ink = mine ? scheme.onPrimary : scheme.onSurface;
+    final fill = !mine
+        ? scheme.surface
+        : outside
+        ? scheme.error
+        : scheme.primary;
+    final ink = !mine
+        ? scheme.onSurface
+        : outside
+        ? scheme.onError
+        : scheme.onPrimary;
+    final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
       decoration: BoxDecoration(
-        color: mine ? scheme.primary : scheme.surface,
+        color: fill,
         border: mine ? null : Border.all(color: scheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -1429,11 +1454,7 @@ class _LeadThreadState extends State<LeadThread> {
                 Flexible(
                   child: Text(
                     '$who · $when',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: mine
-                          ? scheme.onPrimary.withValues(alpha: 0.8)
-                          : scheme.onSurfaceVariant,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(color: quiet),
                   ),
                 ),
                 // The whole message in one press, as A1 Tools has it.
@@ -1454,9 +1475,7 @@ class _LeadThreadState extends State<LeadThread> {
                         Icons.copy_outlined,
                         size: 14,
                         semanticLabel: 'Copy message',
-                        color: mine
-                            ? scheme.onPrimary.withValues(alpha: 0.8)
-                            : scheme.onSurfaceVariant,
+                        color: quiet,
                       ),
                     ),
                   ),

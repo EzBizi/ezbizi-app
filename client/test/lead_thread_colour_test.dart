@@ -49,6 +49,16 @@ void main() {
         reason: 'an outline all round, never a saturated bar down one edge',
       );
       expect((theirs.border as Border).left, (theirs.border as Border).right);
+
+      // Sent outside EzBizi (no sender here, not automatic): red, with its
+      // own ink (Jose, 2026-09-30).
+      final outside = _bubbleAround(tester, 'Called you back from the office.');
+      expect(outside.color, scheme.error);
+      expect(
+        _textColour(tester, 'Called you back from the office.'),
+        scheme.onError,
+      );
+      expect(find.textContaining('Sent outside EzBizi'), findsOneWidget);
     });
   }
 }
@@ -100,6 +110,17 @@ Future<void> _pump(WidgetTester tester, ThemeData theme) async {
                   'from': 'ADVERTISER',
                   'occurred_at': '2026-09-07T09:30:00Z',
                   'text': 'Yes, 10am works.',
+                  'attachments': <String>[],
+                  'has_recording': false,
+                  // Sent from EzBizi, so it names who.
+                  'sent_by': 'Andy Ocampo',
+                },
+                {
+                  'id': 'c-outside',
+                  'channel': 'MESSAGE',
+                  'from': 'ADVERTISER',
+                  'occurred_at': '2026-09-07T09:40:00Z',
+                  'text': 'Called you back from the office.',
                   'attachments': <String>[],
                   'has_recording': false,
                 },
