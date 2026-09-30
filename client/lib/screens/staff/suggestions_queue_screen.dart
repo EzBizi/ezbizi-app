@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/suggestion_files.dart';
 
 /// Development › Suggestions — the queue EzBizi staff work from (Task 8).
 ///
@@ -468,6 +469,13 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  SuggestionAbout(
+                    key: ValueKey('about-${row['id']}'),
+                    api: widget.staff.api,
+                    base: '/staff/suggestions/${row['id']}',
+                    row: row,
                   ),
                   if (note != null) ...[
                     const SizedBox(height: 18),
