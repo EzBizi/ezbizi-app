@@ -21,6 +21,7 @@ class VersionHistory {
         'Dates with a time: 16 typed on a 12-hour clock becomes 4 PM instead of being dropped, and an hour or minute no clock has says so.',
         'Invitations: the paperwork can start with the invite, switched on per person.',
         'Onboarding: signing the contract fills in the start date, pay rate, work schedule and issued equipment of the person in Records.',
+        'Leads on a phone: booking, a job, a customer and availability open in the side panel instead of a separate screen.',
       ],
     ),
     VersionRelease(
