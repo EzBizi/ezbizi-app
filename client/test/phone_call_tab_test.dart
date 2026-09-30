@@ -73,9 +73,10 @@ void main() {
       reason: 'the row says a call was answered without saying by whom',
     );
 
-    // Not today, so the row carries the date rather than a bare clock — which
-    // is the only reading that tells a week-old call from this morning.
-    expect(find.textContaining('2026'), findsOneWidget);
+    // Not today, so the call sits under its day rather than beside a bare
+    // clock — the only reading that tells a week-old call from this morning.
+    // The day is a heading now (UI queue 35), and the row keeps the clock.
+    expect(find.text('Tue 8 Sep'), findsOneWidget);
   });
 
   /// The pin survives leaving Communication and coming back.
@@ -133,7 +134,7 @@ void main() {
     // somebody to show — so there has to be a number typed before there is a
     // pin to click.
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -214,7 +215,7 @@ void main() {
     expect(find.byKey(const Key('phone-call-person')), findsNothing);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -232,14 +233,17 @@ void main() {
     await _pump(tester, size: const Size(1280, 900));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
 
     await _tap(tester, find.byTooltip('Keep this open between calls'));
 
-    await tester.enterText(find.widgetWithText(TextField, 'Number'), '');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name or number'),
+      '',
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -358,6 +362,12 @@ void main() {
   ) async {
     await _pump(tester, size: const Size(375, 800));
 
+    // Jose's 4 (UI queue 35): the calls first, the keypad a button away.
+    expect(find.byKey(const Key('phone-call-history')), findsOneWidget);
+    expect(find.byKey(const Key('phone-call-pad')), findsNothing);
+
+    await _tap(tester, find.byKey(const Key('phone-open-keypad')));
+
     expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
     expect(find.byKey(const Key('phone-call-person')), findsNothing);
     expect(find.text('Calling as'), findsOneWidget);
@@ -382,6 +392,10 @@ void main() {
 
     expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
     expect(find.text('Calling as'), findsOneWidget);
+
+    // And the pad goes back to the calls it was opened from.
+    await _tap(tester, find.byTooltip('Back to recent calls'));
+    expect(find.byKey(const Key('phone-call-history')), findsOneWidget);
   });
 
   testWidgets(
@@ -392,7 +406,7 @@ void main() {
       // The message box lives in the customer column, which stays away until
       // there is somebody to show. Typing the number is what opens it.
       await tester.enterText(
-        find.widgetWithText(TextField, 'Number'),
+        find.widgetWithText(TextField, 'Name or number'),
         '305 724 2199',
       );
       await tester.pumpAndSettle();
@@ -406,7 +420,9 @@ void main() {
         find.widgetWithText(FilledButton, 'Send'),
       );
       expect(send.onPressed, isNull);
-      expect(find.text('Messages'), findsOneWidget);
+      // The box the refusal is about sits under the timeline of calls and
+      // texts, which replaced the "Messages" list (UI queue 35).
+      expect(find.widgetWithText(TextField, 'Message'), findsOneWidget);
       expect(find.byType(Dialog), findsNothing);
     },
   );
@@ -510,7 +526,7 @@ void main() {
     await _pump(tester, size: const Size(900, 800), seen: seen);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '+12035550199',
     );
     await tester.pumpAndSettle();
@@ -625,7 +641,7 @@ void main() {
     await _pump(tester, size: const Size(900, 800));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '+12035550199',
     );
     await tester.pumpAndSettle();
@@ -633,10 +649,18 @@ void main() {
     expect(find.text('Thursday morning still good?'), findsOneWidget);
     expect(find.text('Yes, nine works.'), findsOneWidget);
 
-    // Ours is labelled, theirs carries their number, and the panel heading is
-    // not what is being found: that shows the raw '+12035550199'.
-    expect(find.text('You'), findsOneWidget);
-    expect(find.text('+1 (203) 555-0199'), findsOneWidget);
+    // Ours is labelled, theirs carries their number. Looked for inside the
+    // timeline: the heading and the card name the number too, formatted now
+    // (UI queue 35), so a page-wide find would count them.
+    final timeline = find.byKey(const Key('person-timeline'));
+    expect(
+      find.descendant(of: timeline, matching: find.text('You')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: timeline, matching: find.text('+1 (203) 555-0199')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('pad digits load the thread as E.164', (tester) async {
@@ -644,7 +668,7 @@ void main() {
     await _pump(tester, size: const Size(900, 800), seen: seen);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '12035550199',
     );
     await tester.pumpAndSettle();
@@ -718,7 +742,7 @@ void main() {
     // The customer column is where the message box lives, and it stays away
     // until there is somebody to show. Typing the number is what opens it.
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -729,7 +753,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '+12035550199',
     );
     await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Hello');
@@ -749,8 +773,10 @@ void main() {
 
     final key = tester.getSize(find.byKey(const ValueKey('key:5')));
 
-    expect(key.width, 56);
-    expect(key.height, 46);
+    // Larger since UI queue 35 (Jose's 1): on a wide window the 56 x 46 pad
+    // was a small island in empty space. Still a keypad, not the desk.
+    expect(key.width, 72);
+    expect(key.height, 52);
 
     // 44px is the touch guidance; a key that shrank below it would be a
     // regression even though it looks tidier.
@@ -762,7 +788,10 @@ void main() {
   ) async {
     await _pump(tester, size: const Size(375, 800));
 
-    expect(tester.getSize(find.byKey(const ValueKey('key:5'))).width, 56);
+    await tester.tap(find.byKey(const Key('phone-open-keypad')));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byKey(const ValueKey('key:5'))).width, 72);
     expect(tester.takeException(), isNull);
   });
 
@@ -940,7 +969,7 @@ void main() {
     await _pump(tester, device: device, size: const Size(900, 800));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -965,7 +994,7 @@ void main() {
     await _pump(tester, device: device, size: const Size(900, 800));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '+44 20 7946 0000',
     );
     await tester.pumpAndSettle();
@@ -985,7 +1014,10 @@ void main() {
 
     await _pump(tester, device: device, size: const Size(900, 800));
 
-    await tester.enterText(find.widgetWithText(TextField, 'Number'), '724 2199');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name or number'),
+      '724 2199',
+    );
     await tester.pumpAndSettle();
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
@@ -1011,7 +1043,7 @@ void main() {
     await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -1037,7 +1069,7 @@ void main() {
     await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -1064,7 +1096,7 @@ void main() {
     await _pump(tester, device: device, size: const Size(900, 800));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -1088,7 +1120,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -1198,7 +1230,7 @@ void main() {
     await _tap(tester, find.textContaining('Miami · +1 (305) 555-0188').last);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 724 2199',
     );
     await tester.pumpAndSettle();
@@ -1412,7 +1444,7 @@ void main() {
     expect(find.textContaining('Required before the next call'), findsOneWidget);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 555 0199',
     );
     await tester.pumpAndSettle();
@@ -1445,7 +1477,7 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, 'Hang up'));
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Number'),
+      find.widgetWithText(TextField, 'Name or number'),
       '305 555 0199',
     );
     await tester.pumpAndSettle();
@@ -1456,6 +1488,173 @@ void main() {
       '+13055550199',
       reason: 'a company that never asked for tags had its pad locked',
     );
+  });
+
+  // ── UI queue 35, Jose's 1 + 4 (2026-09-30) ───────────────────────
+  //
+  // "see what we can do to improve the Phone Main Screen": recent calls were
+  // numbers only, the same one nine times in a row, and a customer's number
+  // stayed digits although every call carried its customer_id.
+
+  testWidgets('recent calls fall under their day, carry names, fold repeats '
+      'and narrow to what was missed', (tester) async {
+    final now = DateTime.now();
+    String ago(Duration d) => now.subtract(d).toUtc().toIso8601String();
+    Map<String, Object?> call(
+      String id,
+      String direction,
+      String peer,
+      String status,
+      String at, {
+      Map<String, Object?> extra = const {},
+    }) => {
+      'id': id,
+      'direction': direction,
+      'from_e164': direction == 'inbound' ? peer : '+12035550142',
+      'to_e164': direction == 'inbound' ? '+12035550142' : peer,
+      'status': status,
+      'created_at': at,
+      ...extra,
+    };
+
+    await _pump(
+      tester,
+      calls: [
+        call(
+          'back',
+          'outbound',
+          '+13055550142',
+          'completed',
+          ago(const Duration(minutes: 1)),
+        ),
+        for (var i = 0; i < 3; i++)
+          call(
+            'm$i',
+            'inbound',
+            '+13055550142',
+            'no-answer',
+            ago(Duration(minutes: 2 + i)),
+          ),
+        call(
+          'known',
+          'inbound',
+          '+13055550199',
+          'completed',
+          ago(const Duration(minutes: 6)),
+          extra: {'customer_id': 'cu-1', 'customer_name': 'Maria Lopez'},
+        ),
+        call(
+          'old',
+          'outbound',
+          '+17865550177',
+          'completed',
+          ago(const Duration(days: 1)),
+        ),
+      ],
+    );
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(
+      find.text('Maria Lopez'),
+      findsOneWidget,
+      reason: 'a customer by name',
+    );
+    expect(find.text('Customer'), findsWidgets);
+    expect(
+      find.text('×3'),
+      findsOneWidget,
+      reason: 'three missed calls from one number are one row',
+    );
+    expect(find.textContaining('called back'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('calls-chip-missed')));
+
+    expect(find.text('Maria Lopez'), findsNothing);
+    expect(find.text('×3'), findsOneWidget);
+  });
+
+  testWidgets('a name typed into the pad suggests the customer, and picking '
+      'one fills the number formatted', (tester) async {
+    await _pump(
+      tester,
+      permissions: const ['phone.view', 'phone.edit', 'customers.view'],
+      customers: const [
+        {
+          'id': 'cu-1',
+          'name': 'Maria Lopez',
+          'number': 'C-1042',
+          'phone': '+13055550199',
+        },
+      ],
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name or number'),
+      'Maria',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('dial-suggestions')), findsOneWidget);
+    await _tap(tester, find.text('Maria Lopez'));
+
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Name or number'))
+          .controller!
+          .text,
+      '+1 (305) 555-0199',
+      reason: 'the box read +13057242199 before',
+    );
+    expect(find.widgetWithText(FilledButton, 'Call Maria Lopez'), findsOne);
+  });
+
+  testWidgets('the person panel names the customer and opens their record', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      permissions: const ['phone.view', 'phone.edit', 'customers.view'],
+      caller: const {'name': 'Maria Lopez', 'customer_id': 'cu-1'},
+      customers: const [
+        {
+          'id': 'cu-1',
+          'name': 'Maria Lopez',
+          'number': 'C-1042',
+          'phone': '+13055550199',
+          'jobs_count': 2,
+          'address': {
+            'line1': '14 Elm Ridge Rd',
+            'city': 'Hartford',
+            'state': 'CT',
+          },
+        },
+      ],
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name or number'),
+      '+13055550199',
+    );
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('person-card'));
+    expect(
+      find.descendant(of: card, matching: find.text('Maria Lopez')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('C-1042'), findsOneWidget);
+    expect(find.text('14 Elm Ridge Rd, Hartford, CT'), findsOneWidget);
+    expect(find.text('2 jobs'), findsOneWidget);
+    expect(find.byKey(const Key('person-open-customer')), findsOneWidget);
+  });
+
+  testWidgets('the transcript box waits for a call', (tester) async {
+    await _pump(tester);
+
+    // Idle, it was a grey block under the keypad with nothing in it.
+    expect(find.text('Live transcript is off on this number.'), findsNothing);
   });
 }
 
@@ -1589,6 +1788,9 @@ Future<void> _pump(
   bool requireCallTag = false,
   Map<String, Object?> preferences = const {},
   List<String>? permissions,
+  List<Map<String, Object?>>? calls,
+  List<Map<String, Object?>> customers = const [],
+  Map<String, Object?>? caller,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1602,6 +1804,9 @@ Future<void> _pump(
     ringing: ringing,
     groups: groups,
     permissions: permissions,
+    calls: calls,
+    customers: customers,
+    caller: caller,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1643,14 +1848,30 @@ MockClientHandler _handler({
   List<Map<String, dynamic>> ringing = const [],
   List<Map<String, Object?>> groups = const [],
   List<String>? permissions,
+  List<Map<String, Object?>>? calls,
+  List<Map<String, Object?>> customers = const [],
+  Map<String, Object?>? caller,
 }) {
   return (request) async {
     final path = request.url.path;
 
     if (path.endsWith('/phone/caller')) {
       return _json({
-        'data': {'name': 'Marta Delgado', 'postal_code': '33401'},
+        'data': caller ?? {'name': 'Marta Delgado', 'postal_code': '33401'},
       });
+    }
+
+    // A name typed into the pad asks Customers; a customer on file is read
+    // for the person card.
+    if (path.endsWith('/customers') && request.method == 'GET') {
+      return _json({'data': customers});
+    }
+    if (path.contains('/customers/') && request.method == 'GET') {
+      final id = path.split('/').last;
+      final row = customers.where((c) => c['id'] == id).firstOrNull;
+      return row == null
+          ? _json({'message': 'Not found'}, 404)
+          : _json({'data': row});
     }
 
     if (path.endsWith('/me')) {
@@ -1675,6 +1896,7 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/phone/calls') && request.method == 'GET') {
+      if (calls != null) return _json({'data': calls});
       return _json({
         'data': [
           {

@@ -9,6 +9,8 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
+import '../customers/customer_detail_panel.dart';
 import '../scheduling/availability_pane.dart';
 import '../../core/phone_call_service.dart';
 import '../../core/timestamps.dart';
@@ -63,7 +65,12 @@ class CallTab extends StatefulWidget {
 ///
 /// Removed from the enum rather than left unreferenced so that nothing can
 /// route to a pane the app no longer offers a way back from.
-enum _CallPane { pad, person }
+///
+/// `recents` is the root on a phone (UI queue 35, Jose's 4): the calls first,
+/// the keypad a button away with ← back to them, the person in place with ←
+/// back to wherever it was opened from. No pane is reachable without a way
+/// back out of it.
+enum _CallPane { recents, pad, person }
 
 class _CallTabState extends State<CallTab> {
   static const _refusal =
@@ -90,7 +97,10 @@ class _CallTabState extends State<CallTab> {
   /// one total, because the roster is where you act on it — a single number
   /// says you have messages without saying whose.
   Map<String, int> _unread = const {};
-  _CallPane _pane = _CallPane.pad;
+  _CallPane _pane = _CallPane.recents;
+
+  /// Where the person pane's back arrow returns to on a phone.
+  _CallPane _personFrom = _CallPane.pad;
   bool _dnd = false;
 
   /// Who is ringing and whether audio is up are the SERVICE's answers, not
@@ -137,6 +147,8 @@ class _CallTabState extends State<CallTab> {
     // the moment the old pin was lost.
     _customerPinned = widget.session.me?.phoneCustomerPanelPinned ?? false;
     _destination.text = widget.initialNumber ?? '';
+    // A lead's Call button opens on the number it filled in, not on a list.
+    if (widget.initialNumber != null) _pane = _CallPane.pad;
 
     _load();
   }
@@ -172,6 +184,7 @@ class _CallTabState extends State<CallTab> {
   @override
   void dispose() {
     _service.removeListener(_onServiceChanged);
+    _suggestDebounce?.cancel();
     _destination.dispose();
     _body.dispose();
     super.dispose();
@@ -590,6 +603,25 @@ class _CallTabState extends State<CallTab> {
   bool _bridging = false;
   String? _bridgeNote;
 
+  /// The calls the history read, for the person panel's timeline: one
+  /// request feeds both (UI queue 35).
+  List<CallRow> _calls = const [];
+
+  /// Who the number on the pad is, when the business knows: /phone/caller,
+  /// then the customer's record for somebody who may read customers. Asked
+  /// once per number.
+  String? _lookedUp;
+  Map<String, dynamic>? _caller;
+  Map<String, dynamic>? _customer;
+
+  /// A name typed into the pad suggests customers and teammates. The one
+  /// picked names the Call button; a teammate is rung on their identity.
+  List<_Suggestion> _suggestions = const [];
+  String? _pickedName;
+  bool _pickedTeammate = false;
+  Timer? _suggestDebounce;
+  int _suggestRequest = 0;
+
   Future<void> _placeCall({required bool internal}) async {
     // Refused, not queued. The company asked that a call be accounted for
     // before the next one, and a pad that dials anyway makes the requirement
@@ -813,13 +845,148 @@ class _CallTabState extends State<CallTab> {
     await _loadMessages();
   }
 
+  /// A number chosen from the history or a suggestion, shown formatted:
+  /// the box read +13057242199 (Jose, 2026-09-30).
+  void _pick(String e164, {String? name}) {
+    final shown = formatPhoneNumber(e164);
+    setState(() {
+      _destination.text = shown;
+      _destination.selection = TextSelection.collapsed(offset: shown.length);
+      _pickedName = name;
+      _pickedTeammate = false;
+      _suggestions = const [];
+    });
+    _loadMessages();
+    _lookUp();
+  }
+
+  void _onTyped(String text) {
+    setState(() {
+      _pickedName = null;
+      _pickedTeammate = false;
+    });
+    _loadMessages();
+    _lookUp();
+    _suggest(text);
+  }
+
+  /// Names, not numbers: two letters or more ask for customers and match
+  /// teammates by name. Digits are a number already and need no help.
+  void _suggest(String text) {
+    _suggestDebounce?.cancel();
+    final term = text.trim();
+    if (!RegExp('[A-Za-z]{2}').hasMatch(term)) {
+      if (_suggestions.isNotEmpty) setState(() => _suggestions = const []);
+      return;
+    }
+
+    _suggestDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final request = ++_suggestRequest;
+      final lower = term.toLowerCase();
+      final found = <_Suggestion>[];
+
+      if (widget.session.me?.can('customers.view') ?? false) {
+        final response = await widget.api.get('/customers', {
+          'search': term,
+          'per_page': '5',
+        });
+        if (!mounted || request != _suggestRequest) return;
+        final rows = response.ok ? response.data : null;
+        for (final row in rows is List ? rows : const []) {
+          final phone = row is Map ? '${row['phone'] ?? ''}' : '';
+          if (phone.isEmpty) continue;
+          found.add(
+            _Suggestion(
+              name: '${row['name'] ?? ''}',
+              detail: [
+                ?(row['number'] as String?),
+                formatPhoneNumber(phone),
+              ].join(' · '),
+              phone: phone,
+            ),
+          );
+        }
+      }
+
+      for (final mate in _teammates) {
+        if (mate.name.toLowerCase().contains(lower)) {
+          found.add(
+            _Suggestion(
+              name: mate.name,
+              detail: 'Teammate',
+              teammateId: mate.userId,
+            ),
+          );
+        }
+      }
+
+      if (!mounted || request != _suggestRequest) return;
+      setState(() => _suggestions = found.take(6).toList());
+    });
+  }
+
+  void _choose(_Suggestion suggestion) {
+    final teammate = suggestion.teammateId;
+    if (teammate == null) {
+      _pick(suggestion.phone!, name: suggestion.name);
+      return;
+    }
+
+    setState(() {
+      _teammateId = teammate;
+      _destination.text = suggestion.name;
+      _pickedName = suggestion.name;
+      _pickedTeammate = true;
+      _suggestions = const [];
+    });
+  }
+
+  /// Who the number is: the name on file, then the record behind it for
+  /// somebody allowed to read customers.
+  Future<void> _lookUp() async {
+    final peer = _peer;
+    if (peer == _lookedUp) return;
+    _lookedUp = peer;
+
+    if (peer == null) {
+      setState(() {
+        _caller = null;
+        _customer = null;
+      });
+      return;
+    }
+
+    final response = await widget.api.get('/phone/caller', {'e164': peer});
+    if (!mounted || _lookedUp != peer) return;
+    final data = response.ok ? response.data : null;
+    final caller = data is Map ? data.cast<String, dynamic>() : null;
+
+    Map<String, dynamic>? customer;
+    final id = caller?['customer_id'] as String?;
+    if (id != null && (widget.session.me?.can('customers.view') ?? false)) {
+      final record = await widget.api.get('/customers/$id');
+      if (!mounted || _lookedUp != peer) return;
+      final row = record.ok ? record.data : null;
+      if (row is Map) customer = row.cast<String, dynamic>();
+    }
+
+    setState(() {
+      _caller = caller;
+      _customer = customer;
+    });
+  }
+
   void _dial(String glyph) {
     _destination.text = '${_destination.text}$glyph';
     _destination.selection = TextSelection.collapsed(
       offset: _destination.text.length,
     );
-    setState(() {});
+    setState(() {
+      _pickedName = null;
+      _pickedTeammate = false;
+    });
     _loadMessages();
+    _lookUp();
   }
 
   Widget _badge(ThemeData theme, int count) {
@@ -1093,17 +1260,7 @@ class _CallTabState extends State<CallTab> {
             SizedBox(
               key: const Key('phone-call-history'),
               width: history,
-              child: CallHistoryPane(
-                api: widget.api,
-                formats: widget.session.me!.display,
-                reloadToken: _historyToken,
-                onPick: (e164) => setState(() {
-                  _destination.text = e164;
-                  _destination.selection = TextSelection.collapsed(
-                    offset: e164.length,
-                  );
-                }),
-              ),
+              child: _history(onPick: _pick),
             ),
 
             // Dragging right widens the history and narrows the pad.
@@ -1206,11 +1363,58 @@ class _CallTabState extends State<CallTab> {
   double? _historyWidth;
   double? _customerWidth;
 
+  Widget _history({required void Function(String e164) onPick}) =>
+      CallHistoryPane(
+        api: widget.api,
+        formats: widget.session.me!.display,
+        reloadToken: _historyToken,
+        onPick: onPick,
+        onRows: (rows) => setState(() => _calls = rows),
+      );
+
   Widget _narrow() {
-    return switch (_pane) {
+    // A call ringing or connected shows the pad, whatever was open: its
+    // controls live there.
+    final pane =
+        _pane == _CallPane.recents && (_onCall || _incomingFrom != null)
+        ? _CallPane.pad
+        : _pane;
+
+    return switch (pane) {
+      _CallPane.recents => KeyedSubtree(
+        key: const Key('phone-call-history'),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _history(
+                onPick: (e164) {
+                  _pick(e164);
+                  setState(() {
+                    _personFrom = _CallPane.recents;
+                    _pane = _CallPane.person;
+                  });
+                },
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: FilledButton.icon(
+                key: const Key('phone-open-keypad'),
+                onPressed: () => setState(() => _pane = _CallPane.pad),
+                icon: const Icon(Icons.dialpad, size: 18),
+                label: const Text('Keypad'),
+              ),
+            ),
+          ],
+        ),
+      ),
       _CallPane.pad => KeyedSubtree(
         key: const Key('phone-call-pad'),
-        child: _padPane(showPerson: true),
+        child: _padPane(
+          showPerson: true,
+          onBack: () => setState(() => _pane = _CallPane.recents),
+        ),
       ),
       _CallPane.person => KeyedSubtree(
         key: const Key('phone-call-person'),
@@ -1376,7 +1580,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   /// No `showBack`: there is nothing behind the pad any more.
-  Widget _padPane({required bool showPerson}) {
+  Widget _padPane({required bool showPerson, VoidCallback? onBack}) {
     final theme = Theme.of(context);
     final number = _selected;
 
@@ -1396,11 +1600,7 @@ class _CallTabState extends State<CallTab> {
     // "transcript stretches to the bottom" for "the Call button is always
     // reachable" is the right way round.
     return SingleChildScrollView(
-      child: _padColumn(
-        theme,
-        number,
-        showPerson: showPerson,
-      ),
+      child: _padColumn(theme, number, showPerson: showPerson, onBack: onBack),
     );
   }
 
@@ -1408,6 +1608,7 @@ class _CallTabState extends State<CallTab> {
     ThemeData theme,
     _Number? number, {
     required bool showPerson,
+    VoidCallback? onBack,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1417,51 +1618,90 @@ class _CallTabState extends State<CallTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Text(
-                    'Calling as',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // CHOSEN, not merely reported.
-                  //
-                  // This was a label, so whichever line the pad had landed on
-                  // was the only one you could call from — the number assigned
-                  // to you on Team, or the first on the account. A dispatcher
-                  // covering two businesses could see which line they were
-                  // about to appear as and could not change it, which meant
-                  // ringing a customer back as the wrong company.
-                  //
-                  // One line stays text: a picker offering a single choice is
-                  // a control that cannot do anything.
-                  Expanded(
-                    child: _numbers.length < 2
-                        ? Text(
-                            number == null
-                                ? ''
-                                : '${number.label} · ${number.e164}',
-                            style: theme.textTheme.bodyMedium,
-                            overflow: TextOverflow.ellipsis,
-                          )
-                        : _LinePicker(
-                            lines: _numbers,
-                            selected: number,
-                            enabled: !_onCall,
-                            onPicked: (id) =>
-                                setState(() => _numberId = id),
-                            onOpened: _load,
-                          ),
-                  ),
-                  if (showPerson)
-                    IconButton(
-                      icon: const Icon(Icons.person_outline),
-                      tooltip: 'To the customer',
-                      onPressed: () => setState(() => _pane = _CallPane.person),
-                    ),
-                ],
+              // The state and the line on one strip; the state above the
+              // line when the column is too narrow for both (UI queue 35).
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final line = Row(
+                    children: [
+                      Text(
+                        'Calling as',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // CHOSEN, not merely reported.
+                      //
+                      // This was a label, so whichever line the pad had
+                      // landed on was the only one you could call from — the
+                      // number assigned to you on Team, or the first on the
+                      // account. A dispatcher covering two businesses could
+                      // see which line they were about to appear as and could
+                      // not change it, which meant ringing a customer back as
+                      // the wrong company.
+                      //
+                      // One line stays text: a picker offering a single choice
+                      // is a control that cannot do anything.
+                      Expanded(
+                        child: _numbers.length < 2
+                            ? Text(
+                                number == null
+                                    ? ''
+                                    : '${number.label} · ${number.e164}',
+                                style: theme.textTheme.bodyMedium,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : _LinePicker(
+                                lines: _numbers,
+                                selected: number,
+                                enabled: !_onCall,
+                                onPicked: (id) =>
+                                    setState(() => _numberId = id),
+                                onOpened: _load,
+                              ),
+                      ),
+                    ],
+                  );
+
+                  return Row(
+                    children: [
+                      if (onBack != null)
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          tooltip: 'Back to recent calls',
+                          onPressed: onBack,
+                        ),
+                      Expanded(
+                        child: constraints.maxWidth >= 440
+                            ? Row(
+                                children: [
+                                  _stateChip(),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: line),
+                                ],
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _stateChip(),
+                                  const SizedBox(height: 6),
+                                  line,
+                                ],
+                              ),
+                      ),
+                      if (showPerson)
+                        IconButton(
+                          icon: const Icon(Icons.person_outline),
+                          tooltip: 'To the customer',
+                          onPressed: () => setState(() {
+                            _personFrom = _CallPane.pad;
+                            _pane = _CallPane.person;
+                          }),
+                        ),
+                    ],
+                  );
+                },
               ),
               // The Do not disturb button moved to the app bar, beside Clock
               // In, so it is reachable from anywhere rather than only from the
@@ -1473,31 +1713,19 @@ class _CallTabState extends State<CallTab> {
           ),
         ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
-        if (_onCall)
-          _liveCall(theme)
-        else
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              _dnd ? 'Do not disturb' : 'Ready',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+        if (_onCall) _liveCall(theme),
+        // A name or a number: letters suggest customers and teammates, ten
+        // digits are formatted as they are typed.
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: TextField(
             controller: _destination,
-            decoration: const InputDecoration(labelText: 'Number'),
-            keyboardType: TextInputType.phone,
-            onChanged: (_) {
-              setState(() {});
-              _loadMessages();
-            },
+            decoration: const InputDecoration(labelText: 'Name or number'),
+            inputFormatters: const [PhoneNumberInputFormatter()],
+            onChanged: _onTyped,
           ),
         ),
+        if (_suggestions.isNotEmpty) _suggestionList(theme),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: _keypad(theme),
@@ -1516,8 +1744,14 @@ class _CallTabState extends State<CallTab> {
                 FilledButton(
                   onPressed: _destination.text.trim().isEmpty || _bridging
                       ? null
-                      : () => _placeCall(internal: false),
-                  child: Text(_bridging ? 'Ringing you…' : 'Call'),
+                      : () => _placeCall(internal: _pickedTeammate),
+                  child: Text(
+                    _bridging
+                        ? 'Ringing you…'
+                        : _pickedName == null
+                        ? 'Call'
+                        : 'Call $_pickedName',
+                  ),
                 ),
 
               // Hidden rather than disabled when there is no team to page. An
@@ -1569,24 +1803,28 @@ class _CallTabState extends State<CallTab> {
             ),
           ),
 
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 140),
-          child: Container(
-            width: double.infinity,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              number != null && number.transcribe
-                  ? ''
-                  : 'Live transcript is off on this number.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+        // The live transcript's place, only while there is a call to
+        // transcribe: idle, it was a grey block under the keypad with nothing
+        // in it (Jose, 2026-09-30).
+        if (_onCall)
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 140),
+            child: Container(
+              width: double.infinity,
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.4,
+              ),
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                number != null && number.transcribe
+                    ? ''
+                    : 'Live transcript is off on this number.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -1606,11 +1844,20 @@ class _CallTabState extends State<CallTab> {
               if (showBack)
                 IconButton(
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the pad',
-                  onPressed: () => setState(() => _pane = _CallPane.pad),
+                  tooltip: _personFrom == _CallPane.recents
+                      ? 'Back to recent calls'
+                      : 'Back to the pad',
+                  onPressed: () => setState(() => _pane = _personFrom),
                 ),
+              // Who it is, when anybody knows; the number, formatted, when
+              // not. The panel said "Customer" over a raw +13057242199.
               Expanded(
-                child: Text('Customer', style: theme.textTheme.titleSmall),
+                child: Text(
+                  _personTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
               ),
 
               // Keep it, or let it come and go with the call.
@@ -1648,97 +1895,32 @@ class _CallTabState extends State<CallTab> {
           ),
         ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: Text(
-            _peer ?? 'Type a number to see who it is.',
-            style: theme.textTheme.titleMedium,
+        if (_peer == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Text(
+              'Type a number to see who it is.',
+              style: theme.textTheme.titleMedium,
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: _personCard(theme),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-          child: Text('Messages', style: theme.textTheme.titleSmall),
-        ),
+          if (showBack && !_onCall)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: FilledButton.icon(
+                key: const Key('person-call'),
+                onPressed: _bridging ? null : () => _placeCall(internal: false),
+                icon: const Icon(Icons.call, size: 18),
+                label: const Text('Call'),
+              ),
+            ),
+        ],
         Expanded(
-          child: _peer == null
-              ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                  children: [
-                    // ── WHICH WAY DID THIS ONE GO ───────────────
-                    //
-                    // Every message was the same box in a column, separated
-                    // from the one above it only by a tint at half opacity.
-                    // Jose put it plainly: "I can't see who the message was
-                    // sent to." Nothing here said. The panel names the other
-                    // end at the top, so the missing fact was never WHO the
-                    // conversation is with — it was which of the two of you
-                    // said each line, and when.
-                    //
-                    // Said three ways because one is not enough in a column
-                    // this narrow: the side it sits on, the name above it,
-                    // and a full-strength colour instead of a wash. It is the
-                    // same bubble Records draws for the same rows, which is
-                    // the point — two screens showing one conversation should
-                    // not disagree about what it looks like.
-                    for (final message in _messages)
-                      Align(
-                        alignment: message.outbound
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: message.outbound
-                                ? theme.colorScheme.primaryContainer
-                                : theme.colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: EzBiziTheme.edge(context),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                message.outbound
-                                    ? 'You'
-                                    : formatPhoneNumber(_peer),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                message.body,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                formatStamp(
-                                  message.createdAt,
-                                  '',
-                                  formats: widget.session.me!.display,
-                                ),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (_messages.isEmpty)
-                      Text(
-                        'No messages with this number yet.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
+          child: _peer == null ? const SizedBox.shrink() : _timeline(theme),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -1781,6 +1963,292 @@ class _CallTabState extends State<CallTab> {
       ],
     );
   }
+
+  /// The desk's state, reported where the line is chosen. Switched from the
+  /// top bar; this only says it.
+  Widget _stateChip() {
+    final (label, tone) = _onCall
+        ? ('On a call', Tone.info)
+        : _dnd
+        ? ('Do not disturb', Tone.bad)
+        : ('Ready', Tone.ok);
+    return StatusPill(label, tone: tone);
+  }
+
+  /// Customers and teammates matching the name typed, under the box.
+  Widget _suggestionList(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+    child: Material(
+      key: const Key('dial-suggestions'),
+      elevation: 1,
+      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (final s in _suggestions)
+            ListTile(
+              dense: true,
+              title: Text(s.name),
+              subtitle: Text(s.detail),
+              trailing: StatusPill(
+                s.teammateId == null ? 'Customer' : 'Teammate',
+                tone: s.teammateId == null ? Tone.info : Tone.neutral,
+              ),
+              onTap: () => _choose(s),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  String get _personTitle {
+    final name = (_caller?['name'] as String?)?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final peer = _peer;
+    return peer == null ? 'Customer' : formatPhoneNumber(peer);
+  }
+
+  /// The customer on file for the number: their record's number, address and
+  /// jobs, and the way to it. A number nobody is on file for says so.
+  Widget _personCard(ThemeData theme) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final id = _caller?['customer_id'] as String?;
+    final name = (_caller?['name'] as String?)?.trim();
+    final customer = _customer;
+    final address = (customer?['address'] as Map?)?.cast<String, dynamic>();
+    final where = [
+      for (final part in [
+        address?['line1'],
+        address?['city'],
+        address?['state'],
+      ])
+        if ('${part ?? ''}'.trim().isNotEmpty) '$part',
+    ].join(', ');
+    final jobs = (customer?['jobs_count'] as num?)?.toInt();
+
+    return Container(
+      key: const Key('person-card'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name == null || name.isEmpty ? 'Not a customer on file' : name,
+            style: theme.textTheme.titleMedium,
+          ),
+          Text(
+            [
+              formatPhoneNumber(_peer),
+              ?(customer?['number'] as String?),
+            ].join(' · '),
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          if (where.isNotEmpty)
+            Text(
+              where,
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          if (jobs != null)
+            Text(
+              jobs == 0 ? 'No jobs yet' : '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          if (id != null && (widget.session.me?.can('customers.view') ?? false))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('person-open-customer'),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                onPressed: () => showSidePanel<void>(
+                  context,
+                  builder: (_) => CustomerDetailPanel(
+                    api: widget.api,
+                    session: widget.session,
+                    id: id,
+                  ),
+                ),
+                child: const Text('Open customer'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Calls and texts with this number in one column, oldest first, under
+  /// their days: the calls from the history beside the pad, the texts from
+  /// the line's thread.
+  Widget _timeline(ThemeData theme) {
+    final peer = _peer;
+    final entries = <(DateTime, Widget)>[
+      for (final call in _calls)
+        if (call.peer == peer && call.at != null)
+          (call.at!, _callEvent(theme, call)),
+      for (final message in _messages)
+        if (DateTime.tryParse(message.createdAt) case final at?)
+          (at.toLocal(), _bubble(theme, message)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+
+    if (entries.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+        child: Text(
+          'No calls or messages with this number yet.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    final children = <Widget>[];
+    String? day;
+    for (final (at, entry) in entries) {
+      final heading = _dayOf(at);
+      if (heading != day) {
+        day = heading;
+        children.add(_dayDivider(theme, heading));
+      }
+      children.add(entry);
+    }
+
+    return ListView(
+      key: const Key('person-timeline'),
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      children: children,
+    );
+  }
+
+  static String _dayOf(DateTime at) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final ago = today.difference(DateTime(at.year, at.month, at.day)).inDays;
+    if (ago == 0) return 'Today';
+    if (ago == 1) return 'Yesterday';
+    return '${at.month}/${at.day}/${at.year}';
+  }
+
+  Widget _dayDivider(ThemeData theme, String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            text,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    ),
+  );
+
+  /// One call in the timeline: which way, what happened, and who took it.
+  Widget _callEvent(ThemeData theme, CallRow call) {
+    final colours = ToneColours.of(
+      context,
+      call.missed ? Tone.bad : Tone.neutral,
+    );
+    final at = call.at!;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            call.voicemail
+                ? Icons.voicemail_outlined
+                : call.inbound
+                ? Icons.call_received
+                : Icons.call_made,
+            size: 16,
+            color: colours.ink,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              [
+                call.inbound ? 'Incoming call' : 'You rang',
+                if (call.subtitle != 'Incoming' && call.subtitle != 'Outgoing')
+                  call.subtitle.toLowerCase(),
+                ?call.duration,
+                if (call.answeredByName != null)
+                  'answered by ${call.answeredByName}',
+                widget.session.me!.display.formatTime(at.hour, at.minute),
+              ].join(' · '),
+              style: theme.textTheme.bodySmall?.copyWith(color: colours.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── WHICH WAY DID THIS ONE GO ───────────────
+  //
+  // Every message was the same box in a column, separated from the one above
+  // it only by a tint at half opacity. Jose put it plainly: "I can't see who
+  // the message was sent to." Nothing here said. The panel names the other
+  // end at the top, so the missing fact was never WHO the conversation is
+  // with - it was which of the two of you said each line, and when.
+  //
+  // Said three ways because one is not enough in a column this narrow: the
+  // side it sits on, the name above it, and a full-strength colour instead of
+  // a wash. It is the same bubble Records draws for the same rows, which is
+  // the point - two screens showing one conversation should not disagree
+  // about what it looks like.
+  Widget _bubble(ThemeData theme, _Message message) => Align(
+    alignment: message.outbound ? Alignment.centerRight : Alignment.centerLeft,
+    child: Container(
+      constraints: const BoxConstraints(maxWidth: 320),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: message.outbound
+            ? theme.colorScheme.primaryContainer
+            : theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: EzBiziTheme.edge(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            message.outbound ? 'You' : formatPhoneNumber(_peer),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(message.body, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 4),
+          Text(
+            formatStamp(
+              message.createdAt,
+              '',
+              formats: widget.session.me!.display,
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   String _stateLabel(String state) => switch (state) {
     'on_call' => 'On a call',
@@ -2077,6 +2545,22 @@ class _Teammate {
   );
 }
 
+/// A name typed into the pad, matched: a customer is rung on their number, a
+/// teammate on their identity.
+class _Suggestion {
+  const _Suggestion({
+    required this.name,
+    required this.detail,
+    this.phone,
+    this.teammateId,
+  });
+
+  final String name;
+  final String detail;
+  final String? phone;
+  final String? teammateId;
+}
+
 class _Message {
   const _Message({
     required this.id,
@@ -2268,13 +2752,13 @@ extension _Keypad on _CallTabState {
 
     return Center(
       child: SizedBox(
-        width: 184, // 3 x 56 + 2 x 8
+        width: 240, // 3 x 72 + 2 x 12
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var row = 0; row < 4; row++)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -2291,8 +2775,8 @@ extension _Keypad on _CallTabState {
 
   Widget _key(ThemeData theme, (String, String) glyph) {
     return SizedBox(
-      width: 56,
-      height: 46,
+      width: 72,
+      height: 52,
       child: OutlinedButton(
         key: ValueKey('key:${glyph.$1}'),
         style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),

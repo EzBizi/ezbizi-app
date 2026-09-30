@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/status_pill.dart';
 
 /// Recent calls, beside the dial pad.
 ///
@@ -24,6 +25,14 @@ import '../../core/timestamps.dart';
 /// accident while scrolling a list. Filling the field puts the number where
 /// somebody can read it back before pressing Call, which costs a tap and
 /// removes a class of mistake that cannot be undone once it rings.
+///
+/// ── Who to ring back first (UI queue 35, Jose's 1 + 4, 2026-09-30) ──
+///
+/// The list was numbers: the same one nine times in a row, a customer's
+/// number still digits although every call carries its `customer_id`. Now
+/// the rows fall under their day, carry the person's name when anybody knows
+/// it, fold a run of calls from one number into one row ("×9"), narrow to
+/// Missed or Voicemail, and say when a missed call has been returned.
 class CallHistoryPane extends StatefulWidget {
   const CallHistoryPane({
     super.key,
@@ -31,6 +40,7 @@ class CallHistoryPane extends StatefulWidget {
     required this.formats,
     required this.onPick,
     this.reloadToken = 0,
+    this.onRows,
   });
 
   final ApiClient api;
@@ -46,6 +56,10 @@ class CallHistoryPane extends StatefulWidget {
   /// shows it without anybody reloading the screen.
   final int reloadToken;
 
+  /// Every row as loaded, for the person panel's timeline: one request feeds
+  /// both, rather than the panel asking again for calls this list holds.
+  final ValueChanged<List<CallRow>>? onRows;
+
   @override
   State<CallHistoryPane> createState() => _CallHistoryPaneState();
 }
@@ -53,7 +67,10 @@ class CallHistoryPane extends StatefulWidget {
 class _CallHistoryPaneState extends State<CallHistoryPane> {
   bool _loading = true;
   String? _error;
-  List<_Row> _rows = const [];
+  List<CallRow> _rows = const [];
+
+  /// all, missed or voicemail.
+  String _filter = 'all';
 
   @override
   void initState() {
@@ -77,15 +94,45 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       _rows = response.ok
           ? [
               for (final row in (response.data as List? ?? const []))
-                if (row is Map<String, dynamic>) _Row.fromJson(row),
+                if (row is Map<String, dynamic>) CallRow.fromJson(row),
             ]
           : const [];
     });
+    widget.onRows?.call(_rows);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final missed = _rows.where((r) => r.missed && r.inbound).length;
+    final voicemail = _rows.where((r) => r.voicemail).length;
+    // A chip that empties while chosen falls back to All.
+    final filter = switch (_filter) {
+      'missed' when missed > 0 => 'missed',
+      'voicemail' when voicemail > 0 => 'voicemail',
+      _ => 'all',
+    };
+    final shown = [
+      for (final r in _rows)
+        if (switch (filter) {
+          'missed' => r.missed && r.inbound,
+          'voicemail' => r.voicemail,
+          _ => true,
+        })
+          r,
+    ];
+
+    Widget chip(String value, String label, [int? count]) => Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        key: ValueKey('calls-chip-$value'),
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+        selected: filter == value,
+        label: Text(count == null ? label : '$label  $count'),
+        onSelected: (_) => setState(() => _filter = value),
+      ),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -106,6 +153,20 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ],
           ),
         ),
+        if (missed > 0 || voicemail > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  chip('all', 'All'),
+                  if (missed > 0) chip('missed', 'Missed', missed),
+                  if (voicemail > 0) chip('voicemail', 'Voicemail', voicemail),
+                ],
+              ),
+            ),
+          ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
         Expanded(
           child: _loading
@@ -123,81 +184,196 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
                     style: theme.textTheme.bodySmall,
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemCount: _rows.length,
-                  itemBuilder: (context, i) => _tile(_rows[i], theme),
-                ),
+              : _list(theme, shown),
         ),
       ],
     );
   }
 
-  Widget _tile(_Row row, ThemeData theme) {
-    final inbound = row.direction == 'inbound';
+  /// Day headings, then the calls of that day with runs of one kind from
+  /// one number folded into the newest of them.
+  Widget _list(ThemeData theme, List<CallRow> shown) {
+    final items = <Object>[];
+    String? day;
+    for (final row in shown) {
+      final at = row.at;
+      final heading = at == null ? '' : _dayHeading(at);
+      final last = items.isEmpty ? null : items.last;
+      if (last is _Run && heading == day && last.first.sameKindAs(row)) {
+        last.more++;
+        continue;
+      }
+      if (heading != day) {
+        day = heading;
+        if (heading.isNotEmpty) items.add(heading);
+      }
+      items.add(_Run(row));
+    }
 
-    // The number at the OTHER end, which is the one somebody wants to call
-    // back. On an inbound call that is who rang us; on an outbound one it is
-    // who we rang. Showing our own line would list the same number all day.
-    final peer = inbound ? row.from : row.to;
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 4),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        if (item is String) return _heading(theme, item);
+        return _tile((item as _Run), theme);
+      },
+    );
+  }
+
+  Widget _heading(ThemeData theme, String text) => Container(
+    padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+    color: theme.colorScheme.surfaceContainerHigh,
+    child: Text(
+      text,
+      style: theme.textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w800,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
+  /// Today, Yesterday, then "Fri 25 Sep".
+  static String _dayHeading(DateTime at) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(at.year, at.month, at.day);
+    final ago = today.difference(day).inDays;
+    if (ago == 0) return 'Today';
+    if (ago == 1) return 'Yesterday';
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}';
+  }
+
+  /// A later call out to the number of a missed one: it has been returned.
+  CallRow? _returned(CallRow missed) {
+    final at = missed.at;
+    if (at == null) return null;
+    for (final r in _rows) {
+      final when = r.at;
+      if (!r.inbound && r.peer == missed.peer && when != null) {
+        if (when.isAfter(at)) return r;
+      }
+    }
+    return null;
+  }
+
+  Widget _tile(_Run run, ThemeData theme) {
+    final row = run.first;
+    final peer = row.peer;
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final returned = row.missed && row.inbound ? _returned(row) : null;
+    final at = row.at;
+
+    final said = [
+      row.subtitle,
+      if (returned != null && returned.at != null)
+        'called back ${_clock(returned.at!)}',
+      ?row.duration,
+      ?row.answeredByName,
+    ].join(' · ');
 
     return ListTile(
+      key: ValueKey('call-${row.id}'),
       dense: true,
       visualDensity: VisualDensity.compact,
       leading: Icon(
         row.voicemail
             ? Icons.voicemail_outlined
-            : inbound
+            : row.inbound
             ? Icons.call_received
             : Icons.call_made,
         size: 18,
-        color: row.missed
-            ? theme.colorScheme.error
-            : theme.colorScheme.onSurfaceVariant,
+        color: row.missed ? theme.colorScheme.error : muted,
       ),
       // The colleague's NAME when the other end is one. A call to a teammate
       // is addressed to a Voice identity rather than a number, so this listed
       // rows reading `01a020d0417c714ca5bf7fb3304070e1` until the server
-      // started sending who that is. Falls back to formatting the number,
-      // which is every ordinary call.
-      title: Text(
-        row.peerName ?? formatPhoneNumber(peer),
-        style: theme.textTheme.bodyMedium,
+      // started sending who that is. Then the customer on file for the
+      // number, then the number itself, formatted.
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              row.peerName ?? row.customerName ?? formatPhoneNumber(peer),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          if (run.more > 0) ...[
+            const SizedBox(width: 6),
+            Text(
+              '×${run.more + 1}',
+              key: ValueKey('call-run-${row.id}'),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: muted,
+              ),
+            ),
+          ],
+          if (row.peerName != null) ...[
+            const SizedBox(width: 6),
+            const StatusPill('Teammate'),
+          ] else if (row.customerId != null) ...[
+            const SizedBox(width: 6),
+            const StatusPill('Customer', tone: Tone.info),
+          ],
+        ],
       ),
       subtitle: Text(
-        // Who took it, when there is a who. A call that rang the whole front
-        // desk used to say only "Incoming", so a customer ringing back to
-        // continue a conversation could not be put through to the person they
-        // had it with.
-        row.answeredByName == null
-            ? row.subtitle
-            : '${row.subtitle} · ${row.answeredByName}',
+        said,
         style: theme.textTheme.bodySmall?.copyWith(
-          color: row.missed ? theme.colorScheme.error : null,
+          color: row.missed && returned == null
+              ? theme.colorScheme.error
+              : null,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-
-      // WHEN, right-aligned, the way every call list is laid out — today's
-      // calls by the clock and older ones by the date. The list was ordered by
-      // time and showed none of it, so "did they ring this morning or last
-      // week" had to be answered from the Records tab.
+      // WHEN, right-aligned. Under a day heading the clock is enough.
       trailing: Text(
-        formatListStamp(row.createdAt, '', formats: widget.formats),
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        at == null ? '' : _clock(at),
+        style: theme.textTheme.bodySmall?.copyWith(color: muted),
       ),
       onTap: peer.startsWith('+') ? () => widget.onPick(peer) : null,
     );
   }
+
+  String _clock(DateTime at) => widget.formats.formatTime(at.hour, at.minute);
 }
 
-class _Row {
-  const _Row({
+/// A run of calls from one number on one day, drawn as its newest.
+class _Run {
+  _Run(this.first);
+
+  final CallRow first;
+  int more = 0;
+}
+
+/// One call, as /phone/calls sends it.
+class CallRow {
+  const CallRow({
+    this.id = '',
     this.peerName,
     this.answeredByName,
+    this.customerId,
+    this.customerName,
+    this.durationSeconds,
     required this.direction,
     required this.from,
     required this.to,
@@ -207,6 +383,7 @@ class _Row {
     required this.errorCode,
   });
 
+  final String id;
   final String direction;
   final String from;
   final String to;
@@ -215,24 +392,46 @@ class _Row {
   final String createdAt;
   final String? errorCode;
 
-  bool get missed => const {
-    'no-answer',
-    'busy',
-    'failed',
-    'canceled',
-  }.contains(status);
+  bool get inbound => direction == 'inbound';
+
+  /// One run folds calls from one number that went the same way and ended
+  /// the same way: three missed calls are "Missed ×3", and the call back
+  /// after them stays a row of its own.
+  bool sameKindAs(CallRow other) =>
+      peer == other.peer &&
+      inbound == other.inbound &&
+      missed == other.missed &&
+      voicemail == other.voicemail;
+
+  /// The number at the OTHER end, which is the one somebody wants to call
+  /// back. On an inbound call that is who rang us; on an outbound one it is
+  /// who we rang. Showing our own line would list the same number all day.
+  String get peer => inbound ? from : to;
+
+  DateTime? get at => DateTime.tryParse(createdAt)?.toLocal();
+
+  bool get missed =>
+      const {'no-answer', 'busy', 'failed', 'canceled'}.contains(status);
 
   /// What happened, in the fewest words that stay true.
   String get subtitle {
     if (voicemail) return 'Left a voicemail';
 
     return switch (status) {
-      'no-answer' => 'No answer',
+      'no-answer' => inbound ? 'Missed' : 'No answer',
       'busy' => 'Busy',
       'canceled' => 'Cancelled',
       'failed' => errorCode == null ? 'Failed' : 'Failed · $errorCode',
-      _ => direction == 'inbound' ? 'Incoming' : 'Outgoing',
+      _ => inbound ? 'Incoming' : 'Outgoing',
     };
+  }
+
+  /// "4 min", "0:48" under a minute; null when nobody spoke.
+  String? get duration {
+    final s = durationSeconds;
+    if (s == null || s <= 0 || missed) return null;
+    if (s < 60) return '0:${s.toString().padLeft(2, '0')}';
+    return '${(s / 60).round()} min';
   }
 
   /// Who the other end is, when it is a colleague rather than a number.
@@ -242,9 +441,19 @@ class _Row {
   /// and on every call placed before the server started recording it.
   final String? answeredByName;
 
-  factory _Row.fromJson(Map<String, dynamic> json) => _Row(
+  /// The customer on file for the number, matched by the server.
+  final String? customerId;
+  final String? customerName;
+
+  final int? durationSeconds;
+
+  factory CallRow.fromJson(Map<String, dynamic> json) => CallRow(
+    id: (json['id'] ?? '').toString(),
     peerName: json['peer_name'] as String?,
     answeredByName: json['answered_by_name'] as String?,
+    customerId: json['customer_id'] as String?,
+    customerName: json['customer_name'] as String?,
+    durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
     direction: (json['direction'] ?? '').toString(),
     from: (json['from_e164'] ?? '').toString(),
     to: (json['to_e164'] ?? '').toString(),
