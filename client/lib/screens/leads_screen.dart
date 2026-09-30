@@ -1672,21 +1672,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       Expanded(
                         child: Row(
                           children: [
-                            // Whose lead it is, then where it came from, in
-                            // the same place on every row: chimney prices
-                            // went to a garage-door lead (Jose, 2026-09-30).
-                            // Flexible, so a narrow row shortens the tag
-                            // rather than pushing past its edge.
-                            if (leadCompany(lead) case final company?) ...[
-                              Flexible(
-                                child: CompanyTag(
-                                  company,
-                                  key: ValueKey('company-tag-$id'),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                            ],
-                            // The source next, in its own colour.
+                            // No company tag here: it is on the lead's own
+                            // header, and Jose wants it in one place only
+                            // (2026-09-30, "not on both").
+                            // The source, in its own colour.
                             _SourceBadge(
                               leadSourceWord(lead),
                               key: ValueKey('source-badge-$id'),

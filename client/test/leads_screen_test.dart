@@ -367,11 +367,12 @@ void main() {
   // Jose, 2026-09-30: "add a tag with the name of the company it belongs to,
   // so this doesn't happen again" - chimney prices went to a garage-door
   // lead. Every row says whose lead it is.
-  testWidgets('every row tags the company its lead belongs to', (tester) async {
+  // Jose, 2026-09-30: the company tag belongs on the lead's header only,
+  // "not on both" - the list rows carry none.
+  testWidgets('list rows carry no company tag', (tester) async {
     await _pump(
       tester,
       leads: [
-        _lead('lead-1', 'A'),
         {
           ..._lead('lead-2', 'B'),
           'company': {'id': 'c-2', 'name': 'Harbor Garage Doors'},
@@ -380,10 +381,10 @@ void main() {
       connections: const [],
     );
 
-    String tag(String id) =>
-        tester.widget<CompanyTag>(find.byKey(ValueKey('company-tag-$id'))).name;
-    expect(tag('lead-1'), 'A-1 Chimney');
-    expect(tag('lead-2'), 'Harbor Garage Doors');
+    expect(find.byKey(const ValueKey('company-tag-lead-2')), findsNothing);
+    // The one tag left is the open lead's header.
+    expect(find.byKey(const ValueKey('thread-company')), findsOneWidget);
+    expect(find.byType(CompanyTag), findsOneWidget);
   });
 
   // Jose, 2026-09-29: the Google tag says LS Call or LS Text, and every
