@@ -14,6 +14,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Training\LapsedPasses;
+use App\Support\Training\TrainingMediaLinks;
 use App\Support\Training\LearnerView;
 use App\Support\Training\TestGrader;
 use Illuminate\Database\Eloquent\Builder;
@@ -784,7 +785,9 @@ class LearnController extends Controller
             'company_id' => $guide->company_id,
             'franchise_id' => $guide->franchise_id,
             'screen_count' => $guide->screenCount(),
-            'screens' => $guide->screens,
+            // Images the guide holds itself get a signed link, minted here
+            // because this is where the learner's read was authorised.
+            'screens' => TrainingMediaLinks::resolve($guide->screens ?? [], $guide),
             'last_screen' => $progress?->last_screen,
             'completed_at' => $progress?->completed_at?->toIso8601String(),
         ];

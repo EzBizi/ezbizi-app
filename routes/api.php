@@ -144,6 +144,7 @@ use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmen
 use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
+use App\Http\Controllers\Api\Training\MediaController as TrainingMediaController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
 use App\Http\Controllers\Api\TwoFactorController;
@@ -377,6 +378,17 @@ Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'da
 |
 | Throttled tight. A real post causes ONE fetch, occasionally a retry.
 */
+/*
+| An image a training guide holds itself. `signed` is the authentication: the
+| link is issued by TrainingMediaLinks only after the reader was authorised to
+| read that guide. Throttled loosely enough that paging through a long guide,
+| which loads an image per screen, is never refused.
+*/
+Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show'])
+    ->middleware(['signed', 'throttle:300,1'])
+    ->whereUuid('media')
+    ->name('training.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
