@@ -14,13 +14,13 @@
 import 'dart:async';
 
 import 'package:battery_plus/battery_plus.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'api_client.dart';
 import 'build_info.dart';
 import 'client_platform.dart';
+import 'field_os.dart';
 import 'session.dart';
 
 class FieldTracker {
@@ -113,25 +113,9 @@ class FieldTracker {
     return device;
   }
 
-  static Future<Map<String, Object?>> _describePhone() async {
-    try {
-      final info = DeviceInfoPlugin();
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final a = await info.androidInfo;
-        return {
-          'device_model': '${a.manufacturer} ${a.model}'.trim(),
-          'os_version': 'Android ${a.version.release}',
-        };
-      }
-      final i = await info.iosInfo;
-      return {
-        'device_model': i.modelName,
-        'os_version': '${i.systemName} ${i.systemVersion}',
-      };
-    } catch (_) {
-      return const {};
-    }
-  }
+  static Future<Map<String, Object?>> _describePhone() async => {
+    'os_version': fieldOsVersion(),
+  };
 
   /// Most points a phone holds while offline. A day at 50 m spacing fits.
   static const _cap = 2000;
