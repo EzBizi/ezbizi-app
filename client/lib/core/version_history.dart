@@ -25,6 +25,7 @@ class VersionHistory {
         'Leads: the status of a lead is one control, Archive, Not a lead and Lead, with the current one highlighted; Call and Book sit apart from it.',
         'Clock In: the lock screen shows the EzBizi logo on a dark background, the time and the day, your photo and role, and the shift of the day in the clock format of your organization, with Clock In below. On a phone, Clock In sits at the bottom.',
         'Leads: replies an automation sent show as green bubbles, apart from your own and the red ones sent outside EzBizi.',
+        'Lock screen: the date is the day of the organization, in its language.',
       ],
     ),
     VersionRelease(
