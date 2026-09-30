@@ -24,6 +24,117 @@ if (! defined('ABSPATH')) {
 
 add_action('elementor_pro/forms/new_record', 'ezbizi_elementor_form_record', 20, 2);
 
+/*
+ * ── The robot check on every Elementor form ──
+ *
+ * Jose, 2026-09-30, after A-1's forms took a night of Russian spam straight
+ * into Leads: "not a robot verification on the forms". A proof of work: the
+ * visitor's browser fetches a signed puzzle from this site and finds the
+ * number behind a hash (about a second, while they type), and a submission
+ * without the answer is refused before Elementor emails anybody or hands the
+ * enquiry to EzBizi. Nothing to click, no Google or Cloudflare account, and a
+ * bot that posts straight at admin-ajax — the kind that sent these — never
+ * gets through. The same scheme as the EzBizi form's CAPTCHA (FormChallenge).
+ *
+ * A person typing spam by hand still gets through; no CAPTCHA stops that.
+ */
+const EZBIZI_POW_MAX = 50000;
+
+add_action('rest_api_init', function () {
+    // POST, so the page cache in front of the site never serves one puzzle twice.
+    register_rest_route('ezbizi/v1', '/challenge', array(
+        'methods' => 'POST',
+        'permission_callback' => '__return_true',
+        'callback' => 'ezbizi_challenge',
+    ));
+});
+
+function ezbizi_challenge() {
+    $salt = bin2hex(random_bytes(12)) . '?expires=' . (time() + 1800);
+    $challenge = hash('sha256', $salt . random_int(0, EZBIZI_POW_MAX));
+
+    return array('salt' => $salt, 'challenge' => $challenge, 'max' => EZBIZI_POW_MAX,
+        'signature' => hash_hmac('sha256', $challenge, wp_salt('auth')));
+}
+
+/** Signed by this site, not expired, solved, and not used before. */
+function ezbizi_challenge_passes($raw) {
+    $s = json_decode((string) $raw, true);
+
+    if (! is_array($s) || ! isset($s['salt'], $s['number'], $s['challenge'], $s['signature'])) {
+        return false;
+    }
+
+    $salt = (string) $s['salt'];
+    $number = (string) $s['number'];
+    $challenge = (string) $s['challenge'];
+
+    if (! hash_equals(hash_hmac('sha256', $challenge, wp_salt('auth')), (string) $s['signature'])
+        || ! preg_match('/\?expires=(\d+)$/', $salt, $m) || (int) $m[1] < time()
+        || ! ctype_digit($number) || ! hash_equals($challenge, hash('sha256', $salt . $number))) {
+        return false;
+    }
+
+    // ponytail: a transient, not an atomic claim; two posts in the same instant could share one.
+    $spent = 'ezbizi_pow_' . substr($challenge, 0, 32);
+
+    if (get_transient($spent)) {
+        return false;
+    }
+
+    set_transient($spent, 1, 1800);
+
+    return true;
+}
+
+add_action('elementor_pro/forms/validation', function ($record, $handler) {
+    if (! is_object($handler) || ! method_exists($handler, 'add_error')) {
+        return;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification -- Elementor verified the form
+    if (! ezbizi_challenge_passes(isset($_POST['ezbizi_pow']) ? wp_unslash($_POST['ezbizi_pow']) : '')) {
+        $message = __('We could not confirm you are a person. Please send the form again.', 'ezbizi');
+        $handler->add_error('ezbizi_pow', $message);
+        $handler->add_error_message($message);
+    }
+}, 5, 2);
+
+/*
+ * The browser half: solve on the first touch of a form, and hold a submit
+ * until the answer is in. Only where Elementor Pro can draw a form.
+ */
+add_action('wp_footer', function () {
+    if (! defined('ELEMENTOR_PRO_VERSION')) {
+        return;
+    }
+
+    echo "<script>(function(){
+var api=" . wp_json_encode(esc_url_raw(rest_url('ezbizi/v1/challenge'))) . ";
+function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
+function solve(c){var enc=new TextEncoder(),n=0;
+  function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
+    return Promise.all(batch.map(function(x){return crypto.subtle.digest('SHA-256',enc.encode(c.salt+x)).then(function(h){return hex(h)===c.challenge?x:-1;});}))
+    .then(function(rs){var hit=rs.filter(function(x){return x>=0;});
+      if(hit.length)return JSON.stringify({salt:c.salt,number:hit[0],challenge:c.challenge,signature:c.signature});
+      n+=500;if(n>c.max)throw new Error('pow');return step();});}
+  return step();}
+function prep(f){if(f._ezPow)return f._ezPow;
+  f._ezPow=fetch(api,{method:'POST',credentials:'same-origin'}).then(function(r){return r.json();}).then(solve).then(function(a){
+    var i=f.querySelector('input[name=ezbizi_pow]');if(!i){i=document.createElement('input');i.type='hidden';i.name='ezbizi_pow';f.appendChild(i);}i.value=a;});
+  f._ezPow.catch(function(){f._ezPow=null;});return f._ezPow;}
+function form(e){return e.target&&e.target.closest?e.target.closest('form.elementor-form'):null;}
+document.addEventListener('focusin',function(e){var f=form(e);if(f)prep(f);},true);
+document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
+  var i=f.querySelector('input[name=ezbizi_pow]');
+  // An answer is spent by one submission; the next one solves again.
+  if(i&&i.value){setTimeout(function(){i.value='';f._ezPow=null;prep(f);},0);return;}
+  e.preventDefault();e.stopImmediatePropagation();
+  prep(f).then(function(){f.requestSubmit?f.requestSubmit():f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));});
+},true);
+})();</script>";
+}, 20);
+
 /**
  * @param object $record  Elementor's form record: `get('fields')`, `get('form_settings')`
  */

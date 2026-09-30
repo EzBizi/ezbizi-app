@@ -78,6 +78,7 @@ function get_transient($k) {
     return $value;
 }
 function set_transient($k, $v, $ttl = 0) { $GLOBALS['tr'][$k] = [$v, $ttl ? time() + $ttl : 0]; return true; }
+function wp_salt($scheme = 'auth') { return 'test-salt-' . $scheme; }
 function delete_transient($k) { unset($GLOBALS['tr'][$k]); return true; }
 
 function add_shortcode($tag, $cb) { $GLOBALS['sc'][$tag] = $cb; }
@@ -2174,6 +2175,36 @@ $GLOBALS['actions']['shutdown'] = [];
 ezbizi_elementor_form_record($record);
 do_action('shutdown');
 check('a site with no token sends nothing', $GLOBALS['post_calls'], 1);
+
+echo PHP_EOL . "An Elementor form without the robot check's answer is refused" . PHP_EOL;
+$solve = function (array $c) {
+    for ($n = 0; $n <= $c['max']; $n++) {
+        if (hash('sha256', $c['salt'] . $n) === $c['challenge']) {
+            return json_encode(['salt' => $c['salt'], 'number' => $n, 'challenge' => $c['challenge'], 'signature' => $c['signature']]);
+        }
+    }
+};
+$answer = $solve(ezbizi_challenge());
+check('a solved puzzle passes', ezbizi_challenge_passes($answer), true);
+check('but only once', ezbizi_challenge_passes($answer), false);
+check('no answer is refused', ezbizi_challenge_passes(''), false);
+$salt = 'x?expires=' . (time() + 60);
+check('a puzzle this site did not sign is refused', ezbizi_challenge_passes(json_encode(['salt' => $salt, 'number' => 1,
+    'challenge' => hash('sha256', $salt . '1'), 'signature' => str_repeat('0', 64)])), false);
+$handler = fn () => new class {
+    public $errors = [];
+    public function add_error($f, $m = '') { $this->errors[$f] = $m; return $this; }
+    public function add_error_message($m) { return $this; }
+};
+$bot = $handler();
+$_POST = [];
+do_action('elementor_pro/forms/validation', null, $bot);
+check('a bot posting straight at the form is refused', isset($bot->errors['ezbizi_pow']), true);
+$person = $handler();
+$_POST = ['ezbizi_pow' => $solve(ezbizi_challenge())];
+do_action('elementor_pro/forms/validation', null, $person);
+check('a person whose browser solved it is not', $person->errors, []);
+$_POST = [];
 
 echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
 reset_site();
