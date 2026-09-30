@@ -18,6 +18,7 @@ class VersionHistory {
       date: '30 Sep 2026',
       items: [
         'Leads: the Availability reply fills in the first open day for the ZIP of the customer.',
+        'Onboarding: contracts now ask for a tax ID, bank details, a W-4 or W-9, the driver licence and a uniform photo, plus car photos for field roles.',
       ],
     ),
     VersionRelease(
