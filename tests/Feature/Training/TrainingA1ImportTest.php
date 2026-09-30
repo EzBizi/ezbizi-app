@@ -64,7 +64,7 @@ class TrainingA1ImportTest extends TestCase
         $this->bundle();
 
         $this->artisan('training:import-a1-tools', ['dir' => $this->dir, '--dry-run' => true])
-            ->expectsOutputToContain('guide "Technician knowledge base": 4 screens, 3 images, 1 videos.')
+            ->expectsOutputToContain('guide "Technician knowledge base": 3 topics, 3 images, 1 videos.')
             ->expectsOutputToContain('A1 targeted it at: Technician')
             ->expectsOutputToContain('[dry run] Nothing was written.')
             ->assertSuccessful();
@@ -77,7 +77,12 @@ class TrainingA1ImportTest extends TestCase
         });
     }
 
-    public function test_guides_flatten_into_screens_with_one_media_each_and_images_copied(): void
+    /**
+     * One A1 page is one topic, with its chapter, section and every block in
+     * the order A1 showed them. The first import split pages into one picture
+     * per screen, "Gallery (2 of 2)"; Jose: "training is definitely wrong".
+     */
+    public function test_each_page_is_one_topic_with_every_block_in_order_and_images_copied(): void
     {
         $this->bundle();
         $this->artisan('training:import-a1-tools', ['dir' => $this->dir])->assertSuccessful();
@@ -87,29 +92,25 @@ class TrainingA1ImportTest extends TestCase
             $this->assertSame(TrainingGuide::PUBLISHED, $guide->status);
             $this->assertSame($this->tenant['company']->id, $guide->company_id);
 
-            $s = $guide->screens;
-            $this->assertCount(4, $s);
+            $t = $guide->screens;
+            $this->assertSame(['Intro', 'Levels', 'Gallery'], array_column($t, 'title'), 'One topic per page, nothing split.');
+            $this->assertSame(['C1', 'C1', 'C1'], array_column($t, 'chapter'));
+            $this->assertSame(['S1', 'S1', 'S2'], array_column($t, 'section'));
 
-            // Page 1: text + a JPEG held by the guide.
-            $this->assertSame('Intro', $s[0]['title']);
-            $this->assertSame('Welcome.', $s[0]['body']);
-            $this->assertSame('image', $s[0]['media_kind']);
-            $media = TrainingMedia::findOrFail($s[0]['media_id']);
+            // Page 1: text, then a JPEG held by the guide.
+            $this->assertEquals(['type' => 'text', 'text' => 'Welcome.'], $t[0]['blocks'][0]);
+            $media = TrainingMedia::findOrFail($t[0]['blocks'][1]['media_id']);
             $this->assertSame('image/jpeg', $media->mime);
-            $this->assertSame(hash('sha256', self::JPEG), $media->sha256);
             $this->assertSame(self::JPEG, Storage::disk($media->disk)->get($media->path), 'The bytes are copied, not linked.');
 
-            // Page 2: text + table as plain rows, and Vimeo as the EMBEDDABLE url.
-            $this->assertSame("Line A\n\nLevel · When\n1 · Annually", $s[1]['body']);
-            $this->assertSame('video', $s[1]['media_kind']);
-            $this->assertSame('https://player.vimeo.com/video/123456', $s[1]['media_url']);
+            // Page 2: text, a real table, and the Vimeo video.
+            $this->assertSame(['text', 'table', 'video'], array_column($t[1]['blocks'], 'type'));
+            $this->assertSame([['Level', 'When'], ['1', 'Annually']], $t[1]['blocks'][1]['rows']);
+            $this->assertSame('https://player.vimeo.com/video/123456', $t[1]['blocks'][2]['url']);
 
-            // Page 3: two images split into two screens, nothing dropped.
-            $this->assertSame('Gallery', $s[2]['title']);
-            $this->assertSame('Two pictures.', $s[2]['body']);
-            $this->assertSame('Gallery (2 of 2)', $s[3]['title']);
-            $this->assertSame('', $s[3]['body']);
-            $this->assertNotSame($s[2]['media_id'], $s[3]['media_id']);
+            // Page 3: both pictures on the same topic.
+            $this->assertSame(['text', 'image', 'image'], array_column($t[2]['blocks'], 'type'));
+            $this->assertNotSame($t[2]['blocks'][1]['media_id'], $t[2]['blocks'][2]['media_id']);
         });
     }
 
@@ -170,22 +171,50 @@ class TrainingA1ImportTest extends TestCase
         });
     }
 
-    public function test_progress_is_a_high_water_mark_over_split_screens(): void
+    public function test_progress_is_how_far_a_person_completed(): void
     {
         $this->bundle();
         $this->artisan('training:import-a1-tools', ['dir' => $this->dir])->assertSuccessful();
 
         $this->inTenant($this->tenant['org'], function () {
-            // Every page done: the last screen of the SPLIT third page is 3.
+            // Every page done: the last topic, and the guide complete.
             $done = TrainingProgress::where('user_id', $this->learner->id)->sole();
-            $this->assertSame(3, $done->last_screen);
+            $this->assertSame(2, $done->last_screen);
             $this->assertNotNull($done->completed_at);
 
-            // One page done, on the second now: reached screen 1, not complete.
+            // One page done, reading the second: completed the first only. The
+            // page A1 had open is not a completed one.
             $partial = TrainingProgress::where('user_id', $this->partial->id)->sole();
-            $this->assertSame(1, $partial->last_screen);
+            $this->assertSame(0, $partial->last_screen);
             $this->assertNull($partial->completed_at);
         });
+    }
+
+    public function test_undo_removes_what_the_import_created_so_it_can_run_again(): void
+    {
+        $this->bundle();
+        $this->artisan('training:import-a1-tools', ['dir' => $this->dir])->assertSuccessful();
+        $paths = $this->inTenant($this->tenant['org'], fn () => TrainingMedia::pluck('path')->all());
+
+        $this->artisan('training:import-a1-tools', ['--undo' => true])
+            ->expectsOutputToContain('Removed: 1 guides, 1 tests, ')
+            ->assertSuccessful();
+
+        $this->inTenant($this->tenant['org'], function () use ($paths) {
+            $this->assertSame(0, TrainingGuide::count());
+            $this->assertSame(0, TrainingTest::count());
+            $this->assertSame(0, TrainingAttempt::count());
+            $this->assertSame(0, TrainingProgress::count());
+            $this->assertSame(0, TrainingMedia::count());
+            foreach ($paths as $path) {
+                Storage::disk(app(FileStore::class)->defaultDisk())->assertMissing($path);
+            }
+        });
+
+        // And the same bundle imports again from scratch.
+        $this->artisan('training:import-a1-tools', ['dir' => $this->dir])
+            ->expectsOutputToContain('Created: 1 guides (3 images), 1 tests, 1 attempts, 2 progress.')
+            ->assertSuccessful();
     }
 
     /** The "no side effects" rule, asserted rather than argued. */

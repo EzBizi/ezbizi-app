@@ -19,15 +19,26 @@ use RuntimeException;
 class TrainingImportA1Tools extends Command
 {
     protected $signature = 'training:import-a1-tools
-                            {dir : The directory holding manifest.json and media/}
-                            {--dry-run : Print exactly what would happen, and write nothing}';
+                            {dir? : The directory holding manifest.json and media/}
+                            {--dry-run : Print exactly what would happen, and write nothing}
+                            {--undo : Remove everything an earlier import created, so it can be run again}';
 
     protected $description = "Import A1 Tools' guides, tests and history into A1-Group's Training";
 
     public function handle(TenantContext $tenant, A1ToolsTrainingImport $import, FileStore $files): int
     {
+        if ($this->option('undo')) {
+            return $this->undo($tenant, $import);
+        }
+
         $dir = rtrim((string) $this->argument('dir'), '/\\');
         $manifestPath = $dir.DIRECTORY_SEPARATOR.'manifest.json';
+
+        if ($dir === '') {
+            $this->error('Give the directory holding manifest.json and media/.');
+
+            return self::FAILURE;
+        }
 
         if (! is_file($manifestPath)) {
             $this->error("No manifest.json in {$dir}.");
@@ -72,12 +83,7 @@ class TrainingImportA1Tools extends Command
                 return self::SUCCESS;
             }
 
-            $actor = User::query()
-                ->whereHas('role', fn ($q) => $q->where('is_administrator', true))
-                ->orderBy('created_at')
-                ->first();
-
-            $created = $import->apply($plan, $dir, $org, $actor);
+            $created = $import->apply($plan, $dir, $org, $this->actor());
 
             // The structure A1 had — chapters, sections, which image went on which
             // page — kept beside the images, with nobody's email or answers in it.
@@ -96,6 +102,33 @@ class TrainingImportA1Tools extends Command
         });
     }
 
+    private function undo(TenantContext $tenant, A1ToolsTrainingImport $import): int
+    {
+        $orgs = Organization::query()->where('name', A1ToolsTrainingImport::ORGANIZATION)->get();
+
+        if ($orgs->count() !== 1) {
+            $this->error('Expected exactly one organization named '.A1ToolsTrainingImport::ORGANIZATION.', found '.$orgs->count().'.');
+
+            return self::FAILURE;
+        }
+
+        return $tenant->run($orgs->first(), function () use ($import, $orgs): int {
+            $removed = $import->undo($orgs->first(), $this->actor());
+
+            $this->info(sprintf('Removed: %d guides, %d tests, %d import keys.', $removed['guides'], $removed['tests'], $removed['keys']));
+
+            return self::SUCCESS;
+        });
+    }
+
+    private function actor(): ?User
+    {
+        return User::query()
+            ->whereHas('role', fn ($q) => $q->where('is_administrator', true))
+            ->orderBy('created_at')
+            ->first();
+    }
+
     /** @param  array<string, mixed>  $plan */
     private function report(array $plan, bool $dry): void
     {
@@ -103,10 +136,10 @@ class TrainingImportA1Tools extends Command
 
         foreach ($plan['guides'] as $guide) {
             $images = count($guide['images']);
-            $videos = count(array_filter($guide['screens'], fn ($s) => ($s['media']['kind'] ?? null) === 'video'));
+            $videos = collect($guide['screens'])->sum(fn ($s) => count(array_filter($s['blocks'], fn ($b) => $b['type'] === 'video')));
 
             $this->line(sprintf(
-                '%sguide "%s": %d screens, %d images, %d videos.',
+                '%sguide "%s": %d topics, %d images, %d videos.',
                 $prefix, $guide['title'], count($guide['screens']), $images, $videos,
             ));
 

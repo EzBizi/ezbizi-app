@@ -187,7 +187,7 @@ class _GuideBuilderState extends State<GuideBuilder> {
       _scope = _scopeLabel(widget.session.me, guide);
       _screens = (guide['screens'] as List? ?? const [])
           .whereType<Map>()
-          .map((s) => {'_localId': _newLocalId(), ...Map<String, dynamic>.from(s)})
+          .map((s) => {'_localId': _newLocalId(), ...Map<String, dynamic>.from(s), 'blocks': _blocksOf(s)})
           .toList();
       _selected = _screens.isEmpty ? null : 0;
       _testEntry = test;
@@ -201,10 +201,12 @@ class _GuideBuilderState extends State<GuideBuilder> {
         ..._screens,
         {
           '_localId': _newLocalId(),
-          'title': 'New screen',
-          'body': '',
-          'media_kind': 'none',
-          'media_url': null,
+          'title': 'New topic',
+          'chapter': null,
+          'section': null,
+          'blocks': [
+            {'_key': _newBlockKey(), 'type': 'text', 'text': ''},
+          ],
         },
       ];
       // Focuses the new screen's editor immediately — no dialog opens; the
@@ -277,13 +279,9 @@ class _GuideBuilderState extends State<GuideBuilder> {
         for (final s in _screens)
           {
             'title': s['title'],
-            'body': s['body'],
-            'media_kind': s['media_kind'],
-            'media_url': s['media_url'],
-            // An image this guide holds itself. Sent back so it survives the
-            // save; the server discards the signed link beside it and mints a
-            // fresh one on every read (GuidesController::normalizeScreens).
-            if (s['media_id'] != null) 'media_id': s['media_id'],
+            'chapter': s['chapter'],
+            'section': s['section'],
+            'blocks': [for (final b in (s['blocks'] as List? ?? const [])) _blockForSave(b as Map<String, dynamic>)],
           },
       ],
     });
@@ -559,7 +557,8 @@ class _ScreenThumbCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final kind = screen['media_kind'] as String? ?? 'none';
+    final types = [for (final b in (screen['blocks'] as List? ?? const [])) (b as Map)['type']];
+    final kind = types.contains('video') ? 'video' : (types.contains('image') ? 'image' : 'none');
     final title = screen['title'] as String? ?? '';
 
     return InkWell(
@@ -625,11 +624,7 @@ class _ScreenThumbCard extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
                     child: Text(
-                      switch (kind) {
-                        'image' => 'Image',
-                        'video' => 'Video',
-                        _ => 'Text only',
-                      },
+                      '${types.length} ${types.length == 1 ? 'block' : 'blocks'}',
                       style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                   ),
@@ -699,7 +694,7 @@ class _AddScreenCard extends StatelessWidget {
           children: [
             Icon(Icons.add, size: 20, color: scheme.onSurfaceVariant),
             const SizedBox(height: 6),
-            Text('Add screen', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Add topic', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           ],
         ),
       ),
@@ -714,7 +709,7 @@ class _NoScreenNote extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Text(
-      'This guide has no screens yet — tap "Add screen" above.',
+      'This guide has no topics yet — tap "Add topic" above.',
       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
     );
   }
@@ -744,9 +739,14 @@ class _NoTestNote extends StatelessWidget {
   }
 }
 
-/// One screen's title, words, and optional media — the mockup's own screen
-/// panel (training-layouts.html, layout 8's left pane), redrawn as editable
-/// fields rather than the static text the mockup draws.
+/// One topic: its title, where it sits (chapter, section), and its content
+/// as ordered blocks — text, pictures, videos, tables — as A1 Tools' topic
+/// editor had it.
+///
+/// Every block carries a client-only `_key` so its editor travels WITH it
+/// through a move or a delete. Without it Flutter reuses a text field by
+/// position, and after a move the next keystroke lands in a different block
+/// (A1 Tools shipped exactly that bug and fixed it the same way).
 class _ScreenEditor extends StatefulWidget {
   const _ScreenEditor({
     super.key,
@@ -764,152 +764,274 @@ class _ScreenEditor extends StatefulWidget {
 }
 
 class _ScreenEditorState extends State<_ScreenEditor> {
-  late TextEditingController _title;
-  late TextEditingController _body;
-  late TextEditingController _mediaUrl;
-  late String _mediaKind;
+  late final _title = TextEditingController(text: widget.screen['title'] as String? ?? '');
+  late final _chapter = TextEditingController(text: widget.screen['chapter'] as String? ?? '');
+  late final _section = TextEditingController(text: widget.screen['section'] as String? ?? '');
 
-  /// True while the screen shows an image the guide holds itself
-  /// (`media_id`), rather than one reached by a link.
-  late bool _heldImage;
-
-  @override
-  void initState() {
-    super.initState();
-    _title = TextEditingController(text: widget.screen['title'] as String? ?? '');
-    _body = TextEditingController(text: widget.screen['body'] as String? ?? '');
-    _heldImage = widget.screen['media_id'] != null;
-    // A held image's `media_url` is a signed link that expires. It is never
-    // put in the field: an author copying it into another guide would get a
-    // picture that works for two hours.
-    _mediaUrl = TextEditingController(text: _heldImage ? '' : widget.screen['media_url'] as String? ?? '');
-    _mediaKind = widget.screen['media_kind'] as String? ?? 'none';
-  }
+  List<Map<String, dynamic>> get _blocks => [
+    for (final b in (widget.screen['blocks'] as List? ?? const [])) b as Map<String, dynamic>,
+  ];
 
   @override
   void dispose() {
     _title.dispose();
-    _body.dispose();
-    _mediaUrl.dispose();
+    _chapter.dispose();
+    _section.dispose();
     super.dispose();
   }
 
-  void _setKind(String kind) {
-    if (kind == _mediaKind) return;
+  void _setBlocks(List<Map<String, dynamic>> blocks) => widget.onChanged({'blocks': blocks});
 
-    setState(() {
-      _mediaKind = kind;
-      _heldImage = false;
-    });
-    widget.onChanged({
-      'media_kind': kind,
-      'media_id': null,
-      if (kind == 'none') 'media_url': null,
-    });
-  }
+  void _add(String type) => _setBlocks([
+    ..._blocks,
+    {
+      '_key': _newBlockKey(),
+      'type': type,
+      if (type == 'table')
+        'rows': [
+          ['Column 1', 'Column 2'],
+        ],
+    },
+  ]);
 
-  /// Swap a held image for a link. Explicit, because it discards a picture
-  /// that exists nowhere else once A1 is gone.
-  void _useALinkInstead() {
-    _mediaUrl.clear();
-    setState(() => _heldImage = false);
-    widget.onChanged({'media_id': null, 'media_url': null});
+  void _patch(int i, Map<String, dynamic> patch) => _setBlocks([
+    for (var j = 0; j < _blocks.length; j++) j == i ? {..._blocks[j], ...patch} : _blocks[j],
+  ]);
+
+  void _move(int i, int by) {
+    final blocks = _blocks;
+    final moved = blocks.removeAt(i);
+    blocks.insert(i + by, moved);
+    _setBlocks(blocks);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final blocks = _blocks;
+
+    InputDecoration field([String? hint]) =>
+        InputDecoration(isDense: true, border: const OutlineInputBorder(), hintText: hint);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Expanded(child: Text('Screen', style: theme.textTheme.titleSmall)),
+            Expanded(child: Text('Topic', style: theme.textTheme.titleSmall)),
             IconButton(
               onPressed: widget.onDelete,
               icon: const Icon(Icons.delete_outline, size: 18),
-              tooltip: 'Delete screen',
+              tooltip: 'Delete topic',
             ),
           ],
         ),
         const SizedBox(height: 8),
         Text('Title', style: theme.textTheme.labelMedium),
         const SizedBox(height: 4),
-        TextField(
-          controller: _title,
-          onChanged: (text) => widget.onChanged({'title': text}),
-          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-        ),
+        TextField(controller: _title, onChanged: (t) => widget.onChanged({'title': t}), decoration: field()),
         const SizedBox(height: 12),
-        Text('Words on the screen', style: theme.textTheme.labelMedium),
-        const SizedBox(height: 4),
-        TextField(
-          controller: _body,
-          onChanged: (text) => widget.onChanged({'body': text}),
-          maxLines: 4,
-          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 12),
-        Text('Picture or video — paste a link', style: theme.textTheme.labelMedium),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 8,
+        Row(
           children: [
-            ChoiceChip(
-              label: const Text('Nothing'),
-              selected: _mediaKind == 'none',
-              onSelected: (_) => _setKind('none'),
+            Expanded(
+              child: TextField(
+                key: const Key('training.topic-chapter'),
+                controller: _chapter,
+                onChanged: (t) => widget.onChanged({'chapter': t.trim().isEmpty ? null : t}),
+                decoration: field('Chapter (optional)'),
+              ),
             ),
-            ChoiceChip(
-              label: const Text('Image'),
-              selected: _mediaKind == 'image',
-              onSelected: (_) => _setKind('image'),
-            ),
-            ChoiceChip(
-              label: const Text('Video'),
-              selected: _mediaKind == 'video',
-              onSelected: (_) => _setKind('video'),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                key: const Key('training.topic-section'),
+                controller: _section,
+                onChanged: (t) => widget.onChanged({'section': t.trim().isEmpty ? null : t}),
+                decoration: field('Section (optional)'),
+              ),
             ),
           ],
         ),
-        if (_heldImage) ...[
-          const SizedBox(height: 9),
-          Row(
-            children: [
-              Icon(Icons.image_outlined, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Stored with this guide',
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-              ),
-              TextButton(
-                key: const Key('training.screen-use-a-link-instead'),
-                onPressed: _useALinkInstead,
-                child: const Text('Use a link instead'),
-              ),
-            ],
-          ),
-        ] else if (_mediaKind != 'none') ...[
-          const SizedBox(height: 9),
-          TextField(
-            controller: _mediaUrl,
-            onChanged: (text) => widget.onChanged({'media_url': text}),
-            decoration: InputDecoration(
-              isDense: true,
-              border: const OutlineInputBorder(),
-              hintText: 'https://…',
-              helperStyle: TextStyle(color: scheme.onSurfaceVariant),
+        const SizedBox(height: 4),
+        Text(
+          'Topics next to each other with the same chapter and section are grouped together.',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(child: Text('Content', style: theme.textTheme.titleSmall)),
+            PopupMenuButton<String>(
+              key: const Key('training.add-block'),
+              onSelected: _add,
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'text', child: Text('Text')),
+                PopupMenuItem(value: 'image', child: Text('Image link')),
+                PopupMenuItem(value: 'video', child: Text('Video link')),
+                PopupMenuItem(value: 'table', child: Text('Table')),
+              ],
+              child: const Chip(avatar: Icon(Icons.add, size: 18), label: Text('Add block')),
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (blocks.isEmpty) Text('No content yet — add a block.', style: theme.textTheme.bodyMedium),
+        for (final (i, block) in blocks.indexed)
+          _BlockEditor(
+            key: ValueKey('training.block-${block['_key']}'),
+            block: block,
+            onChanged: (patch) => _patch(i, patch),
+            onUp: i > 0 ? () => _move(i, -1) : null,
+            onDown: i < blocks.length - 1 ? () => _move(i, 1) : null,
+            onDelete: () => _setBlocks([...blocks]..removeAt(i)),
           ),
-        ],
       ],
     );
   }
 }
+
+class _BlockEditor extends StatefulWidget {
+  const _BlockEditor({
+    super.key,
+    required this.block,
+    required this.onChanged,
+    required this.onUp,
+    required this.onDown,
+    required this.onDelete,
+  });
+
+  final Map<String, dynamic> block;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+  final VoidCallback? onUp;
+  final VoidCallback? onDown;
+  final VoidCallback onDelete;
+
+  @override
+  State<_BlockEditor> createState() => _BlockEditorState();
+}
+
+class _BlockEditorState extends State<_BlockEditor> {
+  late final _text = TextEditingController(text: _initial());
+
+  String get _type => widget.block['type'] as String? ?? 'text';
+
+  bool get _held => _type == 'image' && widget.block['media_id'] != null;
+
+  String _initial() => switch (widget.block['type']) {
+    'text' => widget.block['text'] as String? ?? '',
+    // A held image's `url` is a signed link that expires: never put in a
+    // field an author could copy it from.
+    'image' => widget.block['media_id'] != null ? '' : widget.block['url'] as String? ?? '',
+    'video' => widget.block['url'] as String? ?? '',
+    'table' => [for (final r in (widget.block['rows'] as List? ?? const [])) (r as List).join(' | ')].join('\n'),
+    _ => '',
+  };
+
+  void _changed(String t) => widget.onChanged(switch (_type) {
+    'text' => {'text': t},
+    'table' => {
+      'rows': [
+        for (final line in t.split('\n'))
+          if (line.trim().isNotEmpty) [for (final c in line.split('|')) c.trim()],
+      ],
+    },
+    _ => {'url': t},
+  });
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final long = _type == 'text' || _type == 'table';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(10, 4, 4, 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(switch (_type) {
+                'image' => Icons.image_outlined,
+                'video' => Icons.play_circle_outline,
+                'table' => Icons.table_chart_outlined,
+                _ => Icons.notes_outlined,
+              }, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(switch (_type) {
+                  'image' => 'Image',
+                  'video' => 'Video',
+                  'table' => 'Table',
+                  _ => 'Text',
+                }, style: theme.textTheme.labelMedium),
+              ),
+              IconButton(onPressed: widget.onUp, icon: const Icon(Icons.arrow_upward, size: 16), tooltip: 'Move up'),
+              IconButton(onPressed: widget.onDown, icon: const Icon(Icons.arrow_downward, size: 16), tooltip: 'Move down'),
+              IconButton(onPressed: widget.onDelete, icon: const Icon(Icons.close, size: 16), tooltip: 'Remove block'),
+            ],
+          ),
+          if (_held)
+            Row(
+              children: [
+                Icon(Icons.image_outlined, size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text(
+                  'Stored with this guide',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
+            )
+          else
+            TextField(
+              controller: _text,
+              onChanged: _changed,
+              minLines: long ? 3 : 1,
+              maxLines: long ? 12 : 1,
+              decoration: InputDecoration(
+                isDense: true,
+                border: const OutlineInputBorder(),
+                hintText: switch (_type) {
+                  'image' || 'video' => 'https://…',
+                  'table' => 'One row per line, cells separated by |. The first row is the header.',
+                  _ => null,
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+var _blockSeq = 0;
+
+String _newBlockKey() => 'b${_blockSeq++}';
+
+/// A topic's blocks as the editor holds them, each with its `_key`. The
+/// server sends every topic as blocks, whatever shape it was stored in.
+List<Map<String, dynamic>> _blocksOf(Map s) => [
+  for (final b in (s['blocks'] as List? ?? const []))
+    if (b is Map) {'_key': _newBlockKey(), ...Map<String, dynamic>.from(b)},
+];
+
+/// What is sent: never the editor's `_key`, never `embed_url`, and for an
+/// image the guide holds, its id and not the signed link it was read with.
+Map<String, dynamic> _blockForSave(Map<String, dynamic> b) => {
+  for (final e in b.entries)
+    if (e.key != '_key' && e.key != 'embed_url' && !(e.key == 'url' && b['media_id'] != null)) e.key: e.value,
+};
 
 List<Map<String, dynamic>> _mapList(dynamic raw) {
   if (raw is! List) return const [];

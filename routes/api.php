@@ -145,6 +145,7 @@ use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardCo
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\MediaController as TrainingMediaController;
+use App\Http\Controllers\Api\Training\VideoController as TrainingVideoController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
 use App\Http\Controllers\Api\TwoFactorController;
@@ -384,6 +385,10 @@ Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'da
 | read that guide. Throttled loosely enough that paging through a long guide,
 | which loads an image per screen, is never refused.
 */
+Route::get('v1/training/video/{platform}/{id}', [TrainingVideoController::class, 'show'])
+    ->middleware('throttle:300,1')
+    ->where(['platform' => 'vimeo|youtube', 'id' => '[A-Za-z0-9_-]{5,20}'])
+    ->name('training.video');
 Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show'])
     ->middleware(['signed', 'throttle:300,1'])
     ->whereUuid('media')

@@ -10,145 +10,101 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// The guide player and the test player — layout 4
-/// (`docs/previews/training-layouts.html`): a screen rail beside the reader,
-/// the guide's own test as the last rail item, gated until every screen has
-/// been seen. Below `GuidePlayer.splitAbove` (600, the same constant
-/// `InventoryScreen` uses) the rail is gone and the reader is the whole
-/// body.
+/// The guide reader — laid out and locked as A1 Tools' study guide was: a
+/// progress card and a chapter › section › topic outline beside the topic,
+/// topics unlocking one at a time as each is completed.
 void main() {
-  // ── §3/§4: below 600px the rail collapses ──────────────────────────
+  // ── The outline ──────────────────────────────────────────────────────
 
-  testWidgets('below 600px the rail is gone and the reader is the whole body', (
-    tester,
-  ) async {
-    await _pumpGuide(
-      tester,
-      guide: _guide(lastScreen: 2),
-      size: const Size(375, 800),
-    );
+  testWidgets('wide: the progress card counts completed topics and the outline groups them', (tester) async {
+    await _pumpGuide(tester, guide: _guide(lastScreen: 2));
+
+    expect(find.byKey(const Key('training.screen-rail')), findsOneWidget);
+    expect(find.text('3 / 8 topics completed'), findsOneWidget);
+    expect(find.text('38%'), findsOneWidget);
+    // Chapter and section from the topics themselves.
+    final rail = find.byKey(const Key('training.screen-rail'));
+    expect(find.descendant(of: rail, matching: find.text('Before you climb')), findsOneWidget);
+    expect(find.descendant(of: rail, matching: find.text('On the roof')), findsOneWidget);
+    expect(find.descendant(of: rail, matching: find.text('The ladder')), findsOneWidget);
+  });
+
+  testWidgets('topics after the next one are locked, and a locked one cannot be opened', (tester) async {
+    await _pumpGuide(tester, guide: _guide(lastScreen: 2));
+
+    // Resumes at the first topic not yet completed.
+    expect(find.text('Tying off at the top'), findsWidgets);
+
+    ListTile row(int i) => tester.widget<ListTile>(find.byKey(ValueKey('training.topic-row-$i')));
+    expect(row(2).enabled, isTrue, reason: 'Completed.');
+    expect(row(3).enabled, isTrue, reason: 'The next one is open.');
+    expect(row(4).enabled, isFalse, reason: 'Two ahead is locked.');
+  });
+
+  testWidgets('Complete & Continue records the topic, then opens the next', (tester) async {
+    await _pumpGuide(tester, guide: _guide());
+
+    expect(find.text('0 / 8 topics completed'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('training.complete-topic')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 8 topics completed'), findsOneWidget);
+    expect(find.byKey(const ValueKey('training.topic-1')), findsOneWidget, reason: 'Moved on to the next topic.');
+  });
+
+  testWidgets('a completed topic offers Next Topic, and the last one says All done', (tester) async {
+    await _pumpGuide(tester, guide: _guide(lastScreen: 7, completedAt: '2026-08-01T00:00:00Z'));
+
+    // Finished: resumes on the last topic.
+    expect(find.byKey(const Key('training.all-done')), findsOneWidget);
+    expect(find.byKey(const Key('training.complete-topic')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('training.nav-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('training.nav-next')), findsOneWidget);
+  });
+
+  testWidgets('a topic draws its breadcrumb and every block in order', (tester) async {
+    await _pumpGuide(tester, guide: _guide());
+
+    expect(find.text('Before you climb › The ladder'), findsOneWidget);
+    expect(find.text('Body for Why this guide exists.'), findsOneWidget);
+    expect(find.text('Second paragraph.'), findsOneWidget);
+    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.byKey(const Key('training.play-video')), findsOneWidget);
+  });
+
+  testWidgets('below 600px the outline and the topic are shown one at a time', (tester) async {
+    await _pumpGuide(tester, guide: _guide(lastScreen: 2), size: const Size(375, 800));
 
     expect(find.byKey(const Key('training.screen-rail')), findsNothing);
+    expect(find.text('3 / 8 topics completed'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('training.toggle-outline')));
+    await tester.pumpAndSettle();
+    expect(find.text('3 / 8 topics completed'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('training.topic-row-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('3 / 8 topics completed'), findsNothing);
     expect(find.text('The four-to-one rule'), findsOneWidget);
   });
 
-  // ── The header pill and the navbar both follow the same breakpoint
-  //    (task-13 review minors) ─────────────────────────────────────────
+  // ── The guide's test ────────────────────────────────────────────────
 
-  testWidgets(
-    'wide: the header reads "X of Y seen" and Back/Next sit adjacent, '
-    'not pushed to opposite ends',
-    (tester) async {
-      await _pumpGuide(tester, guide: _guide(lastScreen: 2));
+  testWidgets('a test that requires the guide stays locked until every topic is complete', (tester) async {
+    await _pumpGuide(tester, guide: _guide(), test: _testEntry(guideId: 'g1', requiresGuide: true));
 
-      expect(find.text('3 of 8 seen'), findsOneWidget);
-      expect(find.text('3 / 8'), findsNothing);
-      expect(find.text('◀ Back'), findsOneWidget);
-    },
-  );
+    expect(find.text('Unlocks when every topic is complete'), findsOneWidget);
+    expect(tester.widget<ListTile>(find.byKey(const Key('training.start-test'))).onTap, isNull);
+  });
 
-  testWidgets(
-    'narrow: the header reads "X / Y" and the navbar shows the short Back '
-    'label with progress dots between Back and Next',
-    (tester) async {
-      await _pumpGuide(
-        tester,
-        guide: _guide(lastScreen: 2),
-        size: const Size(375, 800),
-      );
+  testWidgets('a test that does not require the guide is open from the start, as in A1 Tools', (tester) async {
+    await _pumpGuide(tester, guide: _guide(), test: _testEntry(guideId: 'g1'));
 
-      expect(find.text('3 / 8'), findsOneWidget);
-      expect(find.text('3 of 8 seen'), findsNothing);
-      expect(find.text('◀ Back'), findsNothing);
-      expect(find.text('◀'), findsOneWidget);
-      expect(find.text('Next ▶'), findsOneWidget);
-    },
-  );
-
-  // The reviewer's one "cannot verify": the rail is the only place layout 4
-  // draws the guide's own test, and it is gone below 600px — `_TestEntry` is
-  // appended a second place (under the reader) so the test stays reachable.
-  // Reachable, gated the SAME way as the wide rail, and drawn exactly once
-  // — never both the (absent) rail's copy and the reader's own.
-  testWidgets(
-    "below 600px the guide's own test stays reachable, gated the same way, "
-    'and is not doubled',
-    (tester) async {
-      await _pumpGuide(
-        tester,
-        guide: _guide(lastScreen: 2),
-        test: _testEntry(guideId: 'g1', requiresGuide: true),
-        size: const Size(375, 800),
-      );
-
-      expect(find.byKey(const Key('training.screen-rail')), findsNothing);
-      expect(find.byKey(const Key('training.start-test')), findsOneWidget);
-      expect(find.text('Unlocks when all 8 are seen'), findsOneWidget);
-
-      final row = tester.widget<InkWell>(
-        find.byKey(const Key('training.start-test')),
-      );
-      expect(row.onTap, isNull);
-    },
-  );
-
-  // ── §4: a control that is offered must be a control that works ─────
-
-  testWidgets(
-    'a gated test says so instead of offering a control that would refuse',
-    (tester) async {
-      await _pumpGuide(
-        tester,
-        guide: _guide(),
-        test: _testEntry(guideId: 'g1', requiresGuide: true),
-      );
-
-      expect(find.text('Unlocks when all 8 are seen'), findsOneWidget);
-      final row = tester.widget<InkWell>(
-        find.byKey(const Key('training.start-test')),
-      );
-      expect(row.onTap, isNull);
-    },
-  );
-
-  // ── `last_screen` is a high-water mark, never a cursor ──────────────
-
-  testWidgets(
-    'marking an earlier screen seen does not un-finish an already-finished guide',
-    (tester) async {
-      await _pumpGuide(
-        tester,
-        guide: _guide(lastScreen: 7, completedAt: '2026-08-01T00:00:00Z'),
-        test: _testEntry(guideId: 'g1', requiresGuide: true),
-      );
-
-      // Starts unlocked: the guide was already finished before the player
-      // opened.
-      var row = tester.widget<InkWell>(
-        find.byKey(const Key('training.start-test')),
-      );
-      expect(row.onTap, isNotNull);
-
-      // Page back to an earlier screen — this POSTs `seen` for a screen
-      // index BELOW the stored high-water mark. The fake server mirrors
-      // ProgressController::seen's own max(): last_screen and completed_at
-      // both stay exactly what they already were.
-      await tester.tap(find.byKey(const Key('training.nav-back')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unlocks when all 8 are seen'), findsNothing);
-      row = tester.widget<InkWell>(
-        find.byKey(const Key('training.start-test')),
-      );
-      expect(
-        row.onTap,
-        isNotNull,
-        reason: 'Re-reading an earlier screen of a finished guide must not '
-            'take the completion away (ProgressController::seen: a '
-            'high-water mark, never a cursor).',
-      );
-    },
-  );
+    expect(find.text('Ready — tap to begin'), findsOneWidget);
+    expect(tester.widget<ListTile>(find.byKey(const Key('training.start-test'))).onTap, isNotNull);
+  });
 
   // ── Submitting an attempt ────────────────────────────────────────────
 
@@ -416,8 +372,26 @@ Map<String, dynamic> _guide({int? lastScreen, String? completedAt}) => {
   'franchise_id': null,
   'screen_count': _screenTitles.length,
   'screens': [
-    for (final title in _screenTitles)
-      {'title': title, 'body': 'Body for $title.', 'media_kind': 'none', 'media_url': null},
+    for (final (i, title) in _screenTitles.indexed)
+      {
+        'title': title,
+        'chapter': i < 5 ? 'Before you climb' : 'On the roof',
+        'section': i < 2 ? 'The ladder' : null,
+        'blocks': [
+          {'type': 'text', 'text': 'Body for $title.'},
+          if (i == 0) ...[
+            {'type': 'text', 'text': 'Second paragraph.'},
+            {
+              'type': 'table',
+              'rows': [
+                ['Level', 'When'],
+                ['1', 'Annually'],
+              ],
+            },
+            {'type': 'video', 'url': 'https://vimeo.com/123456', 'embed_url': 'https://api.test/api/v1/training/video/vimeo/123456'},
+          ],
+        ],
+      },
   ],
   'last_screen': lastScreen,
   'completed_at': completedAt,
@@ -577,6 +551,12 @@ MockClientHandler _handler({
       final screenCount = (guide['screen_count'] as num).toInt();
 
       final currentLast = guide['last_screen'] as int? ?? -1;
+
+      // ProgressController's lock: nothing past the next topic.
+      if (requested > currentLast + 1) {
+        return _json({'message': 'This topic is locked. Complete the topics before it first.'}, 422);
+      }
+
       final newLast = requested > currentLast ? requested : currentLast;
       guide['last_screen'] = newLast;
 

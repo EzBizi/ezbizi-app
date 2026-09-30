@@ -5,6 +5,8 @@ import 'package:web/web.dart' as web;
 
 int _seq = 0;
 
+bool get videoEmbedSupported => true;
+
 Widget buildVideoEmbed(String url) => _VideoIframe(url: url);
 
 /// A guide screen's video, inline — a DOM `<iframe>` pointed at the URL an
@@ -57,6 +59,7 @@ class _VideoIframeState extends State<_VideoIframe> {
         ..setProperty('height', '100%');
       iframe.setAttribute('referrerpolicy', 'no-referrer');
       iframe.setAttribute('allowfullscreen', 'true');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
       iframe.setAttribute(
         'sandbox',
         'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox',

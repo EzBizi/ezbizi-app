@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
-use App\Models\TrainingMedia;
 use App\Models\TrainingTest;
 use App\Support\Audit\AuditLogger;
 use App\Support\Inventory\InventoryVisibility;
@@ -14,11 +13,13 @@ use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Training\GuidePlaceReach;
+use App\Support\Training\GuideScreens;
 use App\Support\Training\TrainingMediaLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -50,7 +51,7 @@ class GuidesController extends Controller
      * Two different answers for two different ids is an existence oracle — it
      * tells a caller which ids are real somewhere else on the platform.
      */
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
@@ -98,7 +99,7 @@ class GuidesController extends Controller
         $input = $request->validate($this->rules());
 
         if (array_key_exists('screens', $input)) {
-            $input['screens'] = $this->normalizeScreens($input['screens'], null);
+            $input['screens'] = GuideScreens::normalize($input['screens'], null);
         }
 
         $company = isset($input['company_id'])
@@ -153,7 +154,7 @@ class GuidesController extends Controller
         $input = $request->validate($this->rules(updating: true));
 
         if (array_key_exists('screens', $input)) {
-            $input['screens'] = $this->normalizeScreens($input['screens'], $guide);
+            $input['screens'] = GuideScreens::normalize($input['screens'], $guide);
         }
 
         if (array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input)) {
@@ -241,7 +242,7 @@ class GuidesController extends Controller
         $names = $stranded->pluck('title')->implode(', ');
 
         throw ValidationException::withMessages([
-            $field => "Moving this guide would leave the following test(s) pointing at a guide some "
+            $field => 'Moving this guide would leave the following test(s) pointing at a guide some '
                 ."of their own takers could no longer reach: {$names}. Move those tests first, or "
                 .'leave this guide where it is.',
         ]);
@@ -278,108 +279,10 @@ class GuidesController extends Controller
             'title' => [$required, 'string', 'max:191'],
             'summary' => ['sometimes', 'nullable', 'string', 'max:500'],
             'status' => ['sometimes', 'string', Rule::in([TrainingGuide::DRAFT, TrainingGuide::PUBLISHED])],
-            'screens' => ['sometimes', 'array', 'max:200'],
-            'screens.*.title' => ['required', 'string', 'max:200'],
-            'screens.*.body' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'screens.*.media_kind' => ['sometimes', 'string', Rule::in(['none', 'image', 'video'])],
-            // An image the guide holds itself (TrainingMedia). Ownership by THIS
-            // guide is checked in [normalizeScreens], which is where the guide
-            // is known.
-            'screens.*.media_id' => ['sometimes', 'nullable', 'uuid'],
-            // A bad scheme is refused HERE, at authoring time, rather than
-            // merely defended against on every read — see [normalizeScreens]'s
-            // own docblock and the client's `isHttpUrl` (guide_player.dart),
-            // which does the identical check as a second, independent gate.
-            'screens.*.media_url' => [
-                'sometimes',
-                'nullable',
-                'string',
-                'max:2000',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    if ($value === null || $value === '') {
-                        return;
-                    }
-
-                    // PHP's parse_url() does not lowercase the scheme it
-                    // returns, so an otherwise-legitimate `HTTPS://…` URL was
-                    // refused here while Dart's `Uri` (which DOES lowercase)
-                    // accepted the identical string client-side — task-13
-                    // review's carry. `strtolower` closes that gap; see
-                    // `test_an_uppercase_https_media_url_is_accepted_on_create`.
-                    $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
-
-                    if (! in_array($scheme, ['http', 'https'], true)) {
-                        $fail('The media link must be a plain http or https URL.');
-                    }
-                },
-            ],
+            ...GuideScreens::rules(),
             'company_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
         ];
-    }
-
-    /**
-     * Rebuilds each screen from its known keys only — `title`, `body`,
-     * `media_kind`, `media_url`, `media_id` — the same reason
-     * `TestsController::normalizeQuestions` rebuilds a question: a wildcard
-     * rule (`screens.*.media_url` and its siblings, above) validates the
-     * keys it names, it does not strip the ones it doesn't, so an extra key
-     * on a screen object can otherwise ride `$request->validate()` straight
-     * into stored JSON forever.
-     *
-     * The scheme check on `media_url` lives in [rules] rather than here —
-     * it must REFUSE a bad value with a 422, not silently drop it, so a
-     * caller finds out immediately rather than having their video quietly
-     * vanish.
-     *
-     * ── `media_id`: an image the guide holds itself ──────────────
-     *
-     * A screen showing a TrainingMedia image carries `media_id` and stores a
-     * NULL `media_url`, whatever the client sent in it. The client sends back
-     * the signed link it was handed on read (TrainingMediaLinks), and storing
-     * that would pin the screen to a URL that expires in two hours — a broken
-     * image, the next day, on a guide nobody touched. The link is minted on
-     * every read instead.
-     *
-     * The id must belong to THIS guide, and is REFUSED otherwise rather than
-     * dropped, for the same reason as the scheme check: a screen quietly losing
-     * its picture is worse than a sentence saying why. A new guide owns no
-     * media yet, so on create any `media_id` is refused.
-     *
-     * @param  array<int, array<string, mixed>>  $screens
-     * @return array<int, array<string, mixed>>
-     */
-    private function normalizeScreens(array $screens, ?TrainingGuide $guide): array
-    {
-        $referenced = array_values(array_filter(array_map(
-            fn (array $screen) => $screen['media_id'] ?? null,
-            $screens,
-        )));
-
-        if ($referenced !== []) {
-            $owned = $guide === null ? collect() : TrainingMedia::query()
-                ->where('guide_id', $guide->getKey())
-                ->whereIn('id', $referenced)
-                ->pluck('id');
-
-            if (count(array_diff($referenced, $owned->all())) > 0) {
-                throw ValidationException::withMessages([
-                    'screens' => 'A screen points at an image that does not belong to this guide.',
-                ]);
-            }
-        }
-
-        return array_map(function (array $screen) {
-            $mediaId = $screen['media_id'] ?? null;
-
-            return [
-                'title' => $screen['title'] ?? '',
-                'body' => $screen['body'] ?? '',
-                'media_kind' => $mediaId !== null ? 'image' : ($screen['media_kind'] ?? 'none'),
-                'media_url' => $mediaId !== null ? null : ($screen['media_url'] ?? null),
-                'media_id' => $mediaId,
-            ];
-        }, $screens);
     }
 
     /** @return array<string, mixed> */

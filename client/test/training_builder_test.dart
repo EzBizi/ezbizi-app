@@ -207,10 +207,15 @@ void main() {
     'screens': [
       {
         'title': 'Level 2',
-        'body': 'Look up the flue.',
-        'media_kind': 'image',
-        'media_id': 'm-1',
-        'media_url': 'https://app.example/api/v1/training/media/m-1?expires=9&signature=abc',
+        'blocks': [
+          {
+            'type': 'image',
+            'media_id': 'm-1',
+            'url': 'https://app.example/api/v1/training/media/m-1?expires=9&signature=abc',
+          },
+          {'type': 'text', 'text': 'Look up the flue.'},
+          {'type': 'text', 'text': 'Then the crown.'},
+        ],
       },
     ],
     'screen_count': 1,
@@ -249,7 +254,11 @@ void main() {
     final sent = await saveAndCapture(tester, () async {});
 
     final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
-    expect(screen['media_id'], 'm-1', reason: 'Dropping this loses the picture on the first save.');
+    expect(
+      (screen['blocks'] as List).first,
+      {'type': 'image', 'media_id': 'm-1'},
+      reason: 'The id keeps the picture; the signed link beside it expires and is never sent back.',
+    );
   });
 
   testWidgets('a held image reads as stored with the guide, not as an editable link', (tester) async {
@@ -263,24 +272,29 @@ void main() {
     expect(find.textContaining('signature='), findsNothing);
   });
 
-  testWidgets('tapping the Image chip that is already selected keeps the held image', (tester) async {
+  // A1 Tools shipped this bug: blocks without their own keys, so after a
+  // move Flutter kept each text field in its old SLOT and the next keystroke
+  // wrote into a different block. Each block editor travels with its block.
+  testWidgets('moving a block keeps each editor on its own text, and the save sends the new order', (tester) async {
     final sent = await saveAndCapture(tester, () async {
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Image'));
+      await tester.tap(find.byTooltip('Move down').at(1));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Look up the flue.'), 'Look up the flue, first.');
       await tester.pumpAndSettle();
     });
 
-    final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
-    expect(screen['media_id'], 'm-1', reason: 'Re-selecting the same kind is not a replacement.');
+    final blocks = ((sent!['screens'] as List).single as Map<String, dynamic>)['blocks'] as List;
+    expect([for (final b in blocks) (b as Map)['text']], [null, 'Then the crown.', 'Look up the flue, first.']);
   });
 
-  testWidgets('choosing a link instead lets go of the held image', (tester) async {
+  testWidgets('removing the held image drops it from the save', (tester) async {
     final sent = await saveAndCapture(tester, () async {
-      await tester.tap(find.byKey(const Key('training.screen-use-a-link-instead')));
+      await tester.tap(find.byTooltip('Remove block').first);
       await tester.pumpAndSettle();
     });
 
-    final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
-    expect(screen.containsKey('media_id'), isFalse);
+    final blocks = ((sent!['screens'] as List).single as Map<String, dynamic>)['blocks'] as List;
+    expect([for (final b in blocks) (b as Map)['type']], ['text', 'text']);
     expect(find.text('Stored with this guide'), findsNothing);
   });
 
@@ -289,7 +303,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('training.screen-card-0')), findsNothing);
 
-    await tester.tap(find.text('Add screen'));
+    await tester.tap(find.text('Add topic'));
     await tester.pumpAndSettle();
 
     expect(find.byType(Dialog), findsNothing);
@@ -869,7 +883,7 @@ void main() {
       // Delete it from the screen editor's own delete button. `_removeScreen`
       // deliberately leaves `_selected` at index 1 — CHARLIE slides into
       // that slot, and the editor must show ITS body, never BRAVO's.
-      await tester.tap(find.byTooltip('Delete screen'));
+      await tester.tap(find.byTooltip('Delete topic'));
       await tester.pumpAndSettle();
 
       expect(find.text('Body for SCREEN-BRAVO.'), findsNothing);
@@ -1363,9 +1377,10 @@ void main() {
 
 Map<String, dynamic> _screen(String title, {String kind = 'none', String? url}) => {
   'title': title,
-  'body': 'Body for $title.',
-  'media_kind': kind,
-  'media_url': url,
+  'blocks': [
+    {'type': 'text', 'text': 'Body for $title.'},
+    if (url != null) {'type': kind, 'url': url},
+  ],
 };
 
 /// `GuidesController::present`'s own shape.
