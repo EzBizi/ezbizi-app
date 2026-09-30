@@ -14,6 +14,7 @@ class VersionHistory {
         'Leads: a reply sent outside EzBizi, from A1 Tools or Google directly, now shows as a red bubble in the conversation.',
         'Onboarding: a new starter now sees Your paperwork and reaches their onboarding form; it did not appear before.',
         'Human Resources, Records: a missing emergency contact, pay rate or work schedule shows amber and counts toward what is missing; pay counts only for people allowed to see pay.',
+        'Leads: call a customer straight from the lead, and put a ready reply in the box with one tap; the replies are set in Settings > Leads.',
       ],
     ),
     VersionRelease(
