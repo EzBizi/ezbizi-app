@@ -420,8 +420,8 @@ class _LeadThreadState extends State<LeadThread> {
       _lead['job'] == null &&
       !_loading;
 
-  /// Desktop: the app's own side panel, so Escape, focus return and the
-  /// safe-area fix come free. Phone: a pushed screen with a back bar.
+  /// The app's own side panel at every width - on a phone it fills the
+  /// window - never a pushed full screen (Jose's containment rule).
   Future<void> _openBooking() async {
     final panel = BookLeadPanel(
       api: widget.api,
@@ -437,21 +437,6 @@ class _LeadThreadState extends State<LeadThread> {
         });
       },
     );
-
-    if (MediaQuery.sizeOf(context).width < 600) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Book this lead')),
-            body: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: panel,
-            ),
-          ),
-        ),
-      );
-      return;
-    }
 
     await showSidePanel<void>(
       context,
@@ -469,13 +454,6 @@ class _LeadThreadState extends State<LeadThread> {
       session: widget.session!,
       id: id,
     );
-
-    if (MediaQuery.sizeOf(context).width < 600) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => panel));
-      return;
-    }
 
     await showSidePanel<void>(context, builder: (_) => panel);
   }
@@ -831,13 +809,6 @@ class _LeadThreadState extends State<LeadThread> {
       session: widget.session!,
       id: id,
     );
-
-    if (MediaQuery.sizeOf(context).width < 600) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => panel));
-      return;
-    }
 
     await showSidePanel<void>(context, builder: (_) => panel);
   }
@@ -1381,18 +1352,6 @@ class _LeadThreadState extends State<LeadThread> {
       visible: true,
       initialZip: zip,
     );
-
-    if (MediaQuery.sizeOf(context).width < 600) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Availability')),
-            body: pane,
-          ),
-        ),
-      );
-      return;
-    }
 
     await showSidePanel<void>(
       context,
