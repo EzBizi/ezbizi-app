@@ -26,7 +26,7 @@ return new class extends Migration
             $table->foreignUuid('organization_id')->constrained()->cascadeOnDelete();
             $table->string('source', 32);      // 'a1-tools'
             $table->string('kind', 32);        // guide, test, attempt, progress, media
-            $table->string('source_id', 64);   // A1's id, as text
+            $table->string('source_id', 128);  // A1's id as text; media is <guide>:<sha256>
             $table->uuid('target_id');         // the EzBizi row it became
             $table->timestamps();
 
