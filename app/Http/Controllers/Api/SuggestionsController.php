@@ -3,8 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Suggestion;
+use App\Support\Files\FileStore;
+use App\Support\Files\UploadLimits;
+use App\Support\Modules\ModuleRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * The author's half of Suggestions.
@@ -27,6 +34,11 @@ use Illuminate\Http\Request;
  */
 class SuggestionsController extends Controller
 {
+    public function __construct(
+        private readonly FileStore $store,
+        private readonly UploadLimits $limits,
+    ) {}
+
     /** GET /api/v1/suggestions — your own, newest first. */
     public function index(Request $request): JsonResponse
     {
@@ -43,8 +55,27 @@ class SuggestionsController extends Controller
     /** POST /api/v1/suggestions */
     public function store(Request $request): JsonResponse
     {
+        foreach (array_keys($request->file('files') ?? []) as $i) {
+            $this->limits->assertUploadArrived($request, "files.$i");
+        }
+
         $input = $request->validate([
             'body' => ['required', 'string', 'max:2000'],
+            'module' => $this->moduleRule(),
+            'files' => ['nullable', 'array', 'max:'.Suggestion::MAX_FILES],
+            'files.*' => [
+                'file',
+                'extensions:'.implode(',', Suggestion::FILE_EXTENSIONS),
+                // `extensions` checks the name, `mimes` the detected CONTENT, so
+                // a page renamed to .md is refused as html.
+                'mimes:'.implode(',', Suggestion::FILE_EXTENSIONS),
+                'max:'.$this->limits->maxKilobytes(),
+            ],
+        ], [
+            'files.max' => 'Attach at most '.Suggestion::MAX_FILES.' files.',
+            'files.*.max' => $this->limits->tooLargeMessage(),
+            'files.*.extensions' => 'Attach a picture, a PDF, or a .md or .txt file.',
+            'files.*.mimes' => 'Attach a picture, a PDF, or a .md or .txt file.',
         ]);
 
         $body = trim($input['body']);
@@ -56,11 +87,21 @@ class SuggestionsController extends Controller
             ], 422);
         }
 
-        $row = Suggestion::create([
-            'user_id' => $request->user()->getKey(),
-            'body' => $body,
-            'status' => Suggestion::STATUS_NEW,
-        ]);
+        $files = array_map(fn (UploadedFile $file) => $this->keep($request, $file), $input['files'] ?? []);
+
+        try {
+            $row = Suggestion::create([
+                'user_id' => $request->user()->getKey(),
+                'body' => $body,
+                'module' => $input['module'] ?? null,
+                'files' => $files ?: null,
+                'status' => Suggestion::STATUS_NEW,
+            ]);
+        } catch (Throwable $e) {
+            $this->forget($files);
+
+            throw $e;
+        }
 
         return response()->json(['data' => $this->row($row)], 201);
     }
@@ -70,6 +111,7 @@ class SuggestionsController extends Controller
     {
         $input = $request->validate([
             'body' => ['required', 'string', 'max:2000'],
+            'module' => ['sometimes', ...$this->moduleRule()],
         ]);
 
         $row = $this->mine($request, $id);
@@ -92,6 +134,9 @@ class SuggestionsController extends Controller
         }
 
         $row->body = $body;
+        if (array_key_exists('module', $input)) {
+            $row->module = $input['module'];
+        }
         $row->save();
 
         return response()->json(['data' => $this->row($row)]);
@@ -110,9 +155,74 @@ class SuggestionsController extends Controller
             return $this->frozen($row);
         }
 
+        $files = $row->files ?? [];
         $row->delete();
+        $this->forget($files);
 
         return response()->json([], 204);
+    }
+
+    /** GET /api/v1/suggestions/{suggestion}/files/{index} — one of your own attachments. */
+    public function file(Request $request, string $id, int $index): StreamedResponse
+    {
+        $row = $this->mine($request, $id);
+
+        abort_if($row === null, 404);
+
+        return self::serve($this->store, $row, $index);
+    }
+
+    /**
+     * The bytes of one attachment. Shared with the staff queue, which reaches
+     * the row by its own unscoped query.
+     */
+    public static function serve(FileStore $store, Suggestion $row, int $index): StreamedResponse
+    {
+        $file = ($row->files ?? [])[$index] ?? null;
+
+        abort_if($file === null, 404);
+
+        return $store->serve($file['path'], $file['disk'], $file['mime'], $file['name'], disposition: 'attachment');
+    }
+
+    /** A module key the registry knows, `settings`, or null for "something new". */
+    private function moduleRule(): array
+    {
+        return ['nullable', 'string', Rule::in([
+            ...array_keys(app(ModuleRegistry::class)->all()),
+            Suggestion::MODULE_SETTINGS,
+        ])];
+    }
+
+    /**
+     * Stored straight through FileStore, not AttachmentUploader: that one
+     * writes an organization audit row, which is exactly what this module
+     * keeps from the organization. See Suggestion's docblock.
+     *
+     * @return array{name: string, mime: string, size: int, disk: string, path: string}
+     */
+    private function keep(Request $request, UploadedFile $file): array
+    {
+        $disk = $this->store->defaultDisk();
+
+        return [
+            'name' => mb_substr((string) $file->getClientOriginalName(), 0, 255),
+            'mime' => $file->getMimeType() ?: 'application/octet-stream',
+            'size' => (int) $file->getSize(),
+            'disk' => $disk,
+            'path' => $this->store->put(
+                $file,
+                $this->store->directoryFor('suggestions', $request->user()->organization_id),
+                $disk,
+            ),
+        ];
+    }
+
+    private function forget(array $files): void
+    {
+        foreach ($files as $file) {
+            $this->store->delete($file['path'] ?? null, $file['disk'] ?? null);
+        }
     }
 
     /**
@@ -156,6 +266,9 @@ class SuggestionsController extends Controller
         return [
             'id' => $row->id,
             'body' => $row->body,
+            'module' => $row->module,
+            'module_label' => $row->moduleLabel(),
+            'files' => $row->presentFiles(),
             'status' => $row->status,
             'decision_note' => $row->decision_note,
             'decided_at' => $row->decided_at?->toIso8601String(),

@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Notification;
 use App\Models\Suggestion;
+use App\Support\Files\FileStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The Development-side queue: what everybody has asked for, and answering it.
@@ -44,6 +46,16 @@ class StaffSuggestionsController extends Controller
             ->all();
 
         return response()->json(['data' => $rows]);
+    }
+
+    /** GET /api/v1/staff/suggestions/{suggestion}/files/{index} */
+    public function file(FileStore $store, string $id, int $index): StreamedResponse
+    {
+        $row = Suggestion::query()->withoutGlobalScopes()->find($id);
+
+        abort_if($row === null, 404);
+
+        return SuggestionsController::serve($store, $row, $index);
     }
 
     /**
@@ -166,6 +178,9 @@ class StaffSuggestionsController extends Controller
             'organization_id' => $row->organization_id,
             'author' => $row->author?->name ?? 'Somebody who has since left',
             'body' => $row->body,
+            'module' => $row->module,
+            'module_label' => $row->moduleLabel(),
+            'files' => $row->presentFiles(),
             'status' => $row->status,
             'decision_note' => $row->decision_note,
             'decided_at' => $row->decided_at?->toIso8601String(),

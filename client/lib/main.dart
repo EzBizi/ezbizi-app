@@ -1061,7 +1061,16 @@ class _HomeShellState extends State<HomeShell> {
       Destination(
         'Suggestions',
         Icons.lightbulb_outline,
-        SuggestionsScreen(api: widget.api, formats: me.display),
+        SuggestionsScreen(
+          api: widget.api,
+          formats: me.display,
+          // "Which tab is it about?" offers exactly the sidebar they see.
+          tabs: [
+            for (final d in destinations)
+              if (d.id != 'my-onboarding') (key: d.id, label: d.label),
+            (key: 'settings', label: UiStrings.t('shell.settings')),
+          ],
+        ),
         id: 'suggestions',
       ),
     ];
