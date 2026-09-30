@@ -2418,6 +2418,15 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and what they said.',
                     ),
                     new TriggerDefinition(
+                        key: 'lead.follow_up_due',
+                        label: 'Customer went quiet after the automatic reply',
+                        description: 'Three hours after the automatic first reply, the same day, when the '
+                            .'customer has not written since and no person has replied. Raised once '
+                            .'per lead, ever, and never on a booked or archived lead or a complaint. '
+                            .'It carries the source, the kind of lead, the name, first_name and a '
+                            .'ready greeting ("Hi Mark", or "Hey" with no name) for the follow-up.',
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.customer_replied',
                         label: 'Customer replied',
                         description: 'The customer wrote or called again on a lead that already '

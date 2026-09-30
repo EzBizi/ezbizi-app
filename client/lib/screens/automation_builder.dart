@@ -9,6 +9,7 @@ import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
+import 'hr/work_hours_reports_tab.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
 ///
@@ -45,11 +46,16 @@ class AutomationBuilder extends StatefulWidget {
     required this.onSaved,
     required this.onCancel,
     this.editing,
+    this.canEditHoursReports = false,
   });
 
   final ApiClient api;
   final AutomationCatalogue catalogue;
   final DisplayFormats formats;
+
+  /// `work_hours.manage`: a "Send the work hours report" step can change who
+  /// the chosen report covers, with Work Hours' own editor (queue 33).
+  final bool canEditHoursReports;
 
   /// The automation being edited, as `GET /automations/{id}` returned it.
   /// Null builds a new one.
@@ -488,6 +494,104 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     });
   }
 
+  /// Work Hours' saved reports with who each covers, for the step that sends
+  /// one (queue 33, Jose's 1). The catalogue names them only; this is Work
+  /// Hours' own list, so a reader without its grant is refused and the step
+  /// simply shows no more than the name.
+  List<Map<String, dynamic>> _hoursReports = const [];
+  List<Map<String, dynamic>> _hoursRoles = const [];
+  List<Map<String, dynamic>> _hoursPeople = const [];
+
+  Future<void> _loadHoursReports() async {
+    final response = await widget.api.get('/hr/time-clock/reports');
+    if (!mounted || !response.ok) return;
+
+    List<Map<String, dynamic>> list(Object? raw) => [
+      for (final row in (raw as List?) ?? const [])
+        if (row is Map) Map<String, dynamic>.from(row),
+    ];
+
+    setState(() {
+      _hoursReports = list(response.body['data']);
+      _hoursRoles = list(response.body['roles']);
+      _hoursPeople = list(response.body['people']);
+    });
+  }
+
+  /// Who the chosen report covers, under the step that sends it, and the
+  /// editor that changes it. A step picks a report; the report decides who is
+  /// in it, so a change here is the report's everywhere it is sent.
+  Widget _hoursCovers(BuildContext context, String reportId) {
+    final report = _hoursReports
+        .where((r) => '${r['id']}' == reportId)
+        .firstOrNull;
+    if (report == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Container(
+      key: const ValueKey('step-hours-covers'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: 'Covers ',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(
+                  text: workHoursReportCovers(
+                    report,
+                    roles: _hoursRoles,
+                    people: _hoursPeople,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.canEditHoursReports) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton(
+                  key: const ValueKey('step-hours-edit'),
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          final saved = await editWorkHoursReport(
+                            context,
+                            api: widget.api,
+                            report: report,
+                            roles: _hoursRoles,
+                            people: _hoursPeople,
+                          );
+                          if (saved && mounted) _loadHoursReports();
+                        },
+                  child: const Text('Edit who is in it'),
+                ),
+                Text('Changes the report everywhere it is sent.', style: muted),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadPhoneLines() async {
     final response = await widget.api.get('/phone/numbers');
     if (!mounted || !response.ok) return;
@@ -615,6 +719,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     _description.addListener(_changed);
     _loadPhoneLines();
     _loadWhatsAppTemplates();
+    _loadHoursReports();
 
     final editing = widget.editing;
 
@@ -2757,25 +2862,40 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // A WORK HOURS REPORT: who is in it and its default recipients
           // live on the definition, under Work Hours > Reports.
           else if (definition.parameters[i].kind == 'work_hours_report')
-            SearchPickerField<String>(
-              value: row.parameter(definition.parameters[i].key).text.isEmpty
-                  ? null
-                  : row.parameter(definition.parameters[i].key).text,
-              label: definition.parameters[i].label,
-              isDense: true,
-              helperText: widget.catalogue.workHoursReports.isEmpty
-                  ? 'No work hours report yet. Make one in Work Hours, Reports.'
-                  : null,
-              options: [
-                for (final report in widget.catalogue.workHoursReports)
-                  SearchOption<String>(value: report.key, label: report.label),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SearchPickerField<String>(
+                  value:
+                      row.parameter(definition.parameters[i].key).text.isEmpty
+                      ? null
+                      : row.parameter(definition.parameters[i].key).text,
+                  label: definition.parameters[i].label,
+                  isDense: true,
+                  helperText: widget.catalogue.workHoursReports.isEmpty
+                      ? 'No work hours report yet. Make one in Work Hours, '
+                            'Reports.'
+                      : null,
+                  options: [
+                    for (final report in widget.catalogue.workHoursReports)
+                      SearchOption<String>(
+                        value: report.key,
+                        label: report.label,
+                      ),
+                  ],
+                  onChanged: _busy || widget.catalogue.workHoursReports.isEmpty
+                      ? null
+                      : (chosen) => setState(
+                          () =>
+                              row.parameter(definition.parameters[i].key).text =
+                                  chosen ?? '',
+                        ),
+                ),
+                _hoursCovers(
+                  context,
+                  row.parameter(definition.parameters[i].key).text,
+                ),
               ],
-              onChanged: _busy || widget.catalogue.workHoursReports.isEmpty
-                  ? null
-                  : (chosen) => setState(
-                      () => row.parameter(definition.parameters[i].key).text =
-                          chosen ?? '',
-                    ),
             )
           else if (definition.parameters[i].kind == 'report')
             DropdownMenu<String>(

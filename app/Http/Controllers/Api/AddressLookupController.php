@@ -62,7 +62,7 @@ class AddressLookupController extends Controller
 
     /**
      * @param  array<string, mixed>  $feature
-     * @return array{label: string, address_line1: ?string, city: ?string, state: ?string, postal_code: ?string}|null
+     * @return array{label: string, address_line1: ?string, city: ?string, state: ?string, postal_code: ?string, country: ?string}|null
      */
     private function mapFeature(array $feature): ?array
     {
@@ -98,6 +98,10 @@ class AddressLookupController extends Controller
             'city'          => $city,
             'state'         => $state,
             'postal_code'   => $postal,
+            // The country's name as the lookup gives it ("United States"), for
+            // a person's home address (2026-09-30). A company and a customer
+            // have no country and ignore it.
+            'country'       => $this->firstString($properties, ['country']),
         ];
     }
 

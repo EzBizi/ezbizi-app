@@ -836,7 +836,55 @@ void main() {
     await tester.pump();
     await _tap(tester, find.text('Save personal details'));
 
-    expect(patched, {'phone': '(203) 555-0199'});
+    // Sent as E.164, as Your account sends it: the box shows the pretty form,
+    // the API and Twilio key on this one (Jose, 2026-09-30).
+    expect(patched, {'phone': '+12035550199'});
+  });
+
+  /// Jose, 2026-09-30: the phone "lacking formatting", and the home address
+  /// as the lookup and its parts, as on Your account. Formatting a stored
+  /// number is not a change to it; a record from before the parts keeps its
+  /// one line as the street.
+  testWidgets('the phone reads formatted and the address comes in parts', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+
+    await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    String box(String label) => tester
+        .widget<TextField>(find.widgetWithText(TextField, label))
+        .controller!
+        .text;
+    expect(box('Phone'), '+1 (203) 555-0148');
+    expect(box('Street'), '41 Elm St, Stamford CT');
+    expect(find.widgetWithText(TextField, 'Country'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Save personal details'),
+          )
+          .onPressed,
+      isNull,
+      reason: 'nothing was changed, only shown',
+    );
+
+    await tester.enterText(find.widgetWithText(TextField, 'City'), 'Stamford');
+    await tester.pump();
+    await _tap(tester, find.text('Save personal details'));
+
+    // The address goes whole: one address, and the one line contracts print
+    // is composed from all of it.
+    expect(patched, {
+      'address_line1': '41 Elm St, Stamford CT',
+      'address_line2': null,
+      'city': 'Stamford',
+      'state': null,
+      'postal_code': null,
+      'country': null,
+    });
   });
 
   /// Email is shown and not editable, and says why where it is drawn.
@@ -880,15 +928,22 @@ void main() {
     // and nothing can record that, so it would stay lit for ever.
     expect(box('Middle name').decoration?.hintText, isNull);
 
-    // The date of birth is a picker rather than a TextField, and says the same.
-    final born = tester.widget<InputDecorator>(
-      find.ancestor(
-        of: find.text('Date of birth'),
-        matching: find.byType(InputDecorator),
-      ),
+    // The date of birth is the house date field, three boxes rather than one,
+    // and says the same: amber boxes and "Not filled in" under them.
+    final born = find.byKey(const ValueKey('hr-date-of-birth'));
+    expect(
+      find.descendant(of: born, matching: find.text('Not filled in')),
+      findsOneWidget,
     );
-    expect(born.isEmpty, isTrue);
-    expect(born.decoration.hintText, 'Not filled in');
+    expect(
+      tester
+          .widget<TextField>(
+            find.descendant(of: born, matching: find.byType(TextField)).first,
+          )
+          .decoration
+          ?.filled,
+      isTrue,
+    );
 
     // Where the three are: two under Personal, the start date under
     // Employment, so the number on the list can be found.

@@ -8,11 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0321',
+      date: '30 Sep 2026',
+      items: [
+        'Your account and Human Resources records: the home address is found with a lookup and kept in parts (street, unit, city, state, country and ZIP), phone numbers show formatted, and the profile fits a phone screen.',
+        'Leads: the customer card on a lead is one line until opened, and a Thumbtack connection whose permission has lapsed now shows as broken on every row that used it.',
+        'Automations: a new trigger, A lead needs its follow-up, fires once when a customer goes quiet after the automatic first reply, and a message can name the lead source with {{source_name}}.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0320',
       date: '30 Sep 2026',
       items: [
-        'Your profile: while something is missing from it, your picture in the top bar glows and pulses, and the empty boxes on your profile are amber until they are filled in. Gender and date of birth count, as they do in Human Resources.',
+        'Reports: every saved report is listed, including the Work Hours weekly hours reports, with who each covers and the automation that sends it. A Work Hours report opens beside the list with its week of hours, and who is in it can be changed right there. The Send the work hours report step in an automation says who the chosen report covers.',
+        'Your profile: while anything is missing, the picture in the top bar glows and pulses and its menu says what is missing; the empty boxes on your profile are amber until filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',
+        'Human Resources, Records: the dates on a record are typed into boxes with the calendar inline instead of a pop-up, and date of birth and start date are amber while empty.',
       ],
     ),
     VersionRelease(

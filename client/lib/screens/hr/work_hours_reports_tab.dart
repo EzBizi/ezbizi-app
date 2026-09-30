@@ -87,48 +87,21 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
           as String? ??
       'Someone';
 
-  String _roleName(String id) =>
-      _roles.firstWhere(
-            (r) => '${r['id']}' == id,
-            orElse: () => const {},
-          )['name']
-          as String? ??
-      'A role';
-
   String _recipientLabel(String entry) =>
       entry.startsWith('user:') ? _personName(entry.substring(5)) : entry;
 
-  /// "Technicians, + Cy, − Ben" — who is in it, in one line.
-  String _scope(Map<String, dynamic> report) {
-    final roles = [
-      for (final id in (report['role_ids'] as List? ?? [])) _roleName('$id'),
-    ];
-    final added = [
-      for (final id in (report['include_user_ids'] as List? ?? []))
-        '+ ${_personName('$id')}',
-    ];
-    final left = [
-      for (final id in (report['exclude_user_ids'] as List? ?? []))
-        '− ${_personName('$id')}',
-    ];
-    final parts = [...roles, ...added, ...left];
-
-    return parts.isEmpty
-        ? 'Everybody you can see on Work Hours'
-        : parts.join(', ');
-  }
+  String _scope(Map<String, dynamic> report) =>
+      workHoursReportCovers(report, roles: _roles, people: _people);
 
   Future<void> _edit([Map<String, dynamic>? report]) async {
-    final saved = await showSidePanel<bool>(
+    final saved = await editWorkHoursReport(
       context,
-      builder: (context) => _ReportEditor(
-        api: widget.api,
-        report: report,
-        roles: _roles,
-        people: _people,
-      ),
+      api: widget.api,
+      report: report,
+      roles: _roles,
+      people: _people,
     );
-    if (saved == true) await _load();
+    if (saved) await _load();
   }
 
   Future<void> _preview(Map<String, dynamic> report) async {
@@ -271,6 +244,54 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
     );
   }
 }
+
+/// "Technicians, + Cy, − Ben": who a report is about, in one line. This tab,
+/// the Reports library and the automation step all say it (queue 33), so
+/// they say it the same way.
+String workHoursReportCovers(
+  Map<String, dynamic> report, {
+  required List<Map<String, dynamic>> roles,
+  required List<Map<String, dynamic>> people,
+}) {
+  String name(List<Map<String, dynamic>> list, Object? id, String none) =>
+      list.firstWhere(
+            (e) => '${e['id']}' == '$id',
+            orElse: () => const {},
+          )['name']
+          as String? ??
+      none;
+
+  final parts = [
+    for (final id in (report['role_ids'] as List? ?? const []))
+      name(roles, id, 'A role'),
+    for (final id in (report['include_user_ids'] as List? ?? const []))
+      '+ ${name(people, id, 'Someone')}',
+    for (final id in (report['exclude_user_ids'] as List? ?? const []))
+      '− ${name(people, id, 'Someone')}',
+  ];
+
+  return parts.isEmpty
+      ? 'Everybody you can see on Work Hours'
+      : parts.join(', ');
+}
+
+/// The report editor, wherever a Work Hours report is shown: this tab, the
+/// Reports library and the automation step that sends it (queue 33). One
+/// editor, so the report reads and changes the same from all three. True
+/// when it saved.
+Future<bool> editWorkHoursReport(
+  BuildContext context, {
+  required ApiClient api,
+  Map<String, dynamic>? report,
+  required List<Map<String, dynamic>> roles,
+  required List<Map<String, dynamic>> people,
+}) async =>
+    await showSidePanel<bool>(
+      context,
+      builder: (context) =>
+          _ReportEditor(api: api, report: report, roles: roles, people: people),
+    ) ??
+    false;
 
 /// Name, who is in it, who it goes to.
 class _ReportEditor extends StatefulWidget {

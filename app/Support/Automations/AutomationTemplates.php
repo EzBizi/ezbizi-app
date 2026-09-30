@@ -47,7 +47,7 @@ final class AutomationTemplates
                 'trigger_key' => 'lead.received',
                 'conditions' => null,
                 'actions' => [
-                    ['type' => 'notify', 'message' => 'New enquiry from {{source}}.'],
+                    ['type' => 'notify', 'message' => 'New enquiry from {{source_name}}.'],
                 ],
             ],
             [
@@ -150,7 +150,7 @@ final class AutomationTemplates
                 'trigger_key' => 'lead.customer_replied',
                 'conditions' => null,
                 'actions' => [
-                    ['type' => 'notify', 'message' => 'A customer replied on {{source}}: {{preview}}'],
+                    ['type' => 'notify', 'message' => 'A customer replied on {{source_name}}: {{preview}}'],
                 ],
             ],
             [

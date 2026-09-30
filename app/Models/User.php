@@ -35,6 +35,8 @@ use Laravel\Sanctum\HasApiTokens;
  */
 #[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active',
     'first_name', 'middle_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth',
+    // The home address in parts (2026-09-30); `address` is composed from them.
+    'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
     // Records may switch the lock screen off for one person (design 2026-09-08 §4).
     'lock_screen_exempt',
 ])]
@@ -104,6 +106,11 @@ class User extends Authenticatable implements HoldsPersonalData
                 Erasure::erase()),
             new PersonalDataEntry('address', PersonalDataEntry::CONTACT,
                 'Their home address, asked at onboarding because employment agreements name it.',
+                Erasure::erase()),
+            new PersonalDataEntry('address_line1, address_line2, city, state, postal_code, country',
+                PersonalDataEntry::CONTACT,
+                'The same home address in its parts, as the lookup fills them. `address` is '
+                .'composed from these, so erasing one without the other would leave it readable.',
                 Erasure::erase()),
             new PersonalDataEntry('date_of_birth', PersonalDataEntry::IDENTITY,
                 'Asked at onboarding because contracts and payroll need it. Deliberately '
@@ -199,6 +206,82 @@ class User extends Authenticatable implements HoldsPersonalData
     }
 
     // ── relations ────────────────────────────────────────────────
+
+    /**
+     * An address written as one line replaces its parts (HR's review,
+     * 2026-09-30). An older client, an importer and onboarding all set
+     * `address` alone; left in place, the old parts would read back as the
+     * street under the new line, and the next edit of any part would compose
+     * the old address over the new one. Clearing them lets addressParts() read
+     * the new line instead. A write through the parts composes `address` from
+     * them, so it never trips this.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user) {
+            if ($user->isDirty('address')
+                && self::composeAddress($user->only(self::ADDRESS_PARTS)) !== $user->address) {
+                foreach (self::ADDRESS_PARTS as $part) {
+                    $user->setAttribute($part, null);
+                }
+            }
+        });
+    }
+
+    /** A home address's parts, in the order a form shows them. */
+    public const ADDRESS_PARTS = ['address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country'];
+
+    /**
+     * The home address in its parts. The stored parts when there are any;
+     * otherwise the one-line `address` saved before the parts existed, split
+     * only when it is plainly "street, City, ST 12345" with an optional
+     * country, and kept whole as the street when it is not. Nothing is
+     * guessed, and nothing on file is dropped.
+     *
+     * @return array<string, ?string>
+     */
+    public function addressParts(): array
+    {
+        $parts = [];
+        foreach (self::ADDRESS_PARTS as $part) {
+            $parts[$part] = $this->getAttribute($part);
+        }
+
+        $line = trim((string) $this->address);
+        if (array_filter($parts, fn ($v) => ! blank($v)) !== [] || $line === '') {
+            return $parts;
+        }
+
+        if (preg_match('/^(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)(?:,\s*([^,]+))?$/', $line, $m)) {
+            return array_merge($parts, [
+                'address_line1' => trim($m[1]),
+                'city'          => trim($m[2]),
+                'state'         => strtoupper($m[3]),
+                'postal_code'   => $m[4],
+                'country'       => isset($m[5]) ? trim($m[5]) : null,
+            ]);
+        }
+
+        return array_merge($parts, ['address_line1' => $line]);
+    }
+
+    /**
+     * The one line contracts and onboarding print, from the parts:
+     * "827 NW 115th St, Unit 4, Miami, FL 33168, United States". Null when
+     * every part is empty.
+     *
+     * @param  array<string, ?string>  $parts
+     */
+    public static function composeAddress(array $parts): ?string
+    {
+        $part = fn (string $key) => trim((string) ($parts[$key] ?? ''));
+        $stateZip = trim($part('state').' '.$part('postal_code'));
+        $line = implode(', ', array_filter([
+            $part('address_line1'), $part('address_line2'), $part('city'), $stateZip, $part('country'),
+        ], fn (string $v) => $v !== ''));
+
+        return $line === '' ? null : $line;
+    }
 
     /**
      * The boxes a profile is incomplete without (Jose, 2026-09-30: A1 Tools'

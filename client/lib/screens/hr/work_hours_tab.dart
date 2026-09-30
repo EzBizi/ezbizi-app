@@ -54,6 +54,7 @@ import '../../core/theme.dart';
 import '../../core/ui_strings.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/work_schedule_card.dart';
@@ -429,20 +430,16 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         if (_roles.length > 1)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: DropdownButton<String?>(
-              isExpanded: true,
+            child: SearchPickerField<String?>(
               isDense: true,
               value: _roles.containsKey(_roleId) ? _roleId : null,
-              items: [
-                DropdownMenuItem(
+              options: [
+                SearchOption(
                   value: null,
-                  child: Text(UiStrings.t('time_clock.all_roles')),
+                  label: UiStrings.t('time_clock.all_roles'),
                 ),
                 for (final role in _roles.entries)
-                  DropdownMenuItem(
-                    value: role.key,
-                    child: Text(role.value, overflow: TextOverflow.ellipsis),
-                  ),
+                  SearchOption(value: role.key, label: role.value),
               ],
               onChanged: (id) => setState(() => _roleId = id),
             ),

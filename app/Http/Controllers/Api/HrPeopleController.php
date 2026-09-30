@@ -332,6 +332,14 @@ class HrPeopleController extends Controller
             'last_name'     => ['sometimes', 'required', 'string', 'max:60'],
             'phone'         => ['sometimes', 'nullable', 'string', 'max:40'],
             'address'       => ['sometimes', 'nullable', 'string', 'max:500'],
+            // The home address in parts, as Your account takes them (Jose,
+            // 2026-09-30); `address` is composed from them below.
+            'address_line1' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'address_line2' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state'         => ['sometimes', 'nullable', 'string', 'max:64'],
+            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:20'],
+            'country'       => ['sometimes', 'nullable', 'string', 'max:100'],
             'gender'        => ['sometimes', 'nullable', 'string', 'max:40'],
             'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
 
@@ -392,7 +400,20 @@ class HrPeopleController extends Controller
                 $this->recordStartDate($user, $startedOn, $actor);
             }
 
+            $onFile = $user->addressParts();
             $user->fill($input);
+
+            if (array_intersect_key($input, array_flip(User::ADDRESS_PARTS)) !== []) {
+                // Parts not sent keep what is on file, including the parts read
+                // from a one-line address saved before the parts existed:
+                // editing the city must not drop the street.
+                foreach (User::ADDRESS_PARTS as $part) {
+                    if (! array_key_exists($part, $input)) {
+                        $user->setAttribute($part, $onFile[$part]);
+                    }
+                }
+                $user->address = User::composeAddress($user->only(User::ADDRESS_PARTS));
+            }
 
             // `name` stays the composed display value, the rule ProfileController
             // keeps for the same columns: every list, the audit trail and the API
@@ -513,6 +534,7 @@ class HrPeopleController extends Controller
             'middle_name'   => $user->middle_name,
             'phone'         => $user->phone,
             'address'       => $user->address,
+            ...$user->addressParts(),
             'gender'        => $user->gender,
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on'    => $answer['started_on'],

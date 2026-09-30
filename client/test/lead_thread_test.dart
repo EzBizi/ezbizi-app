@@ -409,11 +409,20 @@ void main() {
       },
     );
 
-    expect(find.textContaining('Existing customer · Marcus Bell · C-0042'), findsOneWidget);
+    expect(find.textContaining('Existing customer · Marcus Bell · C-0042 · 2 jobs'), findsOneWidget);
+    // One line until opened, so the thread keeps its room (Jose, 2026-09-30).
+    expect(find.text('12 Hillcrest Ct, Ridgefield, CT'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('lead-customer-more')));
+    await tester.pump();
     expect(find.text('12 Hillcrest Ct, Ridgefield, CT'), findsOneWidget);
-    expect(find.textContaining('2 jobs'), findsOneWidget);
     expect(find.textContaining('Flue repair · Pending'), findsOneWidget);
     expect(find.textContaining('Chimney sweep · Done'), findsOneWidget);
+  });
+
+  test('the number shows under any name, the customer one included', () {
+    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
+    expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);
+    expect(showsNumberLine({'phone': '+12155550101'}), isFalse, reason: 'the title is the number');
   });
 
   test('a nameless lead from a known number is titled by the customer', () {

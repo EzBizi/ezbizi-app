@@ -7,10 +7,13 @@ import '../../core/api_client.dart';
 import '../../core/contracts.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../core/ui_strings.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/not_filled_in.dart';
@@ -908,6 +911,7 @@ class _PersonRecordState extends State<_PersonRecord> {
     ),
     'personal' => _PersonalSection(
       key: ValueKey('personal-$_version'),
+      api: widget.api,
       person: _person,
       formats: widget.formats,
       noEdit: _noEdit,
@@ -1303,75 +1307,17 @@ class _SaveBar extends StatelessWidget {
   );
 }
 
-/// A date shown in the organization's format, chosen with a picker, sent as
-/// `yyyy-MM-dd`.
-class _DateField extends StatelessWidget {
-  const _DateField({
-    required this.label,
-    required this.value,
-    required this.formats,
-    required this.onChanged,
-    this.helper,
-    this.lastDate,
-  });
-
-  final String label;
-  final String? value;
-  final DisplayFormats formats;
-  final ValueChanged<String>? onChanged;
-  final String? helper;
-  final DateTime? lastDate;
-
-  @override
-  Widget build(BuildContext context) {
-    final at = DateTime.tryParse(value ?? '');
-
-    return InkWell(
-      onTap: onChanged == null
-          ? null
-          : () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: at ?? DateTime.now(),
-                firstDate: DateTime(1900),
-                lastDate: lastDate ?? DateTime(DateTime.now().year + 2),
-              );
-              if (picked == null) return;
-              onChanged!(
-                '${picked.year.toString().padLeft(4, '0')}-'
-                '${picked.month.toString().padLeft(2, '0')}-'
-                '${picked.day.toString().padLeft(2, '0')}',
-              );
-            },
-      child: InputDecorator(
-        isEmpty: at == null,
-        decoration: notFilledIn(
-          context,
-          InputDecoration(
-            labelText: label,
-            helperText: helper,
-            helperMaxLines: 3,
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-            enabled: onChanged != null,
-          ),
-          empty: at == null,
-        ),
-        child: Text(at == null ? '' : formats.formatDate(at)),
-      ),
-    );
-  }
-}
-
 class _PersonalSection extends StatefulWidget {
   const _PersonalSection({
     super.key,
+    required this.api,
     required this.person,
     required this.formats,
     required this.noEdit,
     required this.onSave,
   });
 
+  final ApiClient api;
   final Map<String, dynamic> person;
   final DisplayFormats formats;
   final String? noEdit;
@@ -1382,28 +1328,63 @@ class _PersonalSection extends StatefulWidget {
 }
 
 class _PersonalSectionState extends State<_PersonalSection> {
+  // The home address in its parts (Jose, 2026-09-30): the server composes
+  // the one line contracts print from them.
   static const _texts = [
     'first_name',
     'middle_name',
     'last_name',
     'phone',
-    'address',
+    'address_line1',
+    'address_line2',
+    'city',
+    'state',
+    'postal_code',
+    'country',
     'gender',
   ];
 
+  static const _addressParts = [
+    'address_line1',
+    'address_line2',
+    'city',
+    'state',
+    'postal_code',
+    'country',
+  ];
+
+  /// What is stored for a box. A record with the one-line address and no
+  /// parts at all (a server from before the parts) keeps that line as its
+  /// street, rather than showing the address as gone.
+  String _stored(String key) {
+    final value = widget.person[key]?.toString() ?? '';
+    if (key != 'address_line1' || value.isNotEmpty) return value;
+    final noParts = _addressParts.every((k) => _blank(widget.person[k]));
+    return noParts ? widget.person['address']?.toString() ?? '' : value;
+  }
+
+  /// What a box shows for what is stored: a phone as `+1 (214) 968-9819`,
+  /// even one saved as bare digits before this was formatted.
+  String _shown(String key) {
+    final value = _stored(key);
+    return key == 'phone' ? formatPhoneNumber(toE164(value) ?? value) : value;
+  }
+
   late final Map<String, TextEditingController> _fields = {
     for (final key in _texts)
-      key: TextEditingController(text: widget.person[key]?.toString() ?? '')
+      key: TextEditingController(text: _shown(key))
         ..addListener(() => setState(() {})),
   };
 
   late String? _born = widget.person['date_of_birth']?.toString();
+  late final _bornDay = TextEditingController(text: _born ?? '');
 
   @override
   void dispose() {
     for (final controller in _fields.values) {
       controller.dispose();
     }
+    _bornDay.dispose();
     super.dispose();
   }
 
@@ -1412,10 +1393,25 @@ class _PersonalSectionState extends State<_PersonalSection> {
 
     for (final key in _texts) {
       final now = _fields[key]!.text.trim();
-      final was = widget.person[key]?.toString() ?? '';
+      final was = _stored(key);
+      // The phone is compared and sent as E.164, whatever it looks like on
+      // screen: formatting a stored number is not a change to it.
+      if (key == 'phone') {
+        if (toE164(now) != toE164(was)) change[key] = toE164(now);
+        continue;
+      }
       // An emptied optional field is sent as null, which is what the column
       // holds for "not given"; an empty string would be a different answer.
       if (now != was) change[key] = now.isEmpty ? null : now;
+    }
+
+    // The address goes whole when any part of it changed: it is one address,
+    // and the one line contracts print is composed from all of its parts.
+    if (_addressParts.any(change.containsKey)) {
+      for (final key in _addressParts) {
+        final now = _fields[key]!.text.trim();
+        change[key] = now.isEmpty ? null : now;
+      }
     }
 
     if (_born != widget.person['date_of_birth']?.toString()) {
@@ -1427,9 +1423,10 @@ class _PersonalSectionState extends State<_PersonalSection> {
 
   void _discard() {
     for (final key in _texts) {
-      _fields[key]!.text = widget.person[key]?.toString() ?? '';
+      _fields[key]!.text = _shown(key);
     }
     setState(() => _born = widget.person['date_of_birth']?.toString());
+    _bornDay.text = _born ?? '';
   }
 
   @override
@@ -1440,6 +1437,11 @@ class _PersonalSectionState extends State<_PersonalSection> {
       controller: _fields[key],
       enabled: editable,
       maxLines: lines,
+      // A phone formats as it is typed, as it does on Your account.
+      keyboardType: key == 'phone' ? TextInputType.phone : null,
+      inputFormatters: key == 'phone'
+          ? const [PhoneNumberInputFormatter()]
+          : null,
       // Amber and saying so when empty, label above: as Web Management's
       // fields (Jose, 2026-09-29, "like we do on marketing SEO").
       decoration: notFilledIn(
@@ -1463,15 +1465,32 @@ class _PersonalSectionState extends State<_PersonalSection> {
         const SizedBox(height: 14),
         _Pair(text('last_name', 'Last name'), text('phone', 'Phone')),
         const SizedBox(height: 14),
-        text('address', 'Home address', lines: 2),
+        // The lookup and the parts it fills, as on Your account.
+        AddressFields(
+          api: widget.api,
+          line1: _fields['address_line1']!,
+          line2: _fields['address_line2']!,
+          city: _fields['city']!,
+          state: _fields['state']!,
+          postal: _fields['postal_code']!,
+          country: _fields['country']!,
+          enabled: editable,
+          flagEmpty: true,
+        ),
         const SizedBox(height: 14),
         _Pair(
-          _DateField(
-            label: 'Date of birth',
-            value: _born,
+          // Typed or picked inline, the house date control, not a modal
+          // date picker; amber while empty like the boxes beside it.
+          CalendarDayField(
+            key: const ValueKey('hr-date-of-birth'),
+            controller: _bornDay,
             formats: widget.formats,
+            label: 'Date of birth',
+            enabled: editable,
+            firstDate: DateTime(1900),
             lastDate: DateTime.now().subtract(const Duration(days: 1)),
-            onChanged: editable ? (v) => setState(() => _born = v) : null,
+            flagEmpty: true,
+            onChanged: (v) => setState(() => _born = v.isEmpty ? null : v),
           ),
           text('gender', 'Gender'),
         ),
@@ -1526,6 +1545,13 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   late String? _role = _savedRole;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
+  late final _startDay = TextEditingController(text: _savedStart ?? '');
+
+  @override
+  void dispose() {
+    _startDay.dispose();
+    super.dispose();
+  }
 
   Map<String, dynamic> get _change => {
     if (_role != _savedRole && _role != null) 'role_id': _role,
@@ -1592,12 +1618,15 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
         ),
         const SizedBox(height: 16),
         _Pair(
-          _DateField(
-            label: 'Start date',
-            value: _start,
+          CalendarDayField(
+            key: const ValueKey('hr-start-date'),
+            controller: _startDay,
             formats: widget.formats,
+            label: 'Start date',
             helper: 'The day they started here. Paid time off counts from it.',
-            onChanged: editable ? (v) => setState(() => _start = v) : null,
+            enabled: editable,
+            flagEmpty: true,
+            onChanged: (v) => setState(() => _start = v.isEmpty ? null : v),
           ),
           _Field(
             label: 'Account created',
@@ -1628,6 +1657,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
               _role = _savedRole;
               _active = _savedActive;
               _start = _savedStart;
+              _startDay.text = _savedStart ?? '';
             }),
           ),
       ],
@@ -2150,9 +2180,16 @@ class _DetailFormState extends State<_DetailForm> {
             (f.type == _FieldType.choice ? f.options.keys.first : null),
   };
 
+  /// Each date field's day, for the calendar field that shows it.
+  late final Map<String, TextEditingController> _days = {
+    for (final f in widget.kind.fields)
+      if (f.type == _FieldType.date)
+        f.key: TextEditingController(text: _picked[f.key] ?? ''),
+  };
+
   @override
   void dispose() {
-    for (final c in _text.values) {
+    for (final c in [..._text.values, ..._days.values]) {
       c.dispose();
     }
     super.dispose();
@@ -2190,29 +2227,15 @@ class _DetailFormState extends State<_DetailForm> {
           ],
         );
       case _FieldType.date:
-        final at = DateTime.tryParse(_picked[f.key] ?? '');
-        return InkWell(
-          onTap: () async {
-            final chosen = await showDatePicker(
-              context: context,
-              initialDate: at ?? DateTime.now(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime(DateTime.now().year + 2),
-            );
-            if (chosen != null) {
-              setState(() => _picked[f.key] = _DetailForm.ymd(chosen));
-            }
-          },
-          child: InputDecorator(
-            decoration: InputDecoration(
-              labelText: f.label,
-              border: const OutlineInputBorder(),
-              suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-            ),
-            child: Text(
-              at == null ? 'Choose a date' : widget.formats.formatDate(at),
-            ),
-          ),
+        return CalendarDayField(
+          key: ValueKey('hr-detail-${f.key}'),
+          controller: _days[f.key]!,
+          formats: widget.formats,
+          label: f.label,
+          firstDate: DateTime(1900),
+          lastDate: DateTime(DateTime.now().year + 2),
+          onChanged: (v) =>
+              setState(() => _picked[f.key] = v.isEmpty ? null : v),
         );
       case _FieldType.text:
       case _FieldType.multiline:
