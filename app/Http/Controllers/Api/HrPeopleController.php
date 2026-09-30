@@ -752,10 +752,10 @@ class HrPeopleController extends Controller
      */
     private function missing(User $person, bool $started): int
     {
-        // Not middle_name. Most people do not have one, and nothing can record
-        // "has none" — so counting it flags them for ever, the count never
-        // reaches zero, and a counter that is never zero stops being read.
-        $empty = collect(['first_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'])
+        // The profile's own list, so the pulse and this count cannot disagree.
+        // It leaves out middle_name: most people do not have one, and nothing
+        // can record "has none", so counting it would never reach zero.
+        $empty = collect(User::PROFILE_FIELDS)
             ->filter(fn (string $field) => blank($person->getAttribute($field)))
             ->count();
 
