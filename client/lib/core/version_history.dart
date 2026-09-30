@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0326',
+      date: '30 Sep 2026',
+      items: [
+        'Field, Map: the technician bar shows the operating system version of the phone but no longer its model, and the iPhone app is back in step with the other platforms.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0325',
       date: '30 Sep 2026',
       items: [
