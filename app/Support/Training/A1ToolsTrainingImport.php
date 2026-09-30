@@ -546,8 +546,9 @@ final class A1ToolsTrainingImport
 
     /**
      * Answers in the test's CANONICAL order, matched by the chosen option's
-     * TEXT. A1 shuffled options per attempt, so an index from the attempt points
-     * into the order that attempt was shown; matched by text it cannot drift.
+     * TEXT. A1 shuffled options on screen; its stored order was measured
+     * canonical (2,620/2,620 answers), but matched by text it cannot drift
+     * either way. A null selected_text is a question the person skipped.
      *
      * @param  array<string, mixed>  $attempt
      * @param  array<string, list<string>>  $options
@@ -562,7 +563,7 @@ final class A1ToolsTrainingImport
         foreach ((array) ($attempt['answers'] ?? []) as $answer) {
             $qid = (string) ($answer['question_a1_id'] ?? '');
 
-            if (! isset($position[$qid])) {
+            if (! isset($position[$qid]) || ($answer['selected_text'] ?? null) === null) {
                 continue;
             }
 

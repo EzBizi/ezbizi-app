@@ -132,21 +132,23 @@ class TrainingA1ImportTest extends TestCase
     }
 
     /**
-     * THE ONE THAT WOULD HAVE GONE WRONG SILENTLY. A1 shuffled options per
-     * attempt, so the bundle carries the chosen option's TEXT. "C" is canonical
-     * index 2 whatever position the person saw it in; an index copied across
-     * would grade most answers against the wrong option, and every score would
-     * still look plausible.
+     * A1 shuffled options on screen, so the bundle carries the chosen option's
+     * TEXT: "C" is canonical index 2 whatever position the person saw it in.
+     * Were the order ever not canonical, a copied index would grade answers
+     * against the wrong option and every score would still look plausible.
      */
     public function test_answers_are_matched_back_by_text_into_canonical_order(): void
     {
         $this->bundle();
-        $this->artisan('training:import-a1-tools', ['dir' => $this->dir])->assertSuccessful();
+        $this->artisan('training:import-a1-tools', ['dir' => $this->dir])
+            ->doesntExpectOutputToContain('matches none')
+            ->assertSuccessful();
 
         $this->inTenant($this->tenant['org'], function () {
             $attempt = TrainingAttempt::where('user_id', $this->learner->id)->sole();
 
-            $this->assertSame([2, 0], $attempt->answers);
+            // The third was skipped in A1 (selected_text null): unanswered, not a problem.
+            $this->assertSame([2, 0, null], $attempt->answers);
             $this->assertSame(100, $attempt->score);
             $this->assertTrue($attempt->passed);
             $this->assertNull($attempt->expires_on);
@@ -251,21 +253,21 @@ class TrainingA1ImportTest extends TestCase
             'format' => 'ezbizi-training-a1/1',
             'exported_at' => '2026-09-30T18:00:00Z',
             'guides' => [[
-                'a1_id' => 3,
+                'a1_id' => 'Technician_kb',
                 'title' => 'Technician knowledge base',
-                'test_a1_id' => 2,
+                'test_a1_id' => 'technician_test',
                 'target_roles' => ['Technician'],
                 'pages' => [
-                    ['a1_id' => 101, 'chapter' => 'C1', 'section' => 'S1', 'title' => 'Intro', 'blocks' => [
+                    ['a1_id' => 'topic_intro', 'chapter' => 'C1', 'section' => 'S1', 'title' => 'Intro', 'blocks' => [
                         ['type' => 'text', 'text' => 'Welcome.'],
                         $image('a.jpg'),
                     ]],
-                    ['a1_id' => 102, 'chapter' => 'C1', 'section' => 'S1', 'title' => 'Levels', 'blocks' => [
+                    ['a1_id' => 'topic_levels', 'chapter' => 'C1', 'section' => 'S1', 'title' => 'Levels', 'blocks' => [
                         ['type' => 'text', 'text' => 'Line A'],
                         ['type' => 'table', 'rows' => [['Level', 'When'], ['1', 'Annually']]],
                         ['type' => 'vimeo', 'vimeo_id' => '123456'],
                     ]],
-                    ['a1_id' => 103, 'chapter' => 'C1', 'section' => 'S2', 'title' => 'Gallery', 'blocks' => [
+                    ['a1_id' => 'topic_gallery', 'chapter' => 'C1', 'section' => 'S2', 'title' => 'Gallery', 'blocks' => [
                         ['type' => 'text', 'text' => 'Two pictures.'],
                         $image('b.png'),
                         $image('c.png'),
@@ -273,33 +275,35 @@ class TrainingA1ImportTest extends TestCase
                 ],
             ]],
             'tests' => [[
-                'a1_id' => 2,
+                'a1_id' => 'technician_test',
                 'title' => 'Technician test',
                 'pass_fraction' => 0.85,
                 'max_attempts' => 3,
                 'questions' => [
                     ['a1_id' => 900, 'prompt' => 'Pick C', 'options' => ['A', 'B', 'C', 'D'], 'correct_index' => 2],
                     ['a1_id' => 901, 'prompt' => 'Pick A', 'options' => ['A', 'B', 'C', 'D'], 'correct_index' => 0],
+                    ['a1_id' => 902, 'prompt' => 'Pick B', 'options' => ['A', 'B', 'C', 'D'], 'correct_index' => 1],
                 ],
             ]],
             'attempts' => [
-                ['a1_id' => 77, 'test_a1_id' => 2, 'email' => 'LEARNER@a-1chimney.test', 'taken_at' => '2026-04-02T15:04:05Z',
+                ['a1_id' => 77, 'test_a1_id' => 'technician_test', 'email' => 'LEARNER@a-1chimney.test', 'taken_at' => '2026-04-02T15:04:05Z',
                     'score_fraction' => 1.0, 'passed' => true,
                     'answers' => [
                         ['question_a1_id' => 900, 'selected_text' => 'C'],
                         ['question_a1_id' => 901, 'selected_text' => 'A'],
+                        ['question_a1_id' => 902, 'selected_text' => null],
                     ]],
-                ['a1_id' => 78, 'test_a1_id' => 2, 'email' => 'former@a-1chimney.test', 'taken_at' => '2026-03-01T10:00:00Z',
+                ['a1_id' => 78, 'test_a1_id' => 'technician_test', 'email' => 'former@a-1chimney.test', 'taken_at' => '2026-03-01T10:00:00Z',
                     'score_fraction' => 0.5, 'passed' => false, 'answers' => []],
             ],
             'progress' => [
-                ['guide_a1_id' => 3, 'email' => 'learner@a-1chimney.test', 'current_page_a1_id' => null, 'completed' => [
-                    ['page_a1_id' => 101, 'at' => '2026-01-10T09:00:00Z'],
-                    ['page_a1_id' => 102, 'at' => '2026-01-11T09:00:00Z'],
-                    ['page_a1_id' => 103, 'at' => '2026-01-12T09:00:00Z'],
+                ['guide_a1_id' => 'Technician_kb', 'email' => 'learner@a-1chimney.test', 'current_page_a1_id' => null, 'completed' => [
+                    ['page_a1_id' => 'topic_intro', 'at' => '2026-01-10T09:00:00Z'],
+                    ['page_a1_id' => 'topic_levels', 'at' => '2026-01-11T09:00:00Z'],
+                    ['page_a1_id' => 'topic_gallery', 'at' => '2026-01-12T09:00:00Z'],
                 ]],
-                ['guide_a1_id' => 3, 'email' => 'partial@a-1chimney.test', 'current_page_a1_id' => 102, 'completed' => [
-                    ['page_a1_id' => 101, 'at' => '2026-02-01T09:00:00Z'],
+                ['guide_a1_id' => 'Technician_kb', 'email' => 'partial@a-1chimney.test', 'current_page_a1_id' => 'topic_levels', 'completed' => [
+                    ['page_a1_id' => 'topic_intro', 'at' => '2026-02-01T09:00:00Z'],
                 ]],
             ],
         ];

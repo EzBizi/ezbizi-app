@@ -152,7 +152,9 @@ Images are content-addressed: an image used on two pages is ONE file and one che
 Two fields need the exporter to do something rather than copy a column:
 
 - **`vimeo_id`** — the bare numeric id, taken from either shape A1 holds (57 full `vimeo.com/<id>` URLs, 17 bare ids). The importer builds the URL, so one form reaches it.
-- **`selected_text`** — the TEXT of the option the person chose, read as `answers_detail.options[selected_index]`. Not the index. A1 randomised answer order per attempt (`randomize_answers = 1`), so `selected_index` points into the order THAT attempt was shown, not the question's stored order; an index copied across would grade roughly three quarters of the answers against the wrong option, silently. The importer matches the text back to the canonical order.
+- **`selected_text`** — the TEXT of the option the person chose, read as `answers_detail.options[selected_index]`, or `null` for a question they skipped (`selected_index` -1), which imports as unanswered. A1 shuffled options on screen, but the Dismantler measured the stored order as canonical in 2,620/2,620 answers (A1's client maps back before saving), so an index would also have been right; the importer matches by text so that it cannot drift either way.
+- **A1 ids** for guides, pages, tests and questions may be strings (`"Technician_kb"`); the importer treats every id as a string.
+- **One entry per person.** Two A1 accounts that reach the same EzBizi email are merged by the exporter: all attempts; completions unioned, earliest timestamp per page; the current page from the account with the latest activity.
 
 People are joined by `email`. The bundle carries no names, and nobody is created.
 
@@ -188,5 +190,5 @@ People are joined by `email`. The bundle carries no names, and nobody is created
 
 - **No side effects.** Rows are written directly, never through the assignment, grading or progress paths, which are the ones that raise automation events. Training's models carry no observers (checked, with a control that finds the one observer the app does register). Nothing notifies, nothing emails, no due-date clock starts. No imported attempt carries an expiry, so the nightly expiry sweep has nothing to announce.
 - **Integrity first.** Every image's sha256 is checked against the manifest before anything is written for it.
-- **Idempotent, keyed on A1 ids.** Every created row is recorded against its A1 id, so a second run changes nothing and a later bundle — say, once the three staff not yet in EzBizi arrive — adds only what is new.
+- **Idempotent, keyed on A1 ids.** Every created row is recorded against its A1 id, so a second run changes nothing and a later bundle — say, for someone who joins EzBizi later — adds only what is new.
 - **Rollback.** That record is the manifest of every id created, and the run writes one audit row. `--dry-run` writes nothing and prints what would happen, including screens per guide and the matched and unmatched people.
