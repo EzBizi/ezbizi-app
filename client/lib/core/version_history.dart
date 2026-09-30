@@ -18,6 +18,7 @@ class VersionHistory {
       date: '30 Sep 2026',
       items: [
         'Leads on a phone: the details of a lead fold behind a Details button, so the conversation fills the screen.',
+        'Leads: stars are now your own; reply templates fill in what the customer has not given yet, and can be edited per company.',
       ],
     ),
     VersionRelease(
