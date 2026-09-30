@@ -646,7 +646,7 @@ void main() {
       tester,
       find.descendant(
         of: find.byType(SegmentedButton<bool>),
-        matching: find.text('Deactivated'),
+        matching: find.text('Inactive'),
       ),
     );
     await _tap(tester, find.text('Save employment'));
@@ -657,7 +657,7 @@ void main() {
         findsOneWidget);
     expect(patched, isNull);
 
-    await _tap(tester, find.widgetWithText(FilledButton, 'Deactivate'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Make inactive'));
 
     expect(patched, {'is_active': false});
   });

@@ -353,7 +353,7 @@ class _RecordsTabState extends State<RecordsTab> {
               for (final (value, label) in [
                 (_Showing.everyone, 'Everyone'),
                 (_Showing.active, 'Active'),
-                (_Showing.deactivated, 'Deactivated'),
+                (_Showing.deactivated, 'Inactive'),
               ])
                 ChoiceChip(
                   label: Text(label),
@@ -470,7 +470,7 @@ class _RecordsTabState extends State<RecordsTab> {
                           Tag(roleName)
                         else
                           const Tag('No role', warn: true),
-                        if (!active) const Tag('Deactivated', warn: true),
+                        if (!active) const Tag('Inactive', warn: true),
                       ],
                     ),
                   ],
@@ -715,7 +715,7 @@ class _PersonRecordState extends State<_PersonRecord> {
     final confirmed = await showSidePanel<bool>(
       context,
       builder: (context) => SidePanel(
-        title: 'Deactivate ${_person['name']}?',
+        title: 'Make ${_person['name']} inactive?',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -726,14 +726,14 @@ class _PersonRecordState extends State<_PersonRecord> {
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Deactivate'),
+            child: const Text('Make inactive'),
           ),
         ],
         child: const Text(
           'They cannot sign in, and their assignments stop granting anything. '
           'The record stays exactly where it is — every job they ran and every '
           'audit entry naming them still has somebody to point at — and '
-          'reactivating puts them back.',
+          'making them active again puts them back.',
         ),
       ),
     );
@@ -849,7 +849,7 @@ class _PersonRecordState extends State<_PersonRecord> {
               ],
             ),
           ),
-          Tag(active ? 'Active' : 'Deactivated', warn: !active),
+          Tag(active ? 'Active' : 'Inactive', warn: !active),
         ],
       ),
     );
@@ -1631,7 +1631,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
         SegmentedButton<bool>(
           segments: const [
             ButtonSegment(value: true, label: Text('Active')),
-            ButtonSegment(value: false, label: Text('Deactivated')),
+            ButtonSegment(value: false, label: Text('Inactive')),
           ],
           selected: {_active},
           onSelectionChanged: editable
