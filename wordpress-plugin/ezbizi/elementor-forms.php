@@ -128,9 +128,13 @@ document.addEventListener('focusin',function(e){var f=form(e);if(f)prep(f);},tru
 document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
   var i=f.querySelector('input[name=ezbizi_pow]');
   // An answer is spent by one submission; the next one solves again.
-  if(i&&i.value){setTimeout(function(){i.value='';f._ezPow=null;prep(f);},0);return;}
+  if((i&&i.value)||f._ezGo){f._ezGo=0;setTimeout(function(){if(i)i.value='';f._ezPow=null;prep(f);},0);return;}
   e.preventDefault();e.stopImmediatePropagation();
-  prep(f).then(function(){f.requestSubmit?f.requestSubmit():f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));});
+  // One send per wait: a second click while it solves must not queue a second enquiry.
+  if(f._ezWait)return;f._ezWait=1;
+  function go(){f._ezWait=0;f._ezGo=1;f.requestSubmit?f.requestSubmit():f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));}
+  // Unsolvable here (no network, an old browser): send anyway, so the visitor sees the site's answer, never silence.
+  prep(f).then(go,go);
 },true);
 })();</script>";
 }, 20);
