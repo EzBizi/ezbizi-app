@@ -61,4 +61,26 @@ class ReplyTemplatesTest extends TestCase
         $templates = $this->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data.reply_templates');
         $this->assertSame('May I have your full service address and email?', $templates[0]['text']);
     }
+
+    /** Leads > Manage > Templates: one list per company, edited in place. */
+    public function test_the_manager_lists_and_saves_a_company_list(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->signedInAs($t['admin']);
+
+        $list = $this->getJson('/api/v1/leads/reply-templates')->assertOk();
+        $this->assertTrue($list->json('meta.may_edit'));
+        $this->assertSame('Thank you', $list->json('data.0.templates.0.name'));
+
+        $this->putJson("/api/v1/leads/reply-templates/{$t['company']->id}", ['templates' => [
+            ['name' => 'Free estimate', 'text' => '{{greeting}}! The visit is a free estimate.'],
+        ]])->assertOk()->assertJsonPath('data.templates.0.name', 'Free estimate');
+
+        $this->assertSame('Free estimate', $this->getJson('/api/v1/leads/reply-templates')->json('data.0.templates.0.name'));
+
+        $viewer = $this->userWithRole($t, 'Viewer', ['leads.view']);
+        $this->signedInAs($viewer)->putJson("/api/v1/leads/reply-templates/{$t['company']->id}", ['templates' => [
+            ['name' => 'x', 'text' => 'y'],
+        ]])->assertForbidden();
+    }
 }
