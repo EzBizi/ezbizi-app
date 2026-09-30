@@ -15,8 +15,6 @@ class VersionHistory {
         'Onboarding: a new starter now sees Your paperwork and reaches their onboarding form; it did not appear before.',
         'Human Resources, Records: a missing emergency contact, pay rate or work schedule shows amber and counts toward what is missing; pay counts only for people allowed to see pay.',
         'Leads: call a customer straight from the lead, and put a ready reply in the box with one tap; the replies are set in Settings > Leads.',
-        'Addresses: booking a lead, adding or editing a customer, the company form and the emergency address of a phone all suggest the address as you type and keep street, unit, city, state and ZIP; the customer made from a booked lead gets every part.',
-        'Dates with a time: 16 typed on a 12-hour clock becomes 4 PM instead of being dropped, and an hour or minute no clock has says so.',
       ],
     ),
     VersionRelease(
