@@ -1,35 +1,45 @@
-// The connected Google Ads accounts, and where each one's leads go.
+// Leads › Manage: the Connections page.
 //
-// Approved as `docs/previews/leads-accounts-layouts.html` — desktop layout 1
-// (a summary band that opens a side panel) with mobile layout 4 (a row that
-// opens a screen). Both are doors onto the SAME list, which is why the list
-// lives here once rather than twice.
+// UI queue 34, docs/previews/leads-connections-layouts.html, Jose's 1 + 4
+// (2026-09-30: "Sounds good, go ahead with ur recommendations"), after "i feel
+// we could also use a revamp on the manage of leads". It replaces one narrow
+// side panel that stacked every provider in one scroll, with three text
+// buttons on every account row and certification problems as loose red lines.
 //
-// ── What it replaces ─────────────────────────────────────────────
+// The page takes the place of the leads, with ← back (containment): the
+// providers down the left with how many need attention, the chosen provider's
+// accounts as a table narrowed by chips, and an account opened beside the list
+// with its name, where its leads go, its certification and Disconnect. A row
+// carries no buttons. On a phone the same three are steps, each with ← back.
 //
-// One line showing one account. A-1 Chimney has twenty-two — a single connect
-// created all of them in the same second — so twenty-one were invisible and
-// the one shown was whichever the query returned first. Jose: *"I should be
-// able to see all the 20 somethings accounts in there."*
+// ── Kept from the list it replaces ───────────────────────────────
 //
-// ── The reading the layout is built on ───────────────────────────
-//
-// Twenty-two accounts with per-account placement is a SETTINGS surface that
-// has been living in the header of a list of leads. So the question is not
-// "how do I show twenty-two rows" but "how little can this cost on the way to
-// the leads?" — one row, at twenty-two accounts or two hundred.
+// One connect made twenty-two Google Ads accounts in the same second and the
+// screen showed one; one Thumbtack connect made twelve businesses all called
+// "A1 Chimney". So every account is listed; a name worn twice shows the
+// provider's id until somebody names it; the accounts that never sent a lead
+// fold away, and search reaches through the fold; a placement the reader
+// cannot see is stated and cannot be changed; and Disconnect all is one
+// question and one call.
 
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
+import 'connect_account.dart';
+import 'error_note.dart';
+import 'grouped_rows.dart';
+import 'search_picker.dart';
+import 'side_panel.dart';
 import 'social_network_mark.dart';
+import 'status_pill.dart';
 
 /// How a placement reads, and whether it can be changed.
 ///
 /// The server names a franchise only when the reader can reach it, so an
 /// account placed outside their reach arrives with a real id and a null name.
-/// That is an answer rather than missing data: the row says a placement EXISTS
+/// That is an answer rather than missing data: the page says a placement EXISTS
 /// without naming it, because naming a franchise somebody cannot otherwise
 /// reach leaks the shape of the organization one row at a time.
 ({String text, bool editable}) placementOf(Map<String, dynamic> connection) {
@@ -38,8 +48,8 @@ import 'social_network_mark.dart';
 
   if (id == null) return (text: 'Company level', editable: true);
   if (name == null) {
-    // Change is disabled here on purpose. Offering to move something whose
-    // current value you cannot see is offering to guess.
+    // Not movable on purpose. Offering to move something whose current value
+    // you cannot see is offering to guess.
     return (text: 'Placed somewhere you cannot see', editable: false);
   }
   return (text: '$name', editable: true);
@@ -65,48 +75,89 @@ int leadsOf(Map<String, dynamic> connection) =>
 int placedCount(List<Map<String, dynamic>> connections) =>
     connections.where((c) => c['leads_franchise_id'] != null).length;
 
-/// The list itself — grouped, searchable, and editable in place.
-///
-/// Grouped by lead count because that is what tells twenty-two rows apart, and
-/// zero is what folds most of them away. Naming does not overturn that:
-/// nineteen rows are nineteen rows whatever they are called.
-///
-/// But SEARCH REACHES THROUGH THE FOLD, and the fold says so. A fold is only
-/// legitimate while the thing behind it stays findable — otherwise it hides
-/// rows from exactly the person who went looking. Same rule as the sidebar,
-/// where a failed search must never filter Settings out of reach.
-class LeadsAccountsList extends StatefulWidget {
-  const LeadsAccountsList({
+/// A connection the provider stopped honouring: nothing is fetched from it
+/// until it is connected again.
+bool isBroken(Map<String, dynamic> connection) =>
+    connection['status'] == 'broken' || connection['status'] == 'revoked';
+
+/// Broken, or Google says its Local Services certification needs attention.
+bool needsAttention(Map<String, dynamic> connection) =>
+    isBroken(connection) ||
+    (connection['certification'] as Map?)?['state'] == 'attention';
+
+/// The account's state as one pill. Broken first, because nothing arrives;
+/// then Google's daily certification check. An account never checked makes no
+/// certification claim either way.
+(String, Tone) accountState(Map<String, dynamic> connection) {
+  if (isBroken(connection)) return ('Reconnect', Tone.bad);
+  final cert = connection['certification'] as Map?;
+  if (cert == null) return ('Connected', Tone.neutral);
+  return cert['state'] == 'attention'
+      ? ('Needs attention', Tone.caution)
+      : ('Certified', Tone.ok);
+}
+
+const _providers = <({String key, String name})>[
+  (key: 'google_ads', name: 'Google Ads'),
+  (key: 'thumbtack', name: 'Thumbtack'),
+  (key: 'web', name: 'Website'),
+];
+
+/// The page: providers, their accounts, and one account beside them.
+class LeadsConnections extends StatefulWidget {
+  const LeadsConnections({
     super.key,
     required this.api,
     required this.session,
     required this.connections,
+    required this.canEdit,
     required this.onChanged,
+    required this.onBack,
   });
 
   final ApiClient api;
   final Session session;
+
+  /// Every connection the leads list read (`meta.connections`).
   final List<Map<String, dynamic>> connections;
 
-  /// Reload the screen behind this. Placement is retroactive, so the lead list
-  /// changes the moment an account moves.
+  /// `leads.edit`: naming, placing, connecting and disconnecting. Without it
+  /// this is the same page with no controls, never a button that 403s.
+  final bool canEdit;
+
+  /// Reload the screen behind this. Placement is retroactive, so the leads
+  /// change the moment an account moves.
   final Future<void> Function() onChanged;
 
+  /// Back to the leads.
+  final VoidCallback onBack;
+
   @override
-  State<LeadsAccountsList> createState() => _LeadsAccountsListState();
+  State<LeadsConnections> createState() => _LeadsConnectionsState();
 }
 
-class _LeadsAccountsListState extends State<LeadsAccountsList> {
+class _LeadsConnectionsState extends State<LeadsConnections> {
+  /// The provider shown. A desk always shows one; a phone starts on the list
+  /// of them, so null there is a step of its own.
+  String? _provider;
+
+  /// all, attention or quiet: the chips.
+  String _filter = 'all';
+
   final _search = TextEditingController();
   String _query = '';
 
-  /// Open once somebody searches, because a fold that hides a match is the
-  /// defect this exists to avoid.
+  /// The accounts that never sent a lead, unfolded. Searching opens the fold
+  /// as well, because a fold that hides a match is the defect it exists to
+  /// avoid.
   bool _showQuiet = false;
 
-  /// Disconnect all: asked once, then done in one call. One Thumbtack
-  /// consent is twelve rows sharing one grant, and twelve confirmations for
-  /// one account is the wrong number (Jose, 2026-09-09).
+  /// The account open beside the list, or in place of it on a phone.
+  String? _openId;
+
+  /// Disconnect all: asked once, then done in one call. One Thumbtack consent
+  /// is twelve rows sharing one grant, and twelve confirmations for one
+  /// account is the wrong number (Jose, 2026-09-09).
   bool _confirmAll = false;
   bool _lettingGo = false;
   String? _allError;
@@ -117,9 +168,38 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
     super.dispose();
   }
 
-  Future<void> _disconnectAll() async {
-    final provider = '${widget.connections.first['provider']}';
+  List<Map<String, dynamic>> _accountsOf(String provider) => [
+    for (final c in widget.connections)
+      if (c['provider'] == provider) c,
+  ];
 
+  /// The first provider with anything connected, so a desk opens on accounts.
+  String get _firstProvider => _providers
+      .firstWhere(
+        (p) => _accountsOf(p.key).isNotEmpty,
+        orElse: () => _providers.first,
+      )
+      .key;
+
+  Map<String, dynamic>? _open(String provider) {
+    for (final c in _accountsOf(provider)) {
+      if ('${c['id']}' == _openId) return c;
+    }
+    return null;
+  }
+
+  void _choose(String provider) => setState(() {
+    _provider = provider;
+    _openId = null;
+    _filter = 'all';
+    _search.clear();
+    _query = '';
+    _showQuiet = false;
+    _confirmAll = false;
+    _allError = null;
+  });
+
+  Future<void> _disconnectAll(String provider) async {
     setState(() {
       _lettingGo = true;
       _allError = null;
@@ -128,185 +208,361 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
     final response = await widget.api.delete(
       '/social/providers/$provider/connections',
     );
-
     if (!mounted) return;
 
     setState(() {
       _lettingGo = false;
       _confirmAll = false;
       _allError = response.ok ? null : response.reason;
+      if (response.ok) _openId = null;
     });
 
     if (response.ok) await widget.onChanged();
   }
 
-  Widget _disconnectAllRow(ThemeData theme) {
-    final n = widget.connections.length;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) =>
+        constraints.maxWidth >= 900 ? _desk(context) : _phone(context),
+  );
+
+  Widget _desk(BuildContext context) {
+    final provider = _provider ?? _firstProvider;
+    final open = _open(provider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(
+          context,
+          title: 'Connections',
+          subtitle:
+              'Where enquiries come from, and where each account\'s leads go.',
+          backTooltip: 'Back to the leads',
+          onBack: widget.onBack,
+          action:
+              widget.canEdit &&
+                  provider != 'web' &&
+                  _accountsOf(provider).isNotEmpty
+              ? _connect(provider)
+              : null,
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 240,
+                child: _providerList(context, selected: provider),
+              ),
+              const VerticalDivider(width: 1),
+              if (open == null)
+                Expanded(child: _pane(context, provider, table: true))
+              else ...[
+                SizedBox(
+                  width: 360,
+                  child: _pane(context, provider, table: false),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: _panel(open, provider, inPlace: false)),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _phone(BuildContext context) {
+    final provider = _provider;
+
+    if (provider == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _header(
+            context,
+            title: 'Connections',
+            backTooltip: 'Back to the leads',
+            onBack: widget.onBack,
+          ),
+          const Divider(height: 1),
+          Expanded(child: _providerList(context)),
+        ],
+      );
+    }
+
+    final open = _open(provider);
+    if (open != null) return _panel(open, provider, inPlace: true);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(
+          context,
+          title: _providers.firstWhere((p) => p.key == provider).name,
+          backTooltip: 'Back to the connections',
+          onBack: () => setState(() => _provider = null),
+        ),
+        const Divider(height: 1),
+        Expanded(child: _pane(context, provider, table: false, phone: true)),
+      ],
+    );
+  }
+
+  Widget _header(
+    BuildContext context, {
+    required String title,
+    String? subtitle,
+    required String backTooltip,
+    required VoidCallback onBack,
+    Widget? action,
+  }) {
+    final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
       child: Row(
         children: [
+          IconButton(
+            key: const ValueKey('connections-back'),
+            tooltip: backTooltip,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: onBack,
+          ),
+          const SizedBox(width: 4),
           Expanded(
-            child: Text(
-              _confirmAll
-                  ? 'Disconnect all $n accounts? Nothing already in EzBizi is '
-                        'deleted, and you can connect again afterwards.'
-                  : (_allError ?? ''),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: _allError != null && !_confirmAll
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge,
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (_confirmAll) ...[
-            TextButton(
-              key: const ValueKey('accounts-keep-all'),
-              onPressed: _lettingGo
-                  ? null
-                  : () => setState(() => _confirmAll = false),
-              child: const Text('Keep'),
-            ),
-            TextButton(
-              key: const ValueKey('accounts-disconnect-all-confirm'),
-              onPressed: _lettingGo ? null : _disconnectAll,
-              child: Text(_lettingGo ? 'Disconnecting…' : 'Disconnect all'),
-            ),
-          ] else
-            TextButton(
-              key: const ValueKey('accounts-disconnect-all'),
-              onPressed: () => setState(() => _confirmAll = true),
-              child: const Text('Disconnect all'),
-            ),
+          ?action,
         ],
       ),
     );
   }
 
-  bool _matches(Map<String, dynamic> c) {
-    if (_query.isEmpty) return true;
-    final haystack = [
-      '${c['label'] ?? ''}',
-      '${c['display_name'] ?? ''}',
-      placementOf(c).text,
-    ].join(' ').toLowerCase();
-    return haystack.contains(_query);
-  }
+  /// The provider's own sign-in. The start paths are literals here, at the
+  /// call site, as ConnectAccount asks.
+  Widget _connect(String provider) => provider == 'thumbtack'
+      ? ConnectAccount(
+          api: widget.api,
+          label: 'Thumbtack',
+          startPath: '/social/thumbtack/start',
+          onConnected: widget.onChanged,
+        )
+      : ConnectAccount(
+          api: widget.api,
+          label: 'Google Ads',
+          startPath: '/social/google-ads/start',
+          onConnected: widget.onChanged,
+        );
 
-  @override
-  Widget build(BuildContext context) {
+  // ── the providers ────────────────────────────────────────────────
+
+  Widget _providerList(BuildContext context, {String? selected}) {
     final theme = Theme.of(context);
 
-    final producing = <Map<String, dynamic>>[];
-    final quiet = <Map<String, dynamic>>[];
-    for (final c in widget.connections) {
-      (leadsOf(c) > 0 ? producing : quiet).add(c);
-    }
-    producing.sort((a, b) => leadsOf(b).compareTo(leadsOf(a)));
-    quiet.sort((a, b) => accountName(a).compareTo(accountName(b)));
-
-    final shownProducing = producing.where(_matches).toList();
-    final shownQuiet = quiet.where(_matches).toList();
-
-    // Searching opens the fold, rather than leaving matches behind it.
-    final quietOpen = _showQuiet || _query.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
+    return ListView(
+      key: const ValueKey('connections-providers'),
+      padding: const EdgeInsets.all(8),
       children: [
-        if (widget.connections.length > 1) _disconnectAllRow(theme),
-        if (widget.connections.length > 6)
+        for (final p in _providers)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: TextField(
-              controller: _search,
-              onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Find an account',
-                prefixIcon: const Icon(Icons.search, size: 18),
-                prefixIconConstraints: const BoxConstraints(
-                  minWidth: 34,
-                  minHeight: 34,
-                ),
-                border: const OutlineInputBorder(),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: ListTile(
+              key: ValueKey('provider-${p.key}'),
+              selected: p.key == selected,
+              selectedTileColor: theme.colorScheme.primaryContainer,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
               ),
-            ),
-          ),
-
-        if (shownProducing.isNotEmpty) ...[
-          _groupHead(theme, 'Producing leads'),
-          for (final c in shownProducing) _row(c),
-        ],
-
-        if (quiet.isNotEmpty) ...[
-          InkWell(
-            onTap: _query.isEmpty
-                ? () => setState(() => _showQuiet = !_showQuiet)
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _query.isEmpty
-                              ? '${quiet.length} that have never sent a lead'
-                              : '${shownQuiet.length} of ${quiet.length} that '
-                                    'have never sent a lead',
-                          style: theme.textTheme.titleSmall,
-                        ),
-                        if (_query.isEmpty && !_showQuiet)
-                          Text(
-                            'Search reaches in here',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (_query.isEmpty)
-                    Icon(
-                      quietOpen ? Icons.expand_less : Icons.expand_more,
-                      size: 20,
-                    ),
-                ],
-              ),
-            ),
-          ),
-          if (quietOpen)
-            for (final c in shownQuiet) _row(c),
-        ],
-
-        if (shownProducing.isEmpty && shownQuiet.isEmpty && _query.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Text(
-              'No account matches “${_search.text.trim()}”. The list is '
-              'filtered, not empty — clear the box to see all '
-              '${widget.connections.length} again.',
-              style: theme.textTheme.bodyMedium,
+              // No site has a brand mark; a globe says "your website".
+              leading: p.key == 'web'
+                  ? const Icon(Icons.language)
+                  : SocialNetworkMark(network: p.key, size: 24),
+              title: Text(p.name),
+              subtitle: Text(_summary(p.key)),
+              trailing: _attentionMark(p.key, chevron: selected == null),
+              onTap: () => _choose(p.key),
             ),
           ),
       ],
     );
   }
 
-  Widget _groupHead(ThemeData theme, String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
-    child: Text(text, style: theme.textTheme.titleSmall),
-  );
+  /// "22 accounts · 13 sending leads": the count first, because the count is
+  /// what tells twenty-two lookalike accounts from one.
+  String _summary(String provider) {
+    if (provider == 'web') {
+      return 'Chat and forms, through the WordPress plugin';
+    }
 
-  /// display_names that more than one connection in this list wears.
-  Set<String> get _twins {
+    final all = _accountsOf(provider);
+    if (all.isEmpty) return 'Not connected';
+
+    final n = all.length;
+    final noun = provider == 'thumbtack'
+        ? (n == 1 ? 'business' : 'businesses')
+        : (n == 1 ? 'account' : 'accounts');
+    final sending = all.where((c) => leadsOf(c) > 0).length;
+    return '$n $noun · $sending sending leads';
+  }
+
+  Widget? _attentionMark(String provider, {required bool chevron}) {
+    final n = _accountsOf(provider).where(needsAttention).length;
+    final mark = n == 0
+        ? null
+        : Tooltip(
+            message: '$n ${n == 1 ? 'needs' : 'need'} attention',
+            child: StatusPill('$n', tone: Tone.caution),
+          );
+    if (!chevron) return mark;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [?mark, const Icon(Icons.chevron_right)],
+    );
+  }
+
+  // ── one provider's accounts ──────────────────────────────────────
+
+  Widget _pane(
+    BuildContext context,
+    String provider, {
+    required bool table,
+    bool phone = false,
+  }) {
+    if (provider == 'web') return _website(context);
+
+    final all = _accountsOf(provider);
+    if (all.isEmpty) return _notConnected(context, provider);
+
+    final theme = Theme.of(context);
+    final twins = _twins(all);
+
+    final attention = all.where(needsAttention).length;
+    final quietCount = all.where((c) => leadsOf(c) == 0).length;
+    // A chip that disappears while chosen falls back to All, rather than
+    // leaving an empty list under a filter nobody can see.
+    final filter = switch (_filter) {
+      'attention' when attention > 0 => 'attention',
+      'quiet' when quietCount > 0 => 'quiet',
+      _ => 'all',
+    };
+
+    final shown = [
+      for (final c in all)
+        if (_matches(c) &&
+            switch (filter) {
+              'attention' => needsAttention(c),
+              'quiet' => leadsOf(c) == 0,
+              _ => true,
+            })
+          c,
+    ];
+    final producing = shown.where((c) => leadsOf(c) > 0).toList()
+      ..sort((a, b) => leadsOf(b).compareTo(leadsOf(a)));
+    final quiet = shown.where((c) => leadsOf(c) == 0).toList()
+      ..sort(
+        (a, b) => accountName(
+          a,
+        ).toLowerCase().compareTo(accountName(b).toLowerCase()),
+      );
+
+    final folded =
+        filter == 'all' && _query.isEmpty && !_showQuiet && quiet.isNotEmpty;
+    final groups = filter == 'all'
+        ? [
+            if (producing.isNotEmpty)
+              RowGroup(
+                heading: quiet.isEmpty ? '' : 'Sending leads',
+                rows: producing,
+              ),
+            if (!folded && quiet.isNotEmpty)
+              RowGroup(heading: 'Never sent a lead', rows: quiet),
+          ]
+        : [
+            RowGroup(heading: '', rows: [...producing, ...quiet]),
+          ];
+    final footer = folded ? _fold(context, quiet.length) : null;
+
+    final Widget body;
+    if (shown.isEmpty) {
+      body = Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'No account matches “${_search.text.trim()}”. The list is filtered, '
+          'not empty — clear the box to see all ${all.length} again.',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    } else if (table) {
+      body = GroupedTable<Map<String, dynamic>>(
+        columns: _columns(context, twins),
+        groups: groups,
+        idOf: (c) => '${c['id']}',
+        onOpen: (c) => setState(() => _openId = '${c['id']}'),
+        footer: footer,
+      );
+    } else {
+      body = GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: (c) => '${c['id']}',
+        tile: (context, c) => _tile(c, twins),
+        onOpen: (c) => setState(() => _openId = '${c['id']}'),
+        selectedId: _openId,
+        footer: footer,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _filters(
+          context,
+          filter: filter,
+          total: all.length,
+          attention: attention,
+          quiet: quietCount,
+        ),
+        Expanded(child: body),
+        _foot(context, provider, all, phone: phone),
+      ],
+    );
+  }
+
+  bool _matches(Map<String, dynamic> c) {
+    if (_query.isEmpty) return true;
+    return [
+      '${c['label'] ?? ''}',
+      '${c['display_name'] ?? ''}',
+      '${c['remote_id'] ?? ''}',
+      placementOf(c).text,
+    ].join(' ').toLowerCase().contains(_query);
+  }
+
+  /// display_names that more than one account wears.
+  Set<String> _twins(List<Map<String, dynamic>> accounts) {
     final seen = <String, int>{};
-    for (final c in widget.connections) {
+    for (final c in accounts) {
       final name = '${c['display_name'] ?? ''}';
       seen[name] = (seen[name] ?? 0) + 1;
     }
@@ -316,61 +572,393 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
     };
   }
 
-  Widget _row(Map<String, dynamic> c) => LeadsAccountRow(
-    ambiguous: _twins.contains('${c['display_name'] ?? ''}'),
-    key: ValueKey('leads-account-${c['id']}'),
+  /// The line under the name: the number when named, and the provider's id
+  /// for a twin nobody has named yet — the only thing that tells twins apart.
+  String? _second(Map<String, dynamic> c, Set<String> twins) {
+    if (isNamed(c)) return '${c['display_name'] ?? ''}';
+    final id = '${c['remote_id'] ?? ''}';
+    return twins.contains('${c['display_name'] ?? ''}') && id.isNotEmpty
+        ? id
+        : null;
+  }
+
+  Widget _filters(
+    BuildContext context, {
+    required String filter,
+    required int total,
+    required int attention,
+    required int quiet,
+  }) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    Widget chip(String value, String label, int count) => ChoiceChip(
+      key: ValueKey('accounts-chip-$value'),
+      showCheckmark: false,
+      selected: filter == value,
+      label: Text.rich(
+        TextSpan(
+          text: label,
+          children: [
+            TextSpan(
+              text: '  $count',
+              style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+      onSelected: (_) => setState(() {
+        _filter = value;
+        _showQuiet = false;
+      }),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              chip('all', 'All', total),
+              if (attention > 0)
+                chip('attention', 'Needs attention', attention),
+              if (quiet > 0) chip('quiet', 'Never sent a lead', quiet),
+            ],
+          ),
+          // Only where there are enough to lose one in.
+          if (total > 6) ...[
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('accounts-search'),
+              controller: _search,
+              onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Find an account',
+                prefixIcon: Icon(Icons.search, size: 18),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<TableColumn<Map<String, dynamic>>> _columns(
+    BuildContext context,
+    Set<String> twins,
+  ) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    return [
+      TableColumn(
+        'Account',
+        flex: 3,
+        cell: (_, c) {
+          final second = _second(c, twins);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                accountName(c),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              if (second != null)
+                Text(
+                  second,
+                  key: isNamed(c) ? null : ValueKey('twin-${c['id']}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+            ],
+          );
+        },
+      ),
+      TableColumn(
+        'Leads go to',
+        flex: 2,
+        cell: (_, c) {
+          final placement = placementOf(c);
+          return Text(
+            placement.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: c['leads_franchise_id'] == null ? muted : null,
+              fontStyle: placement.editable
+                  ? FontStyle.normal
+                  : FontStyle.italic,
+            ),
+          );
+        },
+      ),
+      TableColumn(
+        'Leads',
+        width: 72,
+        numeric: true,
+        cell: (_, c) => Text('${leadsOf(c)}'),
+      ),
+      TableColumn(
+        'Status',
+        width: 164,
+        cell: (_, c) {
+          final (label, tone) = accountState(c);
+          return StatusPill(label, tone: tone);
+        },
+      ),
+    ];
+  }
+
+  Widget _tile(Map<String, dynamic> c, Set<String> twins) {
+    final (label, tone) = accountState(c);
+    final leads = leadsOf(c);
+
+    return TwoLineTile(
+      title: accountName(c),
+      subtitle: [
+        ?_second(c, twins),
+        placementOf(c).text,
+        leads == 0 ? 'no leads' : '$leads ${leads == 1 ? 'lead' : 'leads'}',
+      ].join(' · '),
+      bottomRight: StatusPill(label, tone: tone),
+    );
+  }
+
+  /// The accounts that never sent a lead, folded, saying how many and that
+  /// search still reaches them.
+  Widget _fold(BuildContext context, int n) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      key: const ValueKey('accounts-fold'),
+      onTap: () => setState(() => _showQuiet = true),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$n that ${n == 1 ? 'has' : 'have'} never sent a lead',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Search reaches in here',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.expand_more, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// How they are placed, and letting them all go, under the list. A phone
+  /// connects here too, having no room in its title bar.
+  Widget _foot(
+    BuildContext context,
+    String provider,
+    List<Map<String, dynamic>> all, {
+    required bool phone,
+  }) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final n = all.length;
+    final placed = placedCount(all);
+    final label =
+        widget.session.me?.organization.franchiseLabel.toLowerCase() ??
+        'franchise';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_confirmAll) ...[
+            Text(
+              'Disconnect all $n accounts? Nothing already in EzBizi is '
+              'deleted, and you can connect again afterwards.',
+              style: theme.textTheme.bodySmall,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  key: const ValueKey('accounts-keep-all'),
+                  onPressed: _lettingGo
+                      ? null
+                      : () => setState(() => _confirmAll = false),
+                  child: const Text('Keep'),
+                ),
+                TextButton(
+                  key: const ValueKey('accounts-disconnect-all-confirm'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: _lettingGo ? null : () => _disconnectAll(provider),
+                  child: Text(_lettingGo ? 'Disconnecting…' : 'Disconnect all'),
+                ),
+              ],
+            ),
+          ] else
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    placed == 0
+                        ? 'All at company level'
+                        : '${n - placed} at company level · $placed on '
+                              '${placed == 1 ? 'a $label' : '${label}s'}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                ),
+                // One account has its own Disconnect; all of one is not "all".
+                if (widget.canEdit && n > 1)
+                  TextButton(
+                    key: const ValueKey('accounts-disconnect-all'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                    ),
+                    onPressed: () => setState(() => _confirmAll = true),
+                    child: Text('Disconnect all $n'),
+                  ),
+              ],
+            ),
+          if (_allError != null) ErrorNote(_allError!),
+          if (phone && widget.canEdit) ...[
+            const SizedBox(height: 8),
+            _connect(provider),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _notConnected(BuildContext context, String provider) {
+    final theme = Theme.of(context);
+    final name = provider == 'thumbtack' ? 'Thumbtack' : 'Google Ads';
+
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text('No $name account connected', style: theme.textTheme.titleSmall),
+        if (provider == 'thumbtack') ...[
+          const SizedBox(height: 4),
+          Text(
+            'Connecting brings Thumbtack enquiries into Leads, and keeps your '
+            'team\'s phone numbers in step with Thumbtack so a technician '
+            'calling a customer shows as the business.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        // A control that is offered must be a control that works: somebody
+        // holding only `leads.view` is told who can do it instead.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: widget.canEdit
+              ? _connect(provider)
+              : Text(
+                  'Somebody who can manage Leads needs to connect the account.',
+                  style: theme.textTheme.bodySmall,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _website(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text('Website', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'Chat and form enquiries arrive through the EzBizi WordPress plugin '
+          'on your site, into the leads.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _panel(
+    Map<String, dynamic> c,
+    String provider, {
+    required bool inPlace,
+  }) => LeadsAccountPanel(
+    key: ValueKey('account-panel-${c['id']}'),
     api: widget.api,
     session: widget.session,
     connection: c,
+    canEdit: widget.canEdit,
+    inPlace: inPlace,
     onChanged: widget.onChanged,
+    onClose: () => setState(() => _openId = null),
   );
 }
 
-/// One account: what it is called, where its leads go, and what it has sent.
-///
-/// Naming happens HERE rather than behind a control that opens something.
-/// The steady state of this screen is reading, but the FIRST visit after
-/// naming shipped is an editing visit twenty-two rows long, and a row you must
-/// open and close once per account is twenty-two cycles of a workflow. In the
-/// row, naming twenty-two accounts is one scroll.
-class LeadsAccountRow extends StatefulWidget {
-  const LeadsAccountRow({
+/// One account: its name, where its leads go, what Google holds against it,
+/// and letting it go. Docked beside the list on a desk, in place of it on a
+/// phone.
+class LeadsAccountPanel extends StatefulWidget {
+  const LeadsAccountPanel({
     super.key,
     required this.api,
     required this.session,
     required this.connection,
+    required this.canEdit,
     required this.onChanged,
-    this.ambiguous = false,
+    required this.onClose,
+    this.inPlace = false,
   });
 
   final ApiClient api;
   final Session session;
   final Map<String, dynamic> connection;
+  final bool canEdit;
   final Future<void> Function() onChanged;
+  final VoidCallback onClose;
 
-  /// Another connection in the same list wears the same display_name. Google
-  /// never produced this - its digits and its names are both unique - but one
-  /// Thumbtack connect made twelve businesses all called "A1 Chimney", and a
-  /// person cannot tell which one they are naming until they have named it.
-  /// When true and the row has no label yet, the provider's own id is shown
-  /// beside the name so the twins can be told apart.
-  final bool ambiguous;
+  /// On a phone: ← back instead of ✕.
+  final bool inPlace;
 
   @override
-  State<LeadsAccountRow> createState() => _LeadsAccountRowState();
+  State<LeadsAccountPanel> createState() => _LeadsAccountPanelState();
 }
 
-enum _Editing { none, name, placement, disconnect }
-
-class _LeadsAccountRowState extends State<LeadsAccountRow> {
-  _Editing _editing = _Editing.none;
+class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
+  late final _name = TextEditingController(
+    text: '${widget.connection['label'] ?? ''}',
+  );
   bool _busy = false;
+  bool _confirming = false;
   String? _error;
 
-  /// What the last change actually did, in the row that did it.
+  /// What the last change actually did.
   String? _said;
-
-  final _name = TextEditingController();
 
   @override
   void dispose() {
@@ -385,6 +973,7 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
     setState(() {
       _busy = true;
       _error = null;
+      _said = null;
     });
 
     final response = await widget.api.patch(
@@ -393,23 +982,13 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
       // representation and nothing downstream has to decide what '' means.
       {'label': typed.isEmpty ? null : typed},
     );
-
     if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() {
-        _busy = false;
-        _error = response.message;
-      });
-      return;
-    }
 
     setState(() {
       _busy = false;
-      _editing = _Editing.none;
-      _said = null;
+      _error = response.ok ? null : response.message;
     });
-    await widget.onChanged();
+    if (response.ok) await widget.onChanged();
   }
 
   Future<void> _place(String? franchiseId) async {
@@ -423,7 +1002,6 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
       '/social/connections/$_id/leads-franchise',
       {'leads_franchise_id': franchiseId},
     );
-
     if (!mounted) return;
 
     if (!response.ok) {
@@ -440,7 +1018,7 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
     //              the whole confirmation somebody looks for.
     //   0        — it took, and there was nothing to carry. Saying nothing
     //              here would read as a failure.
-    //   null     — the same franchise re-submitted; nothing happened. Saying
+    //   null     — the same place re-submitted; nothing happened. Saying
     //              "0 moved" would report a non-event as an outcome.
     final moved = (response.body['data']?['leads_moved'] as num?)?.toInt();
     final where = franchiseId == null
@@ -449,14 +1027,12 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
 
     setState(() {
       _busy = false;
-      _editing = _Editing.none;
       _said = moved == null
           ? null
           : moved == 0
           ? 'Moved to $where. No leads to move yet.'
           : '$moved ${moved == 1 ? 'lead' : 'leads'} moved to $where.';
     });
-
     await widget.onChanged();
   }
 
@@ -467,23 +1043,14 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
     });
 
     final response = await widget.api.delete('/social/connections/$_id');
-
     if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() {
-        _busy = false;
-        _editing = _Editing.none;
-        _error = response.reason;
-      });
-      return;
-    }
 
     setState(() {
       _busy = false;
-      _editing = _Editing.none;
+      _confirming = false;
+      _error = response.ok ? null : response.reason;
     });
-    await widget.onChanged();
+    if (response.ok) await widget.onChanged();
   }
 
   String _franchiseName(String id) {
@@ -497,368 +1064,242 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
     final c = widget.connection;
     final placement = placementOf(c);
     final leads = leadsOf(c);
-    final named = isNamed(c);
     final cert = (c['certification'] as Map?)?.cast<String, dynamic>();
-    final problems = [
-      for (final p in (cert?['problems'] as List? ?? const [])) '$p',
+    // The number when the account is named, and the provider's id when it
+    // says something the number does not: Google's id is the number again
+    // without its dashes, Thumbtack's tells twelve "A1 Chimney"s apart.
+    String digits(Object? s) => '${s ?? ''}'.replaceAll(RegExp(r'\D'), '');
+    final display = '${c['display_name'] ?? ''}';
+    final remote = '${c['remote_id'] ?? ''}';
+    final ids = [
+      if (display.isNotEmpty && display != accountName(c)) display,
+      if (remote.isNotEmpty && digits(remote) != digits(display)) remote,
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    Widget label(String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text,
+        style: theme.textTheme.labelMedium?.copyWith(color: muted),
+      ),
+    );
+
+    return SidePanel(
+      title: accountName(c),
+      subtitle: ids.isEmpty ? null : ids.join(' · '),
+      docked: true,
+      onBack: widget.inPlace ? widget.onClose : null,
+      onClose: widget.inPlace ? null : widget.onClose,
+      actions: [
+        if (widget.canEdit && _confirming) ...[
+          TextButton(
+            key: const ValueKey('account-keep'),
+            onPressed: _busy ? null : () => setState(() => _confirming = false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            key: const ValueKey('account-disconnect-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            onPressed: _busy ? null : _disconnect,
+            child: Text(_busy ? 'Disconnecting…' : 'Disconnect'),
+          ),
+        ] else if (widget.canEdit)
+          OutlinedButton(
+            key: const ValueKey('account-disconnect'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.error,
+            ),
+            onPressed: _busy ? null : () => setState(() => _confirming = true),
+            child: const Text('Disconnect'),
+          ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            leads == 0
+                ? 'No leads yet'
+                : '$leads ${leads == 1 ? 'lead' : 'leads'} · going to '
+                      '${placement.text}',
+            key: const ValueKey('account-leads'),
+            style: theme.textTheme.titleSmall,
+          ),
+
+          if (isBroken(c)) ...[
+            const SizedBox(height: 14),
+            _note(
+              context,
+              Tone.bad,
+              'This connection stopped working, so nothing is fetched from it. '
+              'Connect the account again to fix it.',
+            ),
+          ],
+
+          const SizedBox(height: 20),
+          label('Name'),
+          if (widget.canEdit)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('account-name'),
+                    controller: _name,
+                    enabled: !_busy,
+                    onSubmitted: (_) => _saveName(),
+                    decoration: const InputDecoration(
+                      hintText: 'What this account is, in your words',
+                      helperText: 'Empty goes back to the number.',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: TextButton(
+                    key: const ValueKey('account-name-save'),
+                    onPressed: _busy ? null : _saveName,
+                    child: const Text('Save'),
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(accountName(c)),
+
+          const SizedBox(height: 18),
+          label('Leads go to'),
+          if (widget.canEdit && placement.editable) ...[
+            SearchPickerField<String?>(
+              key: const ValueKey('account-place'),
+              value: c['leads_franchise_id'] as String?,
+              options: [
+                const SearchOption(value: null, label: 'Company level'),
+                for (final f
+                    in widget.session.me?.franchises ??
+                        const <FranchiseSummary>[])
+                  SearchOption(value: f.id, label: f.name),
+              ],
+              onChanged: _busy ? null : _place,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              leads == 0
+                  ? 'Its leads will go wherever it is placed.'
+                  : 'Moving it moves its $leads '
+                        '${leads == 1 ? 'lead' : 'leads'} with it.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ] else
+            Text(
+              placement.text,
+              style: TextStyle(
+                fontStyle: placement.editable
+                    ? FontStyle.normal
+                    : FontStyle.italic,
+              ),
+            ),
+          if (_said != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _said!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
+
+          if (cert != null) ...[
+            const SizedBox(height: 18),
+            label('Certification'),
+            _certification(context, cert),
+          ],
+
+          if (_confirming) ...[
+            const SizedBox(height: 18),
+            Text(
+              'This removes the stored permission. Nothing already in EzBizi '
+              'is deleted, and you can connect an account again afterwards.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ],
+
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            ErrorNote(_error!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// What Google holds: the verdict, each problem on its own line so the fix
+  /// is named rather than guessed at, and where it comes from.
+  Widget _certification(BuildContext context, Map<String, dynamic> cert) {
+    final theme = Theme.of(context);
+    final attention = cert['state'] == 'attention';
+    final problems = [
+      for (final p in (cert['problems'] as List? ?? const [])) '$p',
+    ];
+    final colours = ToneColours.of(context, attention ? Tone.caution : Tone.ok);
+
+    return Container(
+      key: const ValueKey('lsa-certification'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 260,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            accountName(c),
-                            style: theme.textTheme.titleSmall,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (named) ...[
-                          const SizedBox(width: 8),
-                          // The number stays even when named: the name is how
-                          // you find it, the number is how you check it against
-                          // the provider.
-                          Text(
-                            '${c['display_name'] ?? ''}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ] else if (widget.ambiguous &&
-                            '${c['remote_id'] ?? ''}'.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          // Twins: the provider's id is the only thing that
-                          // tells them apart until somebody names them.
-                          Text(
-                            '${c['remote_id']}',
-                            key: ValueKey('twin-${c['id']}'),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Text(
-                      placement.text,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontStyle: placement.editable
-                            ? FontStyle.normal
-                            : FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 84,
-                child: Text(
-                  leads == 0
-                      ? 'no leads'
-                      : '$leads ${leads == 1 ? 'lead' : 'leads'}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              if (cert != null) _certificationBadge(theme, cert),
-              if (_busy)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else ...[
-                TextButton(
-                  onPressed: () => setState(() {
-                    _name.text = '${c['label'] ?? ''}';
-                    _editing = _editing == _Editing.name
-                        ? _Editing.none
-                        : _Editing.name;
-                  }),
-                  child: Text(named ? 'Rename' : 'Name it'),
-                ),
-                TextButton(
-                  onPressed: placement.editable
-                      ? () => setState(
-                          () => _editing = _editing == _Editing.placement
-                              ? _Editing.none
-                              : _Editing.placement,
-                        )
-                      : null,
-                  child: const Text('Change'),
-                ),
-                if (_editing == _Editing.disconnect) ...[
-                  TextButton(
-                    onPressed: () => setState(() => _editing = _Editing.none),
-                    child: const Text('Keep'),
-                  ),
-                  TextButton(
-                    onPressed: _disconnect,
-                    child: const Text('Disconnect'),
-                  ),
-                ] else
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _editing = _Editing.disconnect),
-                    child: const Text('Disconnect'),
-                  ),
-              ],
-            ],
+          Text(
+            attention ? 'Certification needs attention' : 'Certified',
+            style: theme.textTheme.titleSmall?.copyWith(color: colours.ink),
           ),
-
-          if (_editing == _Editing.name)
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _name,
-                      autofocus: true,
-                      onSubmitted: (_) => _saveName(),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                        hintText: 'What this account is, in your words',
-                        helperText: 'Leave it empty to go back to the number.',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(onPressed: _saveName, child: const Text('Save')),
-                ],
-              ),
-            ),
-
-          if (_editing == _Editing.placement)
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 4),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  ChoiceChip(
-                    label: const Text('Company level'),
-                    selected: c['leads_franchise_id'] == null,
-                    showCheckmark: false,
-                    onSelected: (_) => _place(null),
-                  ),
-                  for (final f
-                      in widget.session.me?.franchises ??
-                          const <FranchiseSummary>[])
-                    ChoiceChip(
-                      label: Text(f.name),
-                      selected: c['leads_franchise_id'] == f.id,
-                      showCheckmark: false,
-                      onSelected: (_) => _place(f.id),
-                    ),
-                ],
-              ),
-            ),
-
-          if (_editing == _Editing.disconnect && !_busy)
+          for (final p in problems)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'This removes the stored permission. Nothing already in EzBizi '
-                'is deleted, and you can connect an account again afterwards.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                '• $p',
+                style: theme.textTheme.bodySmall?.copyWith(color: colours.ink),
               ),
             ),
-
-          if (_said != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                _said!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ),
-
-          // What Google holds against this account, one line each, so the
-          // fix is named rather than guessed at.
-          for (final problem in problems)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                problem,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                _error!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
+          const SizedBox(height: 6),
+          Text(
+            cert['failed'] != null
+                ? 'The last check could not reach Google: ${cert['failed']}'
+                : 'Licence, insurance and background check, as Google holds '
+                      'them. Checked daily.',
+            style: theme.textTheme.bodySmall?.copyWith(color: colours.ink),
+          ),
         ],
       ),
     );
   }
-}
 
-/// Can Google still show this account's Local Services ads - from the daily
-/// check. Red when anything is lapsed, failed, missing or expiring within 30
-/// days; the problems themselves are listed under the row.
-Widget _certificationBadge(ThemeData theme, Map<String, dynamic> cert) {
-  final attention = cert['state'] == 'attention';
-  final failed = cert['failed'] != null;
-  final color = attention ? theme.colorScheme.error : theme.colorScheme.primary;
-  return Tooltip(
-    message: failed
-        ? 'The last check could not reach Google: ${cert['failed']}'
-        : 'Licence, insurance and background check, as Google holds them.',
-    child: Row(
-      key: const ValueKey('lsa-certification'),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          attention ? Icons.gpp_bad_outlined : Icons.verified_outlined,
-          size: 16,
-          color: color,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          attention ? 'Certification needs attention' : 'Certified',
-          style: theme.textTheme.bodySmall?.copyWith(color: color),
-        ),
-      ],
-    ),
-  );
-}
+  Widget _note(BuildContext context, Tone tone, String text) {
+    final colours = ToneColours.of(context, tone);
 
-/// Desktop layout 1: one band, whatever the number of accounts.
-///
-/// It costs ONE row on the way to the leads at twenty-two accounts or at two
-/// hundred, and the second line carries the only fact worth a permanent row —
-/// how they are placed, which is the number that changes.
-class LeadsAccountsBand extends StatelessWidget {
-  const LeadsAccountsBand({
-    super.key,
-    required this.connections,
-    required this.onManage,
-    this.network = 'google_ads',
-    this.noun = 'Google Ads',
-  });
-
-  final List<Map<String, dynamic>> connections;
-  final VoidCallback onManage;
-
-  /// The SocialNetworkMark key and the words on the band. Google Ads by
-  /// default; Thumbtack passes its own. Every endpoint the list calls is
-  /// provider-neutral, so this is the whole difference.
-  final String network;
-  final String noun;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final placed = placedCount(connections);
-    final atCompany = connections.length - placed;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Row(
-        children: [
-          SocialNetworkMark(network: network, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  connections.length == 1
-                      ? '1 $noun account'
-                      : '${connections.length} $noun accounts',
-                  style: theme.textTheme.bodyMedium,
-                ),
-                Text(
-                  placed == 0
-                      ? 'All at company level'
-                      : '$atCompany at company level · $placed on '
-                            '${placed == 1 ? 'a franchise' : 'franchises'}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(onPressed: onManage, child: const Text('Manage')),
-        ],
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
-    );
-  }
-}
-
-/// Mobile layout 4: a row that states its value.
-///
-/// The same shape as Your account on a phone. It carries the placed count
-/// rather than only the total because that is the number that changes —
-/// somebody checking whether their assignment took sees it without opening
-/// anything.
-class LeadsAccountsTile extends StatelessWidget {
-  const LeadsAccountsTile({
-    super.key,
-    required this.connections,
-    required this.onOpen,
-    this.network = 'google_ads',
-    this.noun = 'Google Ads',
-  });
-
-  final List<Map<String, dynamic>> connections;
-  final VoidCallback onOpen;
-  final String network;
-  final String noun;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final placed = placedCount(connections);
-
-    return ListTile(
-      leading: SocialNetworkMark(network: network, size: 20),
-      title: Text(noun, style: theme.textTheme.bodyMedium),
-      subtitle: Text(
-        '${connections.length} '
-        '${connections.length == 1 ? 'account' : 'accounts'} · '
-        '$placed placed',
-        style: theme.textTheme.bodySmall,
+      child: Text(
+        text,
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: colours.ink),
       ),
-      trailing: const Icon(Icons.chevron_right, size: 18),
-      onTap: onOpen,
     );
   }
 }

@@ -562,22 +562,21 @@ void main() {
       ],
     );
 
-    // The count moved from a band over the list to the top of the panel
-    // Manage opens (design 30), and to Manage's own tooltip.
+    // The count moved from a band over the list to the Connections page
+    // Manage opens (UI queue 34), and to Manage's own tooltip.
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('Google Ads · 3 accounts'),
+      find.text('3 accounts · 2 sending leads'),
       findsOneWidget,
       reason:
-          'The panel states how many accounts exist. Naming one of them was '
+          'The page states how many accounts exist. Naming one of them was '
           'the defect: it looked correct and was arbitrary.',
     );
 
-    // And the second line carries the fact that actually changes.
-    // Placement moved into the panel with the sources layout; the band
-    // names the providers and their counts (UI/UX 80646605).
+    // And the line under the list carries the fact that actually changes.
+    expect(find.text('2 at company level · 1 on a franchise'), findsOneWidget);
   });
 
   testWidgets('with an account connected and no leads it says the week was '
@@ -1021,18 +1020,27 @@ void main() {
     );
   });
 
-  testWidgets('an unconnected Thumbtack offers to connect from the sources '
-      'panel and says what connecting is for', (tester) async {
+  // Manage opens the Connections page in place of the leads (UI queue 34,
+  // Jose's 1 + 4 of 2026-09-30). leads_accounts_test.dart holds the page
+  // itself; these hold it inside the screen.
+  testWidgets('an unconnected Thumbtack offers to connect from Connections '
+      'and says what connecting is for', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('provider-thumbtack')));
+    await tester.pumpAndSettle();
 
     expect(find.text('No Thumbtack account connected'), findsOneWidget);
     expect(find.text('Connect Thumbtack'), findsOneWidget);
+    expect(find.textContaining('brings Thumbtack enquiries'), findsOneWidget);
   });
 
-  testWidgets('a connected Thumbtack says enquiries are not fetched yet', (
+  /// It used to say "enquiries not fetched yet". They are: Thumbtack's
+  /// webhook delivers them into Leads (three in production by 2026-09-30), so
+  /// the sentence had become the lie it was written to prevent.
+  testWidgets('a connected Thumbtack business is listed like any account', (
     tester,
   ) async {
     await _pump(
@@ -1045,6 +1053,7 @@ void main() {
           'display_name': 'A-1 Chimney',
           'remote_id': '58126687849144320',
           'status': 'connected',
+          'leads_count': 3,
         },
       ],
     );
@@ -1052,8 +1061,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connected — enquiries not fetched yet'), findsOneWidget);
-    expect(find.textContaining('not missing'), findsOneWidget);
+    expect(find.text('A-1 Chimney'), findsOneWidget);
+    expect(find.text('1 business · 1 sending leads'), findsOneWidget);
+    expect(find.textContaining('not fetched yet'), findsNothing);
   });
 
   testWidgets('every connected Thumbtack business is reachable, not just the '
@@ -1080,15 +1090,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Thumbtack · 12'), findsOneWidget);
-    expect(find.byType(LeadsAccountsList), findsOneWidget);
-    expect(find.text('Thumbtack · A1 Chimney'), findsNothing);
+    expect(find.text('12 businesses · 0 sending leads'), findsOneWidget);
+    expect(find.byType(LeadsConnections), findsOneWidget);
+    expect(find.text('12 that have never sent a lead'), findsOneWidget);
   });
 
-  /// The panel is its own route, so the screen's reload did not reach it: a
+  /// The panel was its own route, so the screen's reload did not reach it: a
   /// row disconnected from inside it stayed until the panel was closed and
   /// opened again (Jose, 2026-09-09: "after clicking it the item remains").
-  testWidgets('a row disconnected inside the open panel leaves the panel', (
+  /// The page is part of the screen now, and must stay that way.
+  testWidgets('an account disconnected on the Connections page leaves it', (
     tester,
   ) async {
     await _pump(
@@ -1108,30 +1119,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('2 that have never sent a lead'));
     await tester.pumpAndSettle();
 
-    final row = find.byKey(const ValueKey('leads-account-c0'));
-    expect(row, findsOneWidget);
-
-    await tester.tap(
-      find.descendant(of: row, matching: find.text('Disconnect')),
-    );
+    await tester.tap(find.byKey(const ValueKey('twin-c0')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(of: row, matching: find.text('Disconnect')),
-    );
+    await tester.tap(find.byKey(const ValueKey('account-disconnect')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account-disconnect-confirm')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connected sources'), findsWidgets, reason: 'still open');
-    expect(find.byKey(const ValueKey('leads-account-c0')), findsNothing);
-    expect(find.byKey(const ValueKey('leads-account-c1')), findsOneWidget);
-    expect(find.textContaining('Thumbtack · 1'), findsOneWidget);
+    expect(find.byType(LeadsConnections), findsOneWidget, reason: 'still open');
+    expect(find.byKey(const ValueKey('row-c0')), findsNothing);
+    expect(find.text('1 business · 0 sending leads'), findsOneWidget);
   });
 
-  testWidgets('without leads.edit the sources panel names who can connect '
-      'instead of offering a button that would be refused', (tester) async {
+  testWidgets('without leads.edit Connections names who can connect instead '
+      'of offering a button that would be refused', (tester) async {
     await _pump(
       tester,
       leads: const [],
@@ -1150,9 +1154,27 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connect Thumbtack'), findsNothing);
     expect(find.text('Connect Google Ads'), findsNothing);
     expect(find.textContaining('Somebody who can manage Leads'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('provider-thumbtack')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect Thumbtack'), findsNothing);
+    expect(find.textContaining('Somebody who can manage Leads'), findsWidgets);
+  });
+
+  testWidgets('Connections goes back to the leads', (tester) async {
+    await _pump(tester, leads: [_lead('l1', 'Maria')], connections: const []);
+
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadsConnections), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to the leads'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LeadsConnections), findsNothing);
+    expect(find.text('Maria'), findsWidgets);
   });
 }
 

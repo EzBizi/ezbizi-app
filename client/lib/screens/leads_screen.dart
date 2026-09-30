@@ -12,8 +12,6 @@ import '../widgets/connect_account.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
-import '../widgets/side_panel.dart';
-import '../widgets/social_network_mark.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -95,11 +93,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// unrelated reason.
   String? _delayedSince;
 
-  /// The open Connected sources panel, when there is one. A panel is its own
-  /// route: the screen's setState does not reach it, so a row disconnected
-  /// from inside it stayed on screen until the panel was closed and opened
-  /// again (Jose, 2026-09-09). Every reload pokes it.
-  StateSetter? _redrawSources;
   int _total = 0;
   String _status = '';
   int _request = 0;
@@ -124,6 +117,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// A phone's sources page is open in place of the list (design 30, 5).
   bool _choosingSource = false;
+
+  /// Manage: the Connections page in place of the leads, with its own back
+  /// arrow (UI queue 34, Jose's 1 + 4 of 2026-09-30).
+  bool _managing = false;
 
   /// A phone's search box, opened from its icon.
   bool _searching = false;
@@ -363,7 +360,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
           '${e.key}': (e.value as num?)?.toInt() ?? 0,
       };
     });
-    _redrawSources?.call(() {});
 
     if (response.ok && _toOpen != null) await _openWanted(_toOpen!);
   }
@@ -504,6 +500,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   Widget _googleTab(ThemeData theme) {
+    if (_managing) {
+      return LeadsConnections(
+        api: widget.api,
+        session: widget.session,
+        connections: _connections,
+        canEdit: _canConnect,
+        onChanged: _load,
+        onBack: () => setState(() => _managing = false),
+      );
+    }
+
     // Design 30, Jose's 3 and 5 (2026-09-29): "ezbizi is taking a lot of
     // space with tabs and filters from the chat". On a desktop the sources
     // go down the side and the list keeps its own search and filters, so the
@@ -1328,123 +1335,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _phoneLeadAsOpened = lead;
   });
 
-  /// Thumbtack: connected here, not yet delivering.
-  ///
-  /// ── Why this tab does not show an empty list ─────────────────
-  ///
-  /// Because an empty list is a lie shaped like a fact. EzBizi can connect a
-  /// Thumbtack business and keep its associate phone numbers in step — which is
-  /// what makes caller ID work on Thumbtack's side — and it cannot yet read
-  /// enquiries. A list rendering nothing would say "no leads this week" to
-  /// somebody whose leads are arriving perfectly well on Thumbtack's own app.
-  ///
-  /// So the tab says the two things separately: the account is connected, and
-  /// enquiries are not being fetched yet. When ingestion lands this becomes the
-  /// same list as Google's and this paragraph goes with it.
-  /// Thumbtack's section of the Connected sources panel: the businesses
-  /// when connected (every one of them, the list that told twelve twins
-  /// apart), the door to connect when not.
-  Widget _thumbtackSection(ThemeData theme) {
-    final accounts = _thumbtackAccounts;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (accounts.isNotEmpty) ...[
-          LeadsAccountsList(
-            api: widget.api,
-            session: widget.session,
-            connections: accounts,
-            onChanged: _load,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Connected — enquiries not fetched yet',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'EzBizi keeps this business\'s associate phone numbers in step '
-            'with Thumbtack, so calls from your team are recognised as '
-            'coming from the business. Reading enquiries into this list is '
-            'not switched on yet — until it is, your Thumbtack leads are '
-            'on Thumbtack, not missing.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ] else ...[
-          Text(
-            'No Thumbtack account connected',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Connecting lets EzBizi keep your team\'s phone numbers in step '
-            'with Thumbtack, so a technician calling a customer is shown as '
-            'the business rather than an unknown number.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Same rule as Google's half: a control that is offered must be
-          // a control that works, so somebody holding only `leads.view`
-          // is told who can do it rather than given a button that 403s.
-          if (_canConnect)
-            ConnectAccount(
-              api: widget.api,
-              label: 'Thumbtack',
-              startPath: '/social/thumbtack/start',
-              onConnected: _load,
-            )
-          else
-            Text(
-              'Somebody who can manage Leads needs to connect the account.',
-              style: theme.textTheme.bodySmall,
-            ),
-        ],
-      ],
-    );
-  }
-
-  /// Google's section: every account and where its leads go, or the door in.
-  Widget _googleSection(ThemeData theme) {
-    if (_googleAdsAccounts.isNotEmpty) {
-      return LeadsAccountsList(
-        api: widget.api,
-        session: widget.session,
-        connections: _googleAdsAccounts,
-        onChanged: _load,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'No Google Ads account connected',
-          style: theme.textTheme.titleSmall,
-        ),
-        const SizedBox(height: 12),
-        if (_canConnect)
-          ConnectAccount(
-            api: widget.api,
-            label: 'Google Ads',
-            startPath: '/social/google-ads/start',
-            onConnected: _load,
-          )
-        else
-          Text(
-            'Somebody who can manage Leads needs to connect the account.',
-            style: theme.textTheme.bodySmall,
-          ),
-      ],
-    );
-  }
-
   /// "Google Ads · 22 accounts · Thumbtack · 1 · Website · chat and forms".
   String _sourcesSummary() {
     final google = _googleAdsAccounts.length;
@@ -1458,79 +1348,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ].join(' · ');
   }
 
-  /// Every provider's section on one surface, a side panel everywhere: on a
-  /// phone it was a pushed screen, which the containment rule rules out. Web Management's website section arrives as
-  /// a widget of theirs; until then one line says where those leads come from.
-  Future<void> _openSources() async {
-    final theme = Theme.of(context);
-
-    Widget section(String title, String network, Widget child) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            SocialNetworkMark(network: network, size: 18),
-            const SizedBox(width: 8),
-            Text(title, style: theme.textTheme.titleMedium),
-          ],
-        ),
-        const SizedBox(height: 10),
-        child,
-        const SizedBox(height: 24),
-      ],
-    );
-
-    // Built on every redraw, not once at open: the sections read the
-    // screen's connections, and a disconnect changes them.
-    Widget body() => StatefulBuilder(
-      builder: (context, redraw) {
-        _redrawSources = redraw;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // How many of each, first: the count is what tells twenty-two
-            // lookalike accounts from one (the defect of 2026-09-08).
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                _sourcesSummary(),
-                key: const ValueKey('sources-summary'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            section('Google Ads', 'google_ads', _googleSection(theme)),
-            section('Thumbtack', 'thumbtack', _thumbtackSection(theme)),
-            section(
-              'Website',
-              'web',
-              Text(
-                'Chat and form enquiries arrive through the EzBizi WordPress '
-                'plugin on your site, into this list.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    await showSidePanel<void>(
-      context,
-      builder: (_) => SidePanel(
-        title: 'Connected sources',
-        subtitle:
-            'Where enquiries come from, and where each account\'s leads go.',
-        child: body(),
-      ),
-    );
-    _redrawSources = null;
-  }
+  /// Manage opens the Connections page in place of the leads.
+  void _openSources() => setState(() {
+    _managing = true;
+    _choosingSource = false;
+  });
 
   /// Two different nothings, and they must not read the same.
   Widget _empty(ThemeData theme) {

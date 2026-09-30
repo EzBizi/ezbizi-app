@@ -4,17 +4,19 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// The connected Google Ads accounts — desktop layout 1, mobile layout 4.
+/// Leads › Manage, the Connections page: UI queue 34, Jose's 1 + 4.
 ///
-/// The defect this exists for: one connect created twenty-two accounts in the
-/// same second and the screen showed one of them, chosen by whichever the query
-/// returned first. Twenty-one were invisible.
+/// The defect the accounts list exists for still holds it: one connect made
+/// twenty-two Google Ads accounts in the same second and the screen showed one
+/// of them. Twenty-one were invisible.
 final _deleted = <String>[];
+final _patched = <String, Map<String, dynamic>>{};
 
 void main() {
   /// Twelve Thumbtack rows are one consent. Letting them all go is one
@@ -41,7 +43,6 @@ void main() {
       find.byKey(const ValueKey('accounts-disconnect-all')),
       findsOneWidget,
     );
-    expect(_deleted, isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('accounts-disconnect-all')));
     await tester.pumpAndSettle();
@@ -58,7 +59,7 @@ void main() {
     expect(reloaded, 1);
   });
 
-  testWidgets('a single account has no Disconnect all; its own row is enough', (
+  testWidgets('a single account has no Disconnect all; its own is enough', (
     tester,
   ) async {
     await _pump(tester, connections: _many(1));
@@ -71,17 +72,28 @@ void main() {
   ) async {
     await _pump(tester, connections: _many(22));
 
-    // The producing group is open; the rest are behind the fold with a count
-    // that names them, so nothing is silently absent.
-    expect(find.text('Producing leads'), findsOneWidget);
+    // The accounts sending leads are open; the rest are behind the fold with
+    // a count that names them, so nothing is silently absent.
+    expect(find.text('Sending leads'), findsOneWidget);
     expect(find.text('19 that have never sent a lead'), findsOneWidget);
+    expect(_rows(), findsNWidgets(3));
 
     await tester.tap(find.text('19 that have never sent a lead'));
     await tester.pumpAndSettle();
 
+    // The table builds lazily, so count what the one-row-per-account list
+    // holds by scrolling through it rather than what is on screen.
+    final seen = <String>{};
+    for (var i = 0; i < 12; i++) {
+      for (final e in _rows().evaluate()) {
+        seen.add('${(e.widget.key as ValueKey).value}');
+      }
+      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
     expect(
-      find.byType(LeadsAccountRow),
-      findsNWidgets(22),
+      seen,
+      hasLength(22),
       reason:
           'Twenty-two accounts exist and all twenty-two must be reachable. '
           'Showing one was the reported defect.',
@@ -89,9 +101,8 @@ void main() {
   });
 
   /// One Thumbtack connect made twelve businesses all called "A1 Chimney"
-  /// (API Integrations, 2026-09-08). Google never produced twins, so the row
-  /// had nothing to tell them apart with until somebody named them - and a
-  /// person cannot tell which one they are naming until they have.
+  /// (API Integrations, 2026-09-08). The row has nothing to tell them apart
+  /// with until somebody names them.
   testWidgets('twins with the same display name show the provider id until '
       'named', (tester) async {
     await _pump(
@@ -125,53 +136,20 @@ void main() {
     );
   });
 
-  testWidgets('the band and the tile say the provider they were given', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: EzBiziTheme.light(),
-        home: Scaffold(
-          body: Column(
-            children: [
-              LeadsAccountsBand(
-                connections: _many(2),
-                onManage: () {},
-                network: 'thumbtack',
-                noun: 'Thumbtack',
-              ),
-              LeadsAccountsTile(
-                connections: _many(2),
-                onOpen: () {},
-                network: 'thumbtack',
-                noun: 'Thumbtack',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.text('2 Thumbtack accounts'), findsOneWidget);
-    expect(find.text('Thumbtack'), findsOneWidget);
-    expect(find.textContaining('Google Ads'), findsNothing);
-  });
-
   testWidgets('search reaches through the fold', (tester) async {
     await _pump(tester, connections: _many(22));
 
-    // Folded, and the fold says so rather than leaving you to guess.
     expect(find.text('Search reaches in here'), findsOneWidget);
-    expect(find.byType(LeadsAccountRow), findsNWidgets(3));
+    expect(_rows(), findsNWidgets(3));
 
-    await tester.enterText(find.byType(TextField).first, 'quiet-17');
+    await tester.enterText(
+      find.byKey(const ValueKey('accounts-search')),
+      'quiet-17',
+    );
     await tester.pumpAndSettle();
 
-    // Counted as rows rather than as text: a matching row legitimately shows
-    // its name AND its number, and the search box holds the same string.
     expect(
-      find.byType(LeadsAccountRow),
+      _rows(),
       findsOneWidget,
       reason:
           'A fold is only legitimate while the thing behind it stays findable. '
@@ -179,6 +157,29 @@ void main() {
           'the fold was supposed to avoid, one level down.',
     );
     expect(find.text('400-000-0017'), findsOneWidget);
+  });
+
+  testWidgets('the chips narrow to what needs attention', (tester) async {
+    await _pump(
+      tester,
+      connections: [
+        {..._account('111-111-1111', leads: 5), 'status': 'broken'},
+        {
+          ..._account('222-222-2222', leads: 4),
+          'certification': {'state': 'attention', 'problems': <String>[]},
+        },
+        _account('333-333-3333', leads: 3),
+      ],
+    );
+
+    expect(find.text('Reconnect'), findsOneWidget);
+    expect(find.text('Needs attention'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('accounts-chip-attention')));
+    await tester.pumpAndSettle();
+
+    expect(_rows(), findsNWidgets(2));
+    expect(find.text('333-333-3333'), findsNothing);
   });
 
   testWidgets('a placement you cannot see is stated, and cannot be changed', (
@@ -195,12 +196,11 @@ void main() {
 
     expect(find.text('Placed somewhere you cannot see'), findsOneWidget);
 
-    final change = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Change'),
-    );
+    await _open(tester, '405-172-9356');
+
     expect(
-      change.onPressed,
-      isNull,
+      find.byKey(const ValueKey('account-place')),
+      findsNothing,
       reason:
           'Offering to move something whose current value you cannot see is '
           'offering to guess.',
@@ -208,69 +208,74 @@ void main() {
   });
 
   /// Google stops showing a Local Services account whose licence or
-  /// insurance lapses, and tells nobody. The row says so, and names the fix.
+  /// insurance lapses, and tells nobody. The page says so, and names the fix.
   testWidgets('a certification problem is shown with its reason; a clean '
-      'account says Certified; an unchecked one says nothing', (tester) async {
+      'account says Certified; an unchecked one says neither', (tester) async {
     await _pump(
       tester,
       connections: [
         {
           ..._account('111-111-1111', leads: 3),
-          'id': 'lapsed',
           'certification': {
             'state': 'attention',
             'problems': ['Insurance expires on Oct 12, 2026.'],
-            'soonest_expiry': '2026-10-12T00:00:00+00:00',
-            'checked_at': '2026-09-28T11:45:00+00:00',
             'failed': null,
           },
         },
         {
           ..._account('222-222-2222', leads: 2),
-          'id': 'clean',
           'certification': {
             'state': 'ok',
             'problems': <String>[],
-            'soonest_expiry': null,
-            'checked_at': '2026-09-28T11:45:00+00:00',
             'failed': null,
           },
         },
-        {..._account('333-333-3333', leads: 1), 'id': 'unchecked'},
+        _account('333-333-3333', leads: 1),
       ],
     );
 
-    expect(find.text('Certification needs attention'), findsOneWidget);
-    expect(find.text('Insurance expires on Oct 12, 2026.'), findsOneWidget);
+    expect(find.text('Needs attention'), findsWidgets);
     expect(find.text('Certified'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('lsa-certification')),
-      findsNWidgets(2),
+      find.text('Connected'),
+      findsOneWidget,
       reason: 'an account never checked must not read as either verdict',
     );
+
+    await _open(tester, '111-111-1111');
+    expect(find.text('Certification needs attention'), findsOneWidget);
+    expect(find.text('• Insurance expires on Oct 12, 2026.'), findsOneWidget);
+
+    await _open(tester, '333-333-3333');
+    expect(find.byKey(const ValueKey('lsa-certification')), findsNothing);
   });
 
-  testWidgets('an unnamed account offers a name; a named one keeps its number', (
-    tester,
-  ) async {
+  testWidgets('an unnamed account is named in its panel; a named one keeps '
+      'its number', (tester) async {
     await _pump(
       tester,
       connections: [
         _account('405-172-9356', leads: 5),
-        _account('118-904-2210', leads: 3, label: 'Connecticut'),
+        _account('118-904-2210', leads: 3, label: 'Connecticut LSA'),
       ],
     );
 
-    // Unnamed: the number is the name, and the way to fix that is on the row —
-    // naming twenty-two accounts has to be a scroll, not a trip per account.
-    expect(find.text('405-172-9356'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Name it'), findsOneWidget);
-
     // Named: both, because the name is how you find it and the number is how
     // you check it against Google Ads.
-    expect(find.text('Connecticut'), findsOneWidget);
+    expect(find.text('Connecticut LSA'), findsOneWidget);
     expect(find.text('118-904-2210'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Rename'), findsOneWidget);
+
+    await _open(tester, '405-172-9356');
+    await tester.enterText(
+      find.byKey(const ValueKey('account-name')),
+      'Bridgeport',
+    );
+    await tester.tap(find.byKey(const ValueKey('account-name-save')));
+    await tester.pumpAndSettle();
+
+    expect(_patched['/api/v1/social/connections/conn-405-172-9356/label'], {
+      'label': 'Bridgeport',
+    });
   });
 
   testWidgets('a move of 3 leads says so; a move of 0 says something else', (
@@ -282,10 +287,8 @@ void main() {
       moved: 3,
     );
 
-    await tester.tap(find.widgetWithText(TextButton, 'Change'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Connecticut'));
-    await tester.pumpAndSettle();
+    await _open(tester, '405-172-9356');
+    await _place(tester, 'Connecticut');
 
     expect(
       find.text('3 leads moved to Connecticut.'),
@@ -306,13 +309,10 @@ void main() {
     );
 
     // An account with no leads is, by definition, in the folded group.
-    await tester.tap(find.text('1 that have never sent a lead'));
+    await tester.tap(find.text('1 that has never sent a lead'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.widgetWithText(TextButton, 'Change'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Connecticut'));
-    await tester.pumpAndSettle();
+    await _open(tester, '405-172-9356');
+    await _place(tester, 'Connecticut');
 
     expect(
       find.text('Moved to Connecticut. No leads to move yet.'),
@@ -332,10 +332,8 @@ void main() {
       moved: null,
     );
 
-    await tester.tap(find.widgetWithText(TextButton, 'Change'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Connecticut'));
-    await tester.pumpAndSettle();
+    await _open(tester, '405-172-9356');
+    await _place(tester, 'Connecticut');
 
     expect(
       find.textContaining('moved to'),
@@ -346,7 +344,76 @@ void main() {
     );
   });
 
-  test('the band counts placements, which is the number that changes', () {
+  testWidgets('disconnecting one account asks first, in the panel', (
+    tester,
+  ) async {
+    await _pump(tester, connections: _many(2));
+
+    await _open(tester, 'busy-0');
+    await tester.tap(find.byKey(const ValueKey('account-disconnect')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('removes the stored permission'), findsOne);
+    expect(_deleted, isEmpty, reason: 'asking is not doing');
+
+    await tester.tap(find.byKey(const ValueKey('account-disconnect-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(_deleted, ['/api/v1/social/connections/conn-400-000-0000']);
+  });
+
+  testWidgets('somebody who can only view sees the page and no controls', (
+    tester,
+  ) async {
+    await _pump(tester, connections: _many(3), canEdit: false);
+
+    expect(find.byKey(const ValueKey('accounts-disconnect-all')), findsNothing);
+    expect(find.textContaining('Connect '), findsNothing);
+
+    await _open(tester, 'busy-0');
+
+    expect(find.byKey(const ValueKey('account-name')), findsNothing);
+    expect(find.byKey(const ValueKey('account-place')), findsNothing);
+    expect(find.byKey(const ValueKey('account-disconnect')), findsNothing);
+  });
+
+  /// Jose's 4: on a phone the providers, the accounts and the account are
+  /// steps in place of each other, each with ← back, never a pushed page.
+  testWidgets('a phone steps from providers to accounts to one account and '
+      'back', (tester) async {
+    var backToLeads = 0;
+    await _pump(
+      tester,
+      connections: _many(3),
+      size: const Size(390, 800),
+      onBack: () => backToLeads++,
+    );
+
+    expect(find.byKey(const ValueKey('provider-google_ads')), findsOneWidget);
+    expect(_rows(), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('provider-google_ads')));
+    await tester.pumpAndSettle();
+    expect(_rows(), findsNWidgets(3));
+
+    await _open(tester, 'busy-0');
+    expect(_rows(), findsNothing, reason: 'the account in place of the list');
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(_rows(), findsNWidgets(3));
+
+    await tester.tap(find.byTooltip('Back to the connections'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('provider-google_ads')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to the leads'));
+    await tester.pumpAndSettle();
+    expect(backToLeads, 1);
+  });
+
+  test('placements are counted, which is the number that changes', () {
     expect(
       placedCount([
         _account('a', leads: 1),
@@ -359,6 +426,23 @@ void main() {
           'Counting only the ones it can name would under-report.',
     );
   });
+}
+
+/// Account rows, in the table or the list: both key a row `row-<id>`.
+Finder _rows() => find.byWidgetPredicate(
+  (w) => w.key is ValueKey && '${(w.key as ValueKey).value}'.startsWith('row-'),
+);
+
+Future<void> _open(WidgetTester tester, String text) async {
+  await tester.tap(find.text(text).first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _place(WidgetTester tester, String where) async {
+  await tester.tap(find.byType(SearchPickerField<String?>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(where).last);
+  await tester.pumpAndSettle();
 }
 
 /// One connections row, in the shape `meta.connections` actually sends.
@@ -393,10 +477,14 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> connections,
   int? moved,
+  bool canEdit = true,
+  Size size = const Size(1400, 900),
   Future<void> Function()? onChanged,
+  VoidCallback? onBack,
 }) async {
   _deleted.clear();
-  tester.view.physicalSize = const Size(1200, 2400);
+  _patched.clear();
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -410,11 +498,10 @@ Future<void> _pump(
           },
         });
       }
-      if (request.method == 'DELETE' &&
-          request.url.path.contains('/social/providers/')) {
+      if (request.method == 'DELETE') {
         _deleted.add(request.url.path);
         return _json({
-          'data': {'provider': 'thumbtack', 'disconnected': 3, 'problems': []},
+          'data': {'disconnected': 3, 'problems': []},
         });
       }
       if (request.url.path.contains('leads-franchise')) {
@@ -427,6 +514,11 @@ Future<void> _pump(
             'leads_moved': moved,
           },
         });
+      }
+      if (request.method == 'PATCH') {
+        _patched[request.url.path] = (jsonDecode(request.body) as Map)
+            .cast<String, dynamic>();
+        return _json({'data': <String, dynamic>{}});
       }
       return _json({
         'message': 'Nothing stubbed for ${request.url.path}.',
@@ -442,13 +534,13 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: SingleChildScrollView(
-          child: LeadsAccountsList(
-            api: api,
-            session: session,
-            connections: connections,
-            onChanged: onChanged ?? () async {},
-          ),
+        body: LeadsConnections(
+          api: api,
+          session: session,
+          connections: connections,
+          canEdit: canEdit,
+          onChanged: onChanged ?? () async {},
+          onBack: onBack ?? () {},
         ),
       ),
     ),
