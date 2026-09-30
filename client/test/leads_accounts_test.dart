@@ -490,7 +490,42 @@ void main() {
     await tester.tap(find.text('Templates'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Thanks, Harbor here.'), findsOneWidget);
+    // In the field; the list and the preview say it as well.
+    expect(
+      find.widgetWithText(TextField, 'Thanks, Harbor here.'),
+      findsOneWidget,
+    );
+  });
+
+  /// UI queue 38, 4: a template open on a phone takes the page, the Manage
+  /// header and tabs with it, and ← back returns them.
+  testWidgets('a template open on a phone takes the page', (tester) async {
+    await _pump(tester, connections: _many(3), size: const Size(390, 800));
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Thank you'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('template-text')), findsOneWidget);
+    expect(find.byKey(const ValueKey('manage-tabs')), findsNothing);
+    expect(find.byTooltip('Back to the leads'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('template-text')),
+      'Thanks, Harbor here.',
+    );
+    await tester.tap(find.byTooltip('Back to the templates'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('manage-tabs')), findsOneWidget);
+    expect(find.byTooltip('Back to the leads'), findsOneWidget);
+    expect(
+      find.text('Unsaved'),
+      findsOneWidget,
+      reason: 'the typing survived the header coming back',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a phone has the tabs on its first step only', (tester) async {

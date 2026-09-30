@@ -1,4 +1,4 @@
-// Leads › Manage: the Connections page, with Templates as its second tab.
+// Leads › Manage: the Connections page, with Templates and Dashboard beside it.
 //
 // UI queue 34, docs/previews/leads-connections-layouts.html, Jose's 1 + 4
 // (2026-09-30: "Sounds good, go ahead with ur recommendations"), after "i feel
@@ -6,9 +6,10 @@
 // side panel that stacked every provider in one scroll, with three text
 // buttons on every account row and certification problems as loose red lines.
 //
-// Manage has two tabs (Jose, 2026-09-30: "inside manage and we can make a
-// connection sub tab and templates sub tab"): Connections, described below,
-// and Templates, which is ReplyTemplatesManager as the Leads session built it.
+// Manage has three tabs (Jose, 2026-09-30: "inside manage and we can make a
+// connection sub tab and templates sub tab", then a Dashboard "sub tab for
+// leads"): Connections, described below; Templates, ReplyTemplatesManager; and
+// Dashboard, LeadsDashboard. UI queue 38 drew the last two.
 //
 // The page takes the place of the leads, with ← back (containment): the
 // providers down the left with how many need attention, the chosen provider's
@@ -34,6 +35,7 @@ import '../core/theme.dart';
 import 'connect_account.dart';
 import 'error_note.dart';
 import 'grouped_rows.dart';
+import 'leads_dashboard.dart';
 import 'reply_templates_manager.dart';
 import 'search_picker.dart';
 import 'side_panel.dart';
@@ -183,6 +185,13 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   /// somebody typed there survives a look at the connections.
   bool _templatesOpened = false;
 
+  /// The dashboard, like Templates, is built on first open and kept after.
+  bool _dashboardOpened = false;
+
+  /// A phone's template steps past the first take the page, header and tabs
+  /// included, the way the connections' steps do.
+  bool _templatesDeep = false;
+
   @override
   void dispose() {
     _search.dispose();
@@ -300,7 +309,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
                   ],
                 ),
               ),
-              Offstage(offstage: connections, child: _templates()),
+              Offstage(offstage: _tab != 'templates', child: _templates()),
+              Offstage(offstage: _tab != 'dashboard', child: _dashboard()),
             ],
           ),
         ),
@@ -318,7 +328,30 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       children: [
         Offstage(offstage: !connections, child: _phoneConnections(context)),
         Offstage(
-          offstage: connections,
+          offstage: _tab != 'templates',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!_templatesDeep) ...[
+                _header(
+                  context,
+                  title: 'Manage',
+                  backTooltip: 'Back to the leads',
+                  onBack: widget.onBack,
+                ),
+                _tabStrip(context),
+                const Divider(height: 1),
+              ],
+              // Keyed, so hiding the header above keeps the templates' State.
+              Expanded(
+                key: const ValueKey('templates-body'),
+                child: _templates(),
+              ),
+            ],
+          ),
+        ),
+        Offstage(
+          offstage: _tab != 'dashboard',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -330,7 +363,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               ),
               _tabStrip(context),
               const Divider(height: 1),
-              Expanded(child: _templates()),
+              Expanded(child: _dashboard()),
             ],
           ),
         ),
@@ -427,6 +460,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   static const _manageTabs = [
     ('connections', 'Connections', Icons.link),
     ('templates', 'Templates', Icons.bolt_outlined),
+    ('dashboard', 'Dashboard', Icons.insights_outlined),
   ];
 
   Widget _tabStrip(BuildContext context) => Material(
@@ -438,20 +472,24 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       onSelected: (i) => setState(() {
         _tab = _manageTabs[i].$1;
         if (_tab == 'templates') _templatesOpened = true;
+        if (_tab == 'dashboard') _dashboardOpened = true;
       }),
     ),
   );
 
-  /// The replies beside Send, one list per company (04be9c2f), at a reading
-  /// width: across a whole desk each text box ran 1,400px wide.
+  /// The replies beside Send, one list per company (04be9c2f; laid out as
+  /// UI queue 38's 1 and 4).
   Widget _templates() => _templatesOpened
-      ? Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: ReplyTemplatesManager(api: widget.api),
-          ),
+      ? ReplyTemplatesManager(
+          api: widget.api,
+          onDeeper: (deep) => setState(() => _templatesDeep = deep),
         )
+      : const SizedBox.shrink();
+
+  /// Replies, response times and leads, per person and per day (UI queue
+  /// 38's 7 and 10).
+  Widget _dashboard() => _dashboardOpened
+      ? LeadsDashboard(api: widget.api, session: widget.session)
       : const SizedBox.shrink();
 
   /// The provider's own sign-in. The start paths are literals here, at the
