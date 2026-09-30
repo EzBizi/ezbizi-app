@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0323',
+      date: '30 Sep 2026',
+      items: [
+        'Addresses: booking a lead, adding or editing a customer, the company form and the emergency address of a phone all suggest the address as you type and keep street, unit, city, state and ZIP; the customer made from a booked lead gets every part.',
+        'Dates with a time: 16 typed on a 12-hour clock becomes 4 PM instead of being dropped, and an hour or minute no clock has says so.',
+        'Invitations: the paperwork can start with the invite, switched on per person.',
+        'Onboarding: signing the contract fills in the start date, pay rate, work schedule and issued equipment of the person in Records.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0322',
       date: '30 Sep 2026',
       items: [
