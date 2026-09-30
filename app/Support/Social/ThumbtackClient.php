@@ -152,6 +152,20 @@ final class ThumbtackClient
      * avoiding. So we reload, and if the stored token is no longer the one we
      * queued with, we take theirs instead of asking for another.
      */
+    /**
+     * Exchange the grant now, used or not, so it is never idle for long.
+     *
+     * 2026-09-30: the grant of 2026-09-15 was refused on its first use,
+     * 14 days 21 hours later, though Thumbtack documents 180 days. Their
+     * sign-in runs on Auth0, whose default idle limit for a rotating refresh
+     * token is 15 days - and A-1 goes weeks without a Thumbtack lead, so
+     * nothing else touched it. ezbizi:thumbtack-keep-alive calls this daily.
+     */
+    public function keepAlive(): void
+    {
+        $this->refreshAccessToken();
+    }
+
     private function refreshAccessToken(): void
     {
         $spent = $this->refreshToken();
