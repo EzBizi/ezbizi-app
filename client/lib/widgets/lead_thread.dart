@@ -746,6 +746,15 @@ class _LeadThreadState extends State<LeadThread> {
               child: TextField(
                 key: const ValueKey('reply-box'),
                 controller: _compose,
+                // The phone's own spell check and suggestions (Jose,
+                // 2026-09-30: "hellu" was not corrected). Windows and the
+                // web build have no native checker Flutter can call.
+                spellCheckConfiguration: WidgetsBinding
+                        .instance
+                        .platformDispatcher
+                        .nativeSpellCheckServiceDefined
+                    ? const SpellCheckConfiguration()
+                    : null,
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.newline,
