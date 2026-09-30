@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Attachment;
 use App\Models\AuditEvent;
 use App\Models\ContractSignature;
+use App\Models\EmploymentEvent;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
@@ -475,6 +476,51 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
+     * The last signature writes the contract's terms into the record (Jose,
+     * 2026-09-30: "of course"): start date, pay, schedule and what was issued.
+     */
+    public function test_completing_fills_the_record_from_the_contract(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'date_of_hire', 'label' => 'Date of hire', 'type' => 'date', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'pay_basis', 'label' => 'Pay basis', 'type' => 'choice', 'options' => ['Hourly', 'Salary'],
+                'filled_by' => 'employer', 'required' => true],
+            ['key' => 'hourly_rate', 'label' => 'Hourly rate', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'work_days', 'label' => 'Work days', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'work_hours', 'label' => 'Work hours', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'tools', 'label' => 'Tools issued', 'type' => 'checklist', 'options' => ['Hammer', 'Flashlight'],
+                'filled_by' => 'employer', 'required' => false],
+            ['key' => 'employer_sign', 'label' => 'For the employer', 'type' => 'signature', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'date_of_hire' => '2026-10-05', 'pay_basis' => 'Hourly', 'hourly_rate' => '18.50',
+            'work_days' => 'Monday - Friday', 'work_hours' => '8:00 AM - 5:00 PM',
+            'tools' => [['item' => 'Hammer', 'quantity' => '1', 'received' => '2026-10-05']],
+        ]])->assertOk();
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
+
+        // Nothing moves while it is only half signed.
+        $this->assertFalse($this->inTenant($alpha['org'], fn () => \App\Models\PayRate::where('user_id', $employee->id)->exists()));
+
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+
+        $this->inTenant($alpha['org'], function () use ($employee) {
+            $this->assertSame('2026-10-05', EmploymentEvent::where('user_id', $employee->id)
+                ->where('kind', EmploymentEvent::STARTED)->orderBy('occurred_on')->first()->occurred_on->toDateString(),
+                'The start date stayed the day they accepted.');
+
+            $rate = \App\Models\PayRate::where('user_id', $employee->id)->sole();
+            $this->assertSame(['hourly', '18.50', 'hour'], [$rate->basis, (string) $rate->amount, $rate->period]);
+
+            $this->assertEquals(['start' => '08:00', 'end' => '17:00'], $employee->fresh()->work_schedule['days']['monday']);
+            $this->assertSame('Hammer', \App\Models\HeldEquipment::where('user_id', $employee->id)->sole()->name);
+        });
+    }
+
+    /**
      * A signature is against what the signer READ, or it is against nothing.
      *
      * The client sends back the fingerprint of the document it was handed. If the
@@ -901,6 +947,42 @@ class HrOnboardingTest extends TestCase
             'invitation_id' => $invitationId,
             'contract_id'   => $contractId,
         ])->assertStatus(422)->assertJsonValidationErrors('contract_id');
+    }
+
+    /**
+     * The invite can start the paperwork itself, and does not have to (Jose,
+     * 2026-09-30: "yes but toggable, some people dont need contracts").
+     */
+    public function test_an_invitation_can_start_the_paperwork_and_a_bad_contract_refuses_both(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleFor($alpha);
+        $invite = fn (string $email, ?string $contract) => $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', [
+                'email' => $email, 'role_id' => $role->id,
+                'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
+                'contract_id' => $contract,
+            ]);
+        $paperworkFor = fn (string $invitationId) => $this->inTenant($alpha['org'],
+            fn () => Onboarding::where('invitation_id', $invitationId)->first());
+
+        $with = $invite('with@example.test', $this->aContract($alpha))->assertCreated()->json('data.id');
+        $this->assertSame(Onboarding::IN_PROGRESS, $paperworkFor($with)?->status);
+
+        // The control: no contract, no paperwork, and the invite still goes.
+        $without = $invite('without@example.test', null)->assertCreated()->json('data.id');
+        $this->assertNull($paperworkFor($without));
+
+        // A contract nobody could sign refuses the invite too, so nobody is
+        // emailed into paperwork that never started.
+        $unsignable = $this->aContract($alpha, 'Unsignable', [[
+            'key' => 'wage', 'label' => 'Hourly wage', 'type' => 'number',
+            'filled_by' => 'employer', 'required' => true,
+        ]]);
+        $invite('refused@example.test', $unsignable)
+            ->assertStatus(422)->assertJsonValidationErrors('contract_id');
+        $this->assertFalse($this->inTenant($alpha['org'],
+            fn () => \App\Models\Invitation::where('email', 'refused@example.test')->exists()));
     }
 
     /** One arrival, one contract. */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Contract;
 use App\Models\Invitation;
 use App\Models\Role;
 use App\Models\User;
@@ -162,6 +163,12 @@ class HrInvitationsController extends Controller
 
             'scope_type' => ['required', Rule::in(ScopeReach::TYPES)],
             'scope_id'   => ['required', 'uuid'],
+
+            // Optional: the paperwork starts with the invitation (Jose,
+            // 2026-09-30: "yes but toggable, some people dont need contracts").
+            'contract_id' => ['nullable', 'uuid', Rule::exists('contracts', 'id')
+                ->where('organization_id', $this->tenant->idOrFail())
+                ->whereNull('archived_at')],
         ]);
 
         $role = Role::findOrFail($input['role_id']);
@@ -245,6 +252,20 @@ class HrInvitationsController extends Controller
                 'scope'      => $invitation->scopeLabel(),
                 'expires_at' => $invitation->expires_at->toIso8601String(),
             ]], actor: $actor);
+
+            // Inside the same transaction: a contract that cannot carry an
+            // onboarding (never published, no signature line) refuses the
+            // whole invite, so nobody is emailed into paperwork that never
+            // started. The email goes after the commit, below.
+            if (($input['contract_id'] ?? null) !== null) {
+                try {
+                    $this->actions->startOnboarding(
+                        $invitation, Contract::findOrFail($input['contract_id']), $actor,
+                    );
+                } catch (CannotActOnInvitation $e) {
+                    throw ValidationException::withMessages(['contract_id' => $e->getMessage()]);
+                }
+            }
 
             return [$invitation, $issued['token']];
         });
