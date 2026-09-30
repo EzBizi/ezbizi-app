@@ -182,6 +182,35 @@ void main() {
     expect(find.text('333-333-3333'), findsNothing);
   });
 
+  /// A Google row can stay `connected` while every fetch fails, and
+  /// reconnecting over it is the fix: disconnecting first hides its leads
+  /// (Leads, 2026-09-30).
+  testWidgets('an account nothing is fetched from needs attention, and says '
+      'why and how to fix it', (tester) async {
+    await _pump(
+      tester,
+      connections: [
+        {
+          ..._account('111-111-1111', leads: 5),
+          'status': 'connected',
+          'sync_failing': true,
+          'status_reason': 'No lasting permission stored.',
+        },
+        _account('222-222-2222', leads: 4),
+      ],
+    );
+
+    expect(find.text('Not fetching'), findsOneWidget);
+    expect(find.byKey(const ValueKey('accounts-chip-attention')), findsOne);
+
+    await _open(tester, '111-111-1111');
+    expect(
+      find.textContaining('No lasting permission stored. Connect the account'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('no need to disconnect first'), findsOneWidget);
+  });
+
   testWidgets('a placement you cannot see is stated, and cannot be changed', (
     tester,
   ) async {
@@ -354,6 +383,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('removes the stored permission'), findsOne);
+    expect(
+      find.textContaining('hidden from Leads until you connect it again'),
+      findsOne,
+      reason:
+          'disconnecting hides its leads; saying only "nothing is '
+          'deleted" let people expect them to stay',
+    );
     expect(_deleted, isEmpty, reason: 'asking is not doing');
 
     await tester.tap(find.byKey(const ValueKey('account-disconnect-confirm')));

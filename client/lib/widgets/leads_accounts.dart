@@ -80,9 +80,16 @@ int placedCount(List<Map<String, dynamic>> connections) =>
 bool isBroken(Map<String, dynamic> connection) =>
     connection['status'] == 'broken' || connection['status'] == 'revoked';
 
-/// Broken, or Google says its Local Services certification needs attention.
+/// Connected, but no fetch from it has worked lately: a Google row can stay
+/// `connected` while every sync fails (Leads, 2026-09-30).
+bool isNotFetching(Map<String, dynamic> connection) =>
+    connection['sync_failing'] == true;
+
+/// Broken, not fetching, or Google says its Local Services certification
+/// needs attention.
 bool needsAttention(Map<String, dynamic> connection) =>
     isBroken(connection) ||
+    isNotFetching(connection) ||
     (connection['certification'] as Map?)?['state'] == 'attention';
 
 /// The account's state as one pill. Broken first, because nothing arrives;
@@ -90,6 +97,7 @@ bool needsAttention(Map<String, dynamic> connection) =>
 /// certification claim either way.
 (String, Tone) accountState(Map<String, dynamic> connection) {
   if (isBroken(connection)) return ('Reconnect', Tone.bad);
+  if (isNotFetching(connection)) return ('Not fetching', Tone.bad);
   final cert = connection['certification'] as Map?;
   if (cert == null) return ('Connected', Tone.neutral);
   return cert['state'] == 'attention'
@@ -792,8 +800,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         children: [
           if (_confirmAll) ...[
             Text(
-              'Disconnect all $n accounts? Nothing already in EzBizi is '
-              'deleted, and you can connect again afterwards.',
+              'Disconnect all $n accounts? Their leads are hidden from Leads '
+              'until you connect again; nothing is deleted.',
               style: theme.textTheme.bodySmall,
             ),
             Row(
@@ -1069,6 +1077,11 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
     final placement = placementOf(c);
     final leads = leadsOf(c);
     final cert = (c['certification'] as Map?)?.cast<String, dynamic>();
+    final reason = switch ('${c['status_reason'] ?? ''}'.trim()) {
+      '' => null,
+      final said =>
+        said.endsWith('.') ? said.substring(0, said.length - 1) : said,
+    };
     // The number when the account is named, and the provider's id when it
     // says something the number does not: Google's id is the number again
     // without its dashes, Thumbtack's tells twelve "A1 Chimney"s apart.
@@ -1132,13 +1145,17 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
             style: theme.textTheme.titleSmall,
           ),
 
-          if (isBroken(c)) ...[
+          // Reconnecting runs the sign-in over the same row, so its leads
+          // stay attached; disconnecting first would hide them (Leads,
+          // 2026-09-30).
+          if (isBroken(c) || isNotFetching(c)) ...[
             const SizedBox(height: 14),
             _note(
               context,
               Tone.bad,
-              'This connection stopped working, so nothing is fetched from it. '
-              'Connect the account again to fix it.',
+              '${isBroken(c) ? _stopped : _stale}'
+              '${reason == null ? '.' : ': $reason.'} Connect the account '
+              'again to fix it; no need to disconnect first.',
             ),
           ],
 
@@ -1225,8 +1242,8 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
           if (_confirming) ...[
             const SizedBox(height: 18),
             Text(
-              'This removes the stored permission. Nothing already in EzBizi '
-              'is deleted, and you can connect an account again afterwards.',
+              'This removes the stored permission. Its leads are hidden from '
+              'Leads until you connect it again; nothing is deleted.',
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),
           ],
@@ -1239,6 +1256,10 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
       ),
     );
   }
+
+  static const _stopped =
+      'This connection stopped working, so nothing is fetched from it';
+  static const _stale = 'Nothing has been fetched from this account lately';
 
   /// What Google holds: the verdict, each problem on its own line so the fix
   /// is named rather than guessed at, and where it comes from.
