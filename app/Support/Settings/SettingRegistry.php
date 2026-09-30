@@ -1152,7 +1152,7 @@ class SettingRegistry
                 label: 'Extension length, minutes',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 30,
-                options: [15, 30, 45, 60, 90, 120],
+                options: [5, 10, 15, 30, 45, 60, 90, 120],
                 allowedScopes: $orgOnly,
                 help: 'How much each Extend adds to the scheduled end. There is no limit on how many times.',
             ),

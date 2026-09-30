@@ -61,6 +61,9 @@ class TimeClockModuleTest extends TestCase
 
         $this->assertContains(1, $registry->getOrFail('time_clock.warning_minutes')->options);
         $this->assertContains(120, $registry->getOrFail('time_clock.extension_minutes')->options);
+        // Jose, 2026-09-30: "i should be able to input less like 5 or 10".
+        $this->assertContains(5, $registry->getOrFail('time_clock.extension_minutes')->options);
+        $this->assertContains(10, $registry->getOrFail('time_clock.extension_minutes')->options);
     }
 
     public function test_clock_in_does_not_imply_human_resources(): void
