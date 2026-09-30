@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0327',
+      date: '30 Sep 2026',
+      items: [
+        'Field, Map: a legend along the bottom explains every pin, job and line colour (a Legend button on phones), and the technician bar is colour-coded, with red for low battery, a phone gone quiet or poor GPS.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0326',
       date: '30 Sep 2026',
       items: [
