@@ -2958,7 +2958,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 35 · Phone · the Dial screen — **drawn, waiting on Jose**
+### 36 · Clock In · the lock screen — **drawn, waiting on Jose**
+
+Jose, 2026-09-30, with a screenshot of the lock screen: *"the clock in lock screen could also use some
+love, show the app logo, etc."* Today: "EzBizi" in plain type, the time, the name, a raw 08:00 – 17:00,
+a sentence, the green button and Sign out, small in an empty dark window. `docs/previews/clock-in-lock-layouts.html`:
+desktop **1** the sign-in page's dark gradient with one card: app icon + wordmark, large clock and the
+date, the person (photo or initials, role), today's shift as a chip in the organization's clock, full-width
+Clock In, Sign out, the organization at the foot (recommended); **2** split like the sign-in page, the day
+on the left and the person on the right; **3** a phone-style lock: a huge thin clock with the person in a
+bar along the bottom; phone **4**-**6** the same three. Client only (everything is in /me); the punch,
+poll, window lock and after-hours sentence unchanged. `lock_screen.dart` is Clock In's.
+
+### 35 · Phone · the Dial screen — **Jose: "use your recommendaitons for phone dial" — 1 and 4** — **BUILT**
 
 Jose, 2026-09-30, with two screenshots of Communication › Phone › Dial: *"see what we can do to
 improve the Phone Main Screen"*. Today: recent calls are numbers only (the same one nine times in a
