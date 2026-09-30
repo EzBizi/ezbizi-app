@@ -85,6 +85,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the legend names every colour on a wide screen', (tester) async {
+    await _pump(tester);
+
+    for (final label in [
+      'Reporting',
+      'At a job',
+      'Stopped too long',
+      'Not reporting',
+      'Job with a technician',
+      'Job not assigned',
+      'Job you opened',
+      'Route today',
+      'Drive to the job',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+  });
+
+  testWidgets('on a phone the legend opens from a button', (tester) async {
+    await _pump(tester, size: const Size(390, 800));
+
+    expect(find.text('Job not assigned'), findsNothing);
+    await tester.tap(find.text('Legend'));
+    await tester.pumpAndSettle();
+    expect(find.text('Job not assigned'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('without the Jobs grant there is no Jobs list', (tester) async {
     await _pump(tester, canSeeJobs: false);
 

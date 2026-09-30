@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/field/map_overlays.dart';
 import 'package:ezbizi_client/screens/field/map_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,7 +31,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('Route today'), findsOneWidget);
+    // The row in the list, not the legend's line of the same name.
+    expect(
+      find.descendant(
+        of: find.byType(FieldMapPanel),
+        matching: find.textContaining('Route today'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the floating list says since when, how far and how fast', (
