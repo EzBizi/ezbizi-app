@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0320',
+      date: '30 Sep 2026',
+      items: [
+        'Work Hours: filter the people list by role.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0319',
       date: '30 Sep 2026',
       items: [
