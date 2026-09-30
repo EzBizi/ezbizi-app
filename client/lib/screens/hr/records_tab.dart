@@ -11,6 +11,7 @@ import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../core/ui_strings.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/not_filled_in.dart';
@@ -1303,66 +1304,6 @@ class _SaveBar extends StatelessWidget {
   );
 }
 
-/// A date shown in the organization's format, chosen with a picker, sent as
-/// `yyyy-MM-dd`.
-class _DateField extends StatelessWidget {
-  const _DateField({
-    required this.label,
-    required this.value,
-    required this.formats,
-    required this.onChanged,
-    this.helper,
-    this.lastDate,
-  });
-
-  final String label;
-  final String? value;
-  final DisplayFormats formats;
-  final ValueChanged<String>? onChanged;
-  final String? helper;
-  final DateTime? lastDate;
-
-  @override
-  Widget build(BuildContext context) {
-    final at = DateTime.tryParse(value ?? '');
-
-    return InkWell(
-      onTap: onChanged == null
-          ? null
-          : () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: at ?? DateTime.now(),
-                firstDate: DateTime(1900),
-                lastDate: lastDate ?? DateTime(DateTime.now().year + 2),
-              );
-              if (picked == null) return;
-              onChanged!(
-                '${picked.year.toString().padLeft(4, '0')}-'
-                '${picked.month.toString().padLeft(2, '0')}-'
-                '${picked.day.toString().padLeft(2, '0')}',
-              );
-            },
-      child: InputDecorator(
-        isEmpty: at == null,
-        decoration: notFilledIn(
-          context,
-          InputDecoration(
-            labelText: label,
-            helperText: helper,
-            helperMaxLines: 3,
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-            enabled: onChanged != null,
-          ),
-          empty: at == null,
-        ),
-        child: Text(at == null ? '' : formats.formatDate(at)),
-      ),
-    );
-  }
-}
-
 class _PersonalSection extends StatefulWidget {
   const _PersonalSection({
     super.key,
@@ -1398,12 +1339,14 @@ class _PersonalSectionState extends State<_PersonalSection> {
   };
 
   late String? _born = widget.person['date_of_birth']?.toString();
+  late final _bornDay = TextEditingController(text: _born ?? '');
 
   @override
   void dispose() {
     for (final controller in _fields.values) {
       controller.dispose();
     }
+    _bornDay.dispose();
     super.dispose();
   }
 
@@ -1430,6 +1373,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
       _fields[key]!.text = widget.person[key]?.toString() ?? '';
     }
     setState(() => _born = widget.person['date_of_birth']?.toString());
+    _bornDay.text = _born ?? '';
   }
 
   @override
@@ -1466,12 +1410,18 @@ class _PersonalSectionState extends State<_PersonalSection> {
         text('address', 'Home address', lines: 2),
         const SizedBox(height: 14),
         _Pair(
-          _DateField(
-            label: 'Date of birth',
-            value: _born,
+          // Typed or picked inline, the house date control, not a modal
+          // date picker; amber while empty like the boxes beside it.
+          CalendarDayField(
+            key: const ValueKey('hr-date-of-birth'),
+            controller: _bornDay,
             formats: widget.formats,
+            label: 'Date of birth',
+            enabled: editable,
+            firstDate: DateTime(1900),
             lastDate: DateTime.now().subtract(const Duration(days: 1)),
-            onChanged: editable ? (v) => setState(() => _born = v) : null,
+            flagEmpty: true,
+            onChanged: (v) => setState(() => _born = v.isEmpty ? null : v),
           ),
           text('gender', 'Gender'),
         ),
@@ -1526,6 +1476,13 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   late String? _role = _savedRole;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
+  late final _startDay = TextEditingController(text: _savedStart ?? '');
+
+  @override
+  void dispose() {
+    _startDay.dispose();
+    super.dispose();
+  }
 
   Map<String, dynamic> get _change => {
     if (_role != _savedRole && _role != null) 'role_id': _role,
@@ -1592,12 +1549,15 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
         ),
         const SizedBox(height: 16),
         _Pair(
-          _DateField(
-            label: 'Start date',
-            value: _start,
+          CalendarDayField(
+            key: const ValueKey('hr-start-date'),
+            controller: _startDay,
             formats: widget.formats,
+            label: 'Start date',
             helper: 'The day they started here. Paid time off counts from it.',
-            onChanged: editable ? (v) => setState(() => _start = v) : null,
+            enabled: editable,
+            flagEmpty: true,
+            onChanged: (v) => setState(() => _start = v.isEmpty ? null : v),
           ),
           _Field(
             label: 'Account created',
@@ -1628,6 +1588,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
               _role = _savedRole;
               _active = _savedActive;
               _start = _savedStart;
+              _startDay.text = _savedStart ?? '';
             }),
           ),
       ],
@@ -2150,9 +2111,16 @@ class _DetailFormState extends State<_DetailForm> {
             (f.type == _FieldType.choice ? f.options.keys.first : null),
   };
 
+  /// Each date field's day, for the calendar field that shows it.
+  late final Map<String, TextEditingController> _days = {
+    for (final f in widget.kind.fields)
+      if (f.type == _FieldType.date)
+        f.key: TextEditingController(text: _picked[f.key] ?? ''),
+  };
+
   @override
   void dispose() {
-    for (final c in _text.values) {
+    for (final c in [..._text.values, ..._days.values]) {
       c.dispose();
     }
     super.dispose();
@@ -2190,29 +2158,15 @@ class _DetailFormState extends State<_DetailForm> {
           ],
         );
       case _FieldType.date:
-        final at = DateTime.tryParse(_picked[f.key] ?? '');
-        return InkWell(
-          onTap: () async {
-            final chosen = await showDatePicker(
-              context: context,
-              initialDate: at ?? DateTime.now(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime(DateTime.now().year + 2),
-            );
-            if (chosen != null) {
-              setState(() => _picked[f.key] = _DetailForm.ymd(chosen));
-            }
-          },
-          child: InputDecorator(
-            decoration: InputDecoration(
-              labelText: f.label,
-              border: const OutlineInputBorder(),
-              suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-            ),
-            child: Text(
-              at == null ? 'Choose a date' : widget.formats.formatDate(at),
-            ),
-          ),
+        return CalendarDayField(
+          key: ValueKey('hr-detail-${f.key}'),
+          controller: _days[f.key]!,
+          formats: widget.formats,
+          label: f.label,
+          firstDate: DateTime(1900),
+          lastDate: DateTime(DateTime.now().year + 2),
+          onChanged: (v) =>
+              setState(() => _picked[f.key] = v.isEmpty ? null : v),
         );
       case _FieldType.text:
       case _FieldType.multiline:

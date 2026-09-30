@@ -880,15 +880,22 @@ void main() {
     // and nothing can record that, so it would stay lit for ever.
     expect(box('Middle name').decoration?.hintText, isNull);
 
-    // The date of birth is a picker rather than a TextField, and says the same.
-    final born = tester.widget<InputDecorator>(
-      find.ancestor(
-        of: find.text('Date of birth'),
-        matching: find.byType(InputDecorator),
-      ),
+    // The date of birth is the house date field, three boxes rather than one,
+    // and says the same: amber boxes and "Not filled in" under them.
+    final born = find.byKey(const ValueKey('hr-date-of-birth'));
+    expect(
+      find.descendant(of: born, matching: find.text('Not filled in')),
+      findsOneWidget,
     );
-    expect(born.isEmpty, isTrue);
-    expect(born.decoration.hintText, 'Not filled in');
+    expect(
+      tester
+          .widget<TextField>(
+            find.descendant(of: born, matching: find.byType(TextField)).first,
+          )
+          .decoration
+          ?.filled,
+      isTrue,
+    );
 
     // Where the three are: two under Personal, the start date under
     // Employment, so the number on the list can be found.
