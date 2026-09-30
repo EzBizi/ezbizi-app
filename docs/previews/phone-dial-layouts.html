@@ -1,0 +1,369 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Phone · the Dial screen</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. Every name, number and
+   message here is invented. The fields are the ones /phone/calls serves today (direction, status,
+   who answered, duration, voicemail, customer_id, created_at), plus a customer_name it does not. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:10px 18px 4px}
+.mh .t{font-size:20px;font-weight:800;line-height:1.1}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;gap:6px;padding:6px 18px 6px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12px;background:var(--paper)}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.tab .c{color:var(--muted);font-weight:500}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.big{height:40px;padding:0 22px;font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid var(--line);border-radius:var(--r);font-size:11.5px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{color:var(--muted);font-weight:500}
+.chip.on .c{color:var(--prid)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.bad{color:var(--bad)}
+.body{flex:1;min-height:0;display:flex;border-top:1px solid var(--line)}
+.col{background:var(--paper);display:flex;flex-direction:column;min-height:0}
+.col+.col{border-left:1px solid var(--line)}
+.ch{padding:9px 12px;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:8px}
+.ch .t{font-weight:800;font-size:12.5px}
+.day{padding:5px 12px;background:#f0f4f6;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line2)}
+.call{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line2)}
+.call.sel{background:#e8f4f8}
+.call.p{grid-template-columns:30px minmax(0,1fr) auto}
+.call .ic{font-size:13px;color:var(--muted);text-align:center}
+.call .ic.m{color:var(--bad)}
+.call .g b{display:flex;gap:6px;align-items:center;font-size:12.5px;white-space:nowrap;overflow:hidden}
+.call .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.call .g span.m{color:var(--bad)}
+.call .w{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.x{font-size:10px;font-weight:800;color:var(--neu);background:var(--neuc);border-radius:6px;padding:0 5px}
+.strip{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line2)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.state{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 10px}
+.state.dnd{background:var(--badc);color:var(--bad)} .state.dnd .dot{background:var(--bad)}
+.state.ready{background:var(--okc);color:var(--ok)} .state.ready .dot{background:var(--ok)}
+.line{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;font-size:12px;background:var(--paper);white-space:nowrap;overflow:hidden}
+.line .l{font-size:10.5px;color:var(--muted);font-weight:700}
+.fld{display:flex;align-items:center;gap:8px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 12px;height:42px;color:var(--ink);background:var(--paper);font-size:15px;white-space:nowrap;overflow:hidden}
+.fld .h{color:var(--muted);font-size:13.5px}
+.sugg{border:1px solid var(--line);border-radius:var(--r);background:var(--paper);box-shadow:0 6px 18px rgba(6,8,8,.08);overflow:hidden}
+.sugg div{display:flex;gap:10px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.sugg div:last-child{border-bottom:0}
+.sugg div.on{background:#e8f4f8}
+.av{width:28px;height:28px;border-radius:50%;background:var(--pric);color:var(--prid);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex:0 0 auto}
+.av.g{background:var(--okc);color:var(--ok)} .av.n{background:var(--neuc);color:var(--neu)} .av.w{background:var(--warnc);color:var(--warn)}
+.pad{display:grid;grid-template-columns:repeat(3,58px);gap:10px;justify-content:center}
+.key{height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:17px;font-weight:600;line-height:1}
+.key small{font-size:8px;color:var(--muted);letter-spacing:.08em;margin-top:2px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.who{display:flex;gap:12px;align-items:center}
+.who .av{width:40px;height:40px;font-size:14px}
+.who b{display:block;font-size:15px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--muted);margin-top:8px}
+.tl{display:flex;flex-direction:column;gap:8px}
+.ev{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--muted)}
+.ev .ln{flex:1;height:1px;background:var(--line)}
+.bub{max-width:78%;padding:7px 10px;border-radius:12px;font-size:12px}
+.bub.them{background:var(--paper);border:1px solid var(--line);align-self:flex-start}
+.bub.us{background:var(--pri);color:#fff;align-self:flex-end}
+.bub .m{display:block;font-size:10px;opacity:.75;margin-top:2px}
+.callev{display:flex;gap:8px;align-items:center;background:#f2f7f9;border-radius:var(--r);padding:6px 10px;font-size:11.5px}
+.comp{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:9px 12px}
+.comp .in{flex:1;border:1px solid var(--line);border-radius:var(--r);height:34px;display:flex;align-items:center;padding:0 10px;color:var(--muted);font-size:12px}
+.note{border-radius:var(--r);padding:7px 10px;font-size:11.5px;background:var(--warnc);color:var(--warn)}
+.tbox{border-radius:var(--r);background:#f2f7f9;padding:9px 11px;font-size:11.5px;color:var(--neu)}
+/* phones */
+.pairp{display:flex;gap:30px;flex-wrap:wrap;margin-top:18px}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.phn{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column;position:relative}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;background:var(--paper);flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.ab .t{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:8px 12px;flex:0 0 auto}
+.fab{position:absolute;right:18px;bottom:22px;width:54px;height:54px;border-radius:16px;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 16px rgba(0,72,92,.35)}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.list-now{background:#fff;border:1px solid #c9d4d9;border-radius:12px;padding:12px 16px;width:1200px;max-width:100%;font-size:12.5px}
+</style>
+
+<div class="wrap">
+<h1>Phone · the Dial screen</h1>
+<p class="sub">Jose, 2026-09-30, on Communication › Phone › Dial: <i>“see what we can do to improve the Phone Main Screen”</i>.</p>
+<p class="cap"><b>What is wrong today</b>, from his two screenshots and the code:</p>
+<ul class="cap">
+ <li><b>Recent calls are numbers, not people.</b> The same number is listed nine times in a row. A number that belongs to a customer still shows as digits, although the server already matches it (<code>customer_id</code> on every call). The list is not grouped by day, and there is no way to show only missed calls.</li>
+ <li><b>The keypad floats in empty space.</b> On a wide window the keypad is a small island. The grey box under it is where the live transcript goes, and it sits empty until a call starts.</li>
+ <li><b>The number is shown raw</b> (+13057242199) in the box and again in the Customer panel. The panel says “Customer” and then shows only that number, with “No messages” at the top and the message box at the very bottom.</li>
+ <li><b>“Calling as” runs the full width</b> of the column, and “Do not disturb” sits alone on a line of its own.</li>
+</ul>
+<p class="cap"><b>Every option keeps:</b> the searchable Calling as picker, Do not disturb reported here and switched from the top bar, Page and Availability, the “what was it about” tag after a call, draggable columns, and pinning the person panel. <b>Server work, every option:</b> <code>customer_name</code> beside the <code>customer_id</code> each call already carries. Grouping by day, collapsing repeats and “called back” are worked out from the rows already sent.</p>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>A call desk: who to ring back first, the keypad, and the person <span class="rec">Recommended</span></h2>
+<p class="cap"><b>Left:</b> calls grouped by day, named when the number is a customer or a teammate. Repeats are folded into one row (“×9”). Chips show <b>All · Missed · Voicemail</b>. A missed call says “Called back 2:30 PM” once somebody has rung that number since. <b>Middle:</b> the state and the line sit on one strip at the top. The box takes a name or a number: letters suggest customers and teammates, digits are formatted as you type. The keypad is larger, and the transcript box appears only during a call. <b>Right:</b> the person, with their customer card (number, address, open jobs), then one timeline of calls and texts with the message box under it.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div><div class="s">Calls, texts, and the lines they arrive on.</div></div>
+  <div class="tabs"><span class="tab on">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab">Settings</span><span style="width:14px"></span><span class="tab on">⌗ Dial</span><span class="tab">Team</span><span class="tab">Messages</span><span class="tab">Voicemail <span class="c">2</span></span></div>
+  <div class="body">
+   <div class="col" style="width:330px">
+    <div class="ch"><span class="t">Recent calls</span><span class="sp"></span><span class="muted">↻</span></div>
+    <div style="padding:8px 12px 6px" class="chips"><span class="chip on">All</span><span class="chip">Missed <span class="c">3</span></span><span class="chip">Voicemail <span class="c">2</span></span></div>
+    <div class="day">Today</div>
+    <div class="call sel"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Maria Lopez <span class="pill p-info">Customer</span></b><span class="m">No answer · you rang · 2:14 PM</span></div><span class="w">2:14 PM</span></div>
+    <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (305) 555-0142 <span class="x">×9</span></b><span class="m">Missed · called back 11:02 AM</span></div><span class="w">10:40 AM</span></div>
+    <div class="call"><span class="ic">▣</span><div class="g"><b>Dan Whitfield <span class="pill p-info">Customer</span></b><span>Left a voicemail · 0:48</span></div><span class="w">9:15 AM</span></div>
+    <div class="day">Yesterday</div>
+    <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (786) 555-0177</b><span>Incoming · 4 min · Andy</span></div><span class="w">4:52 PM</span></div>
+    <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Priya Shah <span class="pill p-neu">Teammate</span></b><span>Outgoing · 1 min</span></div><span class="w">3:30 PM</span></div>
+    <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (954) 555-0110 <span class="x">×2</span></b><span class="m">Missed</span></div><span class="w">1:05 PM</span></div>
+    <div class="day">Fri 25 Sep</div>
+    <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Harbor Roofing <span class="pill p-info">Customer</span></b><span>Outgoing · 6 min</span></div><span class="w">5:10 PM</span></div>
+    <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (561) 555-0133</b><span>Incoming · 2 min · Toula</span></div><span class="w">2:41 PM</span></div>
+   </div>
+   <div class="col" style="flex:1">
+    <div class="strip"><span class="state dnd"><span class="dot"></span>Do not disturb</span><span class="sp"></span><span class="line"><span class="l">Calling as</span> Jose · +1 (239) 555-0324 ⌄</span></div>
+    <div style="padding:16px 22px 10px;display:flex;flex-direction:column;gap:10px">
+     <div class="fld"><span>Maria</span><span class="sp"></span><span class="muted">✕</span></div>
+     <div class="sugg">
+      <div class="on"><span class="av">ML</span><div style="flex:1"><b>Maria Lopez</b> <span class="tiny">C-1042 · +1 (305) 555-0199</span></div><span class="pill p-info">Customer</span></div>
+      <div><span class="av g">MP</span><div style="flex:1"><b>Maria Perez</b> <span class="tiny">ext. 214</span></div><span class="pill p-neu">Teammate</span></div>
+      <div><span class="av n">MS</span><div style="flex:1"><b>Maria Santos</b> <span class="tiny">C-0877 · +1 (954) 555-0160</span></div><span class="pill p-info">Customer</span></div>
+     </div>
+    </div>
+    <div class="pad" style="grid-template-columns:repeat(3,72px);gap:12px">
+     <div class="key">1</div><div class="key">2<small>ABC</small></div><div class="key">3<small>DEF</small></div>
+     <div class="key">4<small>GHI</small></div><div class="key">5<small>JKL</small></div><div class="key">6<small>MNO</small></div>
+     <div class="key">7<small>PQRS</small></div><div class="key">8<small>TUV</small></div><div class="key">9<small>WXYZ</small></div>
+     <div class="key">*</div><div class="key">0<small>+</small></div><div class="key">#</div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:8px;padding:16px"><span class="btn f big">Call Maria</span><span class="btn">Page</span><span class="btn">Availability</span></div>
+   </div>
+   <div class="col" style="width:380px">
+    <div class="ch"><span class="t">Maria Lopez</span><span class="sp"></span><span class="muted">📌</span></div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow:hidden">
+     <div class="card"><div class="who"><span class="av">ML</span><div><b>Maria Lopez</b><span class="tiny">+1 (305) 555-0199 · C-1042</span></div></div>
+      <div class="facts"><span>📍 14 Elm Ridge Rd, Hartford, CT</span><span>🛠 1 open job · J-2231 Chimney sweep, Oct 2</span><span class="link" style="color:var(--pri);font-weight:700">Open in Customers ›</span></div></div>
+     <div class="tl">
+      <div class="ev"><span class="ln"></span>Yesterday<span class="ln"></span></div>
+      <div class="callev"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Incoming call · 4 min · answered by Andy</div>
+      <div class="bub them">Can someone come Thursday morning?<span class="m">4:58 PM</span></div>
+      <div class="bub us">Thursday 9–11 works. See you then!<span class="m">Andy · 5:02 PM</span></div>
+      <div class="ev"><span class="ln"></span>Today<span class="ln"></span></div>
+      <div class="callev" style="background:var(--badc);color:var(--bad)"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> You rang · no answer · 2:14 PM</div>
+     </div>
+    </div>
+    <div style="padding:0 12px 8px"><div class="note">This line cannot send texts until messaging is approved.</div></div>
+    <div class="comp"><span class="in">Message</span><span class="btn s">Send</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>Conversations: one row per person, their whole history beside it</h2>
+<p class="cap">Dial becomes a list of people rather than a list of calls, the way a messaging app lists chats. Each row is one person or number, with the last thing that happened (a call, a text or a voicemail) and a red mark when a missed call is still waiting. The person opens beside the list: their customer card, then calls, texts and voicemails in one timeline, with <b>Call</b> and <b>Text</b> at the top. The keypad opens from a button, in place of the list. <b>More server work:</b> calls and texts merged per person.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div><div class="s">Calls, texts, and the lines they arrive on.</div></div>
+  <div class="tabs"><span class="tab on">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab">Settings</span><span style="width:14px"></span><span class="tab on">⌗ Dial</span><span class="tab">Team</span><span class="tab">Messages</span><span class="tab">Voicemail <span class="c">2</span></span></div>
+  <div class="body">
+   <div class="col" style="width:380px">
+    <div class="strip"><span class="state dnd"><span class="dot"></span>Do not disturb</span><span class="sp"></span><span class="btn s">⌗ Keypad</span></div>
+    <div style="padding:8px 12px"><div class="fld" style="height:36px;font-size:12.5px"><span class="h">🔍 Find a person or number</span></div></div>
+    <div style="padding:0 12px 8px" class="chips"><span class="chip on">Everyone</span><span class="chip">Waiting on you <span class="c">3</span></span><span class="chip">Customers</span></div>
+    <div class="call p sel" style="padding:9px 12px"><span class="av" style="width:30px;height:30px">ML</span><div class="g"><b>Maria Lopez</b><span class="m">You rang · no answer</span></div><span class="w">2:14 PM<br><span class="dot" style="background:var(--bad)"></span></span></div>
+    <div class="call p" style="padding:9px 12px"><span class="av n" style="width:30px;height:30px">#</span><div class="g"><b>+1 (305) 555-0142</b><span class="m">9 missed calls · called back 11:02</span></div><span class="w">10:40 AM</span></div>
+    <div class="call p" style="padding:9px 12px"><span class="av w" style="width:30px;height:30px">DW</span><div class="g"><b>Dan Whitfield</b><span>▣ Voicemail · “Hi, about the estimate…”</span></div><span class="w">9:15 AM<br><span class="dot" style="background:var(--bad)"></span></span></div>
+    <div class="call p" style="padding:9px 12px"><span class="av n" style="width:30px;height:30px">#</span><div class="g"><b>+1 (786) 555-0177</b><span>Incoming · 4 min · Andy</span></div><span class="w">Yesterday</span></div>
+    <div class="call p" style="padding:9px 12px"><span class="av g" style="width:30px;height:30px">PS</span><div class="g"><b>Priya Shah</b><span>Outgoing · 1 min</span></div><span class="w">Yesterday</span></div>
+    <div class="call p" style="padding:9px 12px"><span class="av" style="width:30px;height:30px">HR</span><div class="g"><b>Harbor Roofing</b><span>“Thanks, invoice received.”</span></div><span class="w">Fri</span></div>
+   </div>
+   <div class="col" style="flex:1">
+    <div class="strip" style="padding:10px 16px"><span class="av">ML</span><div><b style="font-size:15px">Maria Lopez</b><div class="tiny">+1 (305) 555-0199 · C-1042 · 14 Elm Ridge Rd, Hartford</div></div><span class="sp"></span><span class="line"><span class="l">As</span> Jose · +1 (239) 555-0324 ⌄</span><span class="btn f">Call</span><span class="btn">Text</span></div>
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:9px;flex:1;min-height:0;overflow:hidden">
+     <div class="facts" style="margin:0"><span>🛠 1 open job · J-2231 Chimney sweep, Oct 2</span><span style="color:var(--pri);font-weight:700">Open in Customers ›</span></div>
+     <div class="ev"><span class="ln"></span>Fri 25 Sep<span class="ln"></span></div>
+     <div class="callev"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Outgoing call · 6 min · Jose</div>
+     <div class="ev"><span class="ln"></span>Yesterday<span class="ln"></span></div>
+     <div class="callev"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Incoming call · 4 min · answered by Andy</div>
+     <div class="bub them">Can someone come Thursday morning?<span class="m">4:58 PM</span></div>
+     <div class="bub us">Thursday 9–11 works. See you then!<span class="m">Andy · 5:02 PM</span></div>
+     <div class="ev"><span class="ln"></span>Today<span class="ln"></span></div>
+     <div class="callev" style="background:var(--badc);color:var(--bad)"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> You rang · no answer · 2:14 PM</div>
+    </div>
+    <div style="padding:0 16px 8px"><div class="note">This line cannot send texts until messaging is approved.</div></div>
+    <div class="comp"><span class="in">Message</span><span class="btn s">Send</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>The keypad first, with who to call back under it</h2>
+<p class="cap">The keypad takes the middle of the screen at full size, with the name-or-number box above it. Under it are two short lists: <b>Call back</b> (missed calls nobody has returned) and <b>Recent</b> (repeats folded). The person panel slides in from the right once there is somebody to show, as it does today. There is no separate history column.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div><div class="s">Calls, texts, and the lines they arrive on.</div></div>
+  <div class="tabs"><span class="tab on">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab">Settings</span><span style="width:14px"></span><span class="tab on">⌗ Dial</span><span class="tab">Team</span><span class="tab">Messages</span><span class="tab">Voicemail <span class="c">2</span></span></div>
+  <div class="body" style="background:var(--ground)">
+   <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:14px 20px;gap:12px;overflow:hidden">
+    <div style="display:flex;gap:10px;align-items:center;width:560px"><span class="state ready"><span class="dot"></span>Ready</span><span class="sp"></span><span class="line"><span class="l">Calling as</span> Jose · +1 (239) 555-0324 ⌄</span></div>
+    <div class="fld" style="width:560px;height:48px;font-size:20px;justify-content:center"><span>+1 (305) 555-01</span></div>
+    <div class="pad" style="grid-template-columns:repeat(3,96px);gap:12px">
+     <div class="key" style="height:52px">1</div><div class="key" style="height:52px">2<small>ABC</small></div><div class="key" style="height:52px">3<small>DEF</small></div>
+     <div class="key" style="height:52px">4<small>GHI</small></div><div class="key" style="height:52px">5<small>JKL</small></div><div class="key" style="height:52px">6<small>MNO</small></div>
+     <div class="key" style="height:52px">7<small>PQRS</small></div><div class="key" style="height:52px">8<small>TUV</small></div><div class="key" style="height:52px">9<small>WXYZ</small></div>
+     <div class="key" style="height:52px">*</div><div class="key" style="height:52px">0<small>+</small></div><div class="key" style="height:52px">#</div>
+    </div>
+    <div style="display:flex;gap:8px"><span class="btn f big">Call</span><span class="btn">Page</span><span class="btn">Availability</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:760px">
+     <div class="card" style="padding:0;overflow:hidden"><div class="ch"><span class="t">Call back</span><span class="pill p-bad">3</span></div>
+      <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (954) 555-0110 <span class="x">×2</span></b><span class="m">Missed · yesterday 1:05 PM</span></div><span class="btn s">Call</span></div>
+      <div class="call"><span class="ic">▣</span><div class="g"><b>Dan Whitfield</b><span>Voicemail · 0:48</span></div><span class="btn s">Call</span></div>
+     </div>
+     <div class="card" style="padding:0;overflow:hidden"><div class="ch"><span class="t">Recent</span><span class="sp"></span><span class="tiny">All in Records ›</span></div>
+      <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Maria Lopez</b><span class="m">No answer</span></div><span class="w">2:14 PM</span></div>
+      <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (305) 555-0142 <span class="x">×9</span></b><span>Called back 11:02</span></div><span class="w">10:40 AM</span></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ phones ═════════ -->
+<h2><span class="n">4</span>Phone: 1, recent calls with the keypad a button away <span class="rec">Recommended</span></h2>
+<p class="cap">The list comes first: calls by day, named, with repeats folded and the same chips. The keypad button opens the keypad in place of the list, with ← back. Tapping a call opens the person in place, with Call and Text at the top.</p>
+<div class="pairp">
+ <div><div class="pl">Recent calls</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span class="t">Dial</span><span class="state dnd" style="font-size:10.5px"><span class="dot"></span>DND</span></div>
+  <div class="scr">
+   <div class="hs"><span class="chip on">All</span><span class="chip">Missed <span class="c">3</span></span><span class="chip">Voicemail <span class="c">2</span></span></div>
+   <div class="day">Today</div>
+   <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Maria Lopez <span class="pill p-info">Customer</span></b><span class="m">No answer · you rang</span></div><span class="w">2:14 PM</span></div>
+   <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (305) 555-0142 <span class="x">×9</span></b><span class="m">Missed · called back 11:02</span></div><span class="w">10:40 AM</span></div>
+   <div class="call"><span class="ic">▣</span><div class="g"><b>Dan Whitfield</b><span>Left a voicemail · 0:48</span></div><span class="w">9:15 AM</span></div>
+   <div class="day">Yesterday</div>
+   <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (786) 555-0177</b><span>Incoming · 4 min · Andy</span></div><span class="w">4:52 PM</span></div>
+   <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Priya Shah <span class="pill p-neu">Teammate</span></b><span>Outgoing · 1 min</span></div><span class="w">3:30 PM</span></div>
+   <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (954) 555-0110 <span class="x">×2</span></b><span class="m">Missed</span></div><span class="w">1:05 PM</span></div>
+   <div class="day">Fri 25 Sep</div>
+   <div class="call"><span class="ic"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>Harbor Roofing</b><span>Outgoing · 6 min</span></div><span class="w">5:10 PM</span></div>
+  </div>
+  <div class="fab">⌗</div>
+ </div></div>
+ <div><div class="pl">Keypad, in place</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Keypad</span></div>
+  <div class="scr" style="padding:12px 14px;gap:12px">
+   <div class="line" style="justify-content:space-between"><span class="l">Calling as</span> Jose · +1 (239) 555-0324 ⌄</div>
+   <div class="fld" style="justify-content:center;font-size:20px;height:50px">+1 (305) 555-01</div>
+   <div class="sugg"><div class="on"><span class="av">ML</span><div style="flex:1"><b>Maria Lopez</b><div class="tiny">+1 (305) 555-0199</div></div></div></div>
+   <div class="pad" style="grid-template-columns:repeat(3,84px);gap:12px">
+    <div class="key">1</div><div class="key">2<small>ABC</small></div><div class="key">3<small>DEF</small></div>
+    <div class="key">4<small>GHI</small></div><div class="key">5<small>JKL</small></div><div class="key">6<small>MNO</small></div>
+    <div class="key">7<small>PQRS</small></div><div class="key">8<small>TUV</small></div><div class="key">9<small>WXYZ</small></div>
+    <div class="key">*</div><div class="key">0<small>+</small></div><div class="key">#</div>
+   </div>
+  </div>
+  <div class="pbar"><span class="btn f big">Call</span></div>
+ </div></div>
+ <div><div class="pl">The person</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Maria Lopez</span></div>
+  <div class="scr" style="padding:12px 14px;gap:10px">
+   <div class="card"><div class="who"><span class="av">ML</span><div><b>Maria Lopez</b><span class="tiny">+1 (305) 555-0199 · C-1042</span></div></div><div class="facts"><span>🛠 J-2231 Chimney sweep, Oct 2</span></div></div>
+   <div style="display:flex;gap:8px"><span class="btn f" style="flex:1">Call</span><span class="btn" style="flex:1">Text</span></div>
+   <div class="tl">
+    <div class="callev"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Incoming · 4 min · Andy · yesterday</div>
+    <div class="bub them">Can someone come Thursday morning?<span class="m">4:58 PM</span></div>
+    <div class="bub us">Thursday 9–11 works. See you then!<span class="m">Andy · 5:02 PM</span></div>
+    <div class="callev" style="background:var(--badc);color:var(--bad)"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M3 9 9 3M4.5 3H9v4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> You rang · no answer · 2:14 PM</div>
+   </div>
+  </div>
+  <div class="comp"><span class="in">Message</span><span class="btn s">Send</span></div>
+ </div></div>
+</div>
+
+<h2><span class="n">5</span>Phone: 2, conversations</h2>
+<p class="cap">People instead of calls, with “Waiting on you” as a chip. The person opens in place with the whole timeline.</p>
+<div class="pairp">
+ <div><div class="pl">People</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span class="t">Dial</span><span class="btn s">⌗</span></div>
+  <div class="scr">
+   <div style="padding:8px 12px 0"><div class="fld" style="height:36px;font-size:12.5px"><span class="h">🔍 Find a person or number</span></div></div>
+   <div class="hs"><span class="chip on">Everyone</span><span class="chip">Waiting on you <span class="c">3</span></span></div>
+   <div class="call p" style="padding:9px 12px"><span class="av" style="width:30px;height:30px">ML</span><div class="g"><b>Maria Lopez</b><span class="m">You rang · no answer</span></div><span class="w">2:14 PM</span></div>
+   <div class="call p" style="padding:9px 12px"><span class="av n" style="width:30px;height:30px">#</span><div class="g"><b>+1 (305) 555-0142</b><span class="m">9 missed · called back</span></div><span class="w">10:40</span></div>
+   <div class="call p" style="padding:9px 12px"><span class="av w" style="width:30px;height:30px">DW</span><div class="g"><b>Dan Whitfield</b><span>▣ “Hi, about the estimate…”</span></div><span class="w">9:15</span></div>
+   <div class="call p" style="padding:9px 12px"><span class="av g" style="width:30px;height:30px">PS</span><div class="g"><b>Priya Shah</b><span>Outgoing · 1 min</span></div><span class="w">Yest.</span></div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">6</span>Phone: 3, the keypad first</h2>
+<p class="cap">The keypad fills the screen, with Call back under it as a short list.</p>
+<div class="pairp">
+ <div><div class="pl">Keypad and call back</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span class="t">Dial</span><span class="state ready" style="font-size:10.5px"><span class="dot"></span>Ready</span></div>
+  <div class="scr" style="padding:10px 14px;gap:10px">
+   <div class="fld" style="justify-content:center;font-size:20px;height:48px"><span class="h">Name or number</span></div>
+   <div class="pad" style="grid-template-columns:repeat(3,84px);gap:10px">
+    <div class="key">1</div><div class="key">2<small>ABC</small></div><div class="key">3<small>DEF</small></div>
+    <div class="key">4<small>GHI</small></div><div class="key">5<small>JKL</small></div><div class="key">6<small>MNO</small></div>
+    <div class="key">7<small>PQRS</small></div><div class="key">8<small>TUV</small></div><div class="key">9<small>WXYZ</small></div>
+    <div class="key">*</div><div class="key">0<small>+</small></div><div class="key">#</div>
+   </div>
+   <span class="btn f big">Call</span>
+   <div class="card" style="padding:0;overflow:hidden"><div class="ch"><span class="t">Call back</span><span class="pill p-bad">3</span></div>
+    <div class="call"><span class="ic m"><svg viewBox="0 0 12 12" width="11" height="11" style="vertical-align:-1px"><path d="M9 3 3 9M7.5 9H3V4.5" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="g"><b>+1 (954) 555-0110 <span class="x">×2</span></b><span class="m">Missed · yesterday</span></div><span class="btn s">Call</span></div>
+    <div class="call"><span class="ic">▣</span><div class="g"><b>Dan Whitfield</b><span>Voicemail · 0:48</span></div><span class="btn s">Call</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2 style="margin-top:50px">What changes for the owners</h2>
+<ul class="cap">
+ <li><b>Phone</b> (<code>call_tab.dart</code>, <code>call_history_pane.dart</code>, <code>CallsController</code>): <code>customer_name</code> on each call row, next to the <code>customer_id</code> it already has. Option 2 also needs calls and texts merged per person.</li>
+ <li>The name-or-number box searches customers and teammates. Teammates are already loaded for Team; customers need a customer search the screen can call.</li>
+ <li>Grouping by day, “×9”, and “called back” are worked out on the screen from the 40 rows it already reads.</li>
+</ul>
+</div>

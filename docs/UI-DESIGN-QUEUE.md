@@ -2958,7 +2958,24 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 34 · Leads · managing connections — **drawn, waiting on Jose**
+### 35 · Phone · the Dial screen — **drawn, waiting on Jose**
+
+Jose, 2026-09-30, with two screenshots of Communication › Phone › Dial: *"see what we can do to
+improve the Phone Main Screen"*. Today: recent calls are numbers only (the same one nine times in a
+row, a customer's number still digits although every call carries `customer_id`), no day groups, no
+missed filter; the keypad floats in a wide empty column above the live transcript's grey box, which
+sits empty until a call; the number shows raw (+13057242199) in the box and in the Customer panel;
+Calling as runs the full width and "Do not disturb" sits alone on a line. `docs/previews/phone-dial-layouts.html`:
+desktop **1** a call desk: calls by day, named, repeats folded (×9), chips All / Missed / Voicemail,
+"called back" on a missed call; one strip for the state and the line; a name-or-number box that
+suggests customers and teammates; a larger keypad; the transcript only during a call; the person
+panel as a customer card over one timeline of calls and texts (recommended); **2** conversations,
+one row per person with their whole history beside it and the keypad behind a button; **3** the
+keypad first, with Call back and Recent under it; phone **4**-**6** the same three. Every option
+needs `customer_name` beside `customer_id` on /phone/calls; 2 also needs calls and texts merged per
+person. `call_tab.dart`, `call_history_pane.dart` and CallsController are Phone's.
+
+### 34 · Leads · managing connections — **Jose: "go ahead with ur recommendations" — 1 and 4** — **BUILT**, waiting on Leads' OK to commit
 
 Jose, 2026-09-30, on Leads › Manage (the Connected sources panel): *"i feel we could also use a revamp
 on the manage of leads, see what you can do about it"*. Today one narrow panel stacks Google Ads (22
