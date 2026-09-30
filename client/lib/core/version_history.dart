@@ -20,6 +20,7 @@ class VersionHistory {
         'Dial: recent calls are grouped by day and show a name when the number is a customer or a teammate. Repeated calls from one number fold into one row, Missed and Voicemail filter the list, and a missed call says when it was called back. The number box also takes a name and suggests customers and teammates. The keypad is larger, and the person panel shows the customer card over one timeline of calls and texts. On a phone, Dial opens on the calls, with the keypad a button away.',
         'Availability beside a lead or on a phone: the three choices read Zip, Area and Calendar.',
         'Notifications: each one shows the icon of the module it is about and when it happened.',
+        'Field, Map: the jobs of the day appear as pins, with a searchable Jobs list by number or customer. Pick a job to see the nearest technicians by live drive time, and pick one for the route, the minutes and a sentence to copy for the caller. Tap a technician for battery, speed, miles, next job, device and app version.',
       ],
     ),
     VersionRelease(
