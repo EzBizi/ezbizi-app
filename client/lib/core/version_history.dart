@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0332',
+      date: '30 Sep 2026',
+      items: [
+        'Work Hours, Settings: extensions can be 5 or 10 minutes.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0331',
       date: '30 Sep 2026',
       items: [
