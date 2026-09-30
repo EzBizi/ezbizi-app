@@ -751,7 +751,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       prefixIcon: const Icon(Icons.search, size: 20),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
-      hintText: 'Search name or phone',
+      hintText: 'Search name, phone or message',
       border: const OutlineInputBorder(),
       suffixIcon: _search.text.isEmpty
           ? null

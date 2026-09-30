@@ -1036,5 +1036,15 @@ class LeadConversationsTest extends TestCase
         }
 
         $this->assertSame([], $this->signedInAs($t['admin'])->getJson('/api/v1/leads?search=777')->json('data'));
+
+        // Words from ANY message in the thread, not only the last (Jose,
+        // 2026-09-30, "search inside messages" as A1 Leads had it).
+        $this->inTenant($t['org'], fn () => LeadConversation::create([
+            'organization_id' => $t['org']->id,
+            'lead_id' => Lead::query()->where('remote_id', '111')->value('id'),
+            'remote_id' => 'older-1', 'channel' => 'MESSAGE', 'participant' => 'CONSUMER',
+            'occurred_at' => now()->subYear(), 'text' => 'The chimney crown is cracked',
+        ]));
+        $this->assertSame(['Jane Doe'], $this->getJson('/api/v1/leads?search='.urlencode('crown is'))->json('data.*.contact_name'));
     }
 }

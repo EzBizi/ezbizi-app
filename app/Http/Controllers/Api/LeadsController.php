@@ -330,6 +330,17 @@ class LeadsController extends Controller
                 if ($digits !== null && strlen($digits) >= 2) {
                     $q->orWhere('leads.phone_digits', 'like', '%'.$digits.'%');
                 }
+
+                // Anything said in the thread, calls' transcripts included -
+                // A1 Leads searched message text (Jose, 2026-09-30). Three
+                // characters, or every lead matches "a".
+                // ponytail: LIKE over lead_conversations; a FULLTEXT index if it gets slow.
+                if (mb_strlen($search) >= 3) {
+                    $q->orWhereIn('leads.id', DB::table('lead_conversations')
+                        ->select('lead_id')
+                        ->where(fn ($w) => $w->where('text', 'like', '%'.$search.'%')
+                            ->orWhere('transcript', 'like', '%'.$search.'%')));
+                }
             });
         }
 
