@@ -233,35 +233,46 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 // three read "Search by…", "Search by…", "Calendar…".
                 // IntrinsicHeight keeps the three the same height when only
                 // one of them wraps.
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _modeButton(
-                          _Mode.zip,
-                          Icons.location_on_outlined,
-                          'Search by Zip Code',
-                        ),
+                //
+                // Narrow - a side panel beside a lead or the dial pad, or a
+                // phone - they are one word each: the long ones wrapped onto
+                // two lines apiece (Jose, 2026-09-30: "the text is a bit
+                // crowded ... just put Zip - Area - Calendar").
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final short = constraints.maxWidth < 560;
+
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _modeButton(
+                              _Mode.zip,
+                              Icons.location_on_outlined,
+                              short ? 'Zip' : 'Search by Zip Code',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _modeButton(
+                              _Mode.area,
+                              Icons.map_outlined,
+                              short ? 'Area' : 'Search by Area',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _modeButton(
+                              _Mode.calendar,
+                              Icons.calendar_month_outlined,
+                              short ? 'Calendar' : 'Calendar View',
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _modeButton(
-                          _Mode.area,
-                          Icons.map_outlined,
-                          'Search by Area',
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _modeButton(
-                          _Mode.calendar,
-                          Icons.calendar_month_outlined,
-                          'Calendar View',
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 14),
                 switch (_mode) {

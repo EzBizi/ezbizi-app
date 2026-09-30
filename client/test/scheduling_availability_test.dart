@@ -131,6 +131,17 @@ void main() {
     },
   );
 
+  /// A side panel is narrow on a wide screen, so the width of the pane, not
+  /// the window's, picks the labels.
+  testWidgets('beside a lead the modes are one word each', (tester) async {
+    await _pump(tester, onRequest: (_) => null, paneWidth: 440);
+
+    expect(find.text('Zip'), findsOneWidget);
+    expect(find.text('Area'), findsOneWidget);
+    expect(find.text('Calendar'), findsOneWidget);
+    expect(find.text('Search by Zip Code'), findsNothing);
+  });
+
   /// Search by Area: one chip per franchise that HAS areas — the server's
   /// list, because A-1 carries empty duplicate franchises the session knows.
   testWidgets(
@@ -210,7 +221,9 @@ void main() {
     (tester) async {
       await _pump(tester, width: 375, onRequest: (_) => null);
 
-      const labels = ['Search by Zip Code', 'Search by Area', 'Calendar View'];
+      // One word each when narrow (Jose, 2026-09-30: "just put Zip - Area -
+      // Calendar"); the long labels wrapped onto two lines apiece.
+      const labels = ['Zip', 'Area', 'Calendar'];
       for (final label in labels) {
         expect(
           tester
@@ -336,6 +349,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required http.Response? Function(http.Request) onRequest,
   double width = 1280,
+  double? paneWidth,
 }) async {
   tester.view.physicalSize = Size(width, 1100);
   tester.view.devicePixelRatio = 1.0;
@@ -356,7 +370,13 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: AvailabilityPane(api: api, session: session, visible: true),
+        body: Align(
+          alignment: Alignment.topRight,
+          child: SizedBox(
+            width: paneWidth ?? width,
+            child: AvailabilityPane(api: api, session: session, visible: true),
+          ),
+        ),
       ),
     ),
   );
