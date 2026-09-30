@@ -228,6 +228,59 @@ void main() {
     expect(find.text('1234.56 USD'), findsOneWidget);
   });
 
+  // Jose, 2026-09-30: A1 Leads' Channel Performance table, spend by kind of
+  // campaign under the account's figures.
+  testWidgets('spend by channel is a table under the account, largest '
+      'first', (tester) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      report: {
+        ...report(),
+        'channels': [
+          {
+            'channel': 'SEARCH',
+            'label': 'Search (PPC)',
+            'cost': 300,
+            'clicks': 120,
+            'conversions': 4,
+            'cost_per_conversion': 75,
+          },
+          {
+            'channel': 'LOCAL_SERVICES',
+            'label': 'Local Services',
+            'cost': 900.5,
+            'clicks': 43,
+            'conversions': 0,
+            'cost_per_conversion': null,
+          },
+        ],
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final table = find.byKey(const ValueKey('ads-channels'));
+    double top(String text) => tester
+        .getTopLeft(find.descendant(of: table, matching: find.text(text)))
+        .dy;
+
+    expect(top('Local Services'), lessThan(top('Search (PPC)')));
+    expect(
+      find.descendant(of: table, matching: find.text('900.50 USD')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: table, matching: find.text('75.00 USD')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: table, matching: find.text('—')),
+      findsOneWidget,
+      reason: 'no conversions, so no cost per conversion rather than 0',
+    );
+  });
+
   testWidgets('the campaign level draws all five, plus status', (tester) async {
     await pump(tester, accounts: twoAccounts(), report: report());
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));

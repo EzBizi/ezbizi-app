@@ -758,6 +758,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               _rangeChips(theme),
               const SizedBox(height: 12),
               _accountCard(theme, account, currency),
+              if ((_report!['channels'] as List?)?.isNotEmpty ?? false) ...[
+                const SizedBox(height: 16),
+                _channels(theme, currency),
+              ],
               const SizedBox(height: 16),
               _chart(theme),
               const SizedBox(height: 16),
@@ -947,6 +951,87 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 ],
                 for (final e in _extras.where((e) => _extra.contains(e.key)))
                   _figure(theme, e.label, _format(e, account[e.key], currency)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Spend by kind of campaign, as A1 Leads' Channel Performance table showed
+  /// it (Jose, 2026-09-30): Local Services beside Search (PPC) and the rest,
+  /// the largest spend first.
+  Widget _channels(ThemeData theme, dynamic currency) {
+    final rows = [
+      for (final c in (_report!['channels'] as List? ?? const []))
+        (c as Map).cast<String, dynamic>(),
+    ];
+    rows.sort(
+      (a, b) => ((b['cost'] as num?) ?? 0).compareTo((a['cost'] as num?) ?? 0),
+    );
+    final head = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w800,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    Widget cell(String text, {bool end = true, TextStyle? style}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      child: Text(
+        text,
+        textAlign: end ? TextAlign.end : TextAlign.start,
+        style: style,
+      ),
+    );
+
+    return Card(
+      key: const ValueKey('ads-channels'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('By channel', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Table(
+              columnWidths: const {0: FlexColumnWidth(2)},
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              children: [
+                TableRow(
+                  children: [
+                    cell('CHANNEL', end: false, style: head),
+                    cell('SPEND', style: head),
+                    cell('CLICKS', style: head),
+                    cell('CONVERSIONS', style: head),
+                    cell('COST / CONV.', style: head),
+                  ],
+                ),
+                for (final c in rows)
+                  TableRow(
+                    key: ValueKey('ads-channel-${c['channel']}'),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                    children: [
+                      cell(
+                        '${c['label'] ?? c['channel']}',
+                        end: false,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      cell(_money(c['cost'], currency)),
+                      cell(_number(c['clicks'])),
+                      cell(_number(c['conversions'])),
+                      cell(
+                        c['cost_per_conversion'] == null
+                            ? '—'
+                            : _money(c['cost_per_conversion'], currency),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ],
