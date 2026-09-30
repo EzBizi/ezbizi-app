@@ -192,3 +192,28 @@ People are joined by `email`. The bundle carries no names, and nobody is created
 - **Integrity first.** Every image's sha256 is checked against the manifest before anything is written for it.
 - **Idempotent, keyed on A1 ids.** Every created row is recorded against its A1 id, so a second run changes nothing and a later bundle — say, for someone who joins EzBizi later — adds only what is new.
 - **Rollback.** That record is the manifest of every id created, and the run writes one audit row. `--dry-run` writes nothing and prints what would happen, including screens per guide and the matched and unmatched people.
+
+## Results (desk, 2026-09-30, 15:57 UTC)
+
+Run on 0.0.0324 (a04ea003, which carries 42de4013) from the Dismantler's bundle (manifest sha256 791c0090…, 116 media files).
+
+- **Dry run, then real run:** identical figures, and no "matches none" line.
+- **Guides:**
+  - Technician Training Guide: 180 screens, 108 distinct images, 57 videos
+  - Dispatcher Training Guide: 62 screens, 36 distinct images, 16 videos
+  - Dispatcher Introduction Video: 1 screen, 1 video
+  - All published under A-1 Chimney. The dry run counts distinct files per guide; the bundle has 109 and 38 image blocks, because a few images are used twice, and none is dropped.
+  - One image was already missing on A1 ("Damper (if present) – Inspection Process"); that page imports without it.
+- **Tests:** Dispatcher Training (40 questions, 85%, 3 attempts) and Technician Training (60 questions, 85%, 10 attempts), both published.
+- **History:** 45 attempts (22 passed) and 55 progress rows, for 42 people. None was left out: the bundle carries only matched people.
+- **Checked:**
+  - 144 media rows.
+  - One `training.imported` audit row.
+  - No training automation events and no notifications.
+  - One imported image served through its signed link: 200, image/jpeg. A tampered link got 403.
+- **A1's role targeting**, reported and not assigned:
+  - Technician guide: training, administrator, local_manager, franchise_manager, technician
+  - Both dispatcher items: dispatcher, administrator, training
+- **Kept:** the dump `training-before-a1-import-20260930T155710Z` (six tables).
+- **Deleted:** the staging folder `/var/lib/a1-training-export`.
+
