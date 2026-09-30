@@ -104,6 +104,11 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
 
   String _search = '';
 
+  /// Jose, 2026-09-30: "by default it only shows people who have clocked in
+  /// on that week … most recent on the top". Everyone else is one tap away,
+  /// and a search always looks at everyone.
+  bool _everyone = false;
+
   @override
   void initState() {
     super.initState();
@@ -234,7 +239,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
       _weekNotifier.value = _week;
       final people = _week?.people ?? const <_Person>[];
       if (_personId == null || !people.any((p) => p.id == _personId)) {
-        _personId = people.isEmpty ? null : people.first.id;
+        _personId = _visible.firstOrNull?.id;
       }
     });
   }
@@ -247,16 +252,37 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     return null;
   }
 
+  /// Their latest clock-in this week, "Y-m-d H:i" (sorts as text); '' if none.
+  static String _lastIn(_Person p) => p.shifts.fold(
+    '',
+    (last, s) => s.clockedInLocal.compareTo(last) > 0 ? s.clockedInLocal : last,
+  );
+
+  /// Who clocked in, latest first; then, when asked for, everyone else in
+  /// the server's order.
   List<_Person> get _visible {
     final needle = _search.trim().toLowerCase();
-    final people = _week?.people ?? const <_Person>[];
-    if (needle.isEmpty) return people;
-
-    return [
-      for (final p in people)
+    final matching = [
+      for (final p in _week?.people ?? const <_Person>[])
         if (p.name.toLowerCase().contains(needle)) p,
     ];
+    final clocked = [
+      for (final p in matching)
+        if (p.shifts.isNotEmpty) p,
+    ]..sort((a, b) => _lastIn(b).compareTo(_lastIn(a)));
+    if (!_everyone && needle.isEmpty) return clocked;
+
+    return [
+      ...clocked,
+      for (final p in matching)
+        if (p.shifts.isEmpty) p,
+    ];
   }
+
+  /// People on the list who clocked nothing this week.
+  int get _idleCount => (_week?.people ?? const <_Person>[])
+      .where((p) => p.shifts.isEmpty)
+      .length;
 
   @override
   Widget build(BuildContext context) {
@@ -385,6 +411,23 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
             onChanged: (value) => setState(() => _search = value),
           ),
         ),
+        if (_idleCount > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
+              child: TextButton(
+                onPressed: () => setState(() => _everyone = !_everyone),
+                child: Text(
+                  _everyone
+                      ? UiStrings.t('time_clock.only_clocked_in')
+                      : UiStrings.t(
+                          'time_clock.show_everyone',
+                        ).replaceAll('{count}', '$_idleCount'),
+                ),
+              ),
+            ),
+          ),
         Expanded(
           child: people.isEmpty
               ? Center(

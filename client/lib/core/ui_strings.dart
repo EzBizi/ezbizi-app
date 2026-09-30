@@ -83,6 +83,8 @@ class UiStrings {
     'time_clock.average_per_day': 'Average per day',
     'time_clock.search_people': 'Search people',
     'time_clock.no_hours': 'Nothing clocked this week.',
+    'time_clock.show_everyone': 'Show {count} who did not clock in',
+    'time_clock.only_clocked_in': 'Only who clocked in',
     'time_clock.this_week': 'This week',
     'time_clock.previous_week': 'Previous week',
     'time_clock.next_week': 'Next week',

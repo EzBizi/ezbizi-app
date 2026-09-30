@@ -52,19 +52,31 @@ void main() {
     },
   );
 
-  /// The brief's most important gotcha, and the one I would have got wrong:
-  /// everybody in reach is in `people`, including anyone who worked nothing.
-  /// A name missing from this list reads as "not on the team", which is not
-  /// what "did not clock in" means.
-  testWidgets('somebody who worked nothing is listed, not dropped', (
+  /// Jose, 2026-09-30: "by default it only shows people who have clocked in
+  /// on that week … most recent on the top". The server still sends
+  /// everybody in reach; somebody who worked nothing is one tap away, not
+  /// dropped, and a search finds them too.
+  testWidgets('only who clocked in, latest first; the rest one tap away', (
     tester,
   ) async {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
       onClock: (_, _) => _week(
+        // The server's order: Cal first. Bea clocked in later, so she leads.
         people: [
-          _person(),
+          _person(
+            id: 'u-3',
+            name: 'Cal Reyes',
+            shifts: [
+              {
+                ..._bea,
+                'id': 's-3',
+                'date': '2026-08-24',
+                'clocked_in_local': '2026-08-24 09:00',
+              },
+            ],
+          ),
           _person(
             id: 'u-9',
             name: 'Jon Park',
@@ -73,23 +85,41 @@ void main() {
             average: 0,
             shifts: const [],
           ),
+          _person(),
         ],
       ),
     );
 
-    // General is the landing tab of Work Hours; nothing to tap.
+    final list = find.byType(ListView).first;
+    Finder row(String name) =>
+        find.descendant(of: list, matching: find.text(name));
 
+    expect(row('Jon Park'), findsNothing, reason: 'He clocked nothing.');
     expect(
-      find.text('Jon Park'),
-      findsOneWidget,
-      reason: 'Dropping him would say he is not on the team.',
+      tester.getTopLeft(row('Bea Okafor')).dy,
+      lessThan(tester.getTopLeft(row('Cal Reyes')).dy),
+      reason: 'Tuesday 8:00 is more recent than Monday 9:00.',
     );
+
+    await tester.tap(find.text('Show 1 who did not clock in'));
+    await tester.pumpAndSettle();
+    expect(row('Jon Park'), findsOneWidget);
     expect(
-      find.text('\u2014'),
-      findsWidgets,
-      reason:
-          'His total is an em dash rather than 0h 00m, which would read '
-          'as a measurement somebody made.',
+      tester.getTopLeft(row('Cal Reyes')).dy,
+      lessThan(tester.getTopLeft(row('Jon Park')).dy),
+      reason: 'Everyone else comes after who clocked in.',
+    );
+
+    await tester.tap(find.text('Only who clocked in'));
+    await tester.pumpAndSettle();
+    expect(row('Jon Park'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, 'jon');
+    await tester.pumpAndSettle();
+    expect(
+      row('Jon Park'),
+      findsOneWidget,
+      reason: 'A search looks at everyone.',
     );
   });
 
