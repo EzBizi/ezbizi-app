@@ -3,6 +3,12 @@
 /// The version stamp at the foot of the sidebar opens this. Add a [VersionRelease]
 /// in the **same commit** that bumps `client/VERSION` — that is the whole point
 /// of the list. A number without a note is a date nobody can remember.
+///
+/// **The deploy desk writes this file. Send your note with your release request
+/// instead of adding it here.** The top entry is often already pinned to a
+/// build that does not carry your commit: on 2026-09-30 three notes were
+/// written into entries that had been cut, and each described a feature the
+/// release did not ship until the desk moved it to the next version.
 class VersionHistory {
   VersionHistory._();
 
