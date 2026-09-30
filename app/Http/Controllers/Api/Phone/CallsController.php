@@ -242,10 +242,11 @@ class CallsController extends Controller
         $calls = $query->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
+        $customerNames = $this->customerNamesById(array_values($customerIds));
         $colleagues = $this->colleagueNames($calls);
 
         $rows = $calls
-            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues))
+            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues, $customerNames))
             ->all();
 
         return response()->json(['data' => $rows]);
@@ -1081,6 +1082,17 @@ class CallsController extends Controller
      * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
      * @return array<string, string>
      */
+    /**
+     * @param  list<string>  $ids
+     * @return array<string, string>
+     */
+    private function customerNamesById(array $ids): array
+    {
+        return $ids === []
+            ? []
+            : Customer::query()->whereIn('id', array_unique($ids))->pluck('name', 'id')->all();
+    }
+
     private function customerIdsByPhone($calls): array
     {
         $phones = [];
@@ -1170,7 +1182,7 @@ class CallsController extends Controller
     /**
      * @param  array<string, string>  $colleagues
      */
-    private function row(PhoneCall $call, array $customerIds = [], array $colleagues = []): array
+    private function row(PhoneCall $call, array $customerIds = [], array $colleagues = [], array $customerNames = []): array
     {
         $outside = $this->outsideNumber($call);
 
@@ -1224,6 +1236,10 @@ class CallsController extends Controller
             // own IVR prompt back.
             'voicemail_transcript' => $call->voicemail_transcript,
             'customer_id' => $customerIds[$outside] ?? null,
+
+            // The name beside the id, so a history row can say who rather
+            // than a number (UI/UX's Dial redesign, 2026-09-30).
+            'customer_name' => $customerNames[$customerIds[$outside] ?? ''] ?? null,
             'created_at' => $call->created_at?->toIso8601String(),
         ];
     }

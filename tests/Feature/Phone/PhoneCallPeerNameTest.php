@@ -82,6 +82,37 @@ class PhoneCallPeerNameTest extends TestCase
             ->json('data')[0];
     }
 
+    /**
+     * A call to a customer carries the customer's name beside their id, so
+     * the history can say who (UI/UX's Dial redesign, 2026-09-30).
+     */
+    public function test_a_call_to_a_customer_carries_their_name(): void
+    {
+        [$t, $number, $desk] = $this->line();
+
+        $this->inTenant($t['org'], fn () => \App\Models\Customer::factory()->create([
+            'owning_franchise_id' => $t['franchise']->id,
+            'name' => 'Marta Delgado',
+            'phone' => '+13055550142',
+        ]));
+
+        $this->callTo($t, $number, '+13055550142');
+
+        $this->assertSame('Marta Delgado', $this->firstRow($t, $desk)['customer_name']);
+    }
+
+    /** The control: a number nobody holds names nobody. */
+    public function test_a_call_to_a_stranger_names_nobody(): void
+    {
+        [$t, $number, $desk] = $this->line();
+
+        $this->callTo($t, $number, '+13055550199');
+
+        $row = $this->firstRow($t, $desk);
+        $this->assertNull($row['customer_id']);
+        $this->assertNull($row['customer_name']);
+    }
+
     public function test_a_call_to_a_colleague_carries_their_name(): void
     {
         [$t, $number, $desk] = $this->line();
