@@ -13,10 +13,14 @@
 
 import 'dart:async';
 
+import 'package:battery_plus/battery_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'api_client.dart';
+import 'build_info.dart';
+import 'client_platform.dart';
 import 'session.dart';
 
 class FieldTracker {
@@ -81,6 +85,53 @@ class FieldTracker {
   /// stream died 30 ms after starting, forever. The platform LocationManager
   /// has no such check, so a failed start retries on it.
   bool _platformProvider = false;
+
+  /// What doesn't change while the app runs: model and OS, read once.
+  Map<String, Object?>? _phone;
+
+  /// The phone describing itself with each upload, for the technician bar on
+  /// the map (Jose, 2026-09-30). Anything a platform will not say is left
+  /// out, never guessed.
+  Future<Map<String, Object?>> _device() async {
+    _phone ??= await _describePhone();
+    final device = <String, Object?>{
+      ...?_phone,
+      'platform': ClientPlatform.name,
+      'app_version': BuildInfo.version,
+    };
+    try {
+      final battery = Battery();
+      device['battery_pct'] = await battery.batteryLevel;
+      final state = await battery.batteryState;
+      if (state != BatteryState.unknown) {
+        device['charging'] =
+            state == BatteryState.charging || state == BatteryState.full;
+      }
+    } catch (_) {
+      // No battery reading on this phone; the bar shows a dash.
+    }
+    return device;
+  }
+
+  static Future<Map<String, Object?>> _describePhone() async {
+    try {
+      final info = DeviceInfoPlugin();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final a = await info.androidInfo;
+        return {
+          'device_model': '${a.manufacturer} ${a.model}'.trim(),
+          'os_version': 'Android ${a.version.release}',
+        };
+      }
+      final i = await info.iosInfo;
+      return {
+        'device_model': i.modelName,
+        'os_version': '${i.systemName} ${i.systemVersion}',
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
 
   /// Most points a phone holds while offline. A day at 50 m spacing fits.
   static const _cap = 2000;
@@ -198,7 +249,10 @@ class FieldTracker {
   Future<void> _drain() async {
     while (_buffer.isNotEmpty) {
       final batch = _buffer.take(100).toList();
-      final response = await _api.post('/field/locations', {'points': batch});
+      final response = await _api.post('/field/locations', {
+        'points': batch,
+        'device': await _device(),
+      });
       // Anything but a network failure is final: a 422 on a stale point
       // would otherwise be retried for ever.
       if (response.statusCode == 0 || response.statusCode >= 500) return;

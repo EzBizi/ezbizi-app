@@ -49,7 +49,6 @@ class FieldSweep extends Command
 
             $upcoming = $tenant->runWithoutTenant(fn () => Job::query()
                 ->withoutGlobalScopes()
-                ->whereNotNull('performed_by_user_id')
                 ->whereBetween('scheduled_for', [now()->subDay()->toDateString(), now()->addDays(3)->toDateString()])
                 ->pluck('organization_id', 'id'));
 

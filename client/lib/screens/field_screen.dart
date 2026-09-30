@@ -43,7 +43,12 @@ class _FieldScreenState extends State<FieldScreen> {
         ),
       ),
     if (_may('field.map.view'))
-      ('map', 'Map', Icons.map_outlined, () => FieldMapTab(api: widget.api)),
+      (
+        'map',
+        'Map',
+        Icons.map_outlined,
+        () => FieldMapTab(api: widget.api, canSeeJobs: _may('jobs.view')),
+      ),
     if (_may('field.route.view'))
       (
         'route',

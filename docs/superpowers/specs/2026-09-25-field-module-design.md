@@ -141,3 +141,23 @@ permission.
 5. Client screen and tabs.
 6. Tracker, manifest and plist.
 7. Gates, then hand-off to the deploy desk.
+
+## Addendum 2026-09-30: dispatch on the map (Jose)
+
+*"I would like to be able to see the jobs for the day … my dispatchers would use this if someone calls
+asking for an ETA … a top bar … which would show phone battery, avg speed, app version, etc."*
+
+- **Jobs on the map.** `GET /field/jobs?date=` returns the day's jobs in the current view, placed from
+  stored geocodes (one query). It needs `jobs.view` on top of the Map tab, because customer names and
+  addresses are Jobs' data. The sweep now geocodes every upcoming job, not only assigned ones.
+- **ETA.** `GET /field/eta?job_id=` ranks the five nearest people reporting now by drive time (Routes
+  `computeRouteMatrix`). Adding `&user_id=` gives that person's drive (`computeRoutes`) with the road as an
+  encoded polyline, the minutes, an arrival time, and a sentence for the caller.
+- **Technician bar.** `POST /field/locations` accepts an optional `device` object (battery %, charging,
+  platform, OS version, model, app version), kept as the latest value on `field_presences`, with no
+  history. `GET /field/map` adds the device plus average and top moving speed, clocked-in time, and next
+  job.
+- **Client.** The floating list has People and Jobs tabs, and Jobs is searchable by number or customer.
+  Choosing a job opens the job card: the nearest people, then the route and a Copy button for the
+  sentence. With a job open, tapping a person routes that person to it. Choosing a person opens the
+  horizontal technician bar.

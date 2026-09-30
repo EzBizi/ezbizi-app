@@ -38,7 +38,7 @@ final class FieldEvaluator
      * @param  array<int, array{lat: float, lng: float, recorded_at: string, accuracy_m?: ?int, speed_mps?: ?float, heading?: ?int}>  $points
      * @return int how many were kept
      */
-    public function ingest(User $user, array $points): int
+    public function ingest(User $user, array $points, array $device = []): int
     {
         $instants = array_map(fn (array $p) => Carbon::parse($p['recorded_at'])->utc(), $points);
         $allowed = $this->tracking->covers($user, $instants);
@@ -69,13 +69,13 @@ final class FieldEvaluator
             }
         });
 
-        $this->evaluate($user, end($kept));
+        $this->evaluate($user, end($kept), $device);
 
         return count($kept);
     }
 
     /** @param array{latitude: float, longitude: float, accuracy_m: ?int, recorded_at: Carbon} $point */
-    private function evaluate(User $user, array $point): void
+    private function evaluate(User $user, array $point, array $device = []): void
     {
         $presence = FieldPresence::query()->firstOrNew(['user_id' => $user->getKey()]);
         $at = $point['recorded_at'];
@@ -100,6 +100,12 @@ final class FieldEvaluator
             'latitude' => $lat, 'longitude' => $lng, 'accuracy_m' => $point['accuracy_m'],
             'last_seen_at' => $at, 'signal_lost_alerted' => false,
         ]);
+
+        // What the phone says about itself. Only what it sent: an older app
+        // that sends nothing leaves the last known values alone.
+        $presence->fill(array_intersect_key($device, array_flip([
+            'battery_pct', 'charging', 'platform', 'os_version', 'device_model', 'app_version',
+        ])));
 
         $radius = $this->tracking->arrivalRadius($user);
 

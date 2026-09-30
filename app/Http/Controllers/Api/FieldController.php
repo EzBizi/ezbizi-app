@@ -7,6 +7,7 @@ use App\Models\FieldGeocode;
 use App\Models\FieldLocation;
 use App\Models\FieldPresence;
 use App\Models\Job;
+use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
@@ -14,6 +15,7 @@ use App\Support\Field\FieldEvaluator;
 use App\Support\Field\FieldJobs;
 use App\Support\Field\FieldMaps;
 use App\Support\Field\FieldTracking;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,9 +62,16 @@ class FieldController extends Controller
             'points.*.accuracy_m' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'points.*.speed_mps' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'points.*.heading' => ['nullable', 'integer', 'min:0', 'max:360'],
+            'device' => ['nullable', 'array'],
+            'device.battery_pct' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'device.charging' => ['nullable', 'boolean'],
+            'device.platform' => ['nullable', 'string', 'max:16'],
+            'device.os_version' => ['nullable', 'string', 'max:64'],
+            'device.device_model' => ['nullable', 'string', 'max:100'],
+            'device.app_version' => ['nullable', 'string', 'max:32'],
         ]);
 
-        $kept = $this->evaluator->ingest($request->user(), $data['points']);
+        $kept = $this->evaluator->ingest($request->user(), $data['points'], $data['device'] ?? []);
 
         return response()->json(['data' => [
             'kept' => $kept,
@@ -176,17 +185,24 @@ class FieldController extends Controller
             'stopped' => $p->stopped_alerted,
             'silent' => $p->signal_lost_alerted,
             'at_job' => $p->atJob ? ['id' => $p->atJob->id, 'number' => $p->atJob->number, 'title' => $p->atJob->title] : null,
+            'device' => [
+                'battery_pct' => $p->battery_pct,
+                'charging' => $p->charging,
+                'platform' => $p->platform,
+                'os_version' => $p->os_version,
+                'model' => $p->device_model,
+                'app_version' => $p->app_version,
+            ],
         ] + $this->today($people[$p->user_id]))->sortBy('user.name')->values()]);
     }
 
     /**
      * Today, where the person works: when tracking started, how far they have
-     * gone, and how fast they were last moving. Miles, like the business.
+     * gone, how fast (now, on average while moving, at most), when they
+     * clocked in, and their next job. Miles, like the business.
      *
      * ponytail: reads the day's points per person; a column on field_presences
      * if a team ever outgrows one query each.
-     *
-     * @return array{since: ?string, distance_mi: float, speed_mph: ?float}
      */
     private function today(User $person): array
     {
@@ -207,12 +223,173 @@ class FieldController extends Controller
         }
 
         $last = $points->last();
+        // Moving means over 2 mph: parked jitter is not driving.
+        $moving = $points->pluck('speed_mps')->filter(fn ($v) => $v !== null && $v > 0.9);
+        $shift = TimeClockShift::query()->open()->where('user_id', $person->getKey())->first();
+        $next = $this->jobs->on($person, $this->jobs->today($person))
+            ->first(fn (Job $j) => $j->scheduled_for !== null && $j->scheduled_for->gte(now()));
 
         return [
             'since' => $points->first()?->recorded_at->toIso8601ZuluString(),
             'distance_mi' => round($metres / 1609.344, 1),
             'speed_mph' => $last?->speed_mps === null ? null : round($last->speed_mps * 2.23694),
+            'avg_speed_mph' => $moving->isEmpty() ? null : round($moving->avg() * 2.23694),
+            'top_speed_mph' => $moving->isEmpty() ? null : round($moving->max() * 2.23694),
+            'clocked_in_at' => $shift?->clocked_in_at->toIso8601ZuluString(),
+            'next_job' => $next === null ? null : [
+                'id' => $next->getKey(), 'number' => $next->number,
+                'customer' => $next->customer?->name, 'scheduled_for' => $next->scheduled_for->toIso8601String(),
+            ],
         ];
+    }
+
+    /**
+     * GET /field/jobs?date= — the day's jobs in the current view, for the map.
+     *
+     * Customer names and addresses are Jobs' data, so this needs `jobs.view`
+     * on top of the Map tab. Only a stored geocode places a job; the sweep
+     * fills those for the next days, so a job without one is listed unplaced
+     * rather than holding the request up on Google.
+     */
+    public function jobs(Request $request): JsonResponse
+    {
+        $this->mustSeeJobs($request->user());
+        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+        $date = $data['date'] ?? now()->timezone((string) $this->tracking->setting('timezone', $request->user()))->toDateString();
+
+        $jobs = Job::query()
+            ->with(['customer', 'franchise'])
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->whereBetween('scheduled_for', ["{$date} 00:00:00", "{$date} 23:59:59"])
+            ->orderBy('scheduled_for')
+            ->limit(500)
+            ->get();
+
+        $performers = User::query()->whereIn('id', $jobs->pluck('performed_by_user_id')->filter()->unique())
+            ->pluck('name', 'id');
+
+        // One query for every job's place, not one each: this runs every 30 s per open map.
+        $hashOf = fn (Job $j) => $j->customer && ($a = FieldGeocode::addressOf($j->customer)) !== null
+            ? FieldGeocode::hash($a) : null;
+        $places = FieldGeocode::query()
+            ->whereIn('address_hash', $jobs->map($hashOf)->filter()->unique()->values())
+            ->where('status', FieldGeocode::OK)
+            ->get(['address_hash', 'latitude', 'longitude'])
+            ->keyBy('address_hash');
+
+        return response()->json(['data' => $jobs->map(function (Job $job) use ($performers, $places, $hashOf) {
+            $place = $places[$hashOf($job)] ?? null;
+            $point = $place ? ['lat' => $place->latitude, 'lng' => $place->longitude] : null;
+
+            return $this->presentJob($job) + [
+                'lat' => $point['lat'] ?? null,
+                'lng' => $point['lng'] ?? null,
+                'tech' => $job->performed_by_user_id === null ? null
+                    : ['id' => $job->performed_by_user_id, 'name' => $performers[$job->performed_by_user_id] ?? null],
+            ];
+        })->values(), 'date' => $date]);
+    }
+
+    /**
+     * GET /field/eta?job_id=&user_id=
+     *
+     * With a person: their drive to the job from where they are, with the road
+     * to draw and a sentence the dispatcher can read to the caller. Without:
+     * the five nearest people reporting now, ranked by drive time.
+     */
+    public function eta(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $this->mustSeeJobs($actor);
+        $data = $request->validate(['job_id' => ['required', 'uuid'], 'user_id' => ['nullable', 'uuid']]);
+
+        $job = Job::query()->with('customer')
+            ->whereIn('franchise_id', ViewScope::forUser($actor)->franchiseIds())
+            ->findOrFail($data['job_id']);
+        $to = $this->jobs->pointFor($job, ask: true);
+        $base = ['job' => $this->presentJob($job), 'placed' => $to !== null,
+            'lat' => $to['lat'] ?? null, 'lng' => $to['lng'] ?? null];
+
+        if ($to === null) {
+            return response()->json(['data' => $base + ['reason' => 'This job’s address cannot be placed on the map.']]);
+        }
+
+        $fresh = fn (User $u) => FieldPresence::query()->where('user_id', $u->getKey())
+            ->where('last_seen_at', '>', now()->subMinutes(self::FRESH_MINUTES))->first();
+
+        if (isset($data['user_id'])) {
+            $person = $this->visiblePerson($actor, $data['user_id']);
+            $at = $fresh($person);
+            $base['user'] = ['id' => $person->getKey(), 'name' => $person->name];
+
+            if ($at === null) {
+                return response()->json(['data' => $base + [
+                    'reason' => "{$person->name} has not reported in the last ".self::FRESH_MINUTES.' minutes.']]);
+            }
+
+            return response()->json(['data' => $base + $this->presentDrive($person, $at, $to)]);
+        }
+
+        $candidates = $this->tracking->trackedPeople($actor)
+            ->map(fn (User $u) => ['user' => $u, 'at' => $fresh($u)])
+            ->filter(fn ($c) => $c['at'] !== null)
+            ->sortBy(fn ($c) => FieldMaps::metres($c['at']->latitude, $c['at']->longitude, $to['lat'], $to['lng']))
+            ->take(5)
+            ->values();
+
+        $times = $this->maps->matrix(
+            $candidates->map(fn ($c) => ['lat' => $c['at']->latitude, 'lng' => $c['at']->longitude])->all(),
+            $to,
+        );
+
+        $ranked = $candidates->map(fn ($c, $i) => [
+            'user' => ['id' => $c['user']->getKey(), 'name' => $c['user']->name],
+            'assigned' => $job->performed_by_user_id === $c['user']->getKey(),
+            'minutes' => isset($times[$i]) ? (int) ceil($times[$i]['seconds'] / 60) : null,
+            'miles' => isset($times[$i])
+                ? round($times[$i]['meters'] / 1609.344, 1)
+                : round(FieldMaps::metres($c['at']->latitude, $c['at']->longitude, $to['lat'], $to['lng']) / 1609.344, 1),
+        ])->sortBy(fn ($c) => $c['minutes'] ?? PHP_INT_MAX)->values();
+
+        return response()->json(['data' => $base + [
+            'candidates' => $ranked,
+            'reason' => $times === null ? 'Drive times need the Google Maps key; these are straight-line miles.' : null,
+        ]]);
+    }
+
+    /** @param array{lat: float, lng: float} $to */
+    private function presentDrive(User $person, FieldPresence $at, array $to): array
+    {
+        $from = ['lat' => $at->latitude, 'lng' => $at->longitude];
+        $drive = $this->maps->drive($from, $to);
+
+        if ($drive === null) {
+            return ['from' => $from, 'minutes' => null, 'polyline' => null,
+                'miles' => round(FieldMaps::metres($from['lat'], $from['lng'], $to['lat'], $to['lng']) / 1609.344, 1),
+                'reason' => 'Drive time needs the Google Maps key; this is the straight-line distance.'];
+        }
+
+        $minutes = (int) ceil($drive['seconds'] / 60);
+        $first = explode(' ', trim($person->name))[0];
+        $arrive = now()->addSeconds($drive['seconds'])
+            ->timezone((string) $this->tracking->setting('timezone', $person))->format('g:i A');
+
+        return [
+            'from' => $from,
+            'minutes' => $minutes,
+            'miles' => round($drive['meters'] / 1609.344, 1),
+            'arrive_at' => $arrive,
+            'polyline' => $drive['polyline'],
+            // What the dispatcher reads to the caller, word for word.
+            'say' => "{$first} is about {$minutes} minutes away and should arrive around {$arrive}.",
+        ];
+    }
+
+    private function mustSeeJobs(User $user): void
+    {
+        if (! $user->hasPermission('jobs.view')) {
+            throw new AuthorizationException(Refusal::permission('see jobs on the map')->message());
+        }
     }
 
     /** GET /field/map/tiles */

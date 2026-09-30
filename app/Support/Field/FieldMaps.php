@@ -105,6 +105,100 @@ final class FieldMaps
     }
 
     /**
+     * One drive from $from to $to, with traffic, and the road it takes as
+     * Google's encoded polyline.
+     *
+     * @param  array{lat: float, lng: float}  $from
+     * @param  array{lat: float, lng: float}  $to
+     * @return array{seconds: int, meters: int, polyline: ?string}|null
+     */
+    public function drive(array $from, array $to): ?array
+    {
+        if (! $this->configured()) {
+            return null;
+        }
+
+        $point = fn (array $p) => ['location' => ['latLng' => ['latitude' => $p['lat'], 'longitude' => $p['lng']]]];
+
+        $response = Http::timeout(15)
+            ->withHeaders([
+                'X-Goog-Api-Key' => config('services.google_maps.server_key'),
+                'X-Goog-FieldMask' => 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
+            ])
+            ->post('https://routes.googleapis.com/directions/v2:computeRoutes', [
+                'origin' => $point($from),
+                'destination' => $point($to),
+                'travelMode' => 'DRIVE',
+                'routingPreference' => 'TRAFFIC_AWARE',
+            ]);
+
+        $route = $response->json('routes.0');
+
+        if (! $response->ok() || ! is_array($route)) {
+            Log::warning('Field drive refused', ['http' => $response->status(), 'error' => $response->json('error.message')]);
+
+            return null;
+        }
+
+        return [
+            'seconds' => (int) rtrim((string) ($route['duration'] ?? '0s'), 's'),
+            'meters' => (int) ($route['distanceMeters'] ?? 0),
+            'polyline' => $route['polyline']['encodedPolyline'] ?? null,
+        ];
+    }
+
+    /**
+     * Drive time from each origin to one destination, with traffic.
+     *
+     * @param  array<int, array{lat: float, lng: float}>  $origins
+     * @param  array{lat: float, lng: float}  $to
+     * @return array<int, array{seconds: int, meters: int}>|null  keyed like $origins; a missing key could not be routed
+     */
+    public function matrix(array $origins, array $to): ?array
+    {
+        if ($origins === []) {
+            return [];
+        }
+        if (! $this->configured()) {
+            return null;
+        }
+
+        $point = fn (array $p) => ['waypoint' => ['location' => ['latLng' => ['latitude' => $p['lat'], 'longitude' => $p['lng']]]]];
+        $keys = array_keys($origins);
+
+        $response = Http::timeout(15)
+            ->withHeaders([
+                'X-Goog-Api-Key' => config('services.google_maps.server_key'),
+                'X-Goog-FieldMask' => 'originIndex,duration,distanceMeters,condition',
+            ])
+            ->post('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', [
+                'origins' => array_map($point, array_values($origins)),
+                'destinations' => [$point($to)],
+                'travelMode' => 'DRIVE',
+                'routingPreference' => 'TRAFFIC_AWARE',
+            ]);
+
+        if (! $response->ok() || ! is_array($response->json())) {
+            Log::warning('Field matrix refused', ['http' => $response->status()]);
+
+            return null;
+        }
+
+        $out = [];
+        foreach ($response->json() as $element) {
+            if (($element['condition'] ?? null) !== 'ROUTE_EXISTS' || ! isset($element['originIndex'])) {
+                continue;
+            }
+            $out[$keys[(int) $element['originIndex']]] = [
+                'seconds' => (int) rtrim((string) ($element['duration'] ?? '0s'), 's'),
+                'meters' => (int) ($element['distanceMeters'] ?? 0),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * The quiet map Jose asked for (2026-09-28, pointing at A1 Tools' Positron
      * and Dark Matter): no businesses, no transit, pale land, grey labels, so
      * the people are what stands out. Still Google's tiles and attribution.
