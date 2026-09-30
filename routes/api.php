@@ -1247,6 +1247,9 @@ Route::prefix('v1')
             Route::get('field/map', [FieldController::class, 'map']);
             Route::get('field/map/tiles', [FieldController::class, 'tiles']);
             Route::get('field/map/attribution', [FieldController::class, 'attribution']);
+            // Jobs on the map and a dispatcher's ETA also need jobs.view (checked inside).
+            Route::get('field/jobs', [FieldController::class, 'jobs']);
+            Route::get('field/eta', [FieldController::class, 'eta']);
         });
         Route::middleware('permission:field.route.view')->group(function () {
             Route::get('field/people', [FieldController::class, 'people']);

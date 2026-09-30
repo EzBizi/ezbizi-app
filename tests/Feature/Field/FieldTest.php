@@ -392,6 +392,79 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.0.speed_mph', 30);
     }
 
+    public function test_the_phone_describes_itself_and_the_map_says_so(): void
+    {
+        $this->mode('always');
+        $this->signedInAs($this->tech)->postJson('/api/v1/field/locations', [
+            'points' => [$this->point(40, -75)],
+            'device' => ['battery_pct' => 41, 'charging' => true, 'platform' => 'android',
+                'os_version' => '15', 'device_model' => 'Samsung SM-S918U', 'app_version' => '0.0.0330'],
+        ])->assertJsonPath('data.kept', 1);
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')
+            ->assertOk()
+            ->assertJsonPath('data.0.device.battery_pct', 41)
+            ->assertJsonPath('data.0.device.charging', true)
+            ->assertJsonPath('data.0.device.model', 'Samsung SM-S918U')
+            ->assertJsonPath('data.0.device.app_version', '0.0.0330');
+    }
+
+    public function test_jobs_on_the_map_need_the_jobs_grant_and_come_with_their_place(): void
+    {
+        $job = $this->jobAt(40.0, -75.0);
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/jobs?date=2026-09-25')->assertForbidden();
+
+        $dispatcher = $this->userWithRole($this->t, 'Dispatch2', ['field.view', 'field.map.view', 'jobs.view']);
+        $this->signedInAs($dispatcher)->getJson('/api/v1/field/jobs?date=2026-09-25')
+            ->assertOk()
+            ->assertJsonPath('data.0.job_id', $job->id)
+            ->assertJsonPath('data.0.lat', 40)
+            ->assertJsonPath('data.0.tech.id', $this->tech->id);
+    }
+
+    public function test_eta_ranks_the_people_reporting_now_by_drive_time(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        $this->mode('always');
+        $job = $this->jobAt(40.0, -75.0);
+        $near = $this->userWithRole($this->t, 'Tech2', ['field.view', 'field.tracked']);
+        $this->send($this->point(40.3, -75.0));
+        $this->signedInAs($near)->postJson('/api/v1/field/locations', ['points' => [$this->point(40.05, -75.0)]]);
+        $dispatcher = $this->userWithRole($this->t, 'Dispatch2', ['field.view', 'field.map.view', 'jobs.view']);
+
+        // Straight-line order is [near, tech]; Google says the far one is faster.
+        Http::fake(['routes.googleapis.com/distanceMatrix/*' => Http::response([
+            ['originIndex' => 0, 'destinationIndex' => 0, 'duration' => '1500s', 'distanceMeters' => 6000, 'condition' => 'ROUTE_EXISTS'],
+            ['originIndex' => 1, 'destinationIndex' => 0, 'duration' => '900s', 'distanceMeters' => 34000, 'condition' => 'ROUTE_EXISTS'],
+        ])]);
+
+        $this->signedInAs($dispatcher)->getJson("/api/v1/field/eta?job_id={$job->id}")
+            ->assertOk()
+            ->assertJsonPath('data.candidates.0.user.id', $this->tech->id)
+            ->assertJsonPath('data.candidates.0.minutes', 15)
+            ->assertJsonPath('data.candidates.0.assigned', true)
+            ->assertJsonPath('data.candidates.1.user.id', $near->id);
+    }
+
+    public function test_eta_for_one_person_draws_the_road_and_says_it_in_a_sentence(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        $this->mode('always');
+        $job = $this->jobAt(40.0, -75.0);
+        $this->send($this->point(40.1, -75.0));
+        $dispatcher = $this->userWithRole($this->t, 'Dispatch2', ['field.view', 'field.map.view', 'jobs.view']);
+        Http::fake(['routes.googleapis.com/directions/*' => Http::response(['routes' => [[
+            'duration' => '1080s', 'distanceMeters' => 12000, 'polyline' => ['encodedPolyline' => '_p~iF~ps|U_ulLnnqC'],
+        ]]])]);
+
+        $this->signedInAs($dispatcher)->getJson("/api/v1/field/eta?job_id={$job->id}&user_id={$this->tech->id}")
+            ->assertOk()
+            ->assertJsonPath('data.minutes', 18)
+            ->assertJsonPath('data.polyline', '_p~iF~ps|U_ulLnnqC')
+            ->assertJsonPath('data.say', 'Technician is about 18 minutes away and should arrive around 2:18 PM.');
+    }
+
     public function test_the_dashboard_counts_only_people_you_can_see(): void
     {
         $this->mode('always');
