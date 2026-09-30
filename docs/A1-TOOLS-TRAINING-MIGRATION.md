@@ -64,13 +64,13 @@ The Dismantler's counts, 2026-09-30. Everything is A-1 Chimney.
   - 3,085 page completions
   - 520 rows of videos watched
 - **People:** 71 in total.
-  - 41 match an A1-Group user by email.
-  - 3 are current staff who are not in EzBizi.
-  - The rest are people no longer on staff. Their history is counted and left out, because no user is created.
+  - **44 match an A1-Group user: all current staff.** 41 match by email. The other 3 (A1 accounts 6, 8 and 62) have A1 emails that differ from their EzBizi ones, and match by phone or name exactly as the staff migration's crosswalk did.
+  - 27 are counted and left out: 15 deleted and 12 former. No user is created.
+  - People are resolved email, then phone (last 10 digits), then exact name, re-derived from ezbizi.users in A1-Group at export time. **The bundle keys each person by their EzBizi email.**
 
 ## Desk decisions (2026-09-30)
 
 - **Content:** all guides and tests are imported. The 15 long pages are split into consecutive screens, in order.
 - **Images:** copied into private storage with checksums. **Vimeo videos stay Vimeo links.** They do not live on A1's server, but they do depend on the Vimeo account staying open.
-- **History** (attempts and progress): imported for the 41 matched people. For anyone not in EzBizi it is counted, never created.
-- **The 3 current staff not in EzBizi:** the Dismantler reports why, as counts and roles only. If they should have come over with the staff migration, they are imported first, and their training history follows.
+- **History** (attempts and progress): imported for the 44 matched people. For anyone not in EzBizi it is counted, never created.
+- The "3 current staff not in EzBizi" were already in EzBizi, matched by phone or name, so no HR import is needed.
