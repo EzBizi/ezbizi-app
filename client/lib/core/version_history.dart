@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0328',
+      date: '30 Sep 2026',
+      items: [
+        'Training: guides look and work like A1 Tools: chapters, sections and topics, each topic with all its text, pictures, videos and tables.',
+        'Training: topics unlock one at a time, and Complete and Continue opens the next.',
+        'Training: videos play inside the app on desktop, phones and the web.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0327',
       date: '30 Sep 2026',
       items: [
