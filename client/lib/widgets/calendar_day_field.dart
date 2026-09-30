@@ -216,6 +216,27 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
     return (rawHour, minute);
   }
 
+  /// Why the typed time cannot be kept, or null while it is fine or still
+  /// being typed. Without it the boxes could read 25 PM and store nothing,
+  /// with no word said.
+  String? _clockProblem() {
+    if (!widget.withTime) return null;
+    final hourText = _hour.text.trim();
+    final hour = int.tryParse(hourText);
+    final minute = int.tryParse(_minute.text.trim());
+    final twelve = widget.formats.timeFormat == '12h';
+
+    // A lone 0 may be the start of 09; it is a problem once the minute is in.
+    final hourDone = hourText.length == 2 || _minute.text.trim().isNotEmpty;
+    if (hour != null &&
+        hourDone &&
+        (twelve ? hour < 1 || hour > 12 : hour > 23)) {
+      return twelve ? 'Hours go from 1 to 12.' : 'Hours go from 00 to 23.';
+    }
+    if (minute != null && minute > 59) return 'Minutes go from 00 to 59.';
+    return null;
+  }
+
   void _commit() {
     final emptyDate =
         _month.text.trim().isEmpty &&
@@ -256,7 +277,7 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
 
     final clock = _typedClock();
     if (clock == null) {
-      setState(() => _invalid = null);
+      setState(() => _invalid = _clockProblem());
       return;
     }
 
@@ -346,12 +367,30 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
 
   void _onHour(String raw) {
     final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final clipped = digits.length > 2 ? digits.substring(0, 2) : digits;
+    final typed = digits.length > 2 ? digits.substring(0, 2) : digits;
+    var clipped = typed;
+
+    // A 24-hour time in a 12-hour box means what it says: 16 is 4 PM and 00 is
+    // 12 AM. The box used to keep 16, beside PM, and store no time at all -
+    // Jose booked a lead that way on 2026-09-30.
+    final hour = int.tryParse(typed);
+    if (widget.formats.timeFormat == '12h' &&
+        typed.length == 2 &&
+        hour != null) {
+      if (hour >= 13 && hour <= 23) {
+        clipped = '${hour - 12}';
+        _pm = true;
+      } else if (hour == 0) {
+        clipped = '12';
+        _pm = false;
+      }
+    }
+
     _hour.value = TextEditingValue(
       text: clipped,
       selection: TextSelection.collapsed(offset: clipped.length),
     );
-    if (clipped.length == 2) _minuteFocus.requestFocus();
+    if (typed.length == 2) _minuteFocus.requestFocus();
     _commit();
   }
 

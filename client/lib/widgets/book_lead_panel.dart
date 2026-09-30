@@ -5,6 +5,7 @@ import '../core/job_status.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
+import 'address_fields.dart';
 import 'calendar_day_field.dart';
 import 'franchise_field.dart';
 import 'lead_thread.dart';
@@ -74,7 +75,14 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
   late final _email = TextEditingController(
     text: (widget.lead['email'] as String?) ?? '',
   );
-  final _address = TextEditingController();
+  // The customer's address in the parts a customer has, found with the
+  // lookup (Jose, 2026-09-30: "it should use the address suggestions"; "we
+  // should also have more field for the address, city, state, zip code").
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
+  final _postal = TextEditingController();
 
   late String? _franchiseId =
       (widget.lead['franchise'] as Map?)?['id'] as String?;
@@ -96,7 +104,18 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _email, _address, _title, _scheduled]) {
+    for (final c in [
+      _name,
+      _phone,
+      _email,
+      _line1,
+      _line2,
+      _city,
+      _state,
+      _postal,
+      _title,
+      _scheduled,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -150,7 +169,11 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
           'name': _name.text.trim(),
           'phone': _phone.text.trim(),
           'email': _email.text.trim(),
-          'address_line1': _address.text.trim(),
+          'address_line1': _line1.text.trim(),
+          'address_line2': _line2.text.trim(),
+          'city': _city.text.trim(),
+          'state': _state.text.trim(),
+          'postal_code': _postal.text.trim(),
         },
       'title': _title.text.trim(),
       'status': _status,
@@ -216,10 +239,15 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
             decoration: const InputDecoration(labelText: 'Email'),
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: _address,
+          AddressFields(
+            api: widget.api,
+            line1: _line1,
+            line2: _line2,
+            city: _city,
+            state: _state,
+            postal: _postal,
             enabled: !_busy,
-            decoration: const InputDecoration(labelText: 'Address'),
+            dense: false,
           ),
           const SizedBox(height: 6),
           Text(

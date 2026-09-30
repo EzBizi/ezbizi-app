@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/api_client.dart';
+import '../widgets/address_fields.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 
@@ -33,16 +35,24 @@ import '../widgets/side_panel.dart';
 /// ever produces a refusal is worse than no control. And a company being edited
 /// already has its places, so "its first place" has nothing left to ask.
 class CompanyFormPanel extends StatefulWidget {
-  const CompanyFormPanel({super.key, required this.parents, this.fixedParent})
-    : existing = null;
+  const CompanyFormPanel({
+    super.key,
+    required this.api,
+    required this.parents,
+    this.fixedParent,
+  }) : existing = null;
 
   /// Edit what is already there. [existing] is a company from /companies.
   const CompanyFormPanel.edit({
     super.key,
+    required this.api,
     required Map<String, dynamic> company,
   }) : existing = company,
        parents = const [],
        fixedParent = null;
+
+  /// For the address lookup only; the caller still sends the draft.
+  final ApiClient api;
 
   final Map<String, dynamic>? existing;
 
@@ -249,26 +259,15 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
 
           const SizedBox(height: 22),
           _label(context, 'Address'),
-          _field(_address1, hint: 'Street'),
-          const SizedBox(height: 10),
-          _field(_address2, hint: 'Suite, unit, floor (optional)'),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(flex: 3, child: _field(_city, hint: 'City')),
-              const SizedBox(width: 10),
-              // Two characters, because that is what the server accepts — a full
-              // state name would be refused after the fact for a reason the form
-              // could have made obvious.
-              // A fixed width, not a share of the row: at a sixth of a phone
-              // the box was narrower than its own padding and showed nothing.
-              SizedBox(
-                width: 80,
-                child: _field(_state, hint: 'ST', maxLength: 2, caps: true),
-              ),
-              const SizedBox(width: 10),
-              Expanded(flex: 2, child: _field(_postal, hint: 'ZIP')),
-            ],
+          // Found with the lookup, kept in parts (Jose, 2026-09-30). ST is
+          // still two letters, what the server accepts.
+          AddressFields(
+            api: widget.api,
+            line1: _address1,
+            line2: _address2,
+            city: _city,
+            state: _state,
+            postal: _postal,
           ),
 
           const SizedBox(height: 22),
@@ -294,16 +293,10 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
     String? hint,
     String? helper,
     bool autofocus = false,
-    int? maxLength,
-    bool caps = false,
   }) {
     return TextField(
       controller: controller,
       autofocus: autofocus,
-      maxLength: maxLength,
-      textCapitalization: caps
-          ? TextCapitalization.characters
-          : TextCapitalization.none,
       decoration: InputDecoration(
         hintText: hint,
         helperText: helper,

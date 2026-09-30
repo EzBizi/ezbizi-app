@@ -319,7 +319,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.widget<SidePanel>(find.byType(SidePanel)).docked, isTrue);
-      expect(find.text('Street address'), findsOneWidget);
+      expect(find.text('Street'), findsOneWidget);
       expect(find.text('Chimney Inspection'), findsOneWidget);
       // Three jobs on the customer, two of them readable here.
       expect(
@@ -328,13 +328,14 @@ void main() {
       );
 
       // State's helper line used to push ZIP lower than the box beside it.
+      // The boxes are AddressFields' now (Jose, 2026-09-30), labelled ST.
       Finder box(String label) => find.ancestor(
         of: find.text(label),
         matching: find.byType(TextField),
       );
       expect(
         tester.getTopLeft(box('ZIP')).dy,
-        tester.getTopLeft(box('State')).dy,
+        tester.getTopLeft(box('ST')).dy,
       );
     });
   });

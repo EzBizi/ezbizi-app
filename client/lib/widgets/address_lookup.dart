@@ -24,6 +24,7 @@ class AddressLookup extends StatefulWidget {
     required this.onPicked,
     this.enabled = true,
     this.label = 'Find an address',
+    this.dense = true,
   });
 
   final ApiClient api;
@@ -34,6 +35,11 @@ class AddressLookup extends StatefulWidget {
 
   final bool enabled;
   final String label;
+
+  /// Dense and outlined, as the settings forms it was made for. False takes
+  /// the theme's box, for a form whose other fields do (booking a lead, a
+  /// customer): one form, one height of box.
+  final bool dense;
 
   @override
   State<AddressLookup> createState() => _AddressLookupState();
@@ -104,8 +110,8 @@ class _AddressLookupState extends State<AddressLookup> {
           controller: _search,
           enabled: widget.enabled,
           decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            isDense: true,
+            border: widget.dense ? const OutlineInputBorder() : null,
+            isDense: widget.dense,
             labelText: widget.label,
             hintText: 'Start typing a street or place',
             prefixIcon: const Icon(Icons.search, size: 20),

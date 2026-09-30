@@ -450,6 +450,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     final draft = await showSidePanel<CompanyDraft>(
       context,
       builder: (_) => CompanyFormPanel(
+        api: widget.api,
         parents: parents,
         fixedParent: parent == null
             ? null
@@ -474,7 +475,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   Future<void> _editCompany(Map<String, dynamic> company) async {
     final draft = await showSidePanel<CompanyDraft>(
       context,
-      builder: (_) => CompanyFormPanel.edit(company: company),
+      builder: (_) =>
+          CompanyFormPanel.edit(api: widget.api, company: company),
     );
 
     if (draft == null) return;

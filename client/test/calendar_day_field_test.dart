@@ -195,6 +195,41 @@ void main() {
     expect(controller.text, '2026-03-08 09:00');
   });
 
+  /// Jose, 2026-09-30, booking a lead: the boxes read 16 : 00 PM and the job
+  /// would have been booked with no time at all.
+  testWidgets('16 in a 12-hour box is 4 PM, and is stored', (tester) async {
+    final controller = TextEditingController();
+    await _pump(tester, controller, formats: american, withTime: true);
+
+    await tester.enterText(find.byKey(const Key('calendar-day-month')), '09');
+    await tester.enterText(find.byKey(const Key('calendar-day-day')), '30');
+    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
+    await tester.enterText(find.byKey(const Key('calendar-day-hour')), '16');
+    await tester.enterText(find.byKey(const Key('calendar-day-minute')), '00');
+    await tester.pump();
+
+    expect(controller.text, '2026-09-30 16:00');
+    expect(find.widgetWithText(TextField, '4'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'PM'), findsOneWidget);
+  });
+
+  testWidgets('an hour no clock has says so instead of storing nothing', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    await _pump(tester, controller, formats: american, withTime: true);
+
+    await tester.enterText(find.byKey(const Key('calendar-day-month')), '09');
+    await tester.enterText(find.byKey(const Key('calendar-day-day')), '30');
+    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
+    await tester.enterText(find.byKey(const Key('calendar-day-hour')), '25');
+    await tester.enterText(find.byKey(const Key('calendar-day-minute')), '00');
+    await tester.pump();
+
+    expect(find.text('Hours go from 1 to 12.'), findsOneWidget);
+    expect(controller.text, isEmpty);
+  });
+
   /// A job keeps the seconds it was booked with until somebody changes it.
   ///
   /// The blur is wired to the DATE boxes (Jobs' note: a test that blurred the

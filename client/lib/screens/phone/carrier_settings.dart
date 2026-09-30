@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 
 import '../../core/api_client.dart';
+import '../../widgets/address_lookup.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 
@@ -374,6 +375,20 @@ class _AddressFormState extends State<_AddressForm> {
             'the phone actually is. Twilio checks it against the postal record '
             'and can refuse it.',
             style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+
+          // Found with the lookup like every other address (Jose,
+          // 2026-09-30). The country stays the two-letter code Twilio takes.
+          AddressLookup(
+            api: widget.api,
+            enabled: !_saving,
+            onPicked: (parts) => setState(() {
+              _street.text = '${parts['address_line1'] ?? ''}';
+              _city.text = '${parts['city'] ?? ''}';
+              _region.text = '${parts['state'] ?? ''}';
+              _postal.text = '${parts['postal_code'] ?? ''}';
+            }),
           ),
           const SizedBox(height: 12),
 

@@ -89,6 +89,36 @@ void main() {
     expect(booked?['job'], isNotNull);
   });
 
+  /// Jose, 2026-09-30, typing "92 summerhill rd" into one Address box: "it
+  /// should show me suggested addresses", and "we should also have more field
+  /// for the address, city, state, zip code". The customer is created with
+  /// every part the lookup found, not the street alone.
+  testWidgets('a suggested address fills the parts, and the new customer '
+      'gets all of them', (tester) async {
+    await _pump(tester, matches: const []);
+
+    expect(find.widgetWithText(TextField, 'City'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'ZIP'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Find an address'),
+      '14 elm ridge',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('14 Elm Ridge Rd, Hartford, CT 06105'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('book-submit')));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final customer = _bookings.single['customer'] as Map;
+    expect(customer['address_line1'], '14 Elm Ridge Rd');
+    expect(customer['city'], 'Hartford');
+    expect(customer['state'], 'CT');
+    expect(customer['postal_code'], '06105');
+  });
+
   test('the booked line formats the job time in words', () {
     final local = DateTime(2026, 9, 17, 14, 0).toUtc().toIso8601String();
     expect(formatJobWhen(local), 'Thu 17 Sep, 2 PM');
@@ -152,6 +182,23 @@ Future<void> _pump(
                   {'value': 'scheduled', 'label': 'Scheduled'},
                   {'value': 'done', 'label': 'Done'},
                 ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path.endsWith('/address-lookup')) {
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'label': '14 Elm Ridge Rd, Hartford, CT 06105',
+                'address_line1': '14 Elm Ridge Rd',
+                'city': 'Hartford',
+                'state': 'CT',
+                'postal_code': '06105',
               },
             ],
           }),

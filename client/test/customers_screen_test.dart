@@ -69,9 +69,12 @@ void main() {
     await tester.tap(find.text('Add customer'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Street address'), findsOneWidget);
+    // Found with the lookup, kept in parts (Jose, 2026-09-30).
+    expect(find.text('Find an address'), findsOneWidget);
+    expect(find.text('Street'), findsOneWidget);
     expect(find.text('City'), findsOneWidget);
-    expect(find.text('State'), findsOneWidget);
+    expect(find.text('ST'), findsOneWidget);
+    expect(find.text('ZIP'), findsOneWidget);
   });
 
   testWidgets('opening a row loads the customer and can deactivate them', (
@@ -106,7 +109,8 @@ void main() {
     // asserting only the owner tag would pass against the row behind the panel
     // and prove nothing about the panel. Only the panel prefixes the number.
     expect(find.text('C-1001 · Everdoors · Connecticut'), findsOneWidget);
-    expect(find.text('Street address'), findsOneWidget);
+    expect(find.text('Find an address'), findsOneWidget);
+    expect(find.text('Street'), findsOneWidget);
     expect(find.text('Deactivate'), findsOneWidget);
     expect(find.text('Reassign owner'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);

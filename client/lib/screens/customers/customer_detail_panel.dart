@@ -6,6 +6,7 @@ import '../../core/job_status.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
@@ -334,50 +335,16 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   enabled: editable,
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _line1,
-                  decoration: const InputDecoration(labelText: 'Street address'),
+                // Found with the lookup, kept in parts (Jose, 2026-09-30).
+                AddressFields(
+                  api: widget.api,
+                  line1: _line1,
+                  line2: _line2,
+                  city: _city,
+                  state: _state,
+                  postal: _postal,
                   enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _line2,
-                  decoration: const InputDecoration(labelText: 'Apartment, suite, etc.'),
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _city,
-                  decoration: const InputDecoration(labelText: 'City'),
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                // Tops aligned: State's helper line made the row taller, and centred
-                // ZIP sat lower than the box beside it.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _state,
-                        decoration: const InputDecoration(
-                          labelText: 'State',
-                          helperText: 'Two letters.',
-                        ),
-                        textCapitalization: TextCapitalization.characters,
-                        enabled: editable,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _postal,
-                        decoration: const InputDecoration(labelText: 'ZIP'),
-                        keyboardType: TextInputType.streetAddress,
-                        enabled: editable,
-                      ),
-                    ),
-                  ],
+                  dense: false,
                 ),
                 const SizedBox(height: 12),
                 TextField(

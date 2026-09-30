@@ -14,6 +14,11 @@ import 'not_filled_in.dart';
 /// A person's home address adds [country] (Jose, 2026-09-30: "Main Address -
 /// Unit - City - State - Country - Zip"), and marks its empty boxes amber
 /// with [flagEmpty], as the rest of their profile does.
+///
+/// Every address typed anywhere in the app comes through here or through
+/// [AddressLookup] - Jose, 2026-09-30: "I don't want to see this issue
+/// anymore anywhere in the app where address is just one field."
+/// address_lookup_everywhere_test.dart holds the app to it.
 class AddressFields extends StatefulWidget {
   const AddressFields({
     super.key,
@@ -26,6 +31,7 @@ class AddressFields extends StatefulWidget {
     this.country,
     this.enabled = true,
     this.flagEmpty = false,
+    this.dense = true,
   });
 
   final ApiClient api;
@@ -42,6 +48,10 @@ class AddressFields extends StatefulWidget {
 
   /// Amber while empty: every box but the suite, which most addresses lack.
   final bool flagEmpty;
+
+  /// As [AddressLookup.dense]: false for a form whose other boxes are the
+  /// theme's own.
+  final bool dense;
 
   @override
   State<AddressFields> createState() => _AddressFieldsState();
@@ -87,13 +97,17 @@ class _AddressFieldsState extends State<AddressFields> {
 
   /// A box's decoration, amber and "Not filled in" when [flagEmpty] and it
   /// is empty.
-  InputDecoration _box(
-    TextEditingController controller,
-    InputDecoration decoration,
-  ) => notFilledIn(
-    context,
-    decoration,
-    empty: widget.flagEmpty && controller.text.trim().isEmpty,
+  InputDecoration _box(TextEditingController controller, String label) =>
+      notFilledIn(
+        context,
+        _plain(label),
+        empty: widget.flagEmpty && controller.text.trim().isEmpty,
+      );
+
+  InputDecoration _plain(String label) => InputDecoration(
+    border: widget.dense ? const OutlineInputBorder() : null,
+    isDense: widget.dense,
+    labelText: label,
   );
 
   @override
@@ -105,29 +119,19 @@ class _AddressFieldsState extends State<AddressFields> {
           api: widget.api,
           enabled: widget.enabled,
           onPicked: _apply,
+          dense: widget.dense,
         ),
         const SizedBox(height: 12),
         TextField(
           controller: widget.line1,
           enabled: widget.enabled,
-          decoration: _box(
-            widget.line1,
-            const InputDecoration(
-              border: OutlineInputBorder(),
-              isDense: true,
-              labelText: 'Street',
-            ),
-          ),
+          decoration: _box(widget.line1, 'Street'),
         ),
         const SizedBox(height: 10),
         TextField(
           controller: widget.line2,
           enabled: widget.enabled,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            isDense: true,
-            labelText: 'Suite, unit, floor',
-          ),
+          decoration: _plain('Suite, unit, floor'),
         ),
         const SizedBox(height: 10),
         Row(
@@ -152,14 +156,7 @@ class _AddressFieldsState extends State<AddressFields> {
                 child: TextField(
                   controller: country,
                   enabled: widget.enabled,
-                  decoration: _box(
-                    country,
-                    const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      labelText: 'Country',
-                    ),
-                  ),
+                  decoration: _box(country, 'Country'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -174,14 +171,7 @@ class _AddressFieldsState extends State<AddressFields> {
   Widget _city() => TextField(
     controller: widget.city,
     enabled: widget.enabled,
-    decoration: _box(
-      widget.city,
-      const InputDecoration(
-        border: OutlineInputBorder(),
-        isDense: true,
-        labelText: 'City',
-      ),
-    ),
+    decoration: _box(widget.city, 'City'),
   );
 
   Widget _state() => TextField(
@@ -196,26 +186,14 @@ class _AddressFieldsState extends State<AddressFields> {
     ],
     decoration: _box(
       widget.state,
-      const InputDecoration(
-        border: OutlineInputBorder(),
-        isDense: true,
-        labelText: 'ST',
-        counterText: '',
-      ),
-    ).copyWith(hintText: widget.flagEmpty ? '' : null),
+      'ST',
+    ).copyWith(counterText: '', hintText: widget.flagEmpty ? '' : null),
   );
 
   Widget _postal() => TextField(
     controller: widget.postal,
     enabled: widget.enabled,
-    decoration: _box(
-      widget.postal,
-      const InputDecoration(
-        border: OutlineInputBorder(),
-        isDense: true,
-        labelText: 'ZIP',
-      ),
-    ),
+    decoration: _box(widget.postal, 'ZIP'),
   );
 }
 

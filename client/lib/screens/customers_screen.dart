@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
+import '../widgets/address_fields.dart';
 import '../widgets/async_body.dart';
 import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
@@ -1086,51 +1087,16 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
             enabled: !_busy,
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _line1,
-            decoration: const InputDecoration(labelText: 'Street address'),
+          // Found with the lookup, kept in parts (Jose, 2026-09-30).
+          AddressFields(
+            api: widget.api,
+            line1: _line1,
+            line2: _line2,
+            city: _city,
+            state: _state,
+            postal: _postal,
             enabled: !_busy,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _line2,
-            decoration: const InputDecoration(
-              labelText: 'Apartment, suite, etc.',
-            ),
-            enabled: !_busy,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _city,
-            decoration: const InputDecoration(labelText: 'City'),
-            enabled: !_busy,
-          ),
-          const SizedBox(height: 12),
-          // Tops aligned: State's helper line made the row taller, and centred
-          // ZIP sat lower than the box beside it.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _state,
-                  decoration: const InputDecoration(
-                    labelText: 'State',
-                    helperText: 'Two letters.',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  enabled: !_busy,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _postal,
-                  decoration: const InputDecoration(labelText: 'ZIP'),
-                  enabled: !_busy,
-                ),
-              ),
-            ],
+            dense: false,
           ),
           if (_error != null) ...[
             const SizedBox(height: 14),
