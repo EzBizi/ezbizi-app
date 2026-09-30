@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Your profile: while something is missing from it, your picture in the top bar glows and pulses, and the empty boxes on your profile are amber until they are filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',
+        'Your profile: while anything is missing, the picture in the top bar glows and pulses, its menu says what is missing, and the empty boxes on your profile are marked until filled in.',
       ],
     ),
     VersionRelease(
