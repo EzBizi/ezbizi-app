@@ -130,6 +130,56 @@ final class FieldLibrary
     }
 
     /**
+     * What a new hire gives besides the agreement: tax and bank details and
+     * the documents A1 Tools collected at onboarding (Jose, 2026-09-30: "yes
+     * of course, those are the most important things"). Field roles also give
+     * a passport photo and their car, which A1 let them skip ("no vehicle
+     * yet"), so the car is optional here too. The keys are the A1 import's.
+     *
+     * None of these is named in a contract body, so none is printed on the
+     * signed document; the numbers are encrypted and masked, the files stay
+     * on the record.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function newHire(bool $fieldRole): array
+    {
+        $taxId = ['key' => 'tax_id_type', 'label' => 'Tax ID', 'type' => FieldType::CHOICE,
+            'options' => ['SSN', 'EIN'], 'filled_by' => FilledBy::EMPLOYEE, 'required' => true,
+            'sensitive' => false, 'retired' => false, 'is_expiry' => false];
+        $secret = fn (array $row) => ['sensitive' => true] + $row;
+        $mine = FilledBy::EMPLOYEE;
+
+        $rows = [
+            $taxId,
+            $secret(self::field('ssn', 'Social Security number', FieldType::TEXT, $mine,
+                shownWhen: ['key' => 'tax_id_type', 'is' => 'ssn'])),
+            $secret(self::field('ein', 'EIN', FieldType::TEXT, $mine,
+                shownWhen: ['key' => 'tax_id_type', 'is' => 'ein'])),
+            self::field('ein_company_name', 'Company name on the EIN', FieldType::TEXT, $mine,
+                shownWhen: ['key' => 'tax_id_type', 'is' => 'ein']),
+            self::field('bank_name', 'Bank name', FieldType::TEXT, $mine),
+            self::field('bank_account_name', 'Name on the bank account', FieldType::TEXT, $mine),
+            $secret(self::field('bank_account_number', 'Bank account number', FieldType::TEXT, $mine)),
+            $secret(self::field('bank_routing_number', 'Bank routing number', FieldType::TEXT, $mine)),
+            $secret(self::field('tax_form', 'W-4 (employee) or W-9 (contractor), signed', FieldType::FILE, $mine)),
+            $secret(self::field('drivers_license_front', 'Driver licence (front)', FieldType::FILE, $mine)),
+            $secret(self::field('drivers_license_back', 'Driver licence (back)', FieldType::FILE, $mine)),
+            self::field('uniform_photo', 'Photo in uniform', FieldType::FILE, $mine),
+        ];
+
+        if ($fieldRole) {
+            $rows[] = $secret(self::field('id_document', 'Passport photo', FieldType::FILE, $mine));
+            foreach (['front' => 'front', 'back' => 'back', 'left' => 'left side', 'right' => 'right side',
+                'interior' => 'interior', 'mileage' => 'mileage'] as $part => $words) {
+                $rows[] = self::field("car_{$part}", "Your car ({$words})", FieldType::FILE, $mine, required: false);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private const TOOLS = [

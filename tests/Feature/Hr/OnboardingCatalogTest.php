@@ -107,6 +107,55 @@ class OnboardingCatalogTest extends TestCase
         });
     }
 
+    /**
+     * The tax, bank and document questions A1 Tools asked every new hire (Jose,
+     * 2026-09-30: "those are the most important things"): in every catalog
+     * template, and added to an organization's own contracts without touching
+     * their wording.
+     */
+    public function test_new_hire_questions_are_in_the_catalog_and_added_to_existing_contracts(): void
+    {
+        $byName = collect(OnboardingCatalog::templates())->keyBy('name');
+        $keys = fn (string $name) => array_column($byName[$name]['fields'], 'key');
+        $this->assertContains('ssn', $keys('Accounting'));
+        $this->assertContains('tax_form', $keys('Accounting'));
+        $this->assertNotContains('car_front', $keys('Accounting'), 'An office role was asked for a car.');
+        $this->assertContains('car_front', $keys('Field Technician'));
+
+        $alpha = $this->provisionTenant('Alpha');
+        $contract = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => $name,
+            'fields' => [
+                ['key' => 'bank_name', 'label' => 'Our own bank question', 'type' => 'text',
+                    'filled_by' => 'employee', 'required' => true],
+                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
+                    'filled_by' => 'employee', 'required' => true],
+            ],
+        ])->assertCreated()->json('data.id');
+        $field = $contract('Field Technician (hourly)');
+        $office = $contract('Accounting (salary)');
+
+        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () use ($field, $office) {
+            $f = Contract::findOrFail($field)->currentVersion;
+            $o = Contract::findOrFail($office)->currentVersion;
+            $this->assertSame(2, (int) $f->version, 'A second run published again.');
+
+            $fk = array_column($f->fields, null, 'key');
+            $this->assertTrue($fk['ssn']['sensitive']);
+            $this->assertFalse($fk['car_front']['required'], 'A1 let a hire with no car yet skip it.');
+            $this->assertSame('Our own bank question', $fk['bank_name']['label'], 'Their own question was replaced.');
+            $this->assertSame('employee_signature', array_key_last($fk), 'The signature is no longer last.');
+            $this->assertArrayNotHasKey('car_front', array_column($o->fields, null, 'key'));
+            $this->assertSame(
+                Contract::findOrFail($field)->versions()->where('version', 1)->value('body'),
+                $f->body,
+            );
+        });
+    }
+
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void
     {
         $alpha = $this->provisionTenant('Alpha');

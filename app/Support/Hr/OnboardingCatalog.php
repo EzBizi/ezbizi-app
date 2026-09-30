@@ -132,6 +132,9 @@ final class OnboardingCatalog
         ],
     ];
 
+    /** The roles that also give a passport photo and their car (A1 Tools' field roles). */
+    public const FIELD_ROLES = ['field_technician', 'field_repair', 'field_inspector'];
+
     /**
      * Every publishable template, already validated against FieldSet and MergeTags.
      *
@@ -168,7 +171,8 @@ final class OnboardingCatalog
 
         $body   = SourceCompiler::toLiveSections($source);
         $body   = MergeTags::normalise($body);
-        $fields = self::fieldsFor($body, $role['signer'], $role['pay'] === 'split');
+        $fields = self::fieldsFor($body, $role['signer'], $role['pay'] === 'split',
+            in_array($slug, self::FIELD_ROLES, true));
 
         if ($body === null) {
             throw new RuntimeException("Onboarding catalog compiled an empty body for {$slug}.");
@@ -189,7 +193,7 @@ final class OnboardingCatalog
     /**
      * @return list<array<string, mixed>>
      */
-    private static function fieldsFor(?string $body, string $signer, bool $splitPay): array
+    private static function fieldsFor(?string $body, string $signer, bool $splitPay, bool $fieldRole): array
     {
         $named = [];
 
@@ -239,6 +243,8 @@ final class OnboardingCatalog
                 implode(', ', array_keys($named)),
             ));
         }
+
+        array_push($fields, ...FieldLibrary::newHire($fieldRole));
 
         $fields[] = FieldLibrary::definition('employer_signature', $signer);
         $fields[] = FieldLibrary::definition('employee_signature', $signer);
