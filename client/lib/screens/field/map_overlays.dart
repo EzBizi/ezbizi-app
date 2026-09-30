@@ -552,42 +552,73 @@ class FieldPersonBar extends StatelessWidget {
     final battery = device['battery_pct'];
     final next = person['next_job'] as Map?;
 
-    final facts = <(IconData, String, Color?)>[
+    // Colour says something (Jose, 2026-10-01): red is a problem worth a
+    // call, the cyans and slate set the kinds of fact apart, grey is detail.
+    final seenMinutes = seen == null
+        ? null
+        : DateTime.now().difference(seen).inMinutes;
+    final accuracy = person['accuracy_m'];
+    final moving =
+        person['speed_mph'] is num && (person['speed_mph'] as num) > 0;
+    final charging = device['charging'] == true;
+
+    final facts = <(IconData, String, Color)>[
       if (clocked != null)
         (
           Icons.login,
           'In ${fieldClock(clocked)} · ${fieldSpan(DateTime.now().difference(clocked))}',
-          null,
+          scheme.primary,
         )
       else if (since != null)
-        (Icons.play_arrow, 'Since ${fieldClock(since)}', null),
+        (Icons.play_arrow, 'Since ${fieldClock(since)}', scheme.primary),
       if (battery is num)
         (
-          device['charging'] == true
+          charging
               ? Icons.battery_charging_full
               : battery <= 20
               ? Icons.battery_alert
               : Icons.battery_std,
-          '$battery%${device['charging'] == true ? ' charging' : ''}',
-          battery <= 20 && device['charging'] != true ? scheme.error : null,
+          '$battery%${charging ? ' charging' : ''}',
+          battery <= 20 && !charging
+              ? scheme.error
+              : charging
+              ? scheme.primary
+              : scheme.secondary,
         ),
       if (person['speed_mph'] is num)
-        (Icons.speed, '${person['speed_mph']} mph now', null),
+        (
+          Icons.speed,
+          moving ? '${person['speed_mph']} mph now' : 'Not moving',
+          moving ? scheme.primary : scheme.onSurfaceVariant,
+        ),
       if (person['avg_speed_mph'] is num)
         (
           Icons.show_chart,
           '${person['avg_speed_mph']} avg · ${person['top_speed_mph']} top',
-          null,
+          scheme.tertiary,
         ),
-      (Icons.route, '${person['distance_mi'] ?? 0} mi today', null),
-      if (seen != null) (Icons.gps_fixed, 'Seen ${fieldAgo(seen)}', null),
-      if (person['accuracy_m'] is num)
-        (Icons.my_location, '±${person['accuracy_m']} m', null),
+      (Icons.route, '${person['distance_mi'] ?? 0} mi today', scheme.secondary),
+      if (seen != null)
+        (
+          Icons.gps_fixed,
+          'Seen ${fieldAgo(seen)}',
+          seenMinutes! > 30
+              ? scheme.error
+              : seenMinutes <= 5
+              ? scheme.primary
+              : scheme.onSurfaceVariant,
+        ),
+      if (accuracy is num)
+        (
+          Icons.my_location,
+          '±$accuracy m',
+          accuracy > 100 ? scheme.error : scheme.tertiary,
+        ),
       if (next != null)
         (
           Icons.event,
           'Next ${next['customer'] ?? '#${next['number']}'} ${fieldWallTime(next['scheduled_for'] as String?)}',
-          null,
+          scheme.secondary,
         ),
       if (device['model'] != null || device['os_version'] != null)
         (
@@ -598,10 +629,14 @@ class FieldPersonBar extends StatelessWidget {
             device['model'],
             device['os_version'],
           ].whereType<String>().join(' · '),
-          null,
+          scheme.onSurfaceVariant,
         ),
       if (device['app_version'] != null)
-        (Icons.sell_outlined, 'v${device['app_version']}', null),
+        (
+          Icons.sell_outlined,
+          'v${device['app_version']}',
+          scheme.onSurfaceVariant,
+        ),
     ];
 
     return Material(
@@ -629,11 +664,7 @@ class FieldPersonBar extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          icon,
-                          size: 15,
-                          color: tint ?? scheme.onSurfaceVariant,
-                        ),
+                        Icon(icon, size: 15, color: tint),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
@@ -839,6 +870,104 @@ class FieldJobCard extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── The legend ────────────────────────────────────────────────────────────
+
+/// What each colour on the map means, along the bottom (Jose, 2026-10-01:
+/// "I don't understand the difference in colors of each icon"). The colours
+/// here are read from the same scheme slots the pins use, so the two cannot
+/// drift apart.
+class FieldMapLegend extends StatelessWidget {
+  const FieldMapLegend({super.key, required this.showJobs, this.onClose});
+
+  final bool showJobs;
+
+  /// Set on a phone, where the legend opens from a button and folds back.
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final text = theme.textTheme.bodySmall;
+
+    Widget pin(Color c) => Icon(Icons.location_on, size: 16, color: c);
+    Widget job(Color c) => Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: c,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Icon(Icons.home_repair_service, size: 10, color: scheme.surface),
+    );
+    Widget line(Color c, {bool dashed = false}) => SizedBox(
+      width: 22,
+      child: Row(
+        children: [
+          for (var i = 0; i < (dashed ? 3 : 1); i++) ...[
+            Expanded(child: Container(height: 3, color: c)),
+            if (dashed && i < 2) const SizedBox(width: 3),
+          ],
+        ],
+      ),
+    );
+
+    final items = <(Widget, String)>[
+      (pin(scheme.primary), 'Reporting'),
+      (pin(scheme.tertiary), 'At a job'),
+      (pin(scheme.error), 'Stopped too long'),
+      (pin(scheme.outline), 'Not reporting'),
+      if (showJobs) ...[
+        (job(scheme.secondary), 'Job with a technician'),
+        (job(scheme.outline), 'Job not assigned'),
+        (job(scheme.tertiary), 'Job you opened'),
+      ],
+      (line(scheme.primary), 'Route today'),
+      if (showJobs) (line(scheme.tertiary, dashed: true), 'Drive to the job'),
+    ];
+
+    return Material(
+      color: scheme.surface.withValues(alpha: 0.92),
+      borderRadius: onClose == null
+          ? const BorderRadius.only(topRight: Radius.circular(10))
+          : BorderRadius.circular(10),
+      elevation: onClose == null ? 0 : 3,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 5, 8, 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Wrap(
+                spacing: 14,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final (mark, label) in items)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        mark,
+                        const SizedBox(width: 5),
+                        Text(label, style: text),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            if (onClose != null)
+              IconButton(
+                tooltip: 'Hide',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: onClose,
+              ),
+          ],
         ),
       ),
     );

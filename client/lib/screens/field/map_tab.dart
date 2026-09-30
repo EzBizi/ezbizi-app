@@ -64,6 +64,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   /// Null until the first build: open on a wide screen, a chip on a phone.
   bool? _panelOpen;
   bool _wide = true;
+  bool _legendOpen = false;
   bool _firstFit = true;
 
   /// Camera moves wait for this: moved before the map has its real size, the
@@ -516,7 +517,8 @@ class _FieldMapTabState extends State<FieldMapTab> {
           if (job != null)
             Positioned(
               right: 12,
-              bottom: 28,
+              // Above the legend bar on a wide screen.
+              bottom: wide ? 44 : 28,
               left: wide ? null : 12,
               child: FieldJobCard(
                 job: job,
@@ -537,6 +539,38 @@ class _FieldMapTabState extends State<FieldMapTab> {
                   'Street map appears once Google Maps is set up.',
                 ),
                 backgroundColor: scheme.surface,
+              ),
+            ),
+          // The legend: a bar along the bottom on a wide screen, a button that
+          // opens it on a phone.
+          if (wide)
+            Positioned(
+              left: 0,
+              bottom: 0,
+              right: tiles != null ? 300 : 0,
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: FieldMapLegend(showJobs: widget.canSeeJobs),
+              ),
+            )
+          else if (_legendOpen)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 28,
+              child: FieldMapLegend(
+                showJobs: widget.canSeeJobs,
+                onClose: () => setState(() => _legendOpen = false),
+              ),
+            )
+          else if (job == null)
+            Positioned(
+              left: 12,
+              bottom: 28,
+              child: ActionChip(
+                avatar: const Icon(Icons.info_outline, size: 18),
+                label: const Text('Legend'),
+                onPressed: () => setState(() => _legendOpen = true),
               ),
             ),
           if (tiles != null)
