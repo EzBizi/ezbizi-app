@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
 import '../screens/email/consent_window.dart';
@@ -56,6 +58,12 @@ class ConnectAccount extends StatefulWidget {
 class _ConnectAccountState extends State<ConnectAccount> {
   bool _busy = false;
   String? _error;
+
+  /// The sign-in address, offered to copy while waiting. In the app the page
+  /// opens in the person's own browser, and when that silently does not
+  /// happen the button would otherwise spin with no way forward (Jose,
+  /// 2026-09-30, connecting Thumbtack from the app).
+  String? _url;
   Timer? _poll;
 
   @override
@@ -115,6 +123,7 @@ class _ConnectAccountState extends State<ConnectAccount> {
     }
 
     window.goTo(url);
+    setState(() => _url = url);
     _watch(window, flow);
   }
 
@@ -184,8 +193,21 @@ class _ConnectAccountState extends State<ConnectAccount> {
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.link, size: 18),
-          label: Text(_busy ? 'Waiting for Google…' : 'Connect ${widget.label}'),
+          label: Text(_busy ? 'Waiting for the sign-in…' : 'Connect ${widget.label}'),
         ),
+        if (_busy && _url != null && !kIsWeb)
+          TextButton.icon(
+            key: const ValueKey('copy-sign-in-link'),
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text('Browser did not open? Copy the sign-in link'),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: _url!));
+              if (!context.mounted) return;
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                const SnackBar(content: Text('Copied. Paste it into your browser.')),
+              );
+            },
+          ),
         if (_error != null) ...[
           const SizedBox(height: 10),
           Text(
