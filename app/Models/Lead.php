@@ -527,6 +527,28 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return mb_strlen($word) < 2 ? null : ucfirst(mb_strtolower($word));
     }
 
+    /**
+     * `{{thank_you}}` in a rule's message: "Hi Candy, thank you" when the
+     * customer gave a name, "Thank you" when not (Jose, 2026-09-30: "start
+     * with the name if available ... skip if no name").
+     */
+    public function getThankYouAttribute(): string
+    {
+        $first = self::firstNameOf($this->contact_name);
+
+        return $first === null ? 'Thank you' : "Hi {$first}, thank you";
+    }
+
+    /**
+     * `{{company_name}}`: the brand the enquiry came to - A-1 Chimney, A1
+     * Garage Doors - so one auto reply can serve every company (Jose,
+     * 2026-09-30).
+     */
+    public function getCompanyNameAttribute(): string
+    {
+        return (string) ($this->company?->name ?? $this->organization?->name ?? '');
+    }
+
     public function getSourceNameAttribute(): string
     {
         return match ($this->source) {

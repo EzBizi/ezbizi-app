@@ -181,6 +181,29 @@ final class WebsiteEnquiries
     }
 
     /**
+     * Russian-language form spam, the kind that filled A-1's forms on
+     * 2026-09-30 (seven in three hours, all ".ru" addresses or Cyrillic text).
+     * A signal for a rule to act on, never a filter here: the lead still lands.
+     *
+     * ponytail: two tells only; a real captcha on the form is the fix (Web).
+     *
+     * @param  array<string, mixed>  $visitor
+     * @param  array<string, string>  $fields
+     */
+    public static function looksLikeSpam(array $visitor, array $fields): bool
+    {
+        $email = strtolower(trim((string) ($visitor['email'] ?? '')));
+
+        if (preg_match('/\.(ru|su)$/', $email) === 1) {
+            return true;
+        }
+
+        $text = implode(' ', [...array_map('strval', $visitor), ...array_keys($fields), ...array_values($fields)]);
+
+        return preg_match('/\p{Cyrillic}/u', $text) === 1;
+    }
+
+    /**
      * A submitted form, as one lead carrying one message.
      *
      * The fields are rendered into the message body rather than stored as their
@@ -193,7 +216,7 @@ final class WebsiteEnquiries
     public function submitForm(WebSite $site, array $fields, array $visitor = [], array $attachments = []): Lead
     {
         $remoteId = 'form_'.Str::uuid()->toString();
-        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor);
+        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
         $lines = [];
 
@@ -236,7 +259,7 @@ final class WebsiteEnquiries
      *
      * @param  array{name?: ?string, email?: ?string, phone?: ?string, page_url?: ?string}  $visitor
      */
-    private function lead(WebSite $site, string $source, string $remoteId, array $visitor): Lead
+    private function lead(WebSite $site, string $source, string $remoteId, array $visitor, bool $looksLikeSpam = false): Lead
     {
         $phone = isset($visitor['phone']) ? trim((string) $visitor['phone']) : null;
 
@@ -296,6 +319,8 @@ final class WebsiteEnquiries
                 // A yes/no a rule can test, so "only if they agreed to email"
                 // can be written as a condition as well as enforced by the step.
                 'marketing_consent' => $consented,
+                // For a rule that files it as Not a lead (looksLikeSpam).
+                'looks_like_spam' => $looksLikeSpam,
             ],
         ]);
 

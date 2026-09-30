@@ -1057,7 +1057,8 @@ class SettingRegistry
                 editPermission: 'leads.edit',
                 help: 'Shown beside Send on a lead. The name is the button; the text is put in the '
                     .'reply box to check before sending. {{greeting}} becomes "Hi Mark" (or "Hi '
-                    .'there"), {{company}} the company name.',
+                    .'there"), {{company}} the company name, {{missing}} what we still need to book (full '
+                    .'name, full service address, email - only the ones not given yet).',
             ),
         ];
     }

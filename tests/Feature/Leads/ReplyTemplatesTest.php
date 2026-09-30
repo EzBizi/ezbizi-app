@@ -52,5 +52,13 @@ class ReplyTemplatesTest extends TestCase
 
         $this->assertSame('Thank you', $templates[0]['name']);
         $this->assertStringStartsWith("Hi Dana, thank you for contacting {$t['company']->name}!", $templates[0]['text']);
+
+        // {{missing}} names only what the customer has not given: here the
+        // name is known, the address and email are not.
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set(
+            'leads.reply_templates', $t['company'], [['label' => 'Book', 'value' => 'May I have your {{missing}}?']],
+        ));
+        $templates = $this->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data.reply_templates');
+        $this->assertSame('May I have your full service address and email?', $templates[0]['text']);
     }
 }

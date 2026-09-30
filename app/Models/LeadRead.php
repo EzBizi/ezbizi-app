@@ -34,7 +34,7 @@ class LeadRead extends Model implements HoldsPersonalData, StatesRetention
 
     public $timestamps = false;
 
-    protected $fillable = ['lead_id', 'user_id', 'read_at'];
+    protected $fillable = ['lead_id', 'user_id', 'read_at', 'starred_at'];
 
     public static function retention(): RetentionPolicy
     {
@@ -56,8 +56,8 @@ class LeadRead extends Model implements HoldsPersonalData, StatesRetention
     public static function personalDataHeld(): array
     {
         return [
-            new PersonalDataEntry('user_id, read_at', PersonalDataEntry::ACTIVITY,
-                'Who opened the enquiry and when.',
+            new PersonalDataEntry('user_id, read_at, starred_at', PersonalDataEntry::ACTIVITY,
+                'Who opened the enquiry and when, and whether they starred it.',
                 Erasure::drop('A read mark belongs to exactly one person and says nothing '
                     .'without them. The column is half the primary key, so it cannot be '
                     .'blanked; the row goes.')),
@@ -73,6 +73,6 @@ class LeadRead extends Model implements HoldsPersonalData, StatesRetention
 
     protected function casts(): array
     {
-        return ['read_at' => 'datetime'];
+        return ['read_at' => 'datetime', 'starred_at' => 'datetime'];
     }
 }

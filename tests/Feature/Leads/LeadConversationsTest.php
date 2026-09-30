@@ -643,6 +643,13 @@ class LeadConversationsTest extends TestCase
         $starred = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?starred=1')->json('data.*.contact_name');
         $this->assertSame(['Jane Doe'], $starred);
 
+        // A star is the starrer's own (Jose, 2026-09-30); the note is shared.
+        $other = $this->userWithRole($t, 'Dispatcher', ['leads.view', 'leads.local_services.view']);
+        $this->assertSame([], $this->signedInAs($other)->getJson('/api/v1/leads?starred=1')->json('data'));
+        $seen = $this->signedInAs($other)->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data');
+        $this->assertFalse($seen['starred']);
+        $this->assertSame('Wants Saturday.', $seen['note']);
+
         // The author survives a PATCH that does not touch the note - on BOTH
         // return paths. Re-sending the same star is the unchanged path.
         foreach ([['starred' => false], ['starred' => false]] as $body) {

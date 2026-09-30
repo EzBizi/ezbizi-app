@@ -79,7 +79,7 @@ class LeadsController extends Controller
          * unread again, which is what a1tools does and what a person expects.
          */
         $query = Lead::query()
-            ->select('leads.*', 'lead_reads.read_at as read_by_me_at')
+            ->select('leads.*', 'lead_reads.read_at as read_by_me_at', 'lead_reads.starred_at as starred_by_me_at')
             ->leftJoin('lead_reads', function ($join) use ($user) {
                 $join->on('lead_reads.lead_id', '=', 'leads.id')
                     ->where('lead_reads.user_id', '=', $user->getKey());
@@ -269,7 +269,8 @@ class LeadsController extends Controller
         }
 
         if ($request->boolean('starred')) {
-            $query->whereNotNull('leads.starred_at');
+            // The reader's own stars (Jose, 2026-09-30: stars are personal).
+            $query->whereNotNull('lead_reads.starred_at');
         }
 
         // Source is the fourth filter, beside the three it narrows with (UI/UX
@@ -417,7 +418,20 @@ class LeadsController extends Controller
         $data['cannot_reply_because'] = $this->replies->whyNot($lead);
 
         // Canned replies beside Send, filled in for this customer and brand.
+        // {{missing}} asks only for what we do not already have (Jose,
+        // 2026-09-30: a customer who wrote his name and address in his first
+        // message was asked for both again).
         $first = Lead::firstNameOf($lead->contact_name);
+        $missing = array_values(array_filter([
+            trim((string) $lead->contact_name) === '' && ($data['details']['name'] ?? null) === null ? 'full name' : null,
+            ($data['details']['address'] ?? null) === null ? 'full service address' : null,
+            trim((string) $lead->email) === '' ? 'email' : null,
+        ]));
+        $missingText = match (count($missing)) {
+            0 => 'confirmation that the details above are right',
+            1 => $missing[0],
+            default => implode(', ', array_slice($missing, 0, -1)).' and '.end($missing),
+        };
         $data['reply_templates'] = ! $data['can_reply'] ? [] : collect(
             app(SettingsResolver::class)->get('leads.reply_templates', $lead->company ?? request()->user()->organization)
         )->map(fn ($t) => [
@@ -425,6 +439,7 @@ class LeadsController extends Controller
             'text' => strtr((string) ($t['value'] ?? $t), [
                 '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
+                '{{missing}}' => $missingText,
             ]),
         ])->values()->all();
 
@@ -951,8 +966,13 @@ class LeadsController extends Controller
 
         // Star and note are marks, not decisions: no event, one audit row
         // each, and blank clears rather than storing an empty string.
+        // A star is the reader's own, kept beside their read mark.
         if (array_key_exists('starred', $input)) {
-            $lead->starred_at = $input['starred'] ? now() : null;
+            DB::table('lead_reads')->upsert(
+                [['lead_id' => $lead->getKey(), 'user_id' => $request->user()->getKey(), 'starred_at' => $input['starred'] ? now() : null]],
+                ['lead_id', 'user_id'],
+                ['starred_at'],
+            );
         }
 
         if (array_key_exists('note', $input)) {
@@ -1276,6 +1296,22 @@ class LeadsController extends Controller
         return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
     }
 
+    /** Whether the reader starred it: joined in on the list, asked for otherwise. */
+    private function starredByMe(Lead $lead): bool
+    {
+        if (array_key_exists('starred_by_me_at', $lead->getAttributes())) {
+            return $lead->getAttribute('starred_by_me_at') !== null;
+        }
+
+        $user = request()->user();
+
+        return $user !== null && DB::table('lead_reads')
+            ->where('lead_id', $lead->getKey())
+            ->where('user_id', $user->getKey())
+            ->whereNotNull('starred_at')
+            ->exists();
+    }
+
     /**
      * Can Google still show this Local Services account's ads? Null until the
      * daily check (`ezbizi:ads-certifications`) has read it once.
@@ -1324,7 +1360,7 @@ class LeadsController extends Controller
             // enquirer has said something in words, or while the model is off.
             'classification' => $lead->classification,
             'classified_at' => $lead->classified_at?->toIso8601String(),
-            'starred' => $lead->starred_at !== null,
+            'starred' => $this->starredByMe($lead),
             'note' => $lead->note,
             'note_by' => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')
                 ? $lead->noteBy?->only(['id', 'name'])

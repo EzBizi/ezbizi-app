@@ -107,4 +107,20 @@ class FollowUpDueTest extends TestCase
         $this->assertSame('Thumbtack', (new Lead(['source' => 'thumbtack']))->source_name);
         $this->assertSame('Chat', (new Lead(['source' => 'website_chat']))->source_name);
     }
+
+    public function test_the_auto_reply_greets_by_name_and_signs_with_the_company(): void
+    {
+        $this->assertSame('Hi Candy, thank you', (new Lead(['contact_name' => 'candy Peterson']))->thank_you);
+        $this->assertSame('Thank you', (new Lead(['contact_name' => null]))->thank_you);
+
+        $lead = $this->inTenant($this->t['org'], fn () => Lead::create([
+            'organization_id' => $this->t['org']->id,
+            'company_id' => $this->t['company']->id,
+            'source' => Lead::SOURCE_THUMBTACK,
+            'remote_id' => 'n-1',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now(),
+        ]));
+        $this->assertSame($this->t['company']->name, $this->inTenant($this->t['org'], fn () => $lead->fresh()->company_name));
+    }
 }
