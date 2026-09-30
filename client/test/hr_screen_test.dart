@@ -330,6 +330,43 @@ void main() {
     expect(find.text('The current link stops working.'), findsOneWidget);
   });
 
+  // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
+  // people dont need contracts". Off sends no contract; on needs one chosen.
+  testWidgets('an invitation can start the paperwork with a contract', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(
+        onInvite: (body) => sent = body,
+        contracts: const [
+          {'id': 'k-1', 'name': 'Call Center Employee (hourly)'},
+        ],
+      ),
+    );
+
+    await _tap(tester, _tab('Invitations'));
+    await _tap(tester, find.text('Invite somebody'));
+    await _type(tester, 'Email', 'tommy@example.com');
+    await _choose(tester, 'Role', 'Technician');
+    await _choose(tester, 'Where they are assigned', 'Serenisima › Connecticut');
+
+    await _tap(tester, find.byKey(const ValueKey('invite-with-contract')));
+    final create = find.widgetWithText(FilledButton, 'Create the invitation');
+    expect(
+      tester.widget<FilledButton>(create).onPressed,
+      isNull,
+      reason: 'Switched on, the invite waited for no contract.',
+    );
+
+    await _choose(tester, 'Contract', 'Call Center Employee (hourly)');
+    await _tap(tester, create);
+
+    expect(sent?['contract_id'], 'k-1');
+  });
+
   /// §4, and the reason the endpoint exists at all.
   ///
   /// An inviter may only assign at or below their own reach. The server works
@@ -1437,6 +1474,7 @@ MockClientHandler _handler({
   // server is newer than the client reading it.
   String? createdState,
   List<Map<String, Object?>> invitations = _invitations,
+  List<Map<String, Object?>> contracts = const [],
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
   int revokeStatus = 200,
@@ -1491,7 +1529,7 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/hr/contracts')) {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': contracts});
     }
 
     // Enough for the Onboarding tab to open and say it has nobody in flight.

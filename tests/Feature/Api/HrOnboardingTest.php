@@ -903,6 +903,42 @@ class HrOnboardingTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('contract_id');
     }
 
+    /**
+     * The invite can start the paperwork itself, and does not have to (Jose,
+     * 2026-09-30: "yes but toggable, some people dont need contracts").
+     */
+    public function test_an_invitation_can_start_the_paperwork_and_a_bad_contract_refuses_both(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleFor($alpha);
+        $invite = fn (string $email, ?string $contract) => $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', [
+                'email' => $email, 'role_id' => $role->id,
+                'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
+                'contract_id' => $contract,
+            ]);
+        $paperworkFor = fn (string $invitationId) => $this->inTenant($alpha['org'],
+            fn () => Onboarding::where('invitation_id', $invitationId)->first());
+
+        $with = $invite('with@example.test', $this->aContract($alpha))->assertCreated()->json('data.id');
+        $this->assertSame(Onboarding::IN_PROGRESS, $paperworkFor($with)?->status);
+
+        // The control: no contract, no paperwork, and the invite still goes.
+        $without = $invite('without@example.test', null)->assertCreated()->json('data.id');
+        $this->assertNull($paperworkFor($without));
+
+        // A contract nobody could sign refuses the invite too, so nobody is
+        // emailed into paperwork that never started.
+        $unsignable = $this->aContract($alpha, 'Unsignable', [[
+            'key' => 'wage', 'label' => 'Hourly wage', 'type' => 'number',
+            'filled_by' => 'employer', 'required' => true,
+        ]]);
+        $invite('refused@example.test', $unsignable)
+            ->assertStatus(422)->assertJsonValidationErrors('contract_id');
+        $this->assertFalse($this->inTenant($alpha['org'],
+            fn () => \App\Models\Invitation::where('email', 'refused@example.test')->exists()));
+    }
+
     /** One arrival, one contract. */
     public function test_an_invitation_carries_at_most_one_onboarding(): void
     {

@@ -767,6 +767,14 @@ class _InvitePanelState extends State<_InvitePanel> {
   String? _roleId;
   String? _scope;
 
+  // The paperwork, started with the invite when switched on (Jose,
+  // 2026-09-30: "yes but toggable, some people dont need contracts"). The
+  // contracts load the first time it is switched on, not for every invite.
+  bool _withContract = false;
+  List<Map<String, dynamic>>? _contracts;
+  String? _contractsError;
+  String? _contractId;
+
   bool _busy = false;
   String? _error;
 
@@ -794,7 +802,32 @@ class _InvitePanelState extends State<_InvitePanel> {
   /// because an employer guessing a date of birth and getting it wrong is worse
   /// than leaving it blank.
   bool get _complete =>
-      _email.text.trim().isNotEmpty && _roleId != null && _scope != null;
+      _email.text.trim().isNotEmpty &&
+      _roleId != null &&
+      _scope != null &&
+      (!_withContract || _contractId != null);
+
+  Future<void> _switchContract(bool on) async {
+    setState(() => _withContract = on);
+    if (!on || _contracts != null) return;
+
+    final response = await widget.api.get('/hr/contracts');
+    if (!mounted) return;
+
+    final rows = response.ok ? response.data : null;
+    setState(() {
+      if (rows is List) {
+        _contracts = [
+          for (final row in rows)
+            if (row is Map) Map<String, dynamic>.from(row),
+        ];
+        _contractsError = null;
+      } else {
+        _contractsError =
+            'The contracts could not be loaded: ${response.reason}';
+      }
+    });
+  }
 
   Future<void> _submit() async {
     setState(() {
@@ -814,6 +847,7 @@ class _InvitePanelState extends State<_InvitePanel> {
       'role_id': _roleId,
       'scope_type': parts.first,
       'scope_id': parts.sublist(1).join(':'),
+      if (_withContract) 'contract_id': _contractId,
     });
 
     if (!mounted) return;
@@ -837,8 +871,8 @@ class _InvitePanelState extends State<_InvitePanel> {
       title: 'Invite somebody',
       subtitle:
           'They get a login, the role you choose, and a place to work in. '
-          'A contract can come later — plenty of people need an account and '
-          'nothing else.',
+          'Their paperwork can start now or later, and plenty of people need '
+          'an account and nothing else.',
       width: 520,
       actions: [
         TextButton(
@@ -927,6 +961,45 @@ class _InvitePanelState extends State<_InvitePanel> {
             ],
             onChanged: _busy ? null : (v) => setState(() => _scope = v),
           ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            key: const ValueKey('invite-with-contract'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Start their paperwork now'),
+            subtitle: const Text(
+              'They find the contract waiting when they accept, and you can '
+              'fill in your half before they do.',
+            ),
+            value: _withContract,
+            onChanged: _busy ? null : _switchContract,
+          ),
+          if (_withContract && _contractsError != null)
+            ErrorNote(_contractsError!)
+          else if (_withContract && _contracts == null)
+            const LinearProgressIndicator(minHeight: 2)
+          else if (_withContract && _contracts!.isEmpty)
+            const ErrorNote(
+              'There are no contracts yet. The Contracts tab is where they are '
+              'made.',
+            )
+          else if (_withContract)
+            SearchPickerField<String>(
+              value: _contractId,
+              label: 'Contract',
+              helperText: 'What they will be asked, and what they will sign.',
+              border: const OutlineInputBorder(),
+              options: [
+                for (final contract in _contracts!)
+                  if (contract['id'] is String)
+                    SearchOption(
+                      value: contract['id'] as String,
+                      label: contract['name'] as String? ?? '',
+                    ),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _contractId = v),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 18),
             ErrorNote(_error!),
