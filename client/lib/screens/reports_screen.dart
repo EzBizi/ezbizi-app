@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/module_screens.dart';
+import '../core/numbers.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../widgets/error_note.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
+import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
+import 'reports/work_hours_report_panel.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
 ///
@@ -65,6 +70,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String? _error;
   bool _loading = true;
 
+  /// Work Hours' saved reports (queue 33, Jose's 1 and 4), for a reader who
+  /// may see them there: listed beside the Builder's, still edited in Work
+  /// Hours. Its own list under its own grant, so a refusal of either never
+  /// blanks the other.
+  List<Map<String, dynamic>>? _hours;
+  List<Map<String, dynamic>> _hourRoles = const [];
+  List<Map<String, dynamic>> _hourPeople = const [];
+  String? _hoursError;
+
+  /// Every report, the Builder's, or Work Hours'.
+  String? _kind;
+
+  /// The Work Hours report open beside the list, or in place on a phone.
+  String? _openHours;
+
+  bool get _seesHours =>
+      widget.session.me?.can('work_hours.reports.view') ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -81,30 +104,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _hoursError = null;
     });
 
-    final response = await widget.api.get('/reports');
+    // Both at once, and the library waits for both: "No reports built yet"
+    // must not show while the Work Hours list is still on its way.
+    final built = widget.api.get('/reports');
+    final hours = _seesHours ? widget.api.get('/hr/time-clock/reports') : null;
+    final response = await built;
+    final hoursResponse = await hours;
 
     if (!mounted) return;
 
-    if (!response.ok) {
-      setState(() {
-        _loading = false;
-        // The server's own sentence, not a replacement. A refusal here explains
-        // that the grant lives on a role, which no client-side wording knows.
-        _error = response.message;
-      });
-      return;
-    }
-
-    final rows = (response.body['data'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>()
-        .map(SavedReportSummary.fromJson)
-        .toList();
+    List<Map<String, dynamic>> list(Object? raw) => [
+      for (final row in (raw as List?) ?? const [])
+        if (row is Map) Map<String, dynamic>.from(row),
+    ];
 
     setState(() {
       _loading = false;
-      _reports = rows;
+
+      if (response.ok) {
+        _reports = (response.body['data'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(SavedReportSummary.fromJson)
+            .toList();
+      } else {
+        // The server's own sentence, not a replacement. A refusal here
+        // explains that the grant lives on a role, which no client-side
+        // wording knows.
+        _error = response.message;
+      }
+
+      if (hoursResponse == null) return;
+      if (hoursResponse.ok) {
+        _hours = list(hoursResponse.body['data']);
+        _hourRoles = list(hoursResponse.body['roles']);
+        _hourPeople = list(hoursResponse.body['people']);
+      } else {
+        _hoursError = hoursResponse.message;
+      }
     });
   }
 
@@ -132,6 +171,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 onSelected: (i) => setState(() {
                   _chip = i;
                   _open = null;
+                  _openHours = null;
                   _confirming = null;
                 }),
               ),
@@ -375,35 +415,435 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final reports = _reports ?? const <SavedReportSummary>[];
+    final hours = _hours ?? const <Map<String, dynamic>>[];
+
     // State 3. Deliberately its own branch and its own widget: refused means
     // "you may not", which is a different fact from "there is nothing", and a
-    // reader who cannot tell them apart learns nothing from either.
-    if (_error != null) {
+    // reader who cannot tell them apart learns nothing from either. Only when
+    // there is nothing else to draw: Work Hours' reports still stand.
+    if (_error != null && hours.isEmpty) {
       return Align(alignment: Alignment.topCenter, child: ErrorNote(_error!));
     }
 
-    final reports = _reports ?? const <SavedReportSummary>[];
-
-    if (reports.isEmpty) {
+    // Both kinds counted. "No reports built yet" above a Work Hours report
+    // is the contradiction Jose hit (queue 33).
+    if (reports.isEmpty && hours.isEmpty && _hoursError == null) {
       return _emptyLibrary(context);
     }
+
+    return _library(context, constraints, reports, hours);
+  }
+
+  /// Every saved report, whichever module made it (queue 33, Jose's 1 and
+  /// 4): what kind it is, who it covers and what sends it. A Builder report
+  /// runs in place, as before; a Work Hours one docks beside the list, or on
+  /// a phone opens in place of it.
+  Widget _library(
+    BuildContext context,
+    BoxConstraints constraints,
+    List<SavedReportSummary> reports,
+    List<Map<String, dynamic>> hours,
+  ) {
+    final wide = constraints.maxWidth >= ReportsScreen.buildAbove;
+    final open = hours.where((h) => '${h['id']}' == _openHours).firstOrNull;
+
+    if (!wide && open != null) return _hoursPanel(open, inPlace: true);
+
+    final rows = <_LibraryRow>[
+      if (_kind != 'hours')
+        for (final report in reports) _LibraryRow.built(report),
+      if (_kind != 'built')
+        for (final report in hours) _LibraryRow.hours(report),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    final scheme = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (reports.isNotEmpty && hours.isNotEmpty)
+          _kinds(context, reports.length, hours.length),
+        for (final error in [_error, _hoursError])
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ErrorNote(error),
+            ),
         Expanded(
-          child: ListView.separated(
-            itemCount: reports.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, i) => _reportCard(context, reports[i]),
-          ),
+          child: !wide
+              ? _tiles(context, rows)
+              // The report docks beside the table, level with it.
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _table(context, rows)),
+                    if (open != null) ...[
+                      const SizedBox(width: 16),
+                      Container(
+                        width: 460,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: scheme.outlineVariant),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _hoursPanel(open, inPlace: false),
+                      ),
+                    ],
+                  ],
+                ),
         ),
-        if ((widget.session.me?.can('reports.build') ?? false) &&
-            constraints.maxWidth < ReportsScreen.buildAbove) ...[
+        if ((widget.session.me?.can('reports.build') ?? false) && !wide) ...[
           const SizedBox(height: 12),
           _builtOnAComputer(context),
         ],
       ],
+    );
+  }
+
+  Widget _hoursPanel(Map<String, dynamic> report, {required bool inPlace}) =>
+      WorkHoursReportPanel(
+        key: ValueKey('hours-report-${report['id']}'),
+        api: widget.api,
+        session: widget.session,
+        report: report,
+        roles: _hourRoles,
+        people: _hourPeople,
+        inPlace: inPlace,
+        onClose: () => setState(() => _openHours = null),
+        onChanged: _load,
+      );
+
+  void _openRow(_LibraryRow row) => setState(() {
+    if (row.built case final built?) {
+      _open = built;
+      _openHours = null;
+    } else {
+      _openHours = row.id;
+    }
+  });
+
+  /// Every report, the Builder's or Work Hours', each with its count.
+  Widget _kinds(BuildContext context, int built, int hours) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    Widget chip(String? value, String label, int count) => ChoiceChip(
+      key: ValueKey('library-kind-${value ?? 'all'}'),
+      showCheckmark: false,
+      selected: _kind == value,
+      label: Text.rich(
+        TextSpan(
+          text: label,
+          children: [
+            TextSpan(
+              text: '  ${formatCount(count)}',
+              style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+      onSelected: (_) => setState(() => _kind = value),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          chip(null, 'All', built + hours),
+          chip('built', 'Built here', built),
+          chip('hours', 'Work Hours', hours),
+        ],
+      ),
+    );
+  }
+
+  StatusPill _kindPill(_LibraryRow row) => row.built != null
+      ? const StatusPill('Built here')
+      : const StatusPill('Work Hours', tone: Tone.caution);
+
+  String _about(_LibraryRow row) =>
+      row.built?.description ?? 'Hours each person worked, per week';
+
+  /// Who a report covers: a Work Hours one names its roles and people; a
+  /// Builder one counts what it is about, within the reader's reach.
+  String _covers(_LibraryRow row) {
+    if (row.hours case final hours?) {
+      return workHoursReportCovers(
+        hours,
+        roles: _hourRoles,
+        people: _hourPeople,
+      );
+    }
+    final about = row.built?.rootLabel;
+    return about == null ? '—' : '$about you can reach';
+  }
+
+  /// When a report goes out, and which rule sends it. Rule names are
+  /// Automations': without `automations.view` the server says only whether
+  /// one does (`sent_by` null), which is a different answer from none
+  /// (`sent_by` empty).
+  ({String when, String? by, bool quiet}) _sent(_LibraryRow row) {
+    final rules =
+        row.built?.sentBy ??
+        (row.hours?['sent_by'] as List?)
+            ?.whereType<Map>()
+            .map(Map<String, dynamic>.from)
+            .toList();
+    final automatic =
+        row.built?.sentAutomatically ??
+        row.hours?['sent_automatically'] == true;
+
+    if (rules == null) {
+      return automatic
+          ? (when: 'Sent automatically', by: null, quiet: false)
+          : (when: 'Not sent by any automation', by: null, quiet: true);
+    }
+    if (rules.isEmpty) {
+      return (when: 'Not sent by any automation', by: null, quiet: true);
+    }
+
+    final on = rules.where(senderIsOn).toList();
+    final shown = on.isEmpty ? rules : on;
+    final more = shown.length - 1;
+
+    return (
+      when: senderWhen(shown.first, widget.session.me!.display),
+      by: 'by “${shown.first['name']}”${more > 0 ? ' and $more more' : ''}',
+      quiet: on.isEmpty,
+    );
+  }
+
+  Widget _table(BuildContext context, List<_LibraryRow> rows) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final head = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: scheme.onSurfaceVariant,
+    );
+    final canBuild = widget.session.me?.can('reports.build') ?? false;
+
+    Widget line(Widget report, Widget covers, Widget sent, [Widget? end]) =>
+        Row(
+          children: [
+            Expanded(flex: 4, child: report),
+            const SizedBox(width: 16),
+            Expanded(flex: 4, child: covers),
+            const SizedBox(width: 16),
+            Expanded(flex: 3, child: sent),
+            SizedBox(width: 44, child: end),
+          ],
+        );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+            child: line(
+              Text('Report', style: head),
+              Text('Covers', style: head),
+              Text('Sent', style: head),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (context, i) {
+                final row = rows[i];
+                if (row.built case final built? when _confirming == row.id) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: _confirmDelete(context, built),
+                  );
+                }
+                final sent = _sent(row);
+
+                return Material(
+                  key: ValueKey('library-row-${row.id}'),
+                  color: row.id == _openHours
+                      ? scheme.primaryContainer
+                      : Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _openRow(row),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: scheme.outlineVariant,
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      child: line(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              row.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                _kindPill(row),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _about(row),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Text(
+                          _covers(row),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sent.when,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: sent.quiet
+                                  ? muted
+                                  : const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                            ),
+                            if (sent.by != null)
+                              Text(
+                                sent.by!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: muted,
+                              ),
+                          ],
+                        ),
+                        row.built != null && canBuild
+                            ? IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                tooltip: 'Delete report',
+                                onPressed: () =>
+                                    setState(() => _confirming = row.id),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The same rows on a phone: one card each, what it is, who it covers,
+  /// and when it goes out.
+  Widget _tiles(BuildContext context, List<_LibraryRow> rows) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final canBuild = widget.session.me?.can('reports.build') ?? false;
+
+    return ListView.separated(
+      itemCount: rows.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final row = rows[i];
+        if (row.built case final built? when _confirming == row.id) {
+          return _confirmDelete(context, built);
+        }
+        final sent = _sent(row);
+
+        return Card(
+          key: ValueKey('library-row-${row.id}'),
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            onTap: () => _openRow(row),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                row.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _kindPill(row),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _covers(row),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted,
+                        ),
+                        Text(
+                          sent.by == null
+                              ? sent.when
+                              : '${sent.when} · ${sent.by}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (row.built != null && canBuild)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Delete report',
+                      onPressed: () => setState(() => _confirming = row.id),
+                    )
+                  else
+                    const SizedBox(width: 10),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -475,38 +915,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     await _load();
   }
 
-  Widget _reportCard(BuildContext context, SavedReportSummary report) {
-    final theme = Theme.of(context);
-
-    if (_confirming == report.id) {
-      return _confirmDelete(context, report);
-    }
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(report.name, style: theme.textTheme.titleMedium),
-        subtitle: report.description == null
-            ? null
-            : Text(report.description!, style: theme.textTheme.bodySmall),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.session.me?.can('reports.build') ?? false)
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete report',
-                onPressed: () => setState(() => _confirming = report.id),
-              ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-        onTap: () => setState(() => _open = report),
-      ),
-    );
-  }
-
   Widget _emptyLibrary(BuildContext context) {
     final theme = Theme.of(context);
     final canBuild = (widget.session.me?.can('reports.build') ?? false);
@@ -542,23 +950,71 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 }
 
+/// One row of the library, whichever module made the report (queue 33).
+class _LibraryRow {
+  _LibraryRow.built(SavedReportSummary this.built)
+    : hours = null,
+      name = built.name;
+
+  _LibraryRow.hours(Map<String, dynamic> this.hours)
+    : built = null,
+      name = '${hours['name'] ?? ''}';
+
+  final SavedReportSummary? built;
+  final Map<String, dynamic>? hours;
+  final String name;
+
+  String get id => built?.id ?? '${hours!['id']}';
+}
+
 /// One row of `GET /reports`.
 class SavedReportSummary {
   const SavedReportSummary({
     required this.id,
     required this.name,
     this.description,
+    this.rootLabel,
+    this.sentAutomatically = false,
+    this.sentBy,
   });
 
   factory SavedReportSummary.fromJson(Map<String, dynamic> json) {
+    final definition = json['definition'];
+    final root = definition is Map ? '${definition['root'] ?? ''}' : '';
+
     return SavedReportSummary(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
+      // What it counts, for the Covers column: the map's own word when the
+      // server sends it, and the root made readable until then.
+      rootLabel:
+          json['root_label'] as String? ??
+          (root.isEmpty
+              ? null
+              : '${root[0].toUpperCase()}${root.substring(1)}'.replaceAll(
+                  '_',
+                  ' ',
+                )),
+      sentAutomatically: json['sent_automatically'] == true,
+      sentBy: (json['sent_by'] as List?)
+          ?.whereType<Map>()
+          .map(Map<String, dynamic>.from)
+          .toList(),
     );
   }
 
   final String id;
   final String name;
   final String? description;
+
+  /// "Jobs", "Customers": what the report counts.
+  final String? rootLabel;
+
+  /// A rule that is on sends it. Said to every reader.
+  final bool sentAutomatically;
+
+  /// The rules whose current version sends it, for a reader who may see
+  /// rules; null for everybody else, which is not the same as none.
+  final List<Map<String, dynamic>>? sentBy;
 }

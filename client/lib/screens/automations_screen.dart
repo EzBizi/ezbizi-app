@@ -538,6 +538,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       catalogue: catalogue,
       formats: _formats,
       editing: _editing,
+      canEditHoursReports: widget.session.me?.can('work_hours.manage') ?? false,
       onCancel: () => setState(() {
         _editing = null;
         _tab = 'rules';

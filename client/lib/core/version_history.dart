@@ -11,9 +11,9 @@ class VersionHistory {
       version: '0.0.0320',
       date: '30 Sep 2026',
       items: [
-        'Your profile: while something is missing from it, your picture in the top bar glows and pulses, and the empty boxes on your profile are amber until they are filled in. Gender and date of birth count, as they do in Human Resources.',
+        'Reports: every saved report is listed, including the Work Hours weekly hours reports, with who each covers and the automation that sends it. A Work Hours report opens beside the list with its week of hours, and who is in it can be changed right there. The Send the work hours report step in an automation says who the chosen report covers.',
+        'Your profile: while anything is missing, the picture in the top bar glows and pulses and its menu says what is missing; the empty boxes on your profile are amber until filled in. Gender and date of birth count, as they do in Human Resources.',
         'Work Hours: filter the people list by role.',
-        'Your profile: while anything is missing, the picture in the top bar glows and pulses, its menu says what is missing, and the empty boxes on your profile are marked until filled in.',
       ],
     ),
     VersionRelease(

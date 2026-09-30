@@ -1351,6 +1351,82 @@ void main() {
         reason: 'a built action must draw its own form, not a Message box');
   });
 
+  /// THE STEP SAYS WHO THE REPORT COVERS (queue 33, Jose's 1).
+  ///
+  /// Jose, 2026-09-29, on the weekly work hours rule: *"i should also be able
+  /// to select which role gets reported"*. The step picks a report and the
+  /// report decides who is in it, so the step says who, and offers Work
+  /// Hours' own editor to change it, for a role that may manage Work Hours.
+  testWidgets('a work hours report step says who the report covers', (
+    tester,
+  ) async {
+    final hours = _handler(
+      catalogue: _catalogueWithHoursReport(),
+      permissions: const [
+        'automations.view',
+        'automations.rules.view',
+        'automations.build.view',
+        'automations.create',
+        'automations.edit',
+        'work_hours.manage',
+      ],
+    );
+    await _pump(tester, (request) async {
+      if (request.url.path.endsWith('/hr/time-clock/reports')) {
+        return _json({
+          'data': [
+            {
+              'id': 'w-1',
+              'name': 'Weekly Time Report',
+              'role_ids': ['r-1'],
+              'include_user_ids': ['u-7'],
+              'exclude_user_ids': <String>[],
+              'recipients': <String>[],
+            },
+          ],
+          'roles': [
+            {'id': 'r-1', 'name': 'Remote Dispatcher'},
+          ],
+          'people': [
+            {'id': 'u-7', 'name': 'Mia Torres', 'email': 'mia@example.com'},
+          ],
+        });
+      }
+      return hours(request);
+    });
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Work Hours')));
+    await _tap(tester, _inStep(find.text('Send the work hours report')));
+
+    expect(find.byKey(const ValueKey('step-hours-covers')), findsNothing,
+        reason: 'no report chosen yet');
+
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Which report'),
+    );
+    await _tap(tester, find.text('Weekly Time Report').last);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('step-hours-covers')),
+        matching: find.textContaining(
+          'Remote Dispatcher, + Mia Torres',
+          findRichText: true,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.byKey(const ValueKey('step-hours-edit')));
+    expect(find.text('Edit report'), findsOneWidget,
+        reason: "Work Hours' own editor");
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -2282,6 +2358,51 @@ Map<String, Object?> _catalogueWithBuiltActions() => {
           'key': 'training',
           'label': 'What to assign',
           'kind': 'training',
+          'required': true,
+          'nullable': false,
+        },
+      ],
+    },
+  ],
+};
+
+/// The built actions, plus Work Hours' "Send the work hours report" and one
+/// saved report to choose (queue 33).
+Map<String, Object?> _catalogueWithHoursReport() => {
+  ...Map<String, dynamic>.from(_catalogueWithBuiltActions()),
+  'work_hours_reports': const [
+    {'id': 'w-1', 'label': 'Weekly Time Report'},
+  ],
+  'modules': [
+    ...(_catalogueWithBuiltActions()['modules'] as List),
+    {
+      'key': 'work_hours',
+      'label': 'Work Hours',
+      'parent': null,
+      'subject': null,
+      'triggers': [],
+      'declared_actions': [
+        {
+          'key': 'work_hours.send_report',
+          'label': 'Send the work hours report',
+          'description': 'Emails the hours each person worked in the week.',
+          'type': 'send_report',
+          'implemented': true,
+        },
+      ],
+    },
+  ],
+  'action_types': [
+    ...(_catalogueWithBuiltActions()['action_types'] as List),
+    {
+      'key': 'send_report',
+      'label': 'Send the work hours report',
+      'module_only': true,
+      'parameters': [
+        {
+          'key': 'report_id',
+          'label': 'Which report',
+          'kind': 'work_hours_report',
           'required': true,
           'nullable': false,
         },
