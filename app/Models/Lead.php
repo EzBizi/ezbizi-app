@@ -19,10 +19,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * An enquiry that arrived through a connected advertising account.
  *
  * A member of the public left their phone number expecting to be called back
- * about work. That is what every field here is in service of, and it is why
- * nothing on this model sends anything: no automated reply, no follow-up
- * message, no rule that can compose one. A reply to a lead is a message to a
- * stranger in the customer's name, and it goes out because a person sent it.
+ * about work. That is what every field here is in service of. Nothing on this
+ * model sends anything; a reply goes out because a person sent it, or because
+ * a rule the organization wrote and switched on did (the auto reply and the
+ * one follow-up, since 2026-09-29 - see LeadReplyChannel).
  */
 class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, StatesRetention
 {
@@ -411,6 +411,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
             'reply_overdue_raised_at' => 'datetime',
+            'follow_up_raised_at' => 'datetime',
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
             'classified_at' => 'datetime',
@@ -469,6 +470,12 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const REPLY_OVERDUE_AFTER_MINUTES = 10;
 
     /**
+     * How long after the automatic first reply a quiet customer gets the one
+     * follow-up (`lead.follow_up_due`) - three hours, as Rodrigo's bot did.
+     */
+    public const FOLLOW_UP_AFTER_HOURS = 3;
+
+    /**
      * The customer spoke last, a reply is possible, nobody has answered for
      * REPLY_OVERDUE_AFTER_MINUTES, and the lead is still New - a booked,
      * archived or not-a-lead lead owes nothing ("not every response needs a
@@ -504,6 +511,22 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'MESSAGE' => self::KIND_LS_TEXT,
             'BOOKING' => 'ls_booking',
             default => (string) $this->source,
+        };
+    }
+
+    /**
+     * `{{source_name}}` in a rule's message: the word a person reads, where
+     * `{{source}}` is the wire value a condition compares (Jose, 2026-09-30: a
+     * notification said "local_services"; "Local Services").
+     */
+    public function getSourceNameAttribute(): string
+    {
+        return match ($this->source) {
+            self::SOURCE_LOCAL_SERVICES => 'Local Services',
+            self::SOURCE_WEBSITE_CHAT => 'Chat',
+            self::SOURCE_WEBSITE_FORM => 'Form',
+            self::SOURCE_FACEBOOK => 'Messenger',
+            default => ucfirst((string) $this->source),
         };
     }
 

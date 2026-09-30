@@ -312,6 +312,12 @@ final class ThumbtackOAuth implements SocialOAuth
         if ($response->failed()) {
             $this->refused('refresh', $response);
 
+            // Not a hiccup: the grant itself is dead, and only a new sign-in
+            // brings it back. ThumbtackClient marks the connection broken on it.
+            if ($response->json('error') === 'invalid_grant') {
+                throw SocialOAuthRefused::noLongerPermitted('Thumbtack no longer accepts this connection. It needs connecting again.');
+            }
+
             throw SocialOAuthRefused::exchangeFailed('Thumbtack');
         }
 

@@ -109,6 +109,10 @@ class _LeadThreadState extends State<LeadThread> {
   /// own read, not the list row.
   Map<String, dynamic>? _customer;
 
+  /// The customer card is one line until opened, so it does not eat the
+  /// thread (Jose, 2026-09-30: "it starts to reduce the reply window").
+  bool _customerOpen = false;
+
   /// Account, Google status, and a name/address/ZIP read out of what the
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
@@ -506,11 +510,7 @@ class _LeadThreadState extends State<LeadThread> {
                       // The number on its own line only when the title is a
                       // name; when the title IS the number, saying it twice
                       // adds nothing.
-                      if ((lead['contact_name'] as String?)
-                                  ?.trim()
-                                  .isNotEmpty ==
-                              true &&
-                          (lead['phone'] as String?)?.isNotEmpty == true)
+                      if (showsNumberLine(lead))
                         Text(
                           formatPhoneNumber(lead['phone'] as String?),
                           style: theme.textTheme.bodySmall,
@@ -696,10 +696,14 @@ class _LeadThreadState extends State<LeadThread> {
     final revenue = (customer['revenue_minor'] as num?)?.toInt() ?? 0;
     final currency = customer['currency'] as String?;
 
+    final latest = jobs.isEmpty
+        ? ''
+        : formatJobWhen(jobs.first['when'] as String?);
+
     return Container(
       key: const ValueKey('lead-customer'),
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
@@ -713,10 +717,23 @@ class _LeadThreadState extends State<LeadThread> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Existing customer · ${customer['name']}'
-                  '${customer['number'] != null ? ' · ${customer['number']}' : ''}',
+                  [
+                    'Existing customer · ${customer['name']}',
+                    if (customer['number'] != null) '${customer['number']}',
+                    total == 0 ? 'No jobs yet' : total == 1 ? '1 job' : '$total jobs',
+                    if (!_customerOpen && latest.isNotEmpty) 'last $latest',
+                  ].join(' · '),
                   style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              IconButton(
+                key: const ValueKey('lead-customer-more'),
+                tooltip: _customerOpen ? 'Less' : 'Address and jobs',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(_customerOpen ? Icons.expand_less : Icons.expand_more),
+                onPressed: () => setState(() => _customerOpen = !_customerOpen),
               ),
               if (widget.session != null)
                 TextButton(
@@ -726,15 +743,11 @@ class _LeadThreadState extends State<LeadThread> {
                 ),
             ],
           ),
-          if (customer['address'] != null)
+          if (_customerOpen && customer['address'] != null)
             Text('${customer['address']}', style: quiet),
-          Text(
-            [
-              total == 0 ? 'No jobs yet' : total == 1 ? '1 job' : '$total jobs',
-              if (revenue > 0 && currency != null) formatMinor(revenue, currency),
-            ].join(' · '),
-            style: quiet,
-          ),
+          if (_customerOpen && revenue > 0 && currency != null)
+            Text(formatMinor(revenue, currency), style: quiet),
+          if (_customerOpen)
           for (final job in jobs)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -1554,6 +1567,16 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   String _when(String? iso) => leadWhen(iso);
+}
+
+/// The number on its own line under the title, unless the title IS the
+/// number. A title taken from the matched customer is a name too (Jose,
+/// 2026-09-30: Mark Morrow showed no number).
+bool showsNumberLine(Map<String, dynamic> lead) {
+  final phone = lead['phone'] as String?;
+  return phone != null &&
+      phone.isNotEmpty &&
+      leadTitle(lead) != formatPhoneNumber(phone);
 }
 
 /// The title of a lead: the name, or the number somebody would call back.

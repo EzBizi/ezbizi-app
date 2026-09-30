@@ -283,6 +283,39 @@ class ThumbtackAuthTest extends TestCase
         });
     }
 
+    /**
+     * A refused grant marks every row that held it broken, so Leads says
+     * "needs reconnecting" (2026-09-30: a lead arrived with an empty thread and
+     * the rows still said connected). A transient failure leaves them alone.
+     */
+    public function test_a_dead_grant_marks_every_row_that_held_it_broken(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $rows = collect(['biz-1', 'biz-2'])->map(
+            fn (string $id) => $this->storedConnection($t, $id, 'shared-access', 'shared-refresh'),
+        );
+
+        Http::fake([
+            'auth.thumbtack.com/oauth2/token' => Http::sequence()
+                ->push(['error' => 'server_error'], 503)
+                ->push(['error' => 'invalid_grant', 'error_description' => 'The refresh token is malformed or not valid.'], 400),
+            'api.thumbtack.com/*' => Http::response(['title' => 'Unauthorized'], 401),
+        ]);
+
+        $statuses = function () use ($t) {
+            return $this->inTenant($t['org'], fn () => SocialConnection::query()
+                ->where('provider', SocialProvider::Thumbtack->value)->pluck('status')->unique()->values()->all());
+        };
+
+        foreach ([[SocialConnection::STATUS_CONNECTED], [SocialConnection::STATUS_BROKEN]] as $expected) {
+            try {
+                $this->inTenant($t['org'], fn () => (new ThumbtackClient($rows->first()))->get('/v4/businesses'));
+            } catch (\Throwable) {
+            }
+            $this->assertSame($expected, $statuses());
+        }
+    }
+
     private function storedConnection(array $t, string $remoteId, string $access, string $refresh): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t, $remoteId, $access, $refresh) {

@@ -338,3 +338,7 @@ Schedule::command('ezbizi:ads-campaign-watch')->hourlyAt(20)->withoutOverlapping
 // A customer left waiting 10 minutes for an answer raises lead.reply_overdue,
 // once per message, so a rule can warn the dispatchers.
 Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlapping(5);
+
+// A customer who went quiet after the automatic first reply raises
+// lead.follow_up_due once, so a rule can send the one follow-up.
+Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOverlapping(5);

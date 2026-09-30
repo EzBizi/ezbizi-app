@@ -7,6 +7,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The plumbing every Thumbtack call shares: a token, a host, and a sentence.
@@ -175,8 +176,6 @@ final class ThumbtackClient
                 return;
             }
 
-            $grant = app(ThumbtackOAuth::class)->refresh($spent);
-
             $rows = SocialConnection::query()
                 ->withoutGlobalScopes()
                 ->where('organization_id', $organizationId)
@@ -188,6 +187,28 @@ final class ThumbtackClient
                     return is_array($credentials)
                         && ($credentials['refresh_token'] ?? null) === $spent;
                 });
+
+            try {
+                $grant = app(ThumbtackOAuth::class)->refresh($spent);
+            } catch (SocialOAuthRefused $e) {
+                /*
+                 * A dead grant is marked on every row that held it, so Leads
+                 * says "needs reconnecting" instead of the rows staying
+                 * "connected" while every call fails. 2026-09-30: a Thumbtack
+                 * lead arrived with an empty thread and nothing on screen said
+                 * why - the grant of 2026-09-15 had been refused all morning.
+                 */
+                if ($e->status === Response::HTTP_CONFLICT) {
+                    foreach ($rows as $row) {
+                        $row->forceFill([
+                            'status' => SocialConnection::STATUS_BROKEN,
+                            'status_reason' => 'Thumbtack no longer accepts this connection. It needs connecting again.',
+                        ])->save();
+                    }
+                }
+
+                throw $e;
+            }
 
             foreach ($rows as $row) {
                 $credentials = $row->getAttribute('credentials');
