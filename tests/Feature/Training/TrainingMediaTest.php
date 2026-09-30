@@ -40,16 +40,16 @@ class TrainingMediaTest extends TestCase
         $screen = $this->signedInAs($author)
             ->getJson("/api/v1/training/guides/{$guide->id}")
             ->assertOk()
-            ->json('data.screens.0');
+            ->json('data.screens.0.blocks.0');
 
+        $this->assertSame('image', $screen['type']);
         $this->assertSame($media->id, $screen['media_id']);
-        $this->assertSame('image', $screen['media_kind']);
-        $this->assertStringContainsString('/api/v1/training/media/'.$media->id, (string) $screen['media_url']);
-        $this->assertStringContainsString('signature=', (string) $screen['media_url']);
+        $this->assertStringContainsString('/api/v1/training/media/'.$media->id, (string) $screen['url']);
+        $this->assertStringContainsString('signature=', (string) $screen['url']);
 
         // The link works with no session at all — the signature is the auth.
         $this->app['auth']->forgetGuards();
-        $served = $this->get((string) $screen['media_url']);
+        $served = $this->get((string) $screen['url']);
 
         $served->assertOk();
         $this->assertSame('image/png', $served->headers->get('Content-Type'));
@@ -82,7 +82,7 @@ class TrainingMediaTest extends TestCase
         $read = $guides->firstWhere('id', $guide->id);
 
         $this->assertNotNull($read, 'The published guide should reach the learner.');
-        $this->assertStringContainsString('signature=', (string) $read['screens'][0]['media_url']);
+        $this->assertStringContainsString('signature=', (string) $read['screens'][0]['blocks'][0]['url']);
     }
 
     /**
@@ -100,18 +100,17 @@ class TrainingMediaTest extends TestCase
         $this->signedInAs($author)->patchJson("/api/v1/training/guides/{$guide->id}", [
             'screens' => [[
                 'title' => 'Level 2',
-                'body' => 'Edited.',
-                'media_kind' => 'image',
-                'media_url' => 'https://app.example/api/v1/training/media/'.$media->id.'?expires=1&signature=abc',
-                'media_id' => $media->id,
+                'blocks' => [
+                    ['type' => 'image', 'media_id' => $media->id, 'url' => 'https://app.example/api/v1/training/media/'.$media->id.'?expires=1&signature=abc'],
+                    ['type' => 'text', 'text' => 'Edited.'],
+                ],
             ]],
         ])->assertOk();
 
         $stored = $this->inTenant($tenant['org'], fn () => $guide->fresh()->screens[0]);
 
-        $this->assertSame($media->id, $stored['media_id']);
-        $this->assertNull($stored['media_url'], 'An expiring link must never be what the screen stores.');
-        $this->assertSame('Edited.', $stored['body']);
+        $this->assertEquals(['type' => 'image', 'media_id' => $media->id], $stored['blocks'][0], 'An expiring link must never be what the topic stores.');
+        $this->assertEquals(['type' => 'text', 'text' => 'Edited.'], $stored['blocks'][1]);
     }
 
     /**
@@ -126,9 +125,9 @@ class TrainingMediaTest extends TestCase
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
 
         $this->signedInAs($author)->patchJson("/api/v1/training/guides/{$guide->id}", [
-            'screens' => [['title' => 'X', 'media_kind' => 'image', 'media_id' => $foreign->id]],
+            'screens' => [['title' => 'X', 'blocks' => [['type' => 'image', 'media_id' => $foreign->id]]]],
         ])->assertStatus(422)
-            ->assertJsonPath('errors.screens.0', 'A screen points at an image that does not belong to this guide.');
+            ->assertJsonPath('errors.screens.0', 'A topic points at an image that does not belong to this guide.');
     }
 
     // ── fixtures ────────────────────────────────────────────────────

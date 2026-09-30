@@ -369,6 +369,45 @@ final class A1ToolsTrainingImport
     }
 
     /**
+     * Remove everything an earlier import created, by its keys, and nothing
+     * else: the guides (their media, progress and assignments go with them),
+     * the tests (their attempts go with them), the stored image files, and the
+     * keys. So a corrected importer can run the same bundle again.
+     *
+     * Anything done in EzBizi since on those guides and tests goes too — it
+     * hangs off rows that no longer exist.
+     *
+     * @return array<string, int>
+     */
+    public function undo(Organization $org, ?User $actor): array
+    {
+        $guides = $this->keyedTargets('guide');
+        $tests = $this->keyedTargets('test');
+        $disk = Storage::disk($this->files->defaultDisk());
+
+        $removed = DB::transaction(function () use ($guides, $tests) {
+            return [
+                'tests' => TrainingTest::query()->whereIn('id', array_values($tests))->delete(),
+                'guides' => TrainingGuide::query()->whereIn('id', array_values($guides))->delete(),
+                'keys' => TrainingImportKey::query()->where('source', TrainingImportKey::SOURCE_A1)->delete(),
+            ];
+        });
+
+        // After the commit: a file removed inside a transaction that then
+        // rolled back would leave rows pointing at nothing.
+        foreach ($guides as $guideId) {
+            $disk->deleteDirectory($this->files->directoryFor('training-media', $org->id)."/{$guideId}");
+        }
+
+        $this->audit->log('training.import_undone', $org, metadata: [
+            'source' => TrainingImportKey::SOURCE_A1,
+            'removed' => $removed,
+        ], actor: $actor);
+
+        return $removed;
+    }
+
+    /**
      * The guide's structure — chapters, sections, pages and which image went
      * where — with no person in it. Archived beside the images so the grouping
      * A1 had survives A1, without keeping anybody's email or answers.
@@ -388,7 +427,8 @@ final class A1ToolsTrainingImport
     // ── Building ──────────────────────────────────────────────────
 
     /**
-     * Pages → screens, in order, one media per screen.
+     * Pages → topics, one each, in A1's order, keeping A1's chapter and
+     * section and every block in the order A1 showed it.
      *
      * @param  array<string, mixed>  $guide
      * @param  list<string>  $problems
@@ -401,22 +441,22 @@ final class A1ToolsTrainingImport
         $pageScreens = [];
 
         foreach ((array) ($guide['pages'] ?? []) as $page) {
-            $text = [];
-            $media = [];
+            $blocks = [];
 
             foreach ((array) ($page['blocks'] ?? []) as $block) {
                 switch ($block['type'] ?? null) {
                     case 'text':
                         if (trim((string) $block['text']) !== '') {
-                            $text[] = rtrim((string) $block['text']);
+                            $blocks[] = ['type' => 'text', 'text' => rtrim((string) $block['text'])];
                         }
                         break;
 
                     case 'table':
-                        $text[] = implode("\n", array_map(
-                            fn ($row) => implode(' · ', array_map('strval', (array) $row)),
-                            (array) ($block['rows'] ?? []),
-                        ));
+                        $rows = array_map(fn ($row) => array_map('strval', array_values((array) $row)), array_values((array) ($block['rows'] ?? [])));
+
+                        if ($rows !== []) {
+                            $blocks[] = ['type' => 'table', 'rows' => $rows];
+                        }
                         break;
 
                     case 'image':
@@ -424,7 +464,7 @@ final class A1ToolsTrainingImport
 
                         if ($image !== null) {
                             $images[$image['sha']] = $image;
-                            $media[] = ['kind' => 'image', 'sha' => $image['sha']];
+                            $blocks[] = ['type' => 'image', 'sha' => $image['sha']];
                         }
                         break;
 
@@ -436,7 +476,7 @@ final class A1ToolsTrainingImport
                         $id = (string) ($block['vimeo_id'] ?? '');
 
                         if (ctype_digit($id)) {
-                            $media[] = ['kind' => 'video', 'url' => "https://player.vimeo.com/video/{$id}"];
+                            $blocks[] = ['type' => 'video', 'url' => "https://player.vimeo.com/video/{$id}"];
                         } else {
                             $problems[] = sprintf('Page "%s": Vimeo id "%s" is not numeric; skipped.', $page['title'], $id);
                         }
@@ -447,20 +487,13 @@ final class A1ToolsTrainingImport
                 }
             }
 
-            $body = implode("\n\n", $text);
-            $title = (string) $page['title'];
-            $first = count($screens);
-            $parts = max(1, count($media));
-
-            for ($i = 0; $i < $parts; $i++) {
-                $screens[] = [
-                    'title' => $parts > 1 && $i > 0 ? sprintf('%s (%d of %d)', $title, $i + 1, $parts) : $title,
-                    'body' => $i === 0 ? $body : '',
-                    'media' => $media[$i] ?? null,
-                ];
-            }
-
-            $pageScreens[(string) $page['a1_id']] = [$first, count($screens) - 1];
+            $pageScreens[(string) $page['a1_id']] = [count($screens), count($screens)];
+            $screens[] = [
+                'title' => (string) $page['title'],
+                'chapter' => ($page['chapter'] ?? '') === '' ? null : (string) $page['chapter'],
+                'section' => ($page['section'] ?? '') === '' ? null : (string) $page['section'],
+                'blocks' => $blocks,
+            ];
         }
 
         return ['screens' => $screens, 'images' => $images, 'page_screens' => $pageScreens];
@@ -612,12 +645,8 @@ final class A1ToolsTrainingImport
             $latest = $latest === null || $at->gt($latest) ? $at : $latest;
         }
 
-        $current = (string) ($row['current_page_a1_id'] ?? '');
-
-        if (isset($pageScreens[$current])) {
-            $reached[] = $pageScreens[$current][0];
-        }
-
+        // Only completions count: the page A1 had open is not a finished one,
+        // and EzBizi's `last_screen` is how far a person has COMPLETED.
         if ($reached === []) {
             return null;
         }
@@ -635,15 +664,12 @@ final class A1ToolsTrainingImport
      */
     private function finishScreen(array $screen, array $mediaIds): array
     {
-        $media = $screen['media'];
+        $screen['blocks'] = array_map(
+            fn (array $block) => $block['type'] === 'image' ? ['type' => 'image', 'media_id' => $mediaIds[$block['sha']]] : $block,
+            $screen['blocks'],
+        );
 
-        return [
-            'title' => $screen['title'],
-            'body' => $screen['body'],
-            'media_kind' => $media === null ? 'none' : $media['kind'],
-            'media_url' => $media !== null && $media['kind'] === 'video' ? $media['url'] : null,
-            'media_id' => $media !== null && $media['kind'] === 'image' ? $mediaIds[$media['sha']] : null,
-        ];
+        return $screen;
     }
 
     // ── People and keys ───────────────────────────────────────────

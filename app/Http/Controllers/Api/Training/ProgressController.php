@@ -35,6 +35,9 @@ use Illuminate\Validation\ValidationException;
  *
  * ── `last_screen` is a high-water mark ─────────────────────────────
  *
+ * Of COMPLETED topics: the reader calls this from "Complete & Continue", not
+ * on opening a topic, and a topic past `last_screen + 1` is locked.
+ *
  * Never a cursor. Re-reading an earlier screen of a guide already finished is
  * ordinary and must not take the completion away, so the stored value only
  * ever moves forward (`max()`), and `completed_at`, once set, is never
@@ -106,6 +109,20 @@ class ProgressController extends Controller
         // stored and returned `last_screen` must not silently pick up the
         // request body's own JSON type.
         $screen = (int) $input['screen'];
+
+        // Topics unlock in order, as they did in A1 Tools: the next one is
+        // open once the one before it is complete. Refused here, not only
+        // greyed out in the rail, so no client can complete past a lock.
+        $reached = TrainingProgress::query()
+            ->where('user_id', $user->getKey())
+            ->where('guide_id', $guideRow->getKey())
+            ->value('last_screen');
+
+        if ($screen > ($reached ?? -1) + 1) {
+            throw ValidationException::withMessages([
+                'screen' => 'This topic is locked. Complete the topics before it first.',
+            ]);
+        }
 
         $progress = DB::transaction(function () use ($user, $guideRow, $screen, $screenCount) {
             // Guarantee the row exists before locking it. Without this, two

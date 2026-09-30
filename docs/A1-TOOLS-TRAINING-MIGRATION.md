@@ -163,26 +163,25 @@ People are joined by `email`. The bundle carries no names, and nobody is created
 | A1 | EzBizi |
 |---|---|
 | guide | `TrainingGuide`, **published**, under the A-1 Chimney company |
-| chapter → section → page | flattened into `screens`, in the order above |
-| page title | screen `title` |
-| text blocks | screen `body`, joined by a blank line |
-| table block | appended to `body` as plain rows, `Level · When` |
-| image block | copied into private storage; the screen holds a reference, served to readers by a short-lived signed link |
-| vimeo block | `media_kind: video`, `media_url: https://player.vimeo.com/video/<id>` — the embeddable form; a `vimeo.com/<id>` page refuses to be framed |
+| chapter → section → page | one topic per page, in the order above, each keeping its `chapter` and `section` |
+| page title | topic `title` |
+| text block | `{type: text}` block, in place |
+| table block | `{type: table, rows}` block, in place; the first row is the header |
+| image block | copied into private storage; a `{type: image, media_id}` block, served to readers by a short-lived signed link |
+| vimeo block | `{type: video, url: https://player.vimeo.com/video/<id>}` block, played through EzBizi's `/training/video/vimeo/<id>` page |
 | test | `TrainingTest`, **published**, `pass_mark = round(pass_fraction × 100)`, `max_attempts` as A1's, no expiry, `guide_id` from `test_a1_id` |
 | question | `{prompt, choices: [{text, correct}]}`, one correct |
 | attempt | `TrainingAttempt` for a matched person: `answers` rebuilt in canonical order, `score = round(score_fraction × 100)`, `passed` and `taken_at` as A1 recorded them |
-| progress | `TrainingProgress`: `last_screen` = the furthest screen reached; `completed_at` = the last completion, only when every page of that guide is complete |
+| progress | `TrainingProgress`: `last_screen` = the furthest topic COMPLETED (the page A1 had open is not a completion); `completed_at` = the last completion, only when every page of that guide is complete |
 
-**A page with more than one image or video** becomes consecutive screens: the first carries the page's text and first media, each next one carries one more media and is titled `<title> (2 of N)`. Every image survives; none is dropped to fit.
+**A page is one topic, whatever it holds.** The first import (0.0.0324) split pages into one picture per screen, `<title> (2 of N)`; Jose, 2026-09-30: "training is definitely wrong". Guides now hold A1's shape — topics with ordered blocks, grouped by chapter and section, unlocked one at a time — and the importer maps page for page. `training:import-a1-tools --undo` removes everything an earlier run created (by its keys), so the corrected import can replace the first.
 
 ### What does not fit, and what happens to it
 
-- **Chapters and sections.** Training has no grouping above a screen. Order is kept exactly; the names are kept in the archived manifest, not injected into anybody's text.
 - **Targeting** (`target_roles`, `target_users`). Not imported as assignments. A1's role names have no crosswalk to EzBizi roles, and a wrong mapping would assign training to the wrong people with nothing to show it happened; `target_users` are all former staff. The guides land published, in the library, readable by anyone holding `training.view`. The dry run prints each guide's `target_roles` so whoever assigns them in EzBizi has the list.
 - **Answer shuffling.** EzBizi does not shuffle choices. The test itself is unchanged.
 - **"Hidden once passed."** A1 hid a passed test; EzBizi lets a learner retake within `max_attempts`.
-- **Tests in progress** (6) and **videos watched** (520). EzBizi keeps neither — an unfinished test has no state here, and watching is covered by page completion. Counted, not imported.
+- **Tests in progress** (6) and **videos watched** (520). EzBizi keeps neither — an unfinished test has no state here, and A1 had already stopped requiring a watched video to complete a topic (2026-08-11). Counted, not imported.
 - **Deleted pages** (1 completion, 4 pointers) and the **missing image** (1). Counted and skipped; the page still imports, without that image.
 - **Attempt history is incomplete in A1 already** — "grant attempts" and "reset" deleted rows. Imported counts toward `max_attempts` from what remains, which is the state A1 was enforcing.
 
@@ -191,9 +190,11 @@ People are joined by `email`. The bundle carries no names, and nobody is created
 - **No side effects.** Rows are written directly, never through the assignment, grading or progress paths, which are the ones that raise automation events. Training's models carry no observers (checked, with a control that finds the one observer the app does register). Nothing notifies, nothing emails, no due-date clock starts. No imported attempt carries an expiry, so the nightly expiry sweep has nothing to announce.
 - **Integrity first.** Every image's sha256 is checked against the manifest before anything is written for it.
 - **Idempotent, keyed on A1 ids.** Every created row is recorded against its A1 id, so a second run changes nothing and a later bundle — say, for someone who joins EzBizi later — adds only what is new.
-- **Rollback.** That record is the manifest of every id created, and the run writes one audit row. `--dry-run` writes nothing and prints what would happen, including screens per guide and the matched and unmatched people.
+- **Rollback.** That record is the manifest of every id created, and the run writes one audit row. `--dry-run` writes nothing and prints what would happen, including topics per guide and the matched and unmatched people.
 
-## Results (desk, 2026-09-30, 15:57 UTC)
+## Results (desk, 2026-09-30, 15:57 UTC) — superseded
+
+This first run split pages into screens (see "A page is one topic"); it is undone and re-run once the topic reader ships.
 
 Run on 0.0.0324 (a04ea003, which carries 42de4013) from the Dismantler's bundle (manifest sha256 791c0090…, 116 media files).
 

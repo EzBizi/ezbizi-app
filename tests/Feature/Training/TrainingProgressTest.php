@@ -14,6 +14,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -53,14 +54,14 @@ class TrainingProgressTest extends TestCase
     {
         [$learner, $guide] = $this->aLearnerAndAnEightScreenGuide();
 
-        $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 7])
+        $this->completeThrough($learner, $guide, 7)
             ->assertOk()
             ->assertJsonPath('last_screen', 7)
             ->assertJsonPath('screen_count', 8)
             ->assertJsonPath('completed_at', fn ($v) => $v !== null);
 
         // Going back to re-read screen 1 must not undo it.
-        $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 1])
+        $this->completeThrough($learner, $guide, 1)
             ->assertOk()
             ->assertJsonPath('last_screen', 7)
             ->assertJsonPath('completed_at', fn ($v) => $v !== null);
@@ -71,8 +72,7 @@ class TrainingProgressTest extends TestCase
     {
         [$learner, $guide] = $this->aLearnerAndAnEightScreenGuide();
 
-        $body = $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 2])
+        $body = $this->completeThrough($learner, $guide, 2)
             ->assertOk()
             ->json();
 
@@ -90,8 +90,7 @@ class TrainingProgressTest extends TestCase
 
         [$learner, $guide, $tenant] = $this->aLearnerAndAnEightScreenGuide();
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 7])
+        $this->completeThrough($learner, $guide, 7)
             ->assertOk();
 
         // The write path never dispatches an automation itself (StartUp.md
@@ -126,13 +125,11 @@ class TrainingProgressTest extends TestCase
     {
         [$learner, $guide, $tenant] = $this->aLearnerAndAnEightScreenGuide();
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 7])
+        $this->completeThrough($learner, $guide, 7)
             ->assertOk()
             ->assertJsonPath('completed_at', fn ($v) => $v !== null);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 7])
+        $this->completeThrough($learner, $guide, 7)
             ->assertOk()
             ->assertJsonPath('completed_at', fn ($v) => $v !== null);
 
@@ -190,8 +187,7 @@ class TrainingProgressTest extends TestCase
 
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $riverside);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$orgWideGuide->id}/seen", ['screen' => 0])
+        $this->completeThrough($learner, $orgWideGuide, 0)
             ->assertOk()
             ->assertJsonPath('completed_at', fn ($v) => $v !== null);
 
@@ -248,8 +244,7 @@ class TrainingProgressTest extends TestCase
             ]);
         });
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$orgWideGuide->id}/seen", ['screen' => 0])
+        $this->completeThrough($learner, $orgWideGuide, 0)
             ->assertOk();
 
         $this->inTenant($tenant['org'], function () use ($orgWideGuide, $learner, $riverside) {
@@ -363,8 +358,7 @@ class TrainingProgressTest extends TestCase
 
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $riverside);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$sibling->id}/seen", ['screen' => 0])
+        $this->completeThrough($learner, $sibling, 0)
             ->assertNotFound();
 
         $this->inTenant($tenant['org'], function () use ($sibling, $learner) {
@@ -387,8 +381,7 @@ class TrainingProgressTest extends TestCase
 
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$draft->id}/seen", ['screen' => 0])
+        $this->completeThrough($learner, $draft, 0)
             ->assertNotFound();
 
         $this->inTenant($tenant['org'], function () use ($draft, $learner) {
@@ -404,8 +397,7 @@ class TrainingProgressTest extends TestCase
         [, $guide, $tenant] = $this->aLearnerAndAnEightScreenGuide();
         $noAccess = $this->userWithRole($tenant, 'NoAccess', []);
 
-        $message = $this->signedInAs($noAccess)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 0])
+        $message = $this->completeThrough($noAccess, $guide, 0)
             ->assertForbidden()
             ->json('message');
 
@@ -433,8 +425,7 @@ class TrainingProgressTest extends TestCase
         [$learner, $guide] = $this->aLearnerAndAnEightScreenGuide();
 
         // 8 screens are indices 0..7 — 8 itself is one past the end.
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 8])
+        $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 8])
             ->assertStatus(422);
 
         $this->assertDatabaseMissing('training_progress', ['guide_id' => $guide->id]);
@@ -477,8 +468,7 @@ class TrainingProgressTest extends TestCase
         // The reviewer's own description of the dangerous case — "the
         // learner created the row reading screens 0–6, so a double-tap or a
         // client retry lands exactly there" — is the state built here.
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 6])
+        $this->completeThrough($learner, $guide, 6)
             ->assertOk()
             ->assertJsonPath('completed_at', null);
 
@@ -725,5 +715,18 @@ PHP;
                 'is_active' => true,
             ]);
         });
+    }
+
+    /**
+     * Topics unlock in order, so reaching topic N means completing 0..N in
+     * turn, as a learner would. Returns the response for N.
+     */
+    private function completeThrough(User $learner, TrainingGuide $guide, int $last): TestResponse
+    {
+        for ($i = 0; $i < $last; $i++) {
+            $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => $i])->assertOk();
+        }
+
+        return $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => $last]);
     }
 }

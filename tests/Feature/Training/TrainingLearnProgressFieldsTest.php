@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Training;
 
+use App\Models\TrainingAssignment;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingGuide;
 use App\Models\TrainingTest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -45,8 +47,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
         $guide = $this->aGuide($tenant, 'Ladder Safety', 8);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 3])
+        $this->completeThrough($learner, $guide, 3)
             ->assertOk();
 
         $row = $this->libraryEntry($learner, $guide->id);
@@ -61,8 +62,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
         $guide = $this->aGuide($tenant, 'Ladder Safety', 8);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 7])
+        $this->completeThrough($learner, $guide, 7)
             ->assertOk();
 
         $row = $this->libraryEntry($learner, $guide->id);
@@ -83,8 +83,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $touched = $this->aGuide($tenant, 'Touched Guide', 4);
         $untouched = $this->aGuide($tenant, 'Untouched Guide', 4);
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$touched->id}/seen", ['screen' => 1])
+        $this->completeThrough($learner, $touched, 1)
             ->assertOk();
 
         $row = $this->libraryEntry($learner, $untouched->id);
@@ -101,8 +100,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $learnerB = $this->userWithRole($tenant, 'LearnerB', ['training.view'], onlyAt: $tenant['franchise']);
         $guide = $this->aGuide($tenant, 'Shared Guide', 4);
 
-        $this->signedInAs($learnerA)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 3])
+        $this->completeThrough($learnerA, $guide, 3)
             ->assertOk();
 
         $row = $this->libraryEntry($learnerB, $guide->id);
@@ -188,14 +186,13 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
         $guide = $this->aGuide($tenant, 'Assigned Guide', 5);
 
-        $this->inTenant($tenant['org'], fn () => \App\Models\TrainingAssignment::create([
+        $this->inTenant($tenant['org'], fn () => TrainingAssignment::create([
             'guide_id' => $guide->id,
-            'assignee_type' => \App\Models\TrainingAssignment::USER,
+            'assignee_type' => TrainingAssignment::USER,
             'assignee_id' => $learner->id,
         ]));
 
-        $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => 2])
+        $this->completeThrough($learner, $guide, 2)
             ->assertOk();
 
         $row = $this->assignedEntry($learner, $guide->id);
@@ -390,5 +387,18 @@ class TrainingLearnProgressFieldsTest extends TestCase
 
         return collect($body['assigned'])->firstWhere('id', $id)
             ?? $this->fail("No assigned entry with id {$id}.");
+    }
+
+    /**
+     * Topics unlock in order, so reaching topic N means completing 0..N in
+     * turn, as a learner would. Returns the response for N.
+     */
+    private function completeThrough(User $learner, TrainingGuide $guide, int $last): TestResponse
+    {
+        for ($i = 0; $i < $last; $i++) {
+            $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => $i])->assertOk();
+        }
+
+        return $this->signedInAs($learner)->postJson("/api/v1/training/learn/guides/{$guide->id}/seen", ['screen' => $last]);
     }
 }
