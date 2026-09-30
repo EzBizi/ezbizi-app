@@ -18,6 +18,8 @@ class VersionHistory {
       date: '30 Sep 2026',
       items: [
         'Work Hours, Settings: extensions can be 5 or 10 minutes.',
+        'Leads: search finds words inside messages and call transcripts, Manage shows dashboard numbers and can pause or resume a Google campaign, automations can send a morning digest, and the reply box checks spelling on phones.',
+        'Google Ads: performance shows spend by channel.',
       ],
     ),
     VersionRelease(
