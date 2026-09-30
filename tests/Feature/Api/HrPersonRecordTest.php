@@ -86,7 +86,11 @@ class HrPersonRecordTest extends TestCase
             'address' => '  ',
             'gender' => null,
             'date_of_birth' => '1991-03-04',
+            // Filled, so this test counts only the boxes it is about; the
+            // lists are the next test's.
+            'work_schedule' => ['timezone' => 'America/New_York', 'days' => []],
         ])->save());
+        $this->fillTheLists($t, $person);
 
         $row = fn () => collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/people')->json('data'))
             ->firstWhere('id', $person->id);
@@ -102,6 +106,45 @@ class HrPersonRecordTest extends TestCase
         ]));
 
         $this->assertSame(2, $row()['missing'], 'A start date is one box fewer.');
+    }
+
+    /**
+     * No emergency contact, no pay rate and no work schedule count too (Jose,
+     * 2026-09-30: "it should highlight all the missing stuff"). Pay only for
+     * a reader who may see pay: for anybody else the number would say
+     * whether a rate exists.
+     */
+    public function test_the_empty_lists_and_schedule_count_and_pay_only_for_its_readers(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $keeper = $this->userWithRole($t, 'HR', ['hr.view', 'hr.records.view', 'hr.edit']);
+
+        $row = fn ($as) => collect($this->signedInAs($as)->getJson('/api/v1/hr/people')->json('data'))
+            ->firstWhere('id', $person->id)['missing'];
+
+        $before = $row($t['admin']);
+        $this->assertSame($before - 1, $row($keeper), 'A reader without hr.pay.view was told no rate exists.');
+
+        $this->fillTheLists($t, $person);
+        $this->assertSame($before - 2, $row($t['admin']), 'A contact and a pay rate are two gaps fewer.');
+        $this->assertSame($before - 2, $row($keeper));
+
+        $this->inTenant($t['org'], fn () => $person->forceFill([
+            'work_schedule' => ['timezone' => 'America/New_York', 'days' => []],
+        ])->save());
+        $this->assertSame($before - 3, $row($t['admin']), 'A schedule is one gap fewer.');
+    }
+
+    private function fillTheLists(array $t, $person): void
+    {
+        $base = "/api/v1/hr/people/{$person->id}/details";
+        $this->signedInAs($t['admin'])->postJson("{$base}/emergency-contacts", [
+            'name' => 'Ana Ortiz', 'relationship' => 'Sister', 'phone' => '(203) 555-0101',
+        ])->assertCreated();
+        $this->signedInAs($t['admin'])->postJson("{$base}/pay-rates", [
+            'basis' => 'salary', 'amount' => '61234', 'period' => 'year', 'effective_on' => '2026-01-01',
+        ])->assertCreated();
     }
 
     /** Opening somebody's personal details is itself recorded (§9). */
