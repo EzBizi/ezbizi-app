@@ -77,10 +77,14 @@ class TimeClockController extends Controller
         }
 
         $on = $request->query('on');
+        $week = $this->timeClock->weekList($user, is_string($on) ? $on : null);
 
-        return response()->json([
-            'data' => $this->timeClock->weekList($user, is_string($on) ? $on : null),
-        ]);
+        // Corrections people asked for, for whoever may approve them (2026-09-30).
+        if ($user->hasPermission('work_hours.manage')) {
+            $week['correction_requests'] = app(TimeClockCorrectionsController::class)->pendingFor($user);
+        }
+
+        return response()->json(['data' => $week]);
     }
 
     public function clockIn(Request $request): JsonResponse

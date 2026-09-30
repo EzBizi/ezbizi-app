@@ -113,6 +113,11 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// Only this role, or everybody's when null (Jose, 2026-09-30).
   String? _roleId;
 
+  /// Corrections people asked for, waiting on this manager (Trey Brannan's
+  /// suggestion, 2026-09-30). Arrives on the week; absent, so empty, without
+  /// `work_hours.manage`.
+  List<Map<String, dynamic>> _requests = const [];
+
   @override
   void initState() {
     super.initState();
@@ -145,68 +150,121 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     _weekNotifier.value = _week;
   }
 
-  _Actions? get _actions => !widget.canCorrect
-      ? null
-      : _Actions(
-          shift: (context, shift, action) async {
-            final path = '/hr/time-clock/shifts/${shift.id}';
-            switch (action) {
-              case 'clock_out':
-                await _apply(
-                  context,
-                  widget.api.post('$path/clock-out$_onSuffix', {}),
-                );
-              case 'edit':
-                final body = await _editTimes(context, shift);
-                if (body == null || !context.mounted) return;
-                await _apply(context, widget.api.patch(path, body, _onQuery));
-              case 'delete':
-                if (!await _confirmDelete(context) || !context.mounted) return;
-                await _apply(context, widget.api.delete(path, _onQuery));
-            }
-          },
-          schedule: (context, person) async {
-            final saved = await showWorkSchedulePanel(
-              context,
-              title:
-                  '${UiStrings.t('time_clock.work_schedule')} · ${person.name}',
-              days: person.schedulePersonal ? person.schedule : null,
-              formats: widget.session?.me?.display ?? DisplayFormats.fallback,
-            );
-            if (saved == null || !context.mounted) return;
+  /// Somebody without `work_hours.manage` gets one item, on their own
+  /// shifts only: ask for a correction that a manager approves.
+  _Actions? get _actions {
+    if (widget.canCorrect) return _manageActions;
+    final me = widget.session?.me?.id;
+    if (me == null) return null;
 
-            final messenger = ScaffoldMessenger.maybeOf(context);
-            final response = await widget.api.patch(
-              '/hr/people/${person.id}/schedule',
-              {'days': saved},
-            );
-            if (!mounted) return;
-            if (!response.ok) {
-              messenger?.showSnackBar(SnackBar(content: Text(response.reason)));
-
-              return;
-            }
-            // The schedule answer is the person, not the week, so fetch the
-            // week again: the card and the totals both come from it.
-            await _load(on: _on);
-          },
-          day: (context, personId, date, record, action) async {
-            final body = await switch (action) {
-              'tag' => _chooseTag(context, record?.tag),
-              'extra' => _chooseExtra(context, record?.extraMinutes ?? 0),
-              'note' => _writeNote(context, record?.note),
-              _ => Future<Map<String, dynamic>?>.value(),
-            };
-            if (body == null || !context.mounted) return;
-            await _apply(
-              context,
-              widget.api.put(
-                '/hr/time-clock/people/$personId/days/$date$_onSuffix',
-                body,
-              ),
-            );
-          },
+    return _Actions(
+      manage: false,
+      meId: me,
+      shift: (context, shift, action) async {
+        if (action != 'request') return;
+        final body = await _editTimes(context, shift, request: true);
+        if (body == null || !context.mounted) return;
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final response = await widget.api.post('/time-clock/corrections', {
+          ...body,
+          'shift_id': shift.id,
+        });
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text(
+              response.ok
+                  ? UiStrings.t('time_clock.request_sent')
+                  : response.reason,
+            ),
+          ),
         );
+      },
+      day: (_, _, _, _, _) async {},
+      schedule: (_, _) async {},
+    );
+  }
+
+  Future<void> _decide(
+    BuildContext context,
+    Map<String, dynamic> request,
+    String verb,
+  ) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final id = request['id'];
+    // Two literal paths, so ClientCallsRealRoutesTest can check each.
+    final response = await widget.api.post(
+      verb == 'approve'
+          ? '/hr/time-clock/corrections/$id/approve'
+          : '/hr/time-clock/corrections/$id/deny',
+      {},
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      messenger?.showSnackBar(SnackBar(content: Text(response.reason)));
+    }
+    // The week carries the waiting list, and an approval moves the totals.
+    await _load(on: _on);
+  }
+
+  _Actions get _manageActions => _Actions(
+    shift: (context, shift, action) async {
+      final path = '/hr/time-clock/shifts/${shift.id}';
+      switch (action) {
+        case 'clock_out':
+          await _apply(
+            context,
+            widget.api.post('$path/clock-out$_onSuffix', {}),
+          );
+        case 'edit':
+          final body = await _editTimes(context, shift);
+          if (body == null || !context.mounted) return;
+          await _apply(context, widget.api.patch(path, body, _onQuery));
+        case 'delete':
+          if (!await _confirmDelete(context) || !context.mounted) return;
+          await _apply(context, widget.api.delete(path, _onQuery));
+      }
+    },
+    schedule: (context, person) async {
+      final saved = await showWorkSchedulePanel(
+        context,
+        title: '${UiStrings.t('time_clock.work_schedule')} · ${person.name}',
+        days: person.schedulePersonal ? person.schedule : null,
+        formats: widget.session?.me?.display ?? DisplayFormats.fallback,
+      );
+      if (saved == null || !context.mounted) return;
+
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      final response = await widget.api.patch(
+        '/hr/people/${person.id}/schedule',
+        {'days': saved},
+      );
+      if (!mounted) return;
+      if (!response.ok) {
+        messenger?.showSnackBar(SnackBar(content: Text(response.reason)));
+
+        return;
+      }
+      // The schedule answer is the person, not the week, so fetch the
+      // week again: the card and the totals both come from it.
+      await _load(on: _on);
+    },
+    day: (context, personId, date, record, action) async {
+      final body = await switch (action) {
+        'tag' => _chooseTag(context, record?.tag),
+        'extra' => _chooseExtra(context, record?.extraMinutes ?? 0),
+        'note' => _writeNote(context, record?.note),
+        _ => Future<Map<String, dynamic>?>.value(),
+      };
+      if (body == null || !context.mounted) return;
+      await _apply(
+        context,
+        widget.api.put(
+          '/hr/time-clock/people/$personId/days/$date$_onSuffix',
+          body,
+        ),
+      );
+    },
+  );
 
   Future<void> _load({String? on}) async {
     final request = ++_request;
@@ -239,8 +297,13 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         return;
       }
 
-      _week = _Week.from(response.body['data'] as Map<String, dynamic>?);
+      final data = response.body['data'] as Map<String, dynamic>?;
+      _week = _Week.from(data);
       _weekNotifier.value = _week;
+      // Only present for `work_hours.manage` (TimeClockController::week).
+      _requests = List<Map<String, dynamic>>.from(
+        data?['correction_requests'] as List? ?? const [],
+      );
       final people = _week?.people ?? const <_Person>[];
       if (_personId == null || !people.any((p) => p.id == _personId)) {
         _personId = _visible.firstOrNull?.id;
@@ -304,7 +367,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   Widget build(BuildContext context) {
     if (_off != null) return _switchedOff(context, _off!);
 
-    return AsyncBody(
+    final week = AsyncBody(
       loading: _loading,
       error: _error,
       onRetry: () => _load(on: _on),
@@ -315,6 +378,18 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         builder: (context, box) =>
             box.maxWidth >= 760 ? _wide(context) : _narrow(context),
       ),
+    );
+    if (_requests.isEmpty) return week;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Requests(
+          requests: _requests,
+          onDecide: (request, verb) => _decide(context, request, verb),
+        ),
+        Expanded(child: week),
+      ],
     );
   }
 
@@ -727,7 +802,7 @@ class _PersonWeek extends StatelessWidget {
           // Empty is 'no schedule anywhere', which the card words itself;
           // seven Day off rows would claim a person who works no days.
           schedule: person.schedule.isEmpty ? null : {'days': person.schedule},
-          canEdit: actions != null,
+          canEdit: actions?.manage == true,
           onEdit: () => actions!.schedule(context, person),
           caption: person.schedulePersonal
               ? null
@@ -904,7 +979,7 @@ class _DayCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (actions != null)
+                if (actions?.manage == true)
                   _MenuButton(
                     tooltip: UiStrings.t('time_clock.day_actions'),
                     items: [
@@ -946,7 +1021,12 @@ class _DayCard extends StatelessWidget {
                 ),
               ),
             ),
-          for (final shift in shifts) _ShiftRow(shift: shift, actions: actions),
+          for (final shift in shifts)
+            _ShiftRow(
+              shift: shift,
+              actions: actions,
+              mine: personId == actions?.meId,
+            ),
           if (extra > 0)
             Container(
               padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
@@ -1004,7 +1084,10 @@ Color _tagColour(BuildContext context, String tag) {
 }
 
 class _ShiftRow extends StatelessWidget {
-  const _ShiftRow({required this.shift, this.actions});
+  const _ShiftRow({required this.shift, this.actions, this.mine = false});
+
+  /// The signed-in person's own shift, which they may ask to have corrected.
+  final bool mine;
 
   final _Shift shift;
   final _Actions? actions;
@@ -1017,7 +1100,7 @@ class _ShiftRow extends StatelessWidget {
     return Container(
       // The trailing button carries its own padding, so the row gives up its
       // right inset for it: at 390 the 12 was exactly the 4px that overflowed.
-      padding: EdgeInsets.fromLTRB(12, 9, actions == null ? 12 : 0, 9),
+      padding: EdgeInsets.fromLTRB(12, 9, _hasMenu ? 0 : 12, 9),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
@@ -1089,36 +1172,45 @@ class _ShiftRow extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          if (actions != null)
+          if (_hasMenu)
             _MenuButton(
               tooltip: UiStrings.t('time_clock.shift_actions'),
-              items: [
-                if (shift.open)
-                  (
-                    'clock_out',
-                    UiStrings.t('time_clock.action.clock_out_now'),
-                    Icons.stop_circle_outlined,
-                    true,
-                  ),
-                (
-                  'edit',
-                  UiStrings.t('time_clock.action.edit'),
-                  Icons.edit_outlined,
-                  false,
-                ),
-                (
-                  'delete',
-                  UiStrings.t('time_clock.action.delete'),
-                  Icons.delete_outline,
-                  true,
-                ),
-              ],
+              items: actions!.manage
+                  ? _manageItems
+                  : [
+                      (
+                        'request',
+                        UiStrings.t('time_clock.action.request'),
+                        Icons.edit_calendar_outlined,
+                        false,
+                      ),
+                    ],
               onChosen: (action) => actions!.shift(context, shift, action),
             ),
         ],
       ),
     );
   }
+
+  bool get _hasMenu =>
+      actions != null && (actions!.manage || (mine && !shift.open));
+
+  List<(String, String, IconData, bool)> get _manageItems => [
+    if (shift.open)
+      (
+        'clock_out',
+        UiStrings.t('time_clock.action.clock_out_now'),
+        Icons.stop_circle_outlined,
+        true,
+      ),
+    ('edit', UiStrings.t('time_clock.action.edit'), Icons.edit_outlined, false),
+    (
+      'delete',
+      UiStrings.t('time_clock.action.delete'),
+      Icons.delete_outline,
+      true,
+    ),
+  ];
 }
 
 class _Chip extends StatelessWidget {
@@ -1462,7 +1554,14 @@ class _Actions {
     required this.shift,
     required this.day,
     required this.schedule,
+    this.manage = true,
+    this.meId,
   });
+
+  /// `work_hours.manage`: every menu. Off: only "Request a correction" on
+  /// [meId]'s own finished shifts.
+  final bool manage;
+  final String? meId;
 
   final Future<void> Function(BuildContext context, _Person person) schedule;
 
@@ -1534,9 +1633,13 @@ class _MenuButton extends StatelessWidget {
               children: [
                 Icon(icon, size: 18, color: _colour(context, destructive)),
                 const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(color: _colour(context, destructive)),
+                // Flexible: a menu is at most 280 wide, and a longer label
+                // (or its Spanish) would otherwise overflow it.
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(color: _colour(context, destructive)),
+                  ),
                 ),
               ],
             ),
@@ -1609,17 +1712,25 @@ String _formatLocal(DateTime at) =>
     '${at.minute.toString().padLeft(2, '0')}';
 
 /// The edit dialog. Returns the PATCH body, or null when cancelled.
-Future<Map<String, dynamic>?> _editTimes(BuildContext context, _Shift shift) {
+Future<Map<String, dynamic>?> _editTimes(
+  BuildContext context,
+  _Shift shift, {
+  bool request = false,
+}) {
   return showDialog<Map<String, dynamic>>(
     context: context,
-    builder: (context) => _EditTimesDialog(shift: shift),
+    builder: (context) => _EditTimesDialog(shift: shift, request: request),
   );
 }
 
 class _EditTimesDialog extends StatefulWidget {
-  const _EditTimesDialog({required this.shift});
+  const _EditTimesDialog({required this.shift, this.request = false});
 
   final _Shift shift;
+
+  /// Asking a manager rather than editing: adds "What happened?", which the
+  /// server requires, and sends for approval instead of saving.
+  final bool request;
 
   @override
   State<_EditTimesDialog> createState() => _EditTimesDialogState();
@@ -1628,6 +1739,13 @@ class _EditTimesDialog extends StatefulWidget {
 class _EditTimesDialogState extends State<_EditTimesDialog> {
   late DateTime? _in = _parseLocal(widget.shift.clockedInLocal);
   late DateTime? _out = _parseLocal(widget.shift.clockedOutLocal);
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
 
   Future<DateTime?> _pick(DateTime? current) async {
     // Never the device clock: this screen reads only the server's (a guard in
@@ -1674,10 +1792,19 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
   @override
   Widget build(BuildContext context) {
     final labels = MaterialLocalizations.of(context);
-    final valid = _in != null && (_out == null || _out!.isAfter(_in!));
+    final valid =
+        _in != null &&
+        (_out == null || _out!.isAfter(_in!)) &&
+        (!widget.request || _reason.text.trim().isNotEmpty);
 
     return AlertDialog(
-      title: Text(UiStrings.t('time_clock.action.edit')),
+      title: Text(
+        UiStrings.t(
+          widget.request
+              ? 'time_clock.action.request'
+              : 'time_clock.action.edit',
+        ),
+      ),
       content: SizedBox(
         width: 380,
         child: Column(
@@ -1692,6 +1819,20 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
               final at = await _pick(_out);
               if (at != null) setState(() => _out = at);
             }),
+            if (widget.request) ...[
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('correction-reason'),
+                controller: _reason,
+                maxLength: 1000,
+                minLines: 2,
+                maxLines: 4,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: UiStrings.t('time_clock.request_reason'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1708,8 +1849,13 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
                   // Absent keeps an open shift open; the server refuses a
                   // finished one being reopened anyway.
                   if (_out != null) 'clocked_out_at': _formatLocal(_out!),
+                  if (widget.request) 'reason': _reason.text.trim(),
                 }),
-          child: Text(labels.saveButtonLabel),
+          child: Text(
+            widget.request
+                ? UiStrings.t('time_clock.request_send')
+                : labels.saveButtonLabel,
+          ),
         ),
       ],
     );
@@ -1844,4 +1990,87 @@ Future<Map<String, dynamic>?> _writeNote(
       ],
     ),
   );
+}
+
+/// What people asked to have corrected, above the week, for whoever may
+/// approve it. Each row: who, what the shift said, what they ask for, why.
+class _Requests extends StatelessWidget {
+  const _Requests({required this.requests, required this.onDecide});
+
+  final List<Map<String, dynamic>> requests;
+  final void Function(Map<String, dynamic> request, String verb) onDecide;
+
+  static String _span(Object? inAt, Object? outAt) =>
+      '${inAt ?? ''} – ${outAt ?? '…'}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      key: const Key('correction-requests'),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${UiStrings.t('time_clock.requests_title')} (${requests.length})',
+              style: theme.textTheme.titleSmall,
+            ),
+            for (final r in requests) ...[
+              const Divider(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          (r['user'] as Map?)?['name']?.toString() ?? '',
+                          style: theme.textTheme.labelLarge,
+                        ),
+                        Text(
+                          '${UiStrings.t('time_clock.request_was')}: '
+                          '${_span(r['was_in'], r['was_out'])}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        Text(
+                          '${UiStrings.t('time_clock.request_asks')}: '
+                          '${_span(r['clocked_in'], r['clocked_out'])}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          r['reason']?.toString() ?? '',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => onDecide(r, 'deny'),
+                        child: Text(UiStrings.t('time_clock.decline')),
+                      ),
+                      FilledButton(
+                        onPressed: () => onDecide(r, 'approve'),
+                        child: Text(UiStrings.t('time_clock.approve')),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

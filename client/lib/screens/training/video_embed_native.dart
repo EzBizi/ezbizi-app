@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart' as wvf;
 import 'package:webview_windows/webview_windows.dart' as wvw;
+import 'package:window_manager/window_manager.dart';
 
 /// The native half of video_embed.dart. Linux has neither WebView.
 bool get videoEmbedSupported => Platform.isWindows || Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
@@ -24,6 +25,14 @@ class _WindowsVideoState extends State<_WindowsVideo> {
   bool _ready = false;
   String? _error;
 
+  /// The player's Fullscreen button (Trey, 2026-09-30: "makes it like 1%
+  /// bigger"). WebView2 only fills its own box with the video, and the box is
+  /// the size the guide gave it. So when the page goes fullscreen, the window
+  /// does too and the same WebView is drawn over the whole app until the
+  /// player (or Esc) leaves fullscreen.
+  StreamSubscription<bool>? _fullscreenSub;
+  OverlayEntry? _fullscreen;
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +42,7 @@ class _WindowsVideoState extends State<_WindowsVideo> {
   Future<void> _start() async {
     try {
       await _controller.initialize();
+      _fullscreenSub = _controller.containsFullScreenElementChanged.listen(_setFullscreen);
       await _controller.loadUrl(widget.url);
       if (mounted) setState(() => _ready = true);
     } catch (e) {
@@ -41,8 +51,36 @@ class _WindowsVideoState extends State<_WindowsVideo> {
     }
   }
 
+  Future<void> _setFullscreen(bool on) async {
+    if (!mounted || on == (_fullscreen != null)) return;
+
+    if (on) {
+      _fullscreen = OverlayEntry(
+        builder: (context) => ColoredBox(color: Theme.of(context).colorScheme.scrim, child: wvw.Webview(_controller)),
+      );
+      Overlay.of(context, rootOverlay: true).insert(_fullscreen!);
+    } else {
+      _fullscreen?.remove();
+      _fullscreen = null;
+    }
+    setState(() {});
+
+    try {
+      await windowManager.ensureInitialized();
+      await windowManager.setFullScreen(on);
+    } catch (_) {
+      // The overlay alone still fills the app window; a window that will not
+      // go fullscreen is no reason to lose the video.
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(_fullscreenSub?.cancel());
+    if (_fullscreen != null) {
+      _fullscreen!.remove();
+      unawaited(windowManager.setFullScreen(false).catchError((_) {}));
+    }
     unawaited(_controller.dispose());
     super.dispose();
   }
@@ -58,6 +96,8 @@ class _WindowsVideoState extends State<_WindowsVideo> {
         ),
       );
     }
+
+    if (_fullscreen != null) return ColoredBox(color: Theme.of(context).colorScheme.scrim);
 
     return _ready ? wvw.Webview(_controller) : const Center(child: CircularProgressIndicator());
   }
