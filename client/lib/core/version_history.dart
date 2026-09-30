@@ -25,6 +25,7 @@ class VersionHistory {
         'Leads on a phone: booking, a job, a customer and availability open in the side panel instead of a separate screen.',
         'Leads: reconnecting Thumbtack brings its earlier enquiries back straight away.',
         'Leads connections: an account that has stopped fetching says so.',
+        'Training: a guide can hold its own images, not only links to other sites.',
       ],
     ),
     VersionRelease(
