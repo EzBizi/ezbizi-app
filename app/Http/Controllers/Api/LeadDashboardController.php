@@ -79,8 +79,8 @@ class LeadDashboardController extends Controller
             return $q;
         };
 
-        $current = $this->measure($scoped, $from, $to, $zone);
-        $previous = $this->measure($scoped, $from->copy()->subDays($days), $from->copy()->subDay(), $zone);
+        $current = self::measure($scoped, $from, $to, $zone);
+        $previous = self::measure($scoped, $from->copy()->subDays($days), $from->copy()->subDay(), $zone);
 
         // Waiting now: the list's overdue mark, over the last day - an
         // enquiry left since last week is a backlog, not somebody waiting.
@@ -105,8 +105,13 @@ class LeadDashboardController extends Controller
         ]]);
     }
 
-    /** @return array{totals: array, per_day: array, buckets: array, people: array, automatic: array, outside: array} */
-    private function measure(callable $scoped, Carbon $from, Carbon $to, string $zone): array
+    /**
+     * Also the daily digest's arithmetic (ezbizi:leads-daily-digest), so the
+     * morning message and the dashboard cannot disagree.
+     *
+     * @return array{totals: array, per_day: array, buckets: array, people: array, automatic: array, outside: array}
+     */
+    public static function measure(callable $scoped, Carbon $from, Carbon $to, string $zone): array
     {
         $start = $from->copy()->startOfDay()->utc();
         $end = $to->copy()->endOfDay()->utc();

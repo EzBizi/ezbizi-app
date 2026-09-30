@@ -345,3 +345,6 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 // A customer who went quiet after the automatic first reply raises
 // lead.follow_up_due once, so a rule can send the one follow-up.
 Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOverlapping(5);
+
+// Yesterday's leads in numbers, for a morning WhatsApp or email rule.
+Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlapping(10);

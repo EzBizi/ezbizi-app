@@ -2356,7 +2356,7 @@ class ModuleServiceProvider extends ServiceProvider
                  * column existing is not the column being filled. What actually
                  * narrowed the audience was implementing the interface.
                  */
-                emits: [Lead::class, Customer::class, Job::class],
+                emits: [Lead::class, Customer::class, Job::class, Organization::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'lead.received',
@@ -2416,6 +2416,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'left waiting; a booked or archived lead never raises it. It carries the '
                             .'source, the kind of lead, who it is, how many minutes they have waited '
                             .'and what they said.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'lead.daily_digest',
+                        label: 'Daily leads digest',
+                        description: 'Every morning, yesterday in numbers: how many leads by source, '
+                            .'how many were answered and how fast, how many were booked, and each '
+                            .'company\'s count. It carries a one-line summary ready for a WhatsApp or '
+                            .'email step, and each figure on its own for conditions.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.follow_up_due',
