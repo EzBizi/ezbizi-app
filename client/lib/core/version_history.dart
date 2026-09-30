@@ -19,6 +19,9 @@ class VersionHistory {
       items: [
         'Leads on a phone: the details of a lead fold behind a Details button, so the conversation fills the screen.',
         'Leads: stars are now your own; reply templates fill in what the customer has not given yet, and can be edited per company.',
+        'Field, Map: clear status colours. Technicians are green when reporting, blue at a job, red when stopped too long and yellow when not reporting; jobs are blue when assigned, yellow when unassigned, and white (or black in light mode) for the one you opened. The routes and the technician bar use the same colours.',
+        'Leads: Manage now has Connections and Templates tabs, so reply templates can be edited in the app.',
+        'Leads: every lead shows a tag with the company it belongs to, in the list and in the conversation.',
       ],
     ),
     VersionRelease(

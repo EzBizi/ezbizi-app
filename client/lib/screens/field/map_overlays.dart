@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/theme.dart';
+
 /// The pieces drawn over the Field map: the floating list (people and jobs),
 /// the technician bar, and the job card a dispatcher answers an ETA call from.
 /// Kept apart from map_tab.dart so the map's state stays readable.
@@ -63,7 +65,7 @@ class FieldJobPin extends StatelessWidget {
           child: Icon(
             Icons.home_repair_service,
             size: selected ? 18 : 14,
-            color: scheme.surface,
+            color: fieldInk(colour),
           ),
         ),
         if (selected) _Label(text: label, bold: true, scheme: scheme),
@@ -365,17 +367,17 @@ class _PersonRow extends StatelessWidget {
                 if (job != null)
                   Text(
                     'At ${job['title'] ?? job['number'] ?? 'a job'}',
-                    style: muted?.copyWith(color: scheme.tertiary),
+                    style: muted?.copyWith(color: EzBiziTheme.fieldBlue),
                   ),
                 if (person['stopped'] == true)
                   Text(
                     'Stopped too long',
-                    style: muted?.copyWith(color: scheme.error),
+                    style: muted?.copyWith(color: EzBiziTheme.fieldRed),
                   ),
                 if (person['silent'] == true)
                   Text(
                     'Lost signal',
-                    style: muted?.copyWith(color: scheme.error),
+                    style: muted?.copyWith(color: EzBiziTheme.fieldYellow),
                   ),
                 if (day != null)
                   Padding(
@@ -385,20 +387,26 @@ class _PersonRow extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.timeline, size: 14, color: scheme.primary),
+                          Icon(
+                            Icons.timeline,
+                            size: 14,
+                            color: EzBiziTheme.fieldBlue,
+                          ),
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
                               'Route ${fieldDayLabel(day!)}${trailEmpty ? ' · none' : ''}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: muted?.copyWith(color: scheme.primary),
+                              style: muted?.copyWith(
+                                color: EzBiziTheme.fieldBlue,
+                              ),
                             ),
                           ),
                           Icon(
                             Icons.arrow_drop_down,
                             size: 16,
-                            color: scheme.primary,
+                            color: EzBiziTheme.fieldBlue,
                           ),
                         ],
                       ),
@@ -567,10 +575,10 @@ class FieldPersonBar extends StatelessWidget {
         (
           Icons.login,
           'In ${fieldClock(clocked)} · ${fieldSpan(DateTime.now().difference(clocked))}',
-          scheme.primary,
+          EzBiziTheme.fieldBlue,
         )
       else if (since != null)
-        (Icons.play_arrow, 'Since ${fieldClock(since)}', scheme.primary),
+        (Icons.play_arrow, 'Since ${fieldClock(since)}', EzBiziTheme.fieldBlue),
       if (battery is num)
         (
           charging
@@ -580,45 +588,53 @@ class FieldPersonBar extends StatelessWidget {
               : Icons.battery_std,
           '$battery%${charging ? ' charging' : ''}',
           battery <= 20 && !charging
-              ? scheme.error
-              : charging
-              ? scheme.primary
-              : scheme.secondary,
+              ? EzBiziTheme.fieldRed
+              : charging || battery > 50
+              ? EzBiziTheme.fieldGreen
+              : EzBiziTheme.fieldYellow,
         ),
       if (person['speed_mph'] is num)
         (
           Icons.speed,
           moving ? '${person['speed_mph']} mph now' : 'Not moving',
-          moving ? scheme.primary : scheme.onSurfaceVariant,
+          moving ? EzBiziTheme.fieldGreen : scheme.onSurfaceVariant,
         ),
       if (person['avg_speed_mph'] is num)
         (
           Icons.show_chart,
           '${person['avg_speed_mph']} avg · ${person['top_speed_mph']} top',
-          scheme.tertiary,
+          EzBiziTheme.fieldBlue,
         ),
-      (Icons.route, '${person['distance_mi'] ?? 0} mi today', scheme.secondary),
+      (
+        Icons.route,
+        '${person['distance_mi'] ?? 0} mi today',
+        EzBiziTheme.fieldBlue,
+      ),
       if (seen != null)
         (
           Icons.gps_fixed,
           'Seen ${fieldAgo(seen)}',
           seenMinutes! > 30
-              ? scheme.error
+              ? EzBiziTheme.fieldRed
               : seenMinutes <= 5
-              ? scheme.primary
-              : scheme.onSurfaceVariant,
+              ? EzBiziTheme.fieldGreen
+              : EzBiziTheme.fieldYellow,
         ),
       if (accuracy is num)
         (
           Icons.my_location,
           '±$accuracy m',
-          accuracy > 100 ? scheme.error : scheme.tertiary,
+          accuracy > 100
+              ? EzBiziTheme.fieldRed
+              : accuracy > 20
+              ? EzBiziTheme.fieldYellow
+              : EzBiziTheme.fieldGreen,
         ),
       if (next != null)
         (
           Icons.event,
           'Next ${next['customer'] ?? '#${next['number']}'} ${fieldWallTime(next['scheduled_for'] as String?)}',
-          scheme.secondary,
+          EzBiziTheme.fieldBlue,
         ),
       if (device['model'] != null || device['os_version'] != null)
         (
@@ -903,7 +919,7 @@ class FieldMapLegend extends StatelessWidget {
         color: c,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Icon(Icons.home_repair_service, size: 10, color: scheme.surface),
+      child: Icon(Icons.home_repair_service, size: 10, color: fieldInk(c)),
     );
     Widget line(Color c, {bool dashed = false}) => SizedBox(
       width: 22,
@@ -918,17 +934,18 @@ class FieldMapLegend extends StatelessWidget {
     );
 
     final items = <(Widget, String)>[
-      (pin(scheme.primary), 'Reporting'),
-      (pin(scheme.tertiary), 'At a job'),
-      (pin(scheme.error), 'Stopped too long'),
-      (pin(scheme.outline), 'Not reporting'),
+      (pin(EzBiziTheme.fieldGreen), 'Reporting'),
+      (pin(EzBiziTheme.fieldBlue), 'At a job'),
+      (pin(EzBiziTheme.fieldRed), 'Stopped too long'),
+      (pin(EzBiziTheme.fieldYellow), 'Not reporting'),
       if (showJobs) ...[
-        (job(scheme.secondary), 'Job with a technician'),
-        (job(scheme.outline), 'Job not assigned'),
-        (job(scheme.tertiary), 'Job you opened'),
+        (job(EzBiziTheme.fieldBlue), 'Job with a technician'),
+        (job(EzBiziTheme.fieldYellow), 'Job not assigned'),
+        (job(scheme.onSurface), 'Job you opened'),
       ],
-      (line(scheme.primary), 'Route today'),
-      if (showJobs) (line(scheme.tertiary, dashed: true), 'Drive to the job'),
+      (line(EzBiziTheme.fieldBlue), 'Route today'),
+      if (showJobs)
+        (line(EzBiziTheme.fieldGreen, dashed: true), 'Drive to the job'),
     ];
 
     return Material(
@@ -1034,3 +1051,9 @@ List<LatLng> decodePolyline(String encoded) {
   }
   return points;
 }
+
+/// Dark ink on a light pin (yellow, or the "opened" marker in dark mode),
+/// white on the others, so the job icon is always readable.
+Color fieldInk(Color fill) => fill.computeLuminance() > 0.4
+    ? EzBiziTheme.fieldInkDark
+    : EzBiziTheme.fieldInkLight;

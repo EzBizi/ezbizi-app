@@ -1106,7 +1106,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   key: const ValueKey('sources-manage'),
                   onPressed: _openSources,
                   icon: const Icon(Icons.link, size: 18),
-                  label: const Text('Manage connections'),
+                  label: const Text('Manage'),
                 ),
               ),
             ],
@@ -1667,63 +1667,91 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      // The source first on the line, in its own colour.
-                      _SourceBadge(
-                        leadSourceWord(lead),
-                        key: ValueKey('source-badge-$id'),
-                      ),
-                      // The channel badge is drawn only when it says
-                      // something the source badge does not. "Call · Google"
-                      // is two facts; a chat row read "Chat · Chat", one fact
-                      // twice (UI/UX, 2026-09-08). The rule needs no list of
-                      // sources: a fifth source with one channel gets the
-                      // right answer for free.
-                      if (channel != null &&
-                          !leadSourceWord(lead).endsWith(
-                            channelWord(channel),
-                          )) ...[
-                        const SizedBox(width: 4),
-                        _Badge(
-                          channelWord(channel),
-                          call: channel == 'PHONE_CALL',
-                        ),
-                      ],
-                      const SizedBox(width: 6),
+                      // Everything but the star in one Expanded, so the star
+                      // keeps the end of the row however short the tag is.
                       Expanded(
-                        child: preview != null && preview.isNotEmpty
-                            ? Text.rich(
-                                TextSpan(
-                                  children: [
-                                    if (mine)
-                                      TextSpan(
-                                        text: 'You: ',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: theme.colorScheme.onSurface,
-                                        ),
-                                      ),
-                                    TextSpan(text: preview),
-                                  ],
+                        child: Row(
+                          children: [
+                            // Whose lead it is, then where it came from, in
+                            // the same place on every row: chimney prices
+                            // went to a garage-door lead (Jose, 2026-09-30).
+                            // Flexible, so a narrow row shortens the tag
+                            // rather than pushing past its edge.
+                            if (leadCompany(lead) case final company?) ...[
+                              Flexible(
+                                child: CompanyTag(
+                                  company,
+                                  key: ValueKey('company-tag-$id'),
                                 ),
-                                style: muted,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : Text(
-                                [
-                                  if ((lead['phone'] as String?)?.isNotEmpty ==
-                                          true &&
-                                      (lead['contact_name'] as String?)
-                                              ?.trim()
-                                              .isNotEmpty ==
-                                          true)
-                                    formatPhoneNumber(lead['phone'] as String?),
-                                  ?humaniseService(lead['service'] as String?),
-                                ].join(' · '),
-                                style: muted,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
+                              const SizedBox(width: 4),
+                            ],
+                            // The source next, in its own colour.
+                            _SourceBadge(
+                              leadSourceWord(lead),
+                              key: ValueKey('source-badge-$id'),
+                            ),
+                            // The channel badge is drawn only when it says
+                            // something the source badge does not. "Call · Google"
+                            // is two facts; a chat row read "Chat · Chat", one fact
+                            // twice (UI/UX, 2026-09-08). The rule needs no list of
+                            // sources: a fifth source with one channel gets the
+                            // right answer for free.
+                            if (channel != null &&
+                                !leadSourceWord(
+                                  lead,
+                                ).endsWith(channelWord(channel))) ...[
+                              const SizedBox(width: 4),
+                              _Badge(
+                                channelWord(channel),
+                                call: channel == 'PHONE_CALL',
+                              ),
+                            ],
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: preview != null && preview.isNotEmpty
+                                  ? Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          if (mine)
+                                            TextSpan(
+                                              text: 'You: ',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color:
+                                                    theme.colorScheme.onSurface,
+                                              ),
+                                            ),
+                                          TextSpan(text: preview),
+                                        ],
+                                      ),
+                                      style: muted,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    )
+                                  : Text(
+                                      [
+                                        if ((lead['phone'] as String?)
+                                                    ?.isNotEmpty ==
+                                                true &&
+                                            (lead['contact_name'] as String?)
+                                                    ?.trim()
+                                                    .isNotEmpty ==
+                                                true)
+                                          formatPhoneNumber(
+                                            lead['phone'] as String?,
+                                          ),
+                                        ?humaniseService(
+                                          lead['service'] as String?,
+                                        ),
+                                      ].join(' · '),
+                                      style: muted,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                            ),
+                          ],
+                        ),
                       ),
                       // Hollow until set, at the end of the line it marks
                       // (design 30): stacked under the time it made every row

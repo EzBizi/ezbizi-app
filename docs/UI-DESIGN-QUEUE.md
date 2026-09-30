@@ -2961,6 +2961,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 37 · Leads · a Templates tab in Manage, and a company tag on every lead — **Jose's own shape, built directly** — **BUILT** `bd46c68f`
+
+Jose, 2026-09-30, through Leads: *"inside manage and we can make a connection sub tab and templates
+sub tab"* and *"add a tag with the name of the company it belongs to, so this doesn't happen again"*
+(chimney prices went to a garage-door lead). No gallery: he named the shape. Manage is one page,
+← back, a Connections | Templates strip, both tabs kept alive; on a phone the strip is on the first
+step only. **The tag is outlined and the same for every company**, not a colour per company: the
+filled colours on a row are already spent on the source (one per source, 2026-09-29) and the status,
+and a second colour system on the same line would read as another source. It is first on each row's
+second line, where it lines up down the list, and first on the thread header's source line.
+
 ### 36 · Clock In · the lock screen — **Jose: "go with ur recommendations for the lock layout" — 1 and 4** — **BUILT** `51fb15c1`
 
 Jose, 2026-09-30, with a screenshot of the lock screen: *"the clock in lock screen could also use some
@@ -2990,7 +3001,7 @@ keypad first, with Call back and Recent under it; phone **4**-**6** the same thr
 needs `customer_name` beside `customer_id` on /phone/calls; 2 also needs calls and texts merged per
 person. `call_tab.dart`, `call_history_pane.dart` and CallsController are Phone's.
 
-### 34 · Leads · managing connections — **Jose: "go ahead with ur recommendations" — 1 and 4** — **BUILT**, waiting on Leads' OK to commit
+### 34 · Leads · managing connections — **Jose: "go ahead with ur recommendations" — 1 and 4** — **BUILT** `1e8c326e`, `43126b6f`
 
 Jose, 2026-09-30, on Leads › Manage (the Connected sources panel): *"i feel we could also use a revamp
 on the manage of leads, see what you can do about it"*. Today one narrow panel stacks Google Ads (22

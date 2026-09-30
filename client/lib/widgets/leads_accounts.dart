@@ -1,10 +1,14 @@
-// Leads › Manage: the Connections page.
+// Leads › Manage: the Connections page, with Templates as its second tab.
 //
 // UI queue 34, docs/previews/leads-connections-layouts.html, Jose's 1 + 4
 // (2026-09-30: "Sounds good, go ahead with ur recommendations"), after "i feel
 // we could also use a revamp on the manage of leads". It replaces one narrow
 // side panel that stacked every provider in one scroll, with three text
 // buttons on every account row and certification problems as loose red lines.
+//
+// Manage has two tabs (Jose, 2026-09-30: "inside manage and we can make a
+// connection sub tab and templates sub tab"): Connections, described below,
+// and Templates, which is ReplyTemplatesManager as the Leads session built it.
 //
 // The page takes the place of the leads, with ← back (containment): the
 // providers down the left with how many need attention, the chosen provider's
@@ -30,10 +34,12 @@ import '../core/theme.dart';
 import 'connect_account.dart';
 import 'error_note.dart';
 import 'grouped_rows.dart';
+import 'reply_templates_manager.dart';
 import 'search_picker.dart';
 import 'side_panel.dart';
 import 'social_network_mark.dart';
 import 'status_pill.dart';
+import 'tab_bar_like.dart';
 
 /// How a placement reads, and whether it can be changed.
 ///
@@ -170,6 +176,13 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   bool _lettingGo = false;
   String? _allError;
 
+  /// Manage's tab: connections or templates.
+  String _tab = 'connections';
+
+  /// Templates is built the first time it is opened and kept after, so what
+  /// somebody typed there survives a look at the connections.
+  bool _templatesOpened = false;
+
   @override
   void dispose() {
     _search.dispose();
@@ -237,44 +250,57 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   Widget _desk(BuildContext context) {
     final provider = _provider ?? _firstProvider;
     final open = _open(provider);
+    final connections = _tab == 'connections';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(
           context,
-          title: 'Connections',
-          subtitle:
-              'Where enquiries come from, and where each account\'s leads go.',
+          title: 'Manage',
+          subtitle: connections
+              ? 'Where enquiries come from, and where each account\'s leads go.'
+              : null,
           backTooltip: 'Back to the leads',
           onBack: widget.onBack,
           action:
-              widget.canEdit &&
+              connections &&
+                  widget.canEdit &&
                   provider != 'web' &&
                   _accountsOf(provider).isNotEmpty
               ? _connect(provider)
               : null,
         ),
+        _tabStrip(context),
         const Divider(height: 1),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              SizedBox(
-                width: 240,
-                child: _providerList(context, selected: provider),
-              ),
-              const VerticalDivider(width: 1),
-              if (open == null)
-                Expanded(child: _pane(context, provider, table: true))
-              else ...[
-                SizedBox(
-                  width: 360,
-                  child: _pane(context, provider, table: false),
+              Offstage(
+                offstage: !connections,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: 240,
+                      child: _providerList(context, selected: provider),
+                    ),
+                    const VerticalDivider(width: 1),
+                    if (open == null)
+                      Expanded(child: _pane(context, provider, table: true))
+                    else ...[
+                      SizedBox(
+                        width: 360,
+                        child: _pane(context, provider, table: false),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: _panel(open, provider, inPlace: false)),
+                    ],
+                  ],
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: _panel(open, provider, inPlace: false)),
-              ],
+              ),
+              Offstage(offstage: connections, child: _templates()),
             ],
           ),
         ),
@@ -282,7 +308,37 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     );
   }
 
+  /// A phone: the tabs on the first step only. The steps after it are the
+  /// connections' own, each with its own ← back.
   Widget _phone(BuildContext context) {
+    final connections = _tab == 'connections';
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(offstage: !connections, child: _phoneConnections(context)),
+        Offstage(
+          offstage: connections,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                context,
+                title: 'Manage',
+                backTooltip: 'Back to the leads',
+                onBack: widget.onBack,
+              ),
+              _tabStrip(context),
+              const Divider(height: 1),
+              Expanded(child: _templates()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _phoneConnections(BuildContext context) {
     final provider = _provider;
 
     if (provider == null) {
@@ -291,10 +347,11 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         children: [
           _header(
             context,
-            title: 'Connections',
+            title: 'Manage',
             backTooltip: 'Back to the leads',
             onBack: widget.onBack,
           ),
+          _tabStrip(context),
           const Divider(height: 1),
           Expanded(child: _providerList(context)),
         ],
@@ -366,6 +423,36 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       ),
     );
   }
+
+  static const _manageTabs = [
+    ('connections', 'Connections', Icons.link),
+    ('templates', 'Templates', Icons.bolt_outlined),
+  ];
+
+  Widget _tabStrip(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surface,
+    child: TabBarLike(
+      key: const ValueKey('manage-tabs'),
+      labels: [for (final t in _manageTabs) (t.$2, t.$3)],
+      selected: _manageTabs.indexWhere((t) => t.$1 == _tab),
+      onSelected: (i) => setState(() {
+        _tab = _manageTabs[i].$1;
+        if (_tab == 'templates') _templatesOpened = true;
+      }),
+    ),
+  );
+
+  /// The replies beside Send, one list per company (04be9c2f), at a reading
+  /// width: across a whole desk each text box ran 1,400px wide.
+  Widget _templates() => _templatesOpened
+      ? Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ReplyTemplatesManager(api: widget.api),
+          ),
+        )
+      : const SizedBox.shrink();
 
   /// The provider's own sign-in. The start paths are literals here, at the
   /// call site, as ConnectAccount asks.

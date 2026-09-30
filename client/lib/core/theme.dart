@@ -18,6 +18,21 @@ class EzBiziTheme {
   static const _line = Color(0x1A060808);
   static const _surfaceAlt = Color(0xFFF5F8FA);
 
+  /// Field map status colours (Jose, 2026-10-01: "literally use colors that
+  /// stand out: green, red, yellow, blue, white/dark"). Map pins sit on busy
+  /// tiles in both modes, so these are the loud, saturated versions and read
+  /// the same on light and dark. The fifth, white/dark, is
+  /// `colorScheme.onSurface`, which already flips with the mode.
+  static const fieldGreen = Color(0xFF22C55E);
+  static const fieldRed = Color(0xFFEF4444);
+  static const fieldYellow = Color(0xFFFACC15);
+  static const fieldBlue = Color(0xFF3B82F6);
+
+  /// Ink on a coloured pin: near-black on yellow and on the light "opened"
+  /// marker, white on the others.
+  static const fieldInkDark = Color(0xFF111111);
+  static const fieldInkLight = Color(0xFFFFFFFF);
+
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 
@@ -36,15 +51,15 @@ class EzBiziTheme {
   /// as the surfaces either side instead of darkening whatever is behind it.
   static Color edge(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF1E262E)
-          : const Color(0xFFE9EDF1);
+      ? const Color(0xFF1E262E)
+      : const Color(0xFFE9EDF1);
 
   /// Punch-in green. Named so the top-bar button never picks a hex, and so
   /// the pair cannot drift into purple when a theme is mixed.
   static Color clockIn(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF3DDC97)
-          : const Color(0xFF0B8F5B);
+      ? const Color(0xFF3DDC97)
+      : const Color(0xFF0B8F5B);
 
   /// The middle step of a load meter — "getting full", between [clockIn] and
   /// the scheme's own error red.
@@ -55,14 +70,14 @@ class EzBiziTheme {
   /// than a lighter shade of it.
   static Color meterWarning(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFFE0A93B)
-          : const Color(0xFFB37400);
+      ? const Color(0xFFE0A93B)
+      : const Color(0xFFB37400);
 
   /// Punch-out coral for the outlined top-bar chip, same constraint as [clockIn].
   static Color clockOut(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFFFF8A80)
-          : const Color(0xFFE07070);
+      ? const Color(0xFFFF8A80)
+      : const Color(0xFFE07070);
 
   /// Which theme each half of the shell gets.
   ///
@@ -70,17 +85,18 @@ class EzBiziTheme {
   /// sidebar and the page in opposite themes. Everything else puts both halves
   /// on the same one.
   static ThemeMode modeFor(String preference) => switch (preference) {
-        'light' || 'mixed_dark_nav' => ThemeMode.light,
-        'dark' || 'mixed_light_nav' => ThemeMode.dark,
-        _ => ThemeMode.system,
-      };
+    'light' || 'mixed_dark_nav' => ThemeMode.light,
+    'dark' || 'mixed_light_nav' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
 
   /// The sidebar's own theme, when it differs from the page's.
   ///
   /// Null when the two match, so the caller can skip wrapping entirely rather
   /// than rebuilding an identical theme and pushing a redundant inherited
   /// widget down the tree.
-  static ThemeData? navigationOverride(String preference) => switch (preference) {
+  static ThemeData? navigationOverride(String preference) =>
+      switch (preference) {
         'mixed_dark_nav' => dark(),
         'mixed_light_nav' => light(),
         _ => null,
@@ -190,7 +206,10 @@ class EzBiziTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark ? const Color(0xFF161E25) : Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
 
         /*
          * AN EMPTY FIELD MUST NOT READ LIKE A FILLED ONE.
@@ -740,7 +759,8 @@ abstract final class PersonColours {
   /// tags, 2026-09-29): 0 blue, 1 teal, 2 green, 3 olive, 4 gold, 5 orange,
   /// 6 coral, 7 brown, 8 rose, 9 slate.
   static ToneColours hue(BuildContext context, int index) =>
-      (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[index % _light.length];
+      (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[index %
+          _light.length];
 
   static ToneColours forSeed(Object seed, Brightness brightness) {
     // Not hashCode, which promises nothing across runs; and small enough
