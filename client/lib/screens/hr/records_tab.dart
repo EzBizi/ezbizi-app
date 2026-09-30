@@ -7,9 +7,11 @@ import '../../core/api_client.dart';
 import '../../core/contracts.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../core/ui_strings.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
@@ -909,6 +911,7 @@ class _PersonRecordState extends State<_PersonRecord> {
     ),
     'personal' => _PersonalSection(
       key: ValueKey('personal-$_version'),
+      api: widget.api,
       person: _person,
       formats: widget.formats,
       noEdit: _noEdit,
@@ -1307,12 +1310,14 @@ class _SaveBar extends StatelessWidget {
 class _PersonalSection extends StatefulWidget {
   const _PersonalSection({
     super.key,
+    required this.api,
     required this.person,
     required this.formats,
     required this.noEdit,
     required this.onSave,
   });
 
+  final ApiClient api;
   final Map<String, dynamic> person;
   final DisplayFormats formats;
   final String? noEdit;
@@ -1323,18 +1328,51 @@ class _PersonalSection extends StatefulWidget {
 }
 
 class _PersonalSectionState extends State<_PersonalSection> {
+  // The home address in its parts (Jose, 2026-09-30): the server composes
+  // the one line contracts print from them.
   static const _texts = [
     'first_name',
     'middle_name',
     'last_name',
     'phone',
-    'address',
+    'address_line1',
+    'address_line2',
+    'city',
+    'state',
+    'postal_code',
+    'country',
     'gender',
   ];
 
+  static const _addressParts = [
+    'address_line1',
+    'address_line2',
+    'city',
+    'state',
+    'postal_code',
+    'country',
+  ];
+
+  /// What is stored for a box. A record with the one-line address and no
+  /// parts at all (a server from before the parts) keeps that line as its
+  /// street, rather than showing the address as gone.
+  String _stored(String key) {
+    final value = widget.person[key]?.toString() ?? '';
+    if (key != 'address_line1' || value.isNotEmpty) return value;
+    final noParts = _addressParts.every((k) => _blank(widget.person[k]));
+    return noParts ? widget.person['address']?.toString() ?? '' : value;
+  }
+
+  /// What a box shows for what is stored: a phone as `+1 (214) 968-9819`,
+  /// even one saved as bare digits before this was formatted.
+  String _shown(String key) {
+    final value = _stored(key);
+    return key == 'phone' ? formatPhoneNumber(toE164(value) ?? value) : value;
+  }
+
   late final Map<String, TextEditingController> _fields = {
     for (final key in _texts)
-      key: TextEditingController(text: widget.person[key]?.toString() ?? '')
+      key: TextEditingController(text: _shown(key))
         ..addListener(() => setState(() {})),
   };
 
@@ -1355,10 +1393,25 @@ class _PersonalSectionState extends State<_PersonalSection> {
 
     for (final key in _texts) {
       final now = _fields[key]!.text.trim();
-      final was = widget.person[key]?.toString() ?? '';
+      final was = _stored(key);
+      // The phone is compared and sent as E.164, whatever it looks like on
+      // screen: formatting a stored number is not a change to it.
+      if (key == 'phone') {
+        if (toE164(now) != toE164(was)) change[key] = toE164(now);
+        continue;
+      }
       // An emptied optional field is sent as null, which is what the column
       // holds for "not given"; an empty string would be a different answer.
       if (now != was) change[key] = now.isEmpty ? null : now;
+    }
+
+    // The address goes whole when any part of it changed: it is one address,
+    // and the one line contracts print is composed from all of its parts.
+    if (_addressParts.any(change.containsKey)) {
+      for (final key in _addressParts) {
+        final now = _fields[key]!.text.trim();
+        change[key] = now.isEmpty ? null : now;
+      }
     }
 
     if (_born != widget.person['date_of_birth']?.toString()) {
@@ -1370,7 +1423,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
 
   void _discard() {
     for (final key in _texts) {
-      _fields[key]!.text = widget.person[key]?.toString() ?? '';
+      _fields[key]!.text = _shown(key);
     }
     setState(() => _born = widget.person['date_of_birth']?.toString());
     _bornDay.text = _born ?? '';
@@ -1384,6 +1437,11 @@ class _PersonalSectionState extends State<_PersonalSection> {
       controller: _fields[key],
       enabled: editable,
       maxLines: lines,
+      // A phone formats as it is typed, as it does on Your account.
+      keyboardType: key == 'phone' ? TextInputType.phone : null,
+      inputFormatters: key == 'phone'
+          ? const [PhoneNumberInputFormatter()]
+          : null,
       // Amber and saying so when empty, label above: as Web Management's
       // fields (Jose, 2026-09-29, "like we do on marketing SEO").
       decoration: notFilledIn(
@@ -1407,7 +1465,18 @@ class _PersonalSectionState extends State<_PersonalSection> {
         const SizedBox(height: 14),
         _Pair(text('last_name', 'Last name'), text('phone', 'Phone')),
         const SizedBox(height: 14),
-        text('address', 'Home address', lines: 2),
+        // The lookup and the parts it fills, as on Your account.
+        AddressFields(
+          api: widget.api,
+          line1: _fields['address_line1']!,
+          line2: _fields['address_line2']!,
+          city: _fields['city']!,
+          state: _fields['state']!,
+          postal: _fields['postal_code']!,
+          country: _fields['country']!,
+          enabled: editable,
+          flagEmpty: true,
+        ),
         const SizedBox(height: 14),
         _Pair(
           // Typed or picked inline, the house date control, not a modal

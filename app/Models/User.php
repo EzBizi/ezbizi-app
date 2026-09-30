@@ -207,6 +207,27 @@ class User extends Authenticatable implements HoldsPersonalData
 
     // ── relations ────────────────────────────────────────────────
 
+    /**
+     * An address written as one line replaces its parts (HR's review,
+     * 2026-09-30). An older client, an importer and onboarding all set
+     * `address` alone; left in place, the old parts would read back as the
+     * street under the new line, and the next edit of any part would compose
+     * the old address over the new one. Clearing them lets addressParts() read
+     * the new line instead. A write through the parts composes `address` from
+     * them, so it never trips this.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user) {
+            if ($user->isDirty('address')
+                && self::composeAddress($user->only(self::ADDRESS_PARTS)) !== $user->address) {
+                foreach (self::ADDRESS_PARTS as $part) {
+                    $user->setAttribute($part, null);
+                }
+            }
+        });
+    }
+
     /** A home address's parts, in the order a form shows them. */
     public const ADDRESS_PARTS = ['address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country'];
 

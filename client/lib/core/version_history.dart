@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0321',
       date: '30 Sep 2026',
       items: [
+        'Your account and Human Resources records: the home address is found with a lookup and kept in parts (street, unit, city, state, country and ZIP), phone numbers show formatted, and the profile fits a phone screen.',
         'Leads: the customer card on a lead is one line until opened, and a Thumbtack connection whose permission has lapsed now shows as broken on every row that used it.',
         'Automations: a new trigger, A lead needs its follow-up, fires once when a customer goes quiet after the automatic first reply, and a message can name the lead source with {{source_name}}.',
       ],
