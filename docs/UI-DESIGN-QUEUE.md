@@ -2969,8 +2969,10 @@ sub tab"* and *"add a tag with the name of the company it belongs to, so this do
 ← back, a Connections | Templates strip, both tabs kept alive; on a phone the strip is on the first
 step only. **The tag is outlined and the same for every company**, not a colour per company: the
 filled colours on a row are already spent on the source (one per source, 2026-09-29) and the status,
-and a second colour system on the same line would read as another source. It is first on each row's
-second line, where it lines up down the list, and first on the thread header's source line.
+and a second colour system on the same line would read as another source. It sits first on the
+thread header's source line, and **only there**: it was on each list row as well until Jose ruled,
+the same day, *"it's fine on the contact details, we just need it on one place not on both"*
+(off the rows in `3d8235fa`).
 
 ### 36 · Clock In · the lock screen — **Jose: "go with ur recommendations for the lock layout" — 1 and 4** — **BUILT** `51fb15c1`
 

@@ -1667,80 +1667,66 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      // Everything but the star in one Expanded, so the star
-                      // keeps the end of the row however short the tag is.
-                      Expanded(
-                        child: Row(
-                          children: [
-                            // No company tag here: it is on the lead's own
-                            // header, and Jose wants it in one place only
-                            // (2026-09-30, "not on both").
-                            // The source, in its own colour.
-                            _SourceBadge(
-                              leadSourceWord(lead),
-                              key: ValueKey('source-badge-$id'),
-                            ),
-                            // The channel badge is drawn only when it says
-                            // something the source badge does not. "Call · Google"
-                            // is two facts; a chat row read "Chat · Chat", one fact
-                            // twice (UI/UX, 2026-09-08). The rule needs no list of
-                            // sources: a fifth source with one channel gets the
-                            // right answer for free.
-                            if (channel != null &&
-                                !leadSourceWord(
-                                  lead,
-                                ).endsWith(channelWord(channel))) ...[
-                              const SizedBox(width: 4),
-                              _Badge(
-                                channelWord(channel),
-                                call: channel == 'PHONE_CALL',
-                              ),
-                            ],
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: preview != null && preview.isNotEmpty
-                                  ? Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          if (mine)
-                                            TextSpan(
-                                              text: 'You: ',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                color:
-                                                    theme.colorScheme.onSurface,
-                                              ),
-                                            ),
-                                          TextSpan(text: preview),
-                                        ],
-                                      ),
-                                      style: muted,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    )
-                                  : Text(
-                                      [
-                                        if ((lead['phone'] as String?)
-                                                    ?.isNotEmpty ==
-                                                true &&
-                                            (lead['contact_name'] as String?)
-                                                    ?.trim()
-                                                    .isNotEmpty ==
-                                                true)
-                                          formatPhoneNumber(
-                                            lead['phone'] as String?,
-                                          ),
-                                        ?humaniseService(
-                                          lead['service'] as String?,
-                                        ),
-                                      ].join(' · '),
-                                      style: muted,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                            ),
-                          ],
+                      // No company tag here: it is on the lead's own header,
+                      // and Jose wants it in one place only (2026-09-30, "not
+                      // on both").
+                      // The source first on the line, in its own colour.
+                      _SourceBadge(
+                        leadSourceWord(lead),
+                        key: ValueKey('source-badge-$id'),
+                      ),
+                      // The channel badge is drawn only when it says
+                      // something the source badge does not. "Call · Google"
+                      // is two facts; a chat row read "Chat · Chat", one fact
+                      // twice (UI/UX, 2026-09-08). The rule needs no list of
+                      // sources: a fifth source with one channel gets the
+                      // right answer for free.
+                      if (channel != null &&
+                          !leadSourceWord(lead).endsWith(
+                            channelWord(channel),
+                          )) ...[
+                        const SizedBox(width: 4),
+                        _Badge(
+                          channelWord(channel),
+                          call: channel == 'PHONE_CALL',
                         ),
+                      ],
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: preview != null && preview.isNotEmpty
+                            ? Text.rich(
+                                TextSpan(
+                                  children: [
+                                    if (mine)
+                                      TextSpan(
+                                        text: 'You: ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: theme.colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    TextSpan(text: preview),
+                                  ],
+                                ),
+                                style: muted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : Text(
+                                [
+                                  if ((lead['phone'] as String?)?.isNotEmpty ==
+                                          true &&
+                                      (lead['contact_name'] as String?)
+                                              ?.trim()
+                                              .isNotEmpty ==
+                                          true)
+                                    formatPhoneNumber(lead['phone'] as String?),
+                                  ?humaniseService(lead['service'] as String?),
+                                ].join(' · '),
+                                style: muted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                       ),
                       // Hollow until set, at the end of the line it marks
                       // (design 30): stacked under the time it made every row
