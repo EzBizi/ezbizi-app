@@ -1123,6 +1123,51 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * "Lead received" also fires for an OLD enquiry seen for the first time -
+     * an account connected today brings a month of them. The automatic first
+     * reply goes only to one that arrived within the hour (2026-09-30, the
+     * day the auto replies went live). Not a failure, or a backfill would
+     * switch the rule off. The fresh lead is the control.
+     */
+    public function test_an_imported_old_enquiry_gets_no_automatic_first_reply(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'lead.received',
+            'payload' => ['after' => ['source' => 'website_chat']],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $lead = fn (string $id, $at) => $this->inTenant(function () use ($id, $at) {
+            $row = new Lead;
+            $row->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'source' => Lead::SOURCE_WEBSITE_CHAT,
+                'remote_id' => $id,
+                'contact_name' => 'A visitor',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => $at,
+            ])->save();
+
+            return $row;
+        });
+
+        $old = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $lead('old', now()->subDays(3)),
+        ));
+        $this->assertTrue($old['ok']);
+        $this->assertStringContainsString('no first reply was sent', $old['detail']);
+
+        $fresh = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $lead('fresh', now()->subMinutes(2)),
+        ));
+        $this->assertStringNotContainsString('no first reply was sent', (string) ($fresh['detail'] ?? ''));
+    }
+
+    /**
      * Adding to a mailing list reads the lead's recorded agreement and nothing
      * else. Not agreeing is ok:true — a lead.received rule meets far more
      * people who did not tick than who did, and five "failures" would switch

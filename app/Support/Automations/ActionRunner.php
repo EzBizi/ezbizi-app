@@ -139,6 +139,9 @@ class ActionRunner
      */
     private const EMAILS_PER_RULE_PER_HOUR = 100;
 
+    /** An automatic FIRST reply only to an enquiry this fresh; older ones were imported. */
+    private const FIRST_REPLY_WITHIN_MINUTES = 60;
+
     private const WRITABLE = [
         Job::class => [
             'title' => 'Title',
@@ -919,6 +922,23 @@ class ActionRunner
                 'type' => $type, 'ok' => false,
                 'detail' => 'This step can only reply to an enquiry, and this rule is about '
                     .'something else.',
+            ];
+        }
+
+        /*
+         * "Lead received" is also raised for an OLD enquiry seen for the first
+         * time - an account connected today brings 31 days of them. A first
+         * reply to somebody who wrote weeks ago is not a first reply (Jose
+         * switched the auto replies on 2026-09-30). Succeeds rather than
+         * fails: a failure count would switch the rule off during a backfill.
+         */
+        if ($event->event_key === 'lead.received'
+            && $subject->received_at !== null
+            && $subject->received_at->lt(now()->subMinutes(self::FIRST_REPLY_WITHIN_MINUTES))) {
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => 'This enquiry arrived '.$subject->received_at->diffForHumans()
+                    .' and was only just imported, so no first reply was sent.',
             ];
         }
 
