@@ -190,8 +190,12 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     String verb,
   ) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final id = request['id'];
+    // Two literal paths, so ClientCallsRealRoutesTest can check each.
     final response = await widget.api.post(
-      '/hr/time-clock/corrections/${request['id']}/$verb',
+      verb == 'approve'
+          ? '/hr/time-clock/corrections/$id/approve'
+          : '/hr/time-clock/corrections/$id/deny',
       {},
     );
     if (!mounted) return;
