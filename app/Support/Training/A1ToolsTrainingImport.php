@@ -474,9 +474,17 @@ final class A1ToolsTrainingImport
 
                     case 'vimeo':
                         $id = (string) ($block['vimeo_id'] ?? '');
+                        // An unlisted video plays only with its hash; without it
+                        // Vimeo answers 403 "having a little trouble".
+                        $hash = strtolower((string) ($block['vimeo_hash'] ?? ''));
+
+                        if ($hash !== '' && ! GuideScreens::isVimeoHash($hash)) {
+                            $problems[] = sprintf('Page "%s": Vimeo hash "%s" is not hex; the video imports without it.', $page['title'], $hash);
+                            $hash = '';
+                        }
 
                         if (ctype_digit($id)) {
-                            $blocks[] = ['type' => 'video', 'url' => "https://player.vimeo.com/video/{$id}"];
+                            $blocks[] = ['type' => 'video', 'url' => "https://player.vimeo.com/video/{$id}".($hash !== '' ? "?h={$hash}" : '')];
                         } else {
                             $problems[] = sprintf('Page "%s": Vimeo id "%s" is not numeric; skipped.', $page['title'], $id);
                         }

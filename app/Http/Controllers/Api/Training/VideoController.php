@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Training;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Training\GuideScreens;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -20,10 +22,14 @@ use Illuminate\Http\Response;
  */
 class VideoController extends Controller
 {
-    public function show(string $platform, string $id): Response
+    public function show(Request $request, string $platform, string $id): Response
     {
+        // An unlisted Vimeo video plays only with its hash. Hex or nothing.
+        $hash = strtolower((string) $request->query('h', ''));
+        $hash = GuideScreens::isVimeoHash($hash) ? "&h={$hash}" : '';
+
         $src = $platform === 'vimeo'
-            ? "https://player.vimeo.com/video/{$id}?app_id=122963&autoplay=1&title=0&byline=0&portrait=0&dnt=1"
+            ? "https://player.vimeo.com/video/{$id}?app_id=122963&autoplay=1&title=0&byline=0&portrait=0&dnt=1{$hash}"
             : "https://www.youtube-nocookie.com/embed/{$id}?autoplay=1&rel=0&modestbranding=1&playsinline=1";
 
         $html = '<!doctype html><html><head><meta charset="utf-8">'

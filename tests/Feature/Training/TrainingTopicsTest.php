@@ -3,6 +3,7 @@
 namespace Tests\Feature\Training;
 
 use App\Models\TrainingGuide;
+use App\Support\Training\GuideScreens;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -46,6 +47,9 @@ class TrainingTopicsTest extends TestCase
         $this->assertSame([['Level', 'When'], ['1', 'Annually']], $topic['blocks'][5]['rows']);
         // Vimeo plays in EzBizi's own page, not player.vimeo.com directly.
         $this->assertStringEndsWith('/api/v1/training/video/vimeo/1115529948', $topic['blocks'][4]['embed_url']);
+        // An unlisted video keeps its hash, from either shape of link.
+        $this->assertStringEndsWith('/vimeo/1109403456?h=4f1c2e9ab0', GuideScreens::embedUrl('https://player.vimeo.com/video/1109403456?h=4f1c2e9ab0'));
+        $this->assertStringEndsWith('/vimeo/1109403456?h=4f1c2e9ab0', GuideScreens::embedUrl('https://vimeo.com/1109403456/4f1c2e9ab0'));
     }
 
     public function test_a_topic_stored_before_blocks_reads_as_blocks(): void
@@ -103,6 +107,10 @@ class TrainingTopicsTest extends TestCase
 
         $this->assertStringStartsWith('text/html', $page->headers->get('Content-Type'));
         $this->assertStringContainsString('src="https://player.vimeo.com/video/1115529948?app_id=122963', $page->getContent());
+
+        // An unlisted video's hash is carried; anything that is not hex is not.
+        $this->assertStringContainsString('&amp;h=4f1c2e9ab0', $this->get('/api/v1/training/video/vimeo/1109403456?h=4f1c2e9ab0')->getContent());
+        $this->assertStringNotContainsString('&amp;h=', $this->get('/api/v1/training/video/vimeo/1109403456?h=%22%3E%3Cscript')->getContent());
 
         // Anything else in the id never reaches the page.
         $this->get('/api/v1/training/video/vimeo/12345"onload="x')->assertNotFound();
