@@ -227,6 +227,33 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
+     * Re-attach this business's enquiries when it is connected again.
+     *
+     * Disconnecting nulls `connection_id` and the leads drop out of Leads.
+     * Google's come back through LocalServicesLeads::reclaim() on the next
+     * sync; Thumbtack cannot list negotiations, so until 2026-09-30 an orphan
+     * stayed hidden until a webhook happened to name it again (three did, that
+     * morning). The business id on the lead is the exact match.
+     *
+     * @return int how many were taken back
+     */
+    public function reclaim(SocialConnection $connection): int
+    {
+        $businessId = (string) ($connection->remote_id ?? '');
+
+        if ($businessId === '') {
+            return 0;
+        }
+
+        return Lead::query()->withoutGlobalScopes()
+            ->where('organization_id', $connection->organization_id)
+            ->where('source', Lead::SOURCE_THUMBTACK)
+            ->where('remote_customer_id', $businessId)
+            ->whereNull('connection_id')
+            ->update(['connection_id' => $connection->getKey()]);
+    }
+
+    /**
      * The thread on a negotiation we already hold.
      *
      * Called for its own event too: a `MessageCreatedV4` for an enquiry that
@@ -350,6 +377,7 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
                             ? $connection->scope_id
                             : null),
                     'connection_id' => $connection->getKey(),
+                    'remote_customer_id' => $connection->remote_id,
                     'source'        => Lead::SOURCE_THUMBTACK,
                     'remote_id'     => $remoteId,
                     'status'        => Lead::STATUS_NEW,
@@ -381,6 +409,8 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
                  * an orphan is not just unrepliable, it is also filed as
                  * nobody's.
                  */
+                $lead->remote_customer_id ??= $connection->remote_id;
+
                 if ($lead->connection_id === null) {
                     $lead->connection_id = $connection->getKey();
                     $lead->company_id ??= $connection->scope_type === SocialConnection::SCOPE_COMPANY

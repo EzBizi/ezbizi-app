@@ -5,6 +5,7 @@ namespace Tests\Feature\Social;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Services\Leads\ThumbtackLeads;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -157,6 +158,42 @@ class ThumbtackLeadIngestionTest extends TestCase
         $this->assertSame($connection->getKey(), $fresh->connection_id);
         $this->assertSame($t['company']->getKey(), $fresh->company_id, 'an orphan is also filed as nobody\'s');
         $this->assertSame(1, $this->inTenant($t['org'], fn () => Lead::query()->count()), 'adopted, not duplicated');
+    }
+
+    /**
+     * Connecting again takes back the business's enquiries at once, without
+     * waiting for a webhook to name each one (2026-09-30: three stayed hidden
+     * after Jose reconnected). Only its own, and only orphans.
+     */
+    public function test_reconnecting_takes_back_the_business_enquiries(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->fakeThumbtack();
+        $first = $this->connection($t);
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame('biz-1', $lead->remote_customer_id, 'the business is remembered on the lead');
+
+        $other = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->getKey(),
+            'source' => Lead::SOURCE_THUMBTACK,
+            'remote_id' => 'neg-2',
+            'remote_customer_id' => 'biz-9',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now(),
+        ]));
+
+        // The disconnect: the row goes, the lead's connection_id with it.
+        $this->inTenant($t['org'], fn () => $first->delete());
+        $this->assertNull($this->inTenant($t['org'], fn () => $lead->fresh()->connection_id));
+
+        $again = $this->connection($t);
+        $taken = app(ThumbtackLeads::class)->reclaim($again);
+
+        $this->assertSame(1, $taken);
+        $this->assertSame($again->getKey(), $this->inTenant($t['org'], fn () => $lead->fresh()->connection_id));
+        $this->assertNull($this->inTenant($t['org'], fn () => $other->fresh()->connection_id), 'another business keeps waiting');
     }
 
     /**

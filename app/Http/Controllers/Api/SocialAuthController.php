@@ -8,6 +8,7 @@ use App\Jobs\SubscribeMetaMessages;
 use App\Models\SocialConnection;
 use App\Models\SocialSignIn;
 use App\Models\User;
+use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
@@ -276,6 +277,8 @@ class SocialAuthController extends Controller
                      */
                     if ($provider === SocialProvider::Thumbtack) {
                         RegisterThumbtackWebhook::dispatch((string) $connection->getKey());
+                        // And its enquiries from before a disconnect come back.
+                        app(ThumbtackLeads::class)->reclaim($connection);
                     }
 
                     // Meta the same way: a Page or Instagram account sends its
