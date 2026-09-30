@@ -25,7 +25,7 @@
 <meta name="twitter:description" content="Per-tenant OAuth, read-dominant access, no aggregation and no resale.">
 <meta name="twitter:image" content="https://www.ezbizi.com/og.png">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.ezbizi.com/google-ads-api/#page","url":"https://www.ezbizi.com/google-ads-api/","name":"Google Ads API — how EzBizi uses it","dateModified":"2026-08-31","inLanguage":"en-US","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}}}
+{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.ezbizi.com/google-ads-api/#page","url":"https://www.ezbizi.com/google-ads-api/","name":"Google Ads API — how EzBizi uses it","dateModified":"2026-09-30","inLanguage":"en-US","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}}}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -58,7 +58,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;bac
 <nav><a href="https://www.ezbizi.com/">EzBizi</a></nav>
 
 <h1>How EzBizi uses the Google Ads API</h1>
-<p class="meta">EZBIZI LLC · Manager account 706-109-4046 · Last updated 31 August 2026</p>
+<p class="meta">EZBIZI LLC · Manager account 706-109-4046 · Last updated 30 September 2026</p>
 
 <p>This page is written for Google's API compliance reviewers. It states what EzBizi is, which
 Google Ads and Local Services data it reads, on whose behalf, and what it does not do.</p>
@@ -129,11 +129,12 @@ somebody is watching the screen.</p>
 <tr><td>Local Services API — lead conversations</td><td>Show the enquiry's message and call history on the lead record</td><td>Read</td></tr>
 <tr><td>Google Ads API — <code>customer</code>, <code>customer_client</code></td><td>List the accounts the customer has granted, so they can choose</td><td>Read</td></tr>
 <tr><td>Google Ads API — campaign metrics via <code>GoogleAdsService.Search</code></td><td>Spend, impressions and lead volume for the customer's own reporting</td><td>Read</td></tr>
-<tr><td>Local Services API — lead status</td><td>Apply an explicit user action, such as marking a lead booked or archived</td><td>Write</td></tr>
+<tr><td>Local Services API — <code>localServices:appendLeadConversation</code></td><td>Send the customer's reply to a text enquiry, as described below</td><td>Write</td></tr>
+<tr><td>Google Ads API — <code>campaigns:mutate</code>, status only</td><td>Pause or resume one of the customer's own campaigns when a person presses Pause or Resume</td><td>Write</td></tr>
 </table>
 
 <h3>Read and write</h3>
-<p>Usage is predominantly <strong>read</strong>. There is one write to Google: replying to a
+<p>Usage is predominantly <strong>read</strong>. There are two writes to Google. The first is replying to a
 text enquiry, which sends the message through the Local Services conversation for that lead, in
 the customer's own account. It happens when a person in the EzBizi interface writes the
 message and presses Send, or when the customer has switched on an automated first reply: a message
@@ -142,7 +143,12 @@ its own, and calls and bookings are never replied to. Lead status is kept in EzB
 and is never written back. A reply a person sends is recorded in that organization's audit log
 with the acting user, timestamp and target; an automated reply is marked as automated on the lead
 and recorded in that rule's run history.</p>
-<p>EzBizi does <strong>not</strong> create, modify or pause campaigns; set or adjust bids or
+<p>The second is pausing or resuming one of the customer's own campaigns. It happens only when
+a person holding the Manage Google Ads permission presses Pause or Resume, and it changes the
+campaign's status and nothing else. No rule or schedule does it. Each change is recorded in that
+organization's audit log with the acting user, timestamp and campaign.</p>
+<p>EzBizi does <strong>not</strong> create or remove campaigns, or change anything about a campaign
+other than pausing or resuming it; set or adjust bids or
 budgets; manage keywords, assets or creatives; or perform automated bulk mutation of any kind.</p>
 
 <h3>Why no narrower scope is requested</h3>

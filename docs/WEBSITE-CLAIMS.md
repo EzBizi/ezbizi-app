@@ -96,6 +96,7 @@ touches apps, monitoring, social, Google or mail.
 | "Facebook Pages, Instagram, Threads, Pinterest and TikTok send today" · "Pinterest images only" · "TikTok drafts, not the profile" | `/`, `/social-media/` | `Publishers::for()` — which providers return non-null. Was two, corrected upward to five on 2026-09-02; the site was the last to hear. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
+| "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
 | "WhatsApp … kept for 24 months" · "Facebook or Instagram message is kept with the enquiry … deleted when that enquiry is" | `/privacy/` | `WhatsAppMessage::retention()` (`window(months: 24)`) and `LeadConversation::retention()` (`withParent`). Two different rules; never merge them into one period. |
 | "Who we rely on … **these are all of them**" (AWS, SES, Twilio, Apple and Google, Mailchimp, the accounts you connect) | `/privacy/` | `config/services.php`'s top-level keys, against that list. **An exhaustive list is the only kind of sentence that a new integration falsifies by existing**, and nothing announces it — the integration ships in its own module and never reads this page. Mailchimp and the two push services were missing when this row was written (2026-09-23) and had been for weeks. `bedrock` is configured and **off** (`LeadInsights::enabled()` false, no keys) — the day it gains keys, a model is reading lead text and this list needs a line. `google_speech` (2026-09-28, `CallTranscripts`) is the same: configured and **off** until `GOOGLE_SPEECH_KEY` is set - the day it is, Local Services call audio goes to Google Cloud Speech-to-Text and this list needs a line **before** the key goes in. **2026-09-29: transcription runs on our own box instead** (Whisper in /opt/whisper, `ezbizi-transcribe.timer`; Jose: "i don't want to rely on any physical computers"), so call audio reaches no new processor and this list needs no line - unless somebody sets `GOOGLE_SPEECH_KEY` AND removes /opt/whisper, which is the only way the Google path runs. `google_mail` / `microsoft_mail` are a customer's own mailbox, covered by "the accounts you connect". |
@@ -2281,3 +2282,49 @@ directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, and now an `estimates` row count.
+
+## 2026-09-30: 15 releases, and the Google Ads API page said we never pause campaigns
+
+**Production is `0.0.0333` at `de57c819`** (`/download/windows.json`) = `main`'s
+tip. Release notes `0.0.0319`-`0.0.0333` walked against the load-bearing table.
+No desk asked: `send_message` is unavailable to a scheduled run.
+
+**The finding: `/google-ads-api/` was false since 2026-09-24.** It said "There is
+one write to Google" (the reply) and "EzBizi does not create, modify or pause
+campaigns". `5b27593b` (09-24) added `POST ads/campaigns/status` →
+`CampaignPerformance::setStatus` → `campaigns:mutate`, and today `68cfa5e7`
+put Pause/Resume in Leads › Manage too. Its usage table also listed a
+"Local Services API — lead status … Write" row that no code does (the prose on
+the same page says status is never written back) and omitted the real reply
+write. Fixed: two writes named, a `campaigns:mutate` status-only row and an
+`appendLeadConversation` row replace the phantom one; the not-list now reads
+"does not create or remove campaigns, or change anything about a campaign other
+than pausing or resuming it"; Last updated / `dateModified` / sitemap
+`lastmod` → 2026-09-30. Every clause read from the code: `ads_performance.manage`
+gate, `updateMask: status`, audit `ads_performance.campaign_status_changed`
+with user and campaign, and no automation or command calls `setStatus`
+(`AdsCampaignWatch` only reads). Jose's commit says the pause was "declared to
+google as well on reports"; the page is now consistent with that.
+
+**Checked, unchanged:** `FieldMaps::drive()` (new, `5600d4e5`) is the "how long
+you are from a job" case the privacy page already names; `matrix()` is now live
+for the same case. `monitoring.control_indicator` and
+`notifications.email_enabled` both `default: false`. `config/services.php`,
+`app/Mail`, `app/Notifications` unchanged. `battery_plus` / `webview_flutter`
+add no permission; the manifest gained only an https VIEW intent query.
+Campaign spend by channel is still campaign figures ("such as" holds).
+
+**Deliberately unpublished:** Leads dashboard, reply templates with
+`{{availability}}`, morning digest trigger, transcript search, campaign pause in
+Manage (on the API page only, not sold); plugin 1.23.x robot check (directory
+still 1.10.0); estimates (row above).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Before the edit all seven pages,
+`robots.txt` and `sitemap.xml` were byte-identical to production (incl. this
+morning's `69932f83` privacy change). Stores: Play `200`; Apple `resultCount` 1,
+version 0.0.0283; WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
