@@ -114,6 +114,13 @@ class _LeadThreadState extends State<LeadThread> {
   /// thread (Jose, 2026-09-30: "it starts to reduce the reply window").
   bool _customerOpen = false;
 
+  /// A phone's header folds its details (the source, ZIP, availability, the
+  /// note, the customer) behind one control, so the conversation keeps the
+  /// screen: they took two thirds of it and left two messages in view (Jose,
+  /// 2026-09-30: "a lot of wasted space and u can barely see the message
+  /// window").
+  bool _showDetails = false;
+
   /// Account, Google status, and a name/address/ZIP read out of what the
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
@@ -477,6 +484,7 @@ class _LeadThreadState extends State<LeadThread> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
+          key: const ValueKey('thread-header'),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           child: LayoutBuilder(
             builder: (context, box) => Row(
@@ -488,36 +496,58 @@ class _LeadThreadState extends State<LeadThread> {
                     children: [
                       Row(
                         children: [
-                          Flexible(
-                            child: Text(
-                              leadTitle(lead),
-                              style: theme.textTheme.titleMedium,
+                          // The name, its pill and its star take the line, and
+                          // what follows sits at its end: beside a Spacer the
+                          // name got half the room and wrapped on a phone.
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    leadTitle(lead),
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // What it is, said as a pill: the corner
+                                // field that read as a search box is gone
+                                // (design 28).
+                                leadStatusPill(
+                                  lead['status'],
+                                  key: const ValueKey('thread-status'),
+                                ),
+                                if (widget.onStar != null)
+                                  IconButton(
+                                    key: const ValueKey('thread-star'),
+                                    tooltip: starred ? 'Unstar' : 'Star',
+                                    iconSize: 18,
+                                    onPressed: _star,
+                                    icon: Icon(
+                                      starred ? Icons.star : Icons.star_border,
+                                      color: starred
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.outline,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          // What it is, said as a pill: the corner field that
-                          // read as a search box is gone (design 28).
-                          leadStatusPill(
-                            lead['status'],
-                            key: const ValueKey('thread-status'),
-                          ),
-                          if (widget.onStar != null)
-                            IconButton(
-                              key: const ValueKey('thread-star'),
-                              tooltip: starred ? 'Unstar' : 'Star',
-                              iconSize: 18,
-                              onPressed: _star,
+                          if (narrow)
+                            TextButton.icon(
+                              key: const ValueKey('thread-details-toggle'),
+                              onPressed: () =>
+                                  setState(() => _showDetails = !_showDetails),
                               icon: Icon(
-                                starred ? Icons.star : Icons.star_border,
-                                color: starred
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.outline,
+                                _showDetails
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
+                                size: 18,
                               ),
+                              label: const Text('Details'),
                             ),
                           // Beside the name, sharing only its line: set beside
                           // the whole header they squeezed the lines under it.
                           if (!narrow && box.maxWidth >= _besideNameFrom) ...[
-                            const Spacer(),
                             const SizedBox(width: 12),
                             _actions(lead),
                           ],
@@ -526,20 +556,26 @@ class _LeadThreadState extends State<LeadThread> {
                       // The number on its own line only when the title is a
                       // name; when the title IS the number, saying it twice
                       // adds nothing.
-                      if (showsNumberLine(lead))
+                      if (showsNumberLine(lead) && !narrow)
                         Text(
                           formatPhoneNumber(lead['phone'] as String?),
                           style: theme.textTheme.bodySmall,
                         ),
                       Text(
-                        leadHeaderLine(lead),
+                        narrow && showsNumberLine(lead)
+                            ? '${formatPhoneNumber(lead['phone'] as String?)} · '
+                                  '${leadHeaderLine(lead)}'
+                            : leadHeaderLine(lead),
+                        maxLines: narrow ? 1 : null,
+                        overflow: narrow ? TextOverflow.ellipsis : null,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       // What it looks like, read by a model, beside what
                       // somebody decided. Only when a reading exists.
-                      if (lead['classification'] is String)
+                      if (lead['classification'] is String &&
+                          (!narrow || _showDetails))
                         Text(
                           [
                             'Looks like ${classificationWord(lead['classification'] as String)}',
@@ -553,33 +589,38 @@ class _LeadThreadState extends State<LeadThread> {
                             fontStyle: FontStyle.italic,
                           ),
                         ),
-                      if (_viewers.isNotEmpty) _viewingBanner(),
-                      if (_details != null) _detailsBlock(theme, lead),
-                      _noteBlock(theme, lead),
-                      if (_customer != null) _customerCard(theme, _customer!),
+                      if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
+                      if (!narrow || _showDetails) ...[
+                        if (_details != null) _detailsBlock(theme, lead),
+                        _noteBlock(theme, lead),
+                        if (_customer != null) _customerCard(theme, _customer!),
+                      ],
                       if (lead['job'] is Map)
                         _bookedLine(
                           theme,
                           lead['job'] as Map,
                           matched: lead['job_matched_by'] == 'phone',
                         ),
-                      if (_canBook && narrow)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: FilledButton.icon(
-                            key: const ValueKey('book-open'),
-                            onPressed: _openBooking,
-                            icon: const Icon(
-                              Icons.event_available_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Book'),
-                          ),
-                        ),
-                      if (narrow && widget.onStatusChanged != null)
+                      // One line on a phone: where the lead stands, then
+                      // Book. They were two full-width rows.
+                      if (narrow &&
+                          (_canBook || widget.onStatusChanged != null))
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: _moves(lead, fill: true),
+                          child: Row(
+                            children: [
+                              if (widget.onStatusChanged != null)
+                                Expanded(child: _moves(lead, fill: true)),
+                              if (_canBook) ...[
+                                const SizedBox(width: 8),
+                                FilledButton(
+                                  key: const ValueKey('book-open'),
+                                  onPressed: _openBooking,
+                                  child: const Text('Book'),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       if (!narrow && box.maxWidth < _besideNameFrom)
                         Padding(
@@ -1325,7 +1366,7 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   /// "Tanya is viewing this lead" - somebody else may be answering it.
-  Widget _viewingBanner() {
+  Widget _viewingBanner({bool compact = false}) {
     final colours = ToneColours.of(context, Tone.caution);
     final names = _viewers.length == 1
         ? _viewers.first
@@ -1334,7 +1375,7 @@ class _LeadThreadState extends State<LeadThread> {
     return Container(
       key: const ValueKey('lead-viewers'),
       margin: const EdgeInsets.only(top: 6, bottom: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 3 : 5),
       decoration: BoxDecoration(
         color: colours.fill,
         borderRadius: BorderRadius.circular(8),
@@ -1346,6 +1387,8 @@ class _LeadThreadState extends State<LeadThread> {
           Expanded(
             child: Text(
               '$names ${_viewers.length == 1 ? 'is' : 'are'} viewing this lead',
+              maxLines: compact ? 1 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colours.ink),
             ),
           ),

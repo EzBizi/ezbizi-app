@@ -26,6 +26,52 @@ void main() {
   _statusTests();
   _autoRefreshTests();
 
+  /// Jose, 2026-09-30, on a phone: "a lot of wasted space and u can barely
+  /// see the message window". The details fold behind one control, the
+  /// source is one line with the number, the viewing note is one line, and
+  /// the conversation keeps the screen.
+  testWidgets('on a phone the details fold away and the header stays short', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+      viewers: const ['Adeline Pierrelouis-Aghaji', 'Rodrigo Mena'],
+      details: {
+        'account': 'A1 Chimney - Cleveland',
+        'google_status': 'Active',
+        'name': 'Dave Malkowski',
+        'address': '215 Lakeview Dr Michigan City Indiana',
+        'zip': '46360',
+      },
+    );
+
+    expect(find.byKey(const ValueKey('lead-details')), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('thread-header'))).height,
+      lessThan(844 * 0.3),
+      reason: 'the header took two thirds of a phone',
+    );
+    // The test font is too wide for the name to fit a phone's line; it must
+    // still get all the room up to Details. Beside a Spacer it got half and
+    // wrapped with the other half empty.
+    expect(
+      tester.getRect(find.byKey(const ValueKey('thread-details-toggle'))).left -
+          tester.getRect(find.byKey(const ValueKey('thread-status'))).right,
+      lessThan(1),
+      reason: 'the name wrapped with room left beside it',
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('lead-details')), findsOneWidget);
+    expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
+  });
+
   /// The call row carries the same play bar Voicemail and Records use:
   /// fetch on the first press through the lead's own endpoint, then play,
   /// pause and scrub. Nothing plays before the bytes arrive.
@@ -632,9 +678,10 @@ Future<void> _pump(
   List<Map<String, String>> templates = const [],
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
+  Size size = const Size(600, 900),
 }) async {
   _sent.clear();
-  tester.view.physicalSize = const Size(600, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
