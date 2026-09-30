@@ -280,6 +280,10 @@ class _GuideBuilderState extends State<GuideBuilder> {
             'body': s['body'],
             'media_kind': s['media_kind'],
             'media_url': s['media_url'],
+            // An image this guide holds itself. Sent back so it survives the
+            // save; the server discards the signed link beside it and mints a
+            // fresh one on every read (GuidesController::normalizeScreens).
+            if (s['media_id'] != null) 'media_id': s['media_id'],
           },
       ],
     });
@@ -765,12 +769,20 @@ class _ScreenEditorState extends State<_ScreenEditor> {
   late TextEditingController _mediaUrl;
   late String _mediaKind;
 
+  /// True while the screen shows an image the guide holds itself
+  /// (`media_id`), rather than one reached by a link.
+  late bool _heldImage;
+
   @override
   void initState() {
     super.initState();
     _title = TextEditingController(text: widget.screen['title'] as String? ?? '');
     _body = TextEditingController(text: widget.screen['body'] as String? ?? '');
-    _mediaUrl = TextEditingController(text: widget.screen['media_url'] as String? ?? '');
+    _heldImage = widget.screen['media_id'] != null;
+    // A held image's `media_url` is a signed link that expires. It is never
+    // put in the field: an author copying it into another guide would get a
+    // picture that works for two hours.
+    _mediaUrl = TextEditingController(text: _heldImage ? '' : widget.screen['media_url'] as String? ?? '');
     _mediaKind = widget.screen['media_kind'] as String? ?? 'none';
   }
 
@@ -783,8 +795,25 @@ class _ScreenEditorState extends State<_ScreenEditor> {
   }
 
   void _setKind(String kind) {
-    setState(() => _mediaKind = kind);
-    widget.onChanged({'media_kind': kind, if (kind == 'none') 'media_url': null});
+    if (kind == _mediaKind) return;
+
+    setState(() {
+      _mediaKind = kind;
+      _heldImage = false;
+    });
+    widget.onChanged({
+      'media_kind': kind,
+      'media_id': null,
+      if (kind == 'none') 'media_url': null,
+    });
+  }
+
+  /// Swap a held image for a link. Explicit, because it discards a picture
+  /// that exists nowhere else once A1 is gone.
+  void _useALinkInstead() {
+    _mediaUrl.clear();
+    setState(() => _heldImage = false);
+    widget.onChanged({'media_id': null, 'media_url': null});
   }
 
   @override
@@ -845,7 +874,26 @@ class _ScreenEditorState extends State<_ScreenEditor> {
             ),
           ],
         ),
-        if (_mediaKind != 'none') ...[
+        if (_heldImage) ...[
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Icon(Icons.image_outlined, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Stored with this guide',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ),
+              TextButton(
+                key: const Key('training.screen-use-a-link-instead'),
+                onPressed: _useALinkInstead,
+                child: const Text('Use a link instead'),
+              ),
+            ],
+          ),
+        ] else if (_mediaKind != 'none') ...[
           const SizedBox(height: 9),
           TextField(
             controller: _mediaUrl,

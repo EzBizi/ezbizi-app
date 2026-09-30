@@ -195,6 +195,95 @@ void main() {
 
   // ── No modals, anywhere ───────────────────────────────────────────────
 
+  // -- Images a guide holds itself (TrainingMedia) --
+  //
+  // A1 Tools' images are copied into private storage, so a screen carries a
+  // `media_id` and is read with a signed link that EXPIRES. The save used to
+  // rebuild each screen from four fields, which would have dropped the
+  // reference on the first save and stored the expiring link instead.
+
+  Map<String, dynamic> heldImageGuide() => {
+    ..._guide(id: 'g-held', title: 'Chimneys'),
+    'screens': [
+      {
+        'title': 'Level 2',
+        'body': 'Look up the flue.',
+        'media_kind': 'image',
+        'media_id': 'm-1',
+        'media_url': 'https://app.example/api/v1/training/media/m-1?expires=9&signature=abc',
+      },
+    ],
+    'screen_count': 1,
+  };
+
+  Future<Map<String, dynamic>?> saveAndCapture(
+    WidgetTester tester,
+    Future<void> Function() between,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pumpGuideBuilder(
+      tester,
+      guide: heldImageGuide(),
+      onRequest: (request) {
+        if (request.method == 'PATCH') {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': heldImageGuide()});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('training.screen-card-0')));
+    await tester.pumpAndSettle();
+
+    await between();
+
+    await tester.tap(find.byKey(const Key('training.save-guide')));
+    await tester.pumpAndSettle();
+
+    return sent;
+  }
+
+  testWidgets('saving a guide keeps an image it holds, and never sends the expiring link as its own', (tester) async {
+    final sent = await saveAndCapture(tester, () async {});
+
+    final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
+    expect(screen['media_id'], 'm-1', reason: 'Dropping this loses the picture on the first save.');
+  });
+
+  testWidgets('a held image reads as stored with the guide, not as an editable link', (tester) async {
+    await _pumpGuideBuilder(tester, guide: heldImageGuide());
+
+    await tester.tap(find.byKey(const ValueKey('training.screen-card-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stored with this guide'), findsOneWidget);
+    // The expiring link is never put in a field an author could copy it from.
+    expect(find.textContaining('signature='), findsNothing);
+  });
+
+  testWidgets('tapping the Image chip that is already selected keeps the held image', (tester) async {
+    final sent = await saveAndCapture(tester, () async {
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Image'));
+      await tester.pumpAndSettle();
+    });
+
+    final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
+    expect(screen['media_id'], 'm-1', reason: 'Re-selecting the same kind is not a replacement.');
+  });
+
+  testWidgets('choosing a link instead lets go of the held image', (tester) async {
+    final sent = await saveAndCapture(tester, () async {
+      await tester.tap(find.byKey(const Key('training.screen-use-a-link-instead')));
+      await tester.pumpAndSettle();
+    });
+
+    final screen = (sent!['screens'] as List).single as Map<String, dynamic>;
+    expect(screen.containsKey('media_id'), isFalse);
+    expect(find.text('Stored with this guide'), findsNothing);
+  });
+
   testWidgets('adding a screen adds a card to the strip and never opens a dialog', (tester) async {
     await _pumpGuideBuilder(tester, guide: _guide(id: 'g1', title: 'Ladder Safety'));
 

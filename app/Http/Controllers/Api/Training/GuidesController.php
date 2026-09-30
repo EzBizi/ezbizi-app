@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
+use App\Models\TrainingMedia;
 use App\Models\TrainingTest;
 use App\Support\Audit\AuditLogger;
 use App\Support\Inventory\InventoryVisibility;
@@ -13,6 +14,7 @@ use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Training\GuidePlaceReach;
+use App\Support\Training\TrainingMediaLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +98,7 @@ class GuidesController extends Controller
         $input = $request->validate($this->rules());
 
         if (array_key_exists('screens', $input)) {
-            $input['screens'] = $this->normalizeScreens($input['screens']);
+            $input['screens'] = $this->normalizeScreens($input['screens'], null);
         }
 
         $company = isset($input['company_id'])
@@ -151,7 +153,7 @@ class GuidesController extends Controller
         $input = $request->validate($this->rules(updating: true));
 
         if (array_key_exists('screens', $input)) {
-            $input['screens'] = $this->normalizeScreens($input['screens']);
+            $input['screens'] = $this->normalizeScreens($input['screens'], $guide);
         }
 
         if (array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input)) {
@@ -280,6 +282,10 @@ class GuidesController extends Controller
             'screens.*.title' => ['required', 'string', 'max:200'],
             'screens.*.body' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'screens.*.media_kind' => ['sometimes', 'string', Rule::in(['none', 'image', 'video'])],
+            // An image the guide holds itself (TrainingMedia). Ownership by THIS
+            // guide is checked in [normalizeScreens], which is where the guide
+            // is known.
+            'screens.*.media_id' => ['sometimes', 'nullable', 'uuid'],
             // A bad scheme is refused HERE, at authoring time, rather than
             // merely defended against on every read — see [normalizeScreens]'s
             // own docblock and the client's `isHttpUrl` (guide_player.dart),
@@ -314,7 +320,7 @@ class GuidesController extends Controller
 
     /**
      * Rebuilds each screen from its known keys only — `title`, `body`,
-     * `media_kind`, `media_url` — the same reason
+     * `media_kind`, `media_url`, `media_id` — the same reason
      * `TestsController::normalizeQuestions` rebuilds a question: a wildcard
      * rule (`screens.*.media_url` and its siblings, above) validates the
      * keys it names, it does not strip the ones it doesn't, so an extra key
@@ -326,17 +332,54 @@ class GuidesController extends Controller
      * caller finds out immediately rather than having their video quietly
      * vanish.
      *
-     * @param  array<int, array{title?: mixed, body?: mixed, media_kind?: mixed, media_url?: mixed}>  $screens
-     * @return array<int, array{title: mixed, body: mixed, media_kind: mixed, media_url: mixed}>
+     * ── `media_id`: an image the guide holds itself ──────────────
+     *
+     * A screen showing a TrainingMedia image carries `media_id` and stores a
+     * NULL `media_url`, whatever the client sent in it. The client sends back
+     * the signed link it was handed on read (TrainingMediaLinks), and storing
+     * that would pin the screen to a URL that expires in two hours — a broken
+     * image, the next day, on a guide nobody touched. The link is minted on
+     * every read instead.
+     *
+     * The id must belong to THIS guide, and is REFUSED otherwise rather than
+     * dropped, for the same reason as the scheme check: a screen quietly losing
+     * its picture is worse than a sentence saying why. A new guide owns no
+     * media yet, so on create any `media_id` is refused.
+     *
+     * @param  array<int, array<string, mixed>>  $screens
+     * @return array<int, array<string, mixed>>
      */
-    private function normalizeScreens(array $screens): array
+    private function normalizeScreens(array $screens, ?TrainingGuide $guide): array
     {
-        return array_map(fn (array $screen) => [
-            'title' => $screen['title'] ?? '',
-            'body' => $screen['body'] ?? '',
-            'media_kind' => $screen['media_kind'] ?? 'none',
-            'media_url' => $screen['media_url'] ?? null,
-        ], $screens);
+        $referenced = array_values(array_filter(array_map(
+            fn (array $screen) => $screen['media_id'] ?? null,
+            $screens,
+        )));
+
+        if ($referenced !== []) {
+            $owned = $guide === null ? collect() : TrainingMedia::query()
+                ->where('guide_id', $guide->getKey())
+                ->whereIn('id', $referenced)
+                ->pluck('id');
+
+            if (count(array_diff($referenced, $owned->all())) > 0) {
+                throw ValidationException::withMessages([
+                    'screens' => 'A screen points at an image that does not belong to this guide.',
+                ]);
+            }
+        }
+
+        return array_map(function (array $screen) {
+            $mediaId = $screen['media_id'] ?? null;
+
+            return [
+                'title' => $screen['title'] ?? '',
+                'body' => $screen['body'] ?? '',
+                'media_kind' => $mediaId !== null ? 'image' : ($screen['media_kind'] ?? 'none'),
+                'media_url' => $mediaId !== null ? null : ($screen['media_url'] ?? null),
+                'media_id' => $mediaId,
+            ];
+        }, $screens);
     }
 
     /** @return array<string, mixed> */
@@ -350,7 +393,9 @@ class GuidesController extends Controller
             'company_id' => $guide->company_id,
             'franchise_id' => $guide->franchise_id,
             'screen_count' => $guide->screenCount(),
-            'screens' => $guide->screens,
+            // Signed links for images the guide holds, minted per read — the
+            // caller of present() has already authorised this read.
+            'screens' => TrainingMediaLinks::resolve($guide->screens ?? [], $guide),
         ];
     }
 }
