@@ -1,0 +1,542 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Leads · Templates and Dashboard</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours, chart colours are
+   DashboardChart's own palette. Every company, person, price and number here is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --c1:#2A78D6;--c2:#EB6834;--c3:#1BAF7A;--c4:#EDA100}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.part{font-size:20px;margin:56px 0 6px;padding-top:18px;border-top:2px solid #c9d4d9}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:40px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+code{font:12px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.bk{display:flex;align-items:center;gap:10px;padding:6px 14px 6px}
+.bk .ar{font-size:17px;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.bk .t{font-size:15px;font-weight:800}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line)}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu)}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.body{flex:1;min-height:0;display:flex}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.dq{color:var(--bad);border-color:transparent}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip.ins{height:24px;font-size:11.5px;border-style:dashed;border-color:#93aab3;color:var(--pri)}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:32px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.fld{border:1px solid #b9c7cd;border-radius:var(--r);padding:8px 10px;background:var(--paper);font-size:12.5px;color:var(--ink)}
+.fld.one{height:36px;display:flex;align-items:center;font-weight:600}
+.fld.area{min-height:92px;white-space:pre-wrap;line-height:1.5}
+.tok{display:inline-block;background:var(--pric);color:var(--prid);border-radius:6px;padding:0 6px;font-weight:700;font-size:11.5px}
+.bub{align-self:flex-start;max-width:92%;background:var(--pri);color:#fff;border-radius:14px 14px 4px 14px;padding:9px 12px;font-size:12.5px;line-height:1.45}
+.bub .by{display:block;font-size:10.5px;opacity:.8;margin-top:4px;font-weight:700}
+.col{display:flex;flex-direction:column;min-height:0}
+.panel{background:var(--paper);border-left:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.row.on{background:var(--pric)}
+.row .g{flex:1;min-width:0}
+.row .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.on .g span{color:var(--prid)}
+.cnt{font-size:11px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.drag{color:#9aa9b1;font-size:13px;letter-spacing:-2px;cursor:grab}
+.edbar{display:flex;align-items:center;gap:8px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--paper)}
+.edbar .t{font-size:15px;font-weight:800}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+/* the thread's composer, for option 3 */
+.composer{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px}
+.tchip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid #93aab3;border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--ink)}
+.tchip .z{color:var(--pri)}
+.tchip.on{outline:2px solid var(--pri);outline-offset:1px}
+.reply{display:flex;gap:8px;align-items:center;margin-top:10px}
+.reply .in{flex:1;height:40px;border:1px solid #b9c7cd;border-radius:var(--r);display:flex;align-items:center;padding:0 12px;color:var(--muted)}
+/* dashboard */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:74px}
+.kpi .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-size:22px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums}
+.kpi .d{font-size:11px;color:var(--muted)}
+.kpi .d.up{color:var(--ok)} .kpi .d.dn{color:var(--bad)}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.box .h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.box .h b{font-size:12.5px}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tr{display:grid;align-items:center;padding:0 12px;min-height:36px;border-bottom:1px solid var(--line2);font-size:12px;gap:10px}
+.tr:last-child{border-bottom:0}
+.tr.hd{min-height:28px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.dim{color:var(--muted)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:0 0 auto}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--c3)}
+.meter i.w{background:var(--c4)} .meter i.x{background:#E66767}
+svg{display:block}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);position:relative;background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:30px;flex:0 0 auto}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.phn .tabs{padding:4px 12px 8px}
+.phn .tab{height:28px;padding:0 9px;font-size:11.5px}
+.phn .kpis{grid-template-columns:repeat(2,1fr);gap:8px}
+.phn .kpi{min-height:62px;padding:8px 10px}
+.phn .kpi .v{font-size:19px}
+.sticky{flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);background:var(--paper)}
+.seg{display:flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden}
+.seg span{flex:1;text-align:center;font-size:12px;font-weight:700;padding:6px 0;color:var(--neu)}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.seg span+span{border-left:1px solid #93aab3}
+</style>
+
+<div class="wrap">
+<h1>Leads · Templates and a Dashboard</h1>
+<p class="sub">Jose, 2026-09-30: <i>“see if you can improve the leads template screen, it looks terrible”</i>, then <i>“also make a new tab called Dashboard which gathers info, reply rates from each user, response time, amounts of leads, graphs, etc”</i> — <i>“sub tab for leads i mean, like with the connections and templates sub tabs”</i>.</p>
+<p class="cap">Two questions on one page. <b>Templates</b> is 1–6 and <b>Dashboard</b> is 7–12. Answer with two desktop numbers and two phone numbers, for example “1, 4, 7, 10”. Both live in Leads › Manage, next to Connections.</p>
+
+<!-- ═════════════════════════════ TEMPLATES ═════════════════════════════ -->
+<h2 class="part">A · Templates</h2>
+<p class="cap"><b>What is wrong today:</b> thirteen company chips wrap into three rows. Every template is a boxed card holding two more boxes, so a company’s five templates run past the bottom of the screen. The explanation is fine print full of raw codes (<code>{{greeting}}</code>). Save is at the very bottom. Nothing shows what the customer will actually get, and 60% of the page is empty. <b>Every option keeps</b> what saves today: one list of templates per company, each with a button name and its text, and the same three codes. <b>Every option adds</b> Insert buttons instead of typed codes, a live preview (“Hi Mark, thank you for contacting Harbor Chimney…”), drag to reorder (the order is the order of the buttons beside Send), and a Save that says when something is unsaved. Client only. The existing <code>PUT /leads/reply-templates/{company}</code> already saves a company’s whole list in its order.</p>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>Companies, their templates, and one template open beside them <span class="rec">Recommended</span></h2>
+<p class="cap">The same list-beside-editor shape as the rest of the app. Companies down the left with how many templates each has, searchable because there are thirteen. That company’s templates in the middle, one short line each, dragged into the order the buttons appear. The open template on the right: its name, its text with Insert buttons, the preview as the customer will see it, and Save at the top of the editor, where it stays in view.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab on">⚡ Templates</span><span class="tab">▦ Dashboard</span></div>
+  <div class="body">
+   <div class="col" style="width:230px;background:var(--paper);border-right:1px solid var(--line)">
+    <div style="padding:10px"><div class="srch">⌕ Find a company</div></div>
+    <div class="row on"><div class="g"><b>Harbor Chimney</b></div><span class="cnt">5</span></div>
+    <div class="row"><div class="g"><b>Harbor Garage Doors</b></div><span class="cnt">4</span></div>
+    <div class="row"><div class="g"><b>Bay Air</b><span>No templates yet</span></div><span class="cnt">0</span></div>
+    <div class="row"><div class="g"><b>Coastal Home</b></div><span class="cnt">2</span></div>
+    <div class="row"><div class="g"><b>Crestview Home</b></div><span class="cnt">2</span></div>
+    <div class="row"><div class="g"><b>Lakeside Chimney</b></div><span class="cnt">3</span></div>
+    <div class="row"><div class="g"><b>Metro Garage Repair</b></div><span class="cnt">4</span></div>
+    <div class="row"><div class="g"><b>Northside Doors</b></div><span class="cnt">4</span></div>
+    <div class="row"><div class="g"><b>Pinecrest Sweep</b></div><span class="cnt">5</span></div>
+    <div class="row"><div class="g"><b>Rapid Garage</b></div><span class="cnt">4</span></div>
+    <div class="row"><div class="g"><b>Summit Doors</b></div><span class="cnt">4</span></div>
+    <div class="row"><div class="g"><b>Summit Roofing</b></div><span class="cnt">3</span></div>
+   </div>
+   <div class="col" style="width:300px;background:var(--paper);border-right:1px solid var(--line)">
+    <div style="display:flex;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)"><b>Harbor Chimney</b><span class="sp"></span><span class="btn s">+ New template</span></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Thank you</b><span>Hi Mark, thank you for contacting Harbor Chimney…</span></div></div>
+    <div class="row on"><span class="drag">⋮⋮</span><div class="g"><b>Inspection prices</b><span>We offer two inspections: a standard check…</span></div></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Sweep price</b><span>A standard sweep is a flat $249.</span></div></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Availability</b><span>Our soonest opening is ___: 8–11am, 11am–2pm…</span></div></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Booking details</b><span>Perfect! To finish booking, may I have your…</span></div></div>
+    <div style="padding:12px" class="tiny">Drag to change the order of the buttons beside Send.</div>
+   </div>
+   <div class="col" style="flex:1">
+    <div class="edbar"><span class="t">Inspection prices</span><span class="pill p-warn">Unsaved changes</span><span class="sp"></span><span class="btn q s">Discard</span><span class="btn f s">Save</span></div>
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;overflow:hidden">
+     <div><div class="lbl">Button name</div><div class="fld one">Inspection prices</div></div>
+     <div><div class="lbl">Message</div><div class="fld area">We offer two inspections:
+
+Standard ($95): a full visual check of the fireplace, damper, firebox and flue.
+Camera ($165): everything in Standard, plus a camera through the whole flue.
+
+<span class="tok">Greeting</span>, which one would you like?</div>
+      <div class="chips" style="margin-top:8px"><span class="tiny">Insert</span><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company name</span><span class="chip ins">+ What’s missing</span></div>
+      <div class="tiny" style="margin-top:4px">Greeting becomes “Hi Mark” (or “Hi there”). What’s missing asks only for what the customer hasn’t given yet.</div></div>
+     <div><div class="lbl">What the customer gets</div>
+      <div style="background:#eef3f5;border-radius:12px;padding:12px;display:flex;flex-direction:column"><div class="bub">We offer two inspections: Standard ($95), a full visual check of the fireplace, damper, firebox and flue. Camera ($165), everything in Standard plus a camera through the whole flue. Hi Mark, which one would you like?<span class="by">Harbor Chimney</span></div></div></div>
+     <div style="display:flex;gap:8px"><span class="btn s">Copy to other companies…</span><span class="sp"></span><span class="btn dq s">Delete template</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>One company at a time, the templates as a list that opens in place</h2>
+<p class="cap">The thirteen chips become one company picker in the header. The templates are a plain list of one line each. Clicking one opens it in the list, with its text, Insert buttons and preview. Only one is open at a time, and each has its own Save, so there is never a long page to scroll to the bottom of.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab on">⚡ Templates</span><span class="tab">▦ Dashboard</span></div>
+  <div class="body" style="justify-content:center;overflow:hidden">
+   <div style="width:820px;padding:14px 0;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px"><div class="srch" style="width:300px;color:var(--ink);font-weight:700;justify-content:space-between">Harbor Chimney <span class="muted">▾</span></div><span class="tiny">5 templates · the buttons beside Send, in this order</span><span class="sp"></span><span class="btn s">+ New template</span></div>
+    <div class="card">
+     <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Thank you</b><span>Hi Mark, thank you for contacting Harbor Chimney! Could you share the service address and a day that works?</span></div><span class="muted">›</span></div>
+     <div style="border-bottom:1px solid var(--line2);background:#fbfcfd">
+      <div class="row" style="border-bottom:0"><span class="drag">⋮⋮</span><div class="g"><b>Inspection prices</b></div><span class="pill p-warn">Unsaved</span><span class="muted">⌄</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 14px 14px 34px">
+       <div style="display:flex;flex-direction:column;gap:10px">
+        <div><div class="lbl">Button name</div><div class="fld one">Inspection prices</div></div>
+        <div><div class="lbl">Message</div><div class="fld area">We offer two inspections: Standard ($95), a full visual check, and Camera ($165), a camera through the whole flue. <span class="tok">Greeting</span>, which one would you like?</div>
+         <div class="chips" style="margin-top:8px"><span class="tiny">Insert</span><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company name</span><span class="chip ins">+ What’s missing</span></div></div>
+       </div>
+       <div style="display:flex;flex-direction:column;gap:10px"><div class="lbl" style="margin:0">What the customer gets</div>
+        <div style="background:#eef3f5;border-radius:12px;padding:12px;display:flex;flex-direction:column;flex:1"><div class="bub">We offer two inspections: Standard ($95), a full visual check, and Camera ($165), a camera through the whole flue. Hi Mark, which one would you like?<span class="by">Harbor Chimney</span></div></div>
+        <div style="display:flex;gap:8px"><span class="btn dq s">Delete</span><span class="sp"></span><span class="btn q s">Cancel</span><span class="btn f s">Save</span></div></div>
+      </div>
+     </div>
+     <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Sweep price</b><span>A standard sweep is a flat $249.</span></div><span class="muted">›</span></div>
+     <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Availability</b><span>Our soonest opening is ___: 8–11am, 11am–2pm or 2–5pm. Which works best?</span></div><span class="muted">›</span></div>
+     <div class="row" style="border-bottom:0"><span class="drag">⋮⋮</span><div class="g"><b>Booking details</b><span>Perfect! To finish booking, may I have your [what’s missing]?</span></div><span class="muted">›</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>The buttons as your team sees them, each one edited beside them</h2>
+<p class="cap">The page shows the reply box with its template buttons, exactly as it sits under a conversation. Drag a button to move it, click one to edit it in a panel on the right, or press + to add one. It is the most literal version (“what you see is what they get”), but a long message is harder to read in a button than in a list.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab on">⚡ Templates</span><span class="tab">▦ Dashboard</span></div>
+  <div class="body">
+   <div style="flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-width:0">
+    <div style="display:flex;align-items:center;gap:10px"><div class="srch" style="width:280px;color:var(--ink);font-weight:700;justify-content:space-between">Harbor Chimney <span class="muted">▾</span></div><span class="tiny">What your team sees under a Harbor Chimney conversation</span></div>
+    <div class="composer">
+     <div class="chips"><span class="tchip"><span class="z">⚡</span>Thank you</span><span class="tchip on"><span class="z">⚡</span>Inspection prices</span><span class="tchip"><span class="z">⚡</span>Sweep price</span><span class="tchip"><span class="z">⚡</span>Availability</span><span class="tchip"><span class="z">⚡</span>Booking details</span><span class="chip ins" style="height:30px">+ Add</span></div>
+     <div class="reply"><div class="in">Reply to them</div><span class="btn f">➤ Send</span></div>
+    </div>
+    <div class="tiny">Drag a button to change the order. Click one to edit it.</div>
+    <div class="card" style="padding:12px 14px">
+     <div class="lbl">Every Harbor Chimney template</div>
+     <div class="tr" style="grid-template-columns:150px 1fr;padding:0"><b>Thank you</b><span class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Hi Mark, thank you for contacting Harbor Chimney! Could you share the service address…</span></div>
+     <div class="tr" style="grid-template-columns:150px 1fr;padding:0"><b>Inspection prices</b><span class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">We offer two inspections: Standard ($95), a full visual check…</span></div>
+     <div class="tr" style="grid-template-columns:150px 1fr;padding:0"><b>Sweep price</b><span class="muted">A standard sweep is a flat $249.</span></div>
+     <div class="tr" style="grid-template-columns:150px 1fr;padding:0"><b>Availability</b><span class="muted">Our soonest opening is ___: 8–11am, 11am–2pm or 2–5pm.</span></div>
+     <div class="tr" style="grid-template-columns:150px 1fr;padding:0"><b>Booking details</b><span class="muted">Perfect! To finish booking, may I have your [what’s missing]?</span></div>
+    </div>
+   </div>
+   <div class="col panel" style="width:380px">
+    <div class="edbar"><span class="t">Inspection prices</span><span class="sp"></span><span class="muted">✕</span></div>
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1">
+     <div><div class="lbl">Button name</div><div class="fld one">Inspection prices</div></div>
+     <div><div class="lbl">Message</div><div class="fld area">We offer two inspections: Standard ($95), a full visual check, and Camera ($165), a camera through the whole flue. <span class="tok">Greeting</span>, which one would you like?</div>
+      <div class="chips" style="margin-top:8px"><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company</span><span class="chip ins">+ What’s missing</span></div></div>
+     <div><div class="lbl">What the customer gets</div><div style="background:#eef3f5;border-radius:12px;padding:10px;display:flex;flex-direction:column"><div class="bub">We offer two inspections: Standard ($95)… Hi Mark, which one would you like?</div></div></div>
+    </div>
+    <div class="sticky"><span class="btn dq s">Delete</span><span class="sp"></span><span class="btn f s">Save</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">4</span><span class="n">5</span><span class="n">6</span>On a phone</h2>
+<p class="cap"><b>4</b> is steps, each with ← back: companies, then that company’s templates, then one template with its preview and Save at the top <span class="rec" style="font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:10px;padding:1px 7px">Recommended</span>. <b>5</b> is the company picker with the templates opening in the list and Save pinned to the bottom. <b>6</b> is the reply box’s buttons with the tapped one edited below them.</p>
+<div class="pairp">
+ <div><div class="pl">4 · templates, then one</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Harbor Chimney</span><span class="sp"></span><span class="btn s">+ New</span></div>
+   <div class="card" style="margin:6px 12px">
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Thank you</b><span>Hi Mark, thank you for contacting…</span></div><span class="muted">›</span></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Inspection prices</b><span>We offer two inspections…</span></div><span class="muted">›</span></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Sweep price</b><span>A standard sweep is a flat $249.</span></div><span class="muted">›</span></div>
+    <div class="row"><span class="drag">⋮⋮</span><div class="g"><b>Availability</b><span>Our soonest opening is ___…</span></div><span class="muted">›</span></div>
+    <div class="row" style="border-bottom:0"><span class="drag">⋮⋮</span><div class="g"><b>Booking details</b><span>Perfect! To finish booking…</span></div><span class="muted">›</span></div>
+   </div>
+   <div class="tiny" style="padding:4px 16px">Hold and drag to change the order of the buttons beside Send.</div>
+  </div></div></div>
+ <div><div class="pl">4 · one template</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Inspection prices</span><span class="sp"></span><span class="btn f s">Save</span></div>
+   <div style="padding:6px 14px;display:flex;flex-direction:column;gap:10px">
+    <div><div class="lbl">Button name</div><div class="fld one">Inspection prices</div></div>
+    <div><div class="lbl">Message</div><div class="fld area" style="min-height:120px">We offer two inspections: Standard ($95), a full visual check, and Camera ($165), a camera through the whole flue. <span class="tok">Greeting</span>, which one would you like?</div>
+     <div class="chips" style="margin-top:8px"><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company</span><span class="chip ins">+ What’s missing</span></div></div>
+    <div><div class="lbl">What the customer gets</div><div style="background:#e8eef1;border-radius:12px;padding:10px;display:flex;flex-direction:column"><div class="bub">We offer two inspections: Standard ($95), a full visual check, and Camera ($165)… Hi Mark, which one would you like?</div></div></div>
+    <span class="btn dq s" style="align-self:flex-start">Delete template</span>
+   </div>
+  </div></div></div>
+ <div><div class="pl">5 · picker, opens in place</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+   <div class="tabs"><span class="tab">Connections</span><span class="tab on">Templates</span><span class="tab">Dashboard</span></div>
+   <div style="padding:10px 12px 6px"><div class="srch" style="color:var(--ink);font-weight:700;justify-content:space-between">Harbor Chimney <span class="muted">▾</span></div></div>
+   <div class="card" style="margin:0 12px;overflow:hidden">
+    <div class="row"><div class="g"><b>Thank you</b></div><span class="muted">›</span></div>
+    <div class="row on"><div class="g"><b>Inspection prices</b></div><span class="muted">⌄</span></div>
+    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line2)">
+     <div class="fld area" style="min-height:96px">We offer two inspections: Standard ($95)… <span class="tok">Greeting</span>, which one would you like?</div>
+     <div class="chips"><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company</span><span class="chip ins">+ Missing</span></div>
+    </div>
+    <div class="row"><div class="g"><b>Sweep price</b></div><span class="muted">›</span></div>
+    <div class="row" style="border-bottom:0"><div class="g"><b>Availability</b></div><span class="muted">›</span></div>
+   </div>
+   <span class="sp"></span>
+   <div class="sticky"><span class="pill p-warn">Unsaved</span><span class="sp"></span><span class="btn q s">Discard</span><span class="btn f s">Save</span></div>
+  </div></div></div>
+ <div><div class="pl">6 · the buttons, edited below</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+   <div class="tabs"><span class="tab">Connections</span><span class="tab on">Templates</span><span class="tab">Dashboard</span></div>
+   <div style="padding:10px 12px;display:flex;flex-direction:column;gap:10px">
+    <div class="srch" style="color:var(--ink);font-weight:700;justify-content:space-between">Harbor Chimney <span class="muted">▾</span></div>
+    <div class="composer" style="padding:10px"><div class="chips"><span class="tchip">⚡ Thank you</span><span class="tchip on">⚡ Inspection prices</span><span class="tchip">⚡ Sweep price</span><span class="tchip">⚡ Availability</span><span class="chip ins" style="height:30px">+ Add</span></div></div>
+    <div class="fld one">Inspection prices</div>
+    <div class="fld area" style="min-height:110px">We offer two inspections: Standard ($95)… <span class="tok">Greeting</span>, which one would you like?</div>
+    <div class="chips"><span class="chip ins">+ Greeting</span><span class="chip ins">+ Company</span><span class="chip ins">+ Missing</span></div>
+    <div style="display:flex;gap:8px"><span class="btn dq s">Delete</span><span class="sp"></span><span class="btn f s">Save</span></div>
+   </div>
+  </div></div></div>
+</div>
+
+<!-- ═════════════════════════════ DASHBOARD ═════════════════════════════ -->
+<h2 class="part">B · Dashboard</h2>
+<p class="cap"><b>What can be measured today</b> (checked in the code): every lead’s arrival time, source, company and status; every message with its time; and, for a reply sent from EzBizi, <b>who sent it</b>, which comes from the record each reply writes. Replies sent from A1 Tools or Google’s own app have a time but no person, so they get their own row instead of being credited to anyone. Automatic replies (the “Thanks for contacting…” rule) are counted apart, because they would make every response time look instant. <b>Response time</b> = the customer’s first message to the first reply a <i>person</i> sent. <b>Reply rate</b> counts only leads that can be answered. A Google call cannot be, so it isn’t counted as unanswered. <b>Every option</b> has the same filters (period, company, source), is Dashboard’s tab next to Connections and Templates, and draws its graphs with the app’s own chart. <b>Server:</b> one new read-only endpoint, <code>GET /leads/dashboard</code>, for Leads to add. Option 9 also needs leads counted by hour.</p>
+
+<!-- ═════════ 7 ═════════ -->
+<h2><span class="n">7</span>The numbers, two graphs, then everyone’s row <span class="rec">Recommended</span></h2>
+<p class="cap">Six equal tiles for the period, each compared with the period before. Under them are leads per day by source, and how fast the first reply came. Then one row per person: replies sent, leads answered, their median first reply, how often they answered within 10 minutes, and how many of their leads were booked. Click a column to sort. It answers “how are we doing” and “who is doing what” on one screen.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab">⚡ Templates</span><span class="tab on">▦ Dashboard</span></div>
+  <div style="flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+   <div style="display:flex;align-items:center;gap:8px"><div class="chips"><span class="chip">Today</span><span class="chip">7 days</span><span class="chip on">30 days</span><span class="chip">This month</span><span class="chip">Custom…</span></div><span class="sp"></span><div class="srch">All companies ▾</div><div class="srch">All sources ▾</div></div>
+   <div class="kpis">
+    <div class="kpi"><div class="k">Leads</div><div class="v">412</div><div class="d up">▲ 8% vs the 30 before</div></div>
+    <div class="kpi"><div class="k">Answered</div><div class="v">91%</div><div class="d up">▲ 3 pts · of 318 that can be</div></div>
+    <div class="kpi"><div class="k">First reply</div><div class="v">6 min</div><div class="d up">median · was 9 min</div></div>
+    <div class="kpi"><div class="k">Within 10 min</div><div class="v">72%</div><div class="d dn">▼ 2 pts</div></div>
+    <div class="kpi"><div class="k">Booked</div><div class="v">23%</div><div class="d">94 leads became jobs</div></div>
+    <div class="kpi"><div class="k">Waiting now</div><div class="v" style="color:var(--bad)">3</div><div class="d">over 10 min, still New</div></div>
+   </div>
+   <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+    <div class="box"><div class="h"><b>Leads per day</b><span class="sp"></span><div class="leg"><span><i style="background:var(--c1)"></i>LS Call</span><span><i style="background:var(--c3)"></i>LS Text</span><span><i style="background:var(--c2)"></i>Thumbtack</span><span><i style="background:var(--c4)"></i>Website</span></div></div><svg id="perday7" width="100%" height="90" viewBox="0 0 700 90" preserveAspectRatio="none"></svg></div>
+    <div class="box"><div class="h"><b>How fast the first reply came</b></div><svg id="speed7" width="100%" height="90" viewBox="0 0 330 90" preserveAspectRatio="none"></svg></div>
+   </div>
+   <div class="tbl">
+    <div class="tr hd" style="grid-template-columns:1.6fr .8fr .8fr .9fr 1.3fr .7fr"><span>Person</span><span class="num">Replies</span><span class="num">Leads answered</span><span class="num">First reply ▲</span><span>Within 10 min</span><span class="num">Booked</span></div>
+    <div id="people7"></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 8 ═════════ -->
+<h2><span class="n">8</span>People first: one card each, the team beside them</h2>
+<p class="cap">Built around “reply rates from each user”. Every person is a card with their median first reply as the big number, how often they answered within 10 minutes, their replies per day as a small line, and their answered and booked counts. The team’s totals and the two graphs sit in a column on the right, with the leads waiting right now at the bottom.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab">⚡ Templates</span><span class="tab on">▦ Dashboard</span></div>
+  <div style="flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;gap:12px">
+   <div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">
+    <div style="display:flex;align-items:center;gap:8px"><div class="chips"><span class="chip">Today</span><span class="chip">7 days</span><span class="chip on">30 days</span><span class="chip">Custom…</span></div><span class="sp"></span><div class="srch">All companies ▾</div></div>
+    <div id="cards8" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+   </div>
+   <div style="width:330px;display:flex;flex-direction:column;gap:10px">
+    <div class="box"><div class="lbl">The team, 30 days</div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px">
+      <span class="muted">Leads</span><b class="num">412</b><span class="muted">Answered</span><b class="num">91%</b><span class="muted">First reply</span><b class="num">6 min</b><span class="muted">Within 10 min</span><b class="num">72%</b><span class="muted">Booked</span><b class="num">23%</b></div></div>
+    <div class="box"><div class="h"><b>Leads per day</b></div><svg id="perday8" width="100%" height="46" viewBox="0 0 300 46" preserveAspectRatio="none"></svg></div>
+    <div class="box"><div class="h"><b>First reply</b></div><svg id="speed8" width="100%" height="56" viewBox="0 0 300 56" preserveAspectRatio="none"></svg></div>
+    <div class="box" style="flex:1"><div class="h"><b>Waiting now</b><span class="pill p-bad">3</span></div>
+     <div class="row" style="padding:6px 0"><div class="g"><b>Kara T.</b><span>Harbor Chimney · LS Text · 14 min</span></div></div>
+     <div class="row" style="padding:6px 0;border-bottom:0"><div class="g"><b>Owen P.</b><span>Rapid Garage · Thumbtack · 22 min</span></div></div>
+     <div class="tiny">and 1 more</div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 9 ═════════ -->
+<h2><span class="n">9</span>Company by company, and when the leads arrive</h2>
+<p class="cap">For thirteen brands the first question may be “which company is slow”. One row per company with its leads (as a bar), answered, first reply and booked. Open a company to see its people. Beside it, a week-by-hour grid of when leads arrive, with the hours where replies were slowest marked, which shows when to have someone on.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Leads</div><div class="s">People who asked about you, before they become customers.</div></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+  <div class="tabs"><span class="tab">🔗 Connections</span><span class="tab">⚡ Templates</span><span class="tab on">▦ Dashboard</span></div>
+  <div style="flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+   <div style="display:flex;align-items:center;gap:14px"><div class="chips"><span class="chip">7 days</span><span class="chip on">30 days</span><span class="chip">Custom…</span></div><span class="sp"></span><span class="tiny"><b style="color:var(--ink)">412</b> leads · <b style="color:var(--ink)">91%</b> answered · <b style="color:var(--ink)">6 min</b> first reply · <b style="color:var(--ink)">23%</b> booked</span></div>
+   <div style="display:flex;gap:12px;min-height:0;flex:1">
+    <div class="tbl" style="flex:1.35;overflow:hidden">
+     <div class="tr hd" style="grid-template-columns:1.4fr 1.5fr .8fr .8fr .6fr"><span>Company</span><span>Leads</span><span class="num">Answered</span><span class="num">First reply</span><span class="num">Booked</span></div>
+     <div id="companies9"></div>
+    </div>
+    <div class="box" style="flex:1;display:flex;flex-direction:column"><div class="h"><b>When leads arrive</b><span class="sp"></span><span class="tiny">darker = more · <span style="color:var(--bad);font-weight:700">●</span> slowest replies</span></div><div id="heat9" style="flex:1"></div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">10</span><span class="n">11</span><span class="n">12</span>On a phone</h2>
+<p class="cap"><b>10</b> is 7 in a column: tiles two by two, the graphs, then people as a list <span class="rec" style="font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:10px;padding:1px 7px">Recommended</span>. <b>11</b> is people first, 8’s cards stacked. <b>12</b> splits it into Team, People and Companies, one at a time.</p>
+<div class="pairp">
+ <div><div class="pl">10 · the column</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+   <div class="tabs"><span class="tab">Connections</span><span class="tab">Templates</span><span class="tab on">Dashboard</span></div>
+   <div style="padding:8px 12px;display:flex;flex-direction:column;gap:8px">
+    <div class="chips" style="flex-wrap:nowrap"><span class="chip">Today</span><span class="chip">7 days</span><span class="chip on">30 days</span><span class="chip">All ▾</span></div>
+    <div class="kpis">
+     <div class="kpi"><div class="k">Leads</div><div class="v">412</div><div class="d up">▲ 8%</div></div>
+     <div class="kpi"><div class="k">Answered</div><div class="v">91%</div><div class="d up">▲ 3 pts</div></div>
+     <div class="kpi"><div class="k">First reply</div><div class="v">6 min</div><div class="d up">was 9</div></div>
+     <div class="kpi"><div class="k">Booked</div><div class="v">23%</div><div class="d">94 jobs</div></div>
+    </div>
+    <div class="box"><div class="h"><b>Leads per day</b></div><svg id="perday10" width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none"></svg></div>
+    <div class="card"><div id="people10"></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="pl">11 · people first</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+   <div class="tabs"><span class="tab">Connections</span><span class="tab">Templates</span><span class="tab on">Dashboard</span></div>
+   <div style="padding:8px 12px;display:flex;flex-direction:column;gap:8px">
+    <div class="tiny"><b style="color:var(--ink)">30 days:</b> 412 leads · 91% answered · 6 min first reply</div>
+    <div id="cards11" style="display:flex;flex-direction:column;gap:8px"></div>
+   </div>
+  </div></div></div>
+ <div><div class="pl">12 · one view at a time</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="bk"><span class="ar">←</span><span class="t">Manage</span></div>
+   <div class="tabs"><span class="tab">Connections</span><span class="tab">Templates</span><span class="tab on">Dashboard</span></div>
+   <div style="padding:8px 12px;display:flex;flex-direction:column;gap:10px">
+    <div class="seg"><span class="on">Team</span><span>People</span><span>Companies</span></div>
+    <div class="kpis">
+     <div class="kpi"><div class="k">Leads</div><div class="v">412</div></div>
+     <div class="kpi"><div class="k">Answered</div><div class="v">91%</div></div>
+     <div class="kpi"><div class="k">First reply</div><div class="v">6 min</div></div>
+     <div class="kpi"><div class="k">Within 10 min</div><div class="v">72%</div></div>
+    </div>
+    <div class="box"><div class="h"><b>Leads per day</b></div><svg id="perday12" width="100%" height="90" viewBox="0 0 300 90" preserveAspectRatio="none"></svg></div>
+    <div class="box"><div class="h"><b>First reply</b></div><svg id="speed12" width="100%" height="90" viewBox="0 0 300 90" preserveAspectRatio="none"></svg></div>
+   </div>
+  </div></div></div>
+</div>
+
+<p class="cap" style="margin-top:40px">Numbers, people and companies are invented. The real screen reads the period chosen, in the organization’s time zone.</p>
+</div>
+
+<script>
+// Invented data, drawn the way DashboardChart draws: bars, one colour per series.
+const C = ['#2A78D6', '#1BAF7A', '#EB6834', '#EDA100'];
+let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+const days = Array.from({length: 30}, (_, i) => {
+  const wk = (i % 7 === 5 || i % 7 === 6) ? 0.6 : 1;
+  return [4 + rnd() * 5, 2 + rnd() * 4, 1 + rnd() * 3, 1 + rnd() * 2].map(v => v * wk);
+});
+function perDay(id, w, h) {
+  const el = document.getElementById(id); if (!el) return;
+  const max = Math.max(...days.map(d => d.reduce((a, b) => a + b)));
+  const bw = w / days.length; let s = '';
+  days.forEach((d, i) => { let y = h;
+    d.forEach((v, k) => { const bh = v / max * (h - 8); y -= bh;
+      s += `<rect x="${i * bw + 1.5}" y="${y}" width="${bw - 3}" height="${bh}" fill="${C[k]}" rx="1.5"/>`; }); });
+  el.innerHTML = s;
+}
+const buckets = [['under 5 min', 41], ['5–10', 31], ['10–30', 16], ['30–60', 7], ['1–4 h', 4], ['over 4 h', 1]];
+function speed(id, w, h) {
+  const el = document.getElementById(id); if (!el) return;
+  const bw = w / buckets.length; let s = '';
+  buckets.forEach(([l, v], i) => { const bh = v / 45 * (h - 30);
+    s += `<rect x="${i * bw + 5}" y="${h - 18 - bh}" width="${bw - 10}" height="${bh}" fill="${i < 2 ? '#1BAF7A' : i < 3 ? '#EDA100' : '#E66767'}" rx="2"/>`;
+    s += `<text x="${i * bw + bw / 2}" y="${h - 4}" font-size="9.5" text-anchor="middle" fill="#5b6672">${l}</text>`;
+    s += `<text x="${i * bw + bw / 2}" y="${h - 22 - bh}" font-size="10" font-weight="700" text-anchor="middle" fill="#060808">${v}%</text>`; });
+  el.innerHTML = s;
+}
+const people = [
+  ['Maya Chen', 'MC', '#DCEAFB', '#0B4A8F', 212, 88, '3 min', 86, 27],
+  ['Luis Ortega', 'LO', '#D8F1F0', '#0B5957', 164, 71, '5 min', 78, 19],
+  ['Priya Nair', 'PN', '#EAF0D2', '#4A5A12', 131, 54, '7 min', 69, 15],
+  ['Tom Becker', 'TB', '#F8EDC6', '#6A4F00', 96, 39, '12 min', 48, 9],
+  ['Sofia Russo', 'SR', '#FFE6D2', '#8A3A00', 58, 25, '18 min', 36, 6],
+];
+function meter(p) { return `<div class="meter"><i class="${p >= 70 ? '' : p >= 45 ? 'w' : 'x'}" style="width:${p}%"></i></div>`; }
+function people7() {
+  const el = document.getElementById('people7'); if (!el) return;
+  const g = 'grid-template-columns:1.6fr .8fr .8fr .9fr 1.3fr .7fr';
+  el.innerHTML = people.slice(0, 4).map(p => `<div class="tr" style="${g};min-height:34px"><span class="who"><span class="av" style="background:${p[2]};color:${p[3]}">${p[1]}</span><b>${p[0]}</b></span><span class="num">${p[4]}</span><span class="num">${p[5]}</span><span class="num b">${p[6]}</span><span style="display:flex;align-items:center;gap:8px"><span style="flex:1">${meter(p[7])}</span><span class="num" style="width:34px">${p[7]}%</span></span><span class="num">${p[8]}</span></div>`).join('')
+   + `<div class="tr dim" style="${g};min-height:34px"><span class="who"><span class="av" style="background:#E6EBF0;color:#3A4A5A">⚙</span><b>Automatic replies</b></span><span class="num">240</span><span class="num">240</span><span class="num">instant</span><span class="tiny">not counted as a first reply</span><span class="num">—</span></div>`
+   + `<div class="tr dim" style="${g};min-height:34px"><span class="who"><span class="av" style="background:#E6EBF0;color:#3A4A5A">↗</span><b>Outside EzBizi</b></span><span class="num">44</span><span class="num">19</span><span class="num">9 min</span><span class="tiny">A1 Tools and Google’s app: no name</span><span class="num">4</span></div>`;
+}
+function spark(w, h) { let pts = []; for (let i = 0; i < 14; i++) pts.push(`${i * w / 13},${h - 4 - rnd() * (h - 8)}`); return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts.join(' ')}" fill="none" stroke="#2A78D6" stroke-width="2"/></svg>`; }
+function card(p) { return `<div class="box" style="display:flex;flex-direction:column;gap:6px"><div class="who"><span class="av" style="background:${p[2]};color:${p[3]}">${p[1]}</span><b>${p[0]}</b></div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:22px;font-weight:800">${p[6]}</span><span class="tiny">median first reply</span></div><div style="display:flex;align-items:center;gap:8px"><span style="flex:1">${meter(p[7])}</span><span class="tiny"><b style="color:var(--ink)">${p[7]}%</b> within 10 min</span></div>${spark(200, 30)}<div class="tiny">${p[4]} replies · ${p[5]} answered · ${p[8]} booked</div></div>`; }
+function cards(id, n) { const el = document.getElementById(id); if (el) el.innerHTML = people.slice(0, n).map(card).join(''); }
+function people10() {
+  const el = document.getElementById('people10'); if (!el) return;
+  el.innerHTML = people.slice(0, 4).map(p => `<div class="row"><span class="av" style="background:${p[2]};color:${p[3]}">${p[1]}</span><div class="g"><b>${p[0]}</b><span>${p[4]} replies · ${p[7]}% within 10 min</span></div><b>${p[6]}</b></div>`).join('');
+}
+const companies = [['Harbor Chimney', 96, 94, '4 min', 27], ['Pinecrest Sweep', 71, 92, '5 min', 24], ['Harbor Garage Doors', 58, 90, '6 min', 22], ['Rapid Garage', 44, 88, '8 min', 20], ['Metro Garage Repair', 38, 93, '5 min', 26], ['Summit Roofing', 31, 81, '14 min', 13], ['Northside Doors', 27, 89, '7 min', 19], ['Lakeside Chimney', 22, 95, '4 min', 31], ['Summit Doors', 12, 75, '21 min', 8], ['Coastal Home', 8, 100, '3 min', 25]];
+function companies9() {
+  const el = document.getElementById('companies9'); if (!el) return;
+  const g = 'grid-template-columns:1.4fr 1.5fr .8fr .8fr .6fr';
+  el.innerHTML = companies.map((c, i) => `<div class="tr" style="${g}${i === 0 ? ';background:#e8f4f8' : ''}"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i === 0 ? '⌄ ' : '› '}${c[0]}</b><span style="display:flex;align-items:center;gap:8px"><span class="meter" style="flex:1"><i style="width:${c[1]}%;background:#2A78D6"></i></span><span class="num" style="width:26px">${c[1]}</span></span><span class="num">${c[2]}%</span><span class="num ${parseInt(c[3]) > 10 ? 'b' : ''}" style="${parseInt(c[3]) > 10 ? 'color:var(--bad)' : ''}">${c[3]}</span><span class="num">${c[4]}%</span></div>`
+   + (i === 0 ? `<div style="padding:4px 12px 8px 30px;background:#f3f9fb;border-bottom:1px solid var(--line2)">${people.slice(0, 3).map(p => `<div style="display:flex;gap:10px;font-size:11.5px;padding:2px 0"><span style="width:110px">${p[0]}</span><span class="muted">${Math.round(p[4] / 3)} replies</span><span class="sp"></span><b>${p[6]}</b></div>`).join('')}</div>` : '')).join('');
+}
+function heat9() {
+  const el = document.getElementById('heat9'); if (!el) return;
+  const dn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; let s = '<div style="display:grid;grid-template-columns:30px repeat(16,1fr);gap:2px;font-size:9.5px;color:#5b6672">';
+  s += '<span></span>' + Array.from({length: 16}, (_, h) => `<span style="text-align:center">${(h + 6) % 12 || 12}${h + 6 < 12 ? 'a' : 'p'}</span>`).join('');
+  dn.forEach((d, di) => { s += `<span>${d}</span>`;
+    for (let h = 0; h < 16; h++) { const busy = Math.max(0, Math.sin((h - 1) / 16 * Math.PI) * (di > 4 ? .55 : 1) + (rnd() - .5) * .25);
+      const slow = (h > 11 && di < 5 && rnd() > .7) || (di > 4 && h < 3 && rnd() > .6);
+      s += `<span style="height:26px;border-radius:3px;background:rgba(42,120,214,${(0.08 + busy * .85).toFixed(2)});display:flex;align-items:center;justify-content:center;color:#9f1d1d;font-size:9px">${slow ? '●' : ''}</span>`; } });
+  el.innerHTML = s + '</div>';
+}
+perDay('perday7', 700, 90); speed('speed7', 330, 90); people7();
+cards('cards8', 5); perDay('perday8', 300, 46); speed('speed8', 300, 56);
+companies9(); heat9();
+perDay('perday10', 300, 80); people10();
+cards('cards11', 3);
+perDay('perday12', 300, 90); speed('speed12', 300, 90);
+</script>

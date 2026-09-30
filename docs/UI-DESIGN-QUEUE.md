@@ -2961,6 +2961,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 38 · Leads · the Templates tab, and a Dashboard tab beside it — **out for decision** (`docs/previews/leads-templates-dashboard-layouts.html`)
+
+Jose, 2026-09-30, with a screenshot of Manage › Templates: *"see if you can improve the leads template
+screen, it looks terrible"*, then *"also make a new tab called Dashboard which gathers info, reply
+rates from each user, response time, amounts of leads, graphs, etc"* — *"sub tab for leads i mean,
+like with the connections and templates sub tabs"*. Templates today: thirteen company chips in three
+rows, each template a card of two boxed fields, codes like `{{greeting}}` in fine print, Save at the
+bottom, no preview. **Templates** desktop **1** companies · templates · the open template with Insert
+buttons, a live preview and Save on top (recommended); **2** a company picker and a list that opens in
+place; **3** the reply box's buttons as the team sees them, edited in a side panel; phone **4**-**6**.
+Client only (the PUT already saves a company's list in order). **Dashboard** desktop **7** six tiles,
+leads per day by source, first-reply speed, one row per person (recommended); **8** a card per person
+with the team beside them; **9** company by company with a week-by-hour arrival grid; phone **10**-**12**.
+Needs one read-only `GET /leads/dashboard` from Leads. Measurable today: the person behind each
+reply sent from EzBizi (the `lead.replied` audit), not replies sent from A1 Tools or Google's app;
+automatic replies are counted apart so they cannot make response times look instant.
+
 ### 37 · Leads · a Templates tab in Manage, and a company tag on every lead — **Jose's own shape, built directly** — **BUILT** `bd46c68f`
 
 Jose, 2026-09-30, through Leads: *"inside manage and we can make a connection sub tab and templates
