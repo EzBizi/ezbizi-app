@@ -1299,6 +1299,15 @@ class LeadsController extends Controller
                 // Why it is broken, in the provider's words, when it is.
                 'status_reason' => $c->status_reason,
                 'sync_failing' => self::syncFailing($c),
+                // The account's Local Services campaigns as the hourly watch
+                // last read them, for Pause / Resume in Manage - the same
+                // POST /ads/campaigns/status the Ads report uses, already
+                // declared to Google (Jose, 2026-09-30). Null until read.
+                'campaigns' => $c->provider !== SocialProvider::GoogleAds->value
+                    ? null
+                    : $certifications->get($c->getKey())?->campaigns,
+                'may_pause' => $c->provider === SocialProvider::GoogleAds->value
+                    && ($user?->hasPermission('ads_performance.manage') ?? false),
             ])
             ->values()
             ->all();

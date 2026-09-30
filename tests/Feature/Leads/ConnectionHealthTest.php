@@ -42,5 +42,7 @@ class ConnectionHealthTest extends TestCase
         $this->assertFalse($rows['fresh']['sync_failing']);
         $this->assertTrue($rows['stale']['sync_failing']);
         $this->assertArrayHasKey('status_reason', $rows['stale']);
+        $this->assertTrue($rows['stale']['may_pause'], 'an administrator may pause');
+        $this->assertNull($rows['stale']['campaigns'], 'not read by the watch yet');
     }
 }
