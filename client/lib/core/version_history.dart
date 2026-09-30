@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Leads, Manage, Templates: redesigned, with companies, their templates and the open template side by side, Insert buttons for the placeholders, a live preview, drag to reorder, and copy to other companies.',
         'Leads, Manage: a new Dashboard tab shows leads, answer rate, first-reply time and booked, per day and per person.',
+        'Leads, Manage: pause or resume the Google Local Services campaign of an account from its panel.',
+        'Ads performance: a By channel table shows spend, clicks, conversions and cost per conversion for Local Services, Search (PPC) and the rest.',
       ],
     ),
     VersionRelease(
