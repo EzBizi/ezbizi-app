@@ -316,6 +316,40 @@ class ThumbtackAuthTest extends TestCase
         }
     }
 
+    /**
+     * The grant is exchanged daily even with no lead to fetch, once per
+     * login, and the rotation reaches every row (2026-09-30: a grant idle for
+     * 15 days was refused).
+     */
+    public function test_the_keep_alive_rotates_an_idle_grant_once_for_all_its_rows(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        collect(['biz-1', 'biz-2'])->each(
+            fn (string $id) => $this->storedConnection($t, $id, 'shared-access', 'shared-refresh'),
+        );
+
+        Http::fake([
+            'auth.thumbtack.com/oauth2/token' => Http::response([
+                'access_token' => 'rotated-access',
+                'refresh_token' => 'rotated-refresh',
+                'expires_in' => 3600,
+            ]),
+        ]);
+
+        $this->artisan('ezbizi:thumbtack-keep-alive')->assertSuccessful();
+
+        Http::assertSentCount(1);
+        $this->inTenant($t['org'], function () {
+            $stored = SocialConnection::query()
+                ->where('provider', SocialProvider::Thumbtack->value)
+                ->get()
+                ->map(fn ($r) => $r->getAttribute('credentials')['refresh_token'] ?? null)
+                ->unique();
+
+            $this->assertSame(['rotated-refresh'], $stored->values()->all());
+        });
+    }
+
     private function storedConnection(array $t, string $remoteId, string $access, string $refresh): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t, $remoteId, $access, $refresh) {

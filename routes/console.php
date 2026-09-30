@@ -98,6 +98,9 @@ Schedule::command('ezbizi:close-ended-shifts')->everyMinute()->withoutOverlappin
 // and sends the difference, so it repairs drift instead of adding to it.
 Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->withoutOverlapping(30);
 
+// A Thumbtack grant left unused for ~15 days is refused; exchange it daily.
+Schedule::command('ezbizi:thumbtack-keep-alive')->dailyAt('04:30')->withoutOverlapping(10);
+
 // Media handed to Instagram, Threads or Facebook to fetch, and not cleaned up
 // because the worker died between the fetch and the `finally` that deletes it.
 //
