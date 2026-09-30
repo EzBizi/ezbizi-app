@@ -2031,6 +2031,9 @@ shape of process. Reopening either is his call, not design's.
   *Open question worth Jose's attention, not a change request:* Settings layout 8 is a
   storyboard strip, a pattern that exists nowhere else in the app — every other module
   uses list-beside-editor. It was flagged to him and he chose it anyway.
+  **Guide player 4 is superseded (2026-09-30):** Jose told Training to read guides
+  the way A1 Tools shows them ("the ui, everything"); the reader is A1's outline and
+  topic layout since `ca601d43`. Do not rebuild layout 4.
 - **Web Management · SEO panel** — two-pane list/detail, 288/900, shortcode as a copy
   **button** rather than helper text, setup blocks above the fields when a site is
   unconnected and below once connected. Shipped in 0.0.0118. The last two generalise
