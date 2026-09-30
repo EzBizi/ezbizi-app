@@ -267,6 +267,27 @@ class TimeClockDayRecordsTest extends TestCase
         $this->assertTrue($this->signedInAs($tech)->getJson('/api/v1/time-clock/me')->json('data.time_clock.after_hours'));
     }
 
+    /**
+     * The lock screen's date is the day in the schedule's zone, in the
+     * organization's language. At 22:00 New York it is already Friday in UTC;
+     * the label must still say Thursday.
+     */
+    public function test_the_block_names_today_in_the_schedules_zone_and_the_orgs_language(): void
+    {
+        [$alpha, , $tech] = $this->tenant();
+        $this->inTenant($alpha['org'], fn () => $tech->forceFill(['work_schedule' => [
+            'timezone' => 'America/New_York',
+            'days' => ['thursday' => ['start' => '08:00', 'end' => '17:00']],
+        ]])->save());
+        Carbon::setTestNow(Carbon::parse('2026-09-25 02:00:00', 'UTC'));
+
+        $label = fn () => $this->signedInAs($tech)->getJson('/api/v1/time-clock/me')->json('data.time_clock.today_label');
+        $this->assertStringStartsWith('Thursday', $label());
+
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('locale', $alpha['org'], 'es'));
+        $this->assertStringStartsWith('jueves', $label());
+    }
+
     /** @return array{0: array, 1: User, 2: User} */
     private function tenant(): array
     {

@@ -190,7 +190,8 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
       ),
       const SizedBox(height: 4),
       Text(
-        _dayOf(clock),
+        // The server's today, not the device's: see today_label.
+        me?.timeClock.todayLabel ?? '',
         textAlign: TextAlign.center,
         style: theme.textTheme.bodyMedium?.copyWith(color: muted),
       ),
@@ -387,33 +388,5 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-  }
-
-  /// "Wednesday, September 30".
-  static String _dayOf(DateTime at) {
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${days[at.weekday - 1]}, ${months[at.month - 1]} ${at.day}';
   }
 }

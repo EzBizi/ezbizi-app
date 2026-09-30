@@ -950,6 +950,7 @@ class TimeClockStatus {
     this.extensionMinutes = 30,
     this.today,
     this.afterHours = false,
+    this.todayLabel = '',
   });
 
   /// Key missing on `/me`: an older server. No button.
@@ -985,6 +986,9 @@ class TimeClockStatus {
   /// buys one extension, instead of "start your day" at 5 PM (2026-09-24).
   final bool afterHours;
 
+  /// "Wednesday, September 30": the server's today, in the org's language.
+  final String todayLabel;
+
   factory TimeClockStatus.fromJson(Object? json) {
     if (json is! Map) return absent;
     final map = json is Map<String, dynamic>
@@ -1015,6 +1019,7 @@ class TimeClockStatus {
           ? TimeClockWindow.fromJson(Map<String, dynamic>.from(todayRaw))
           : null,
       afterHours: map['after_hours'] == true,
+      todayLabel: '${map['today_label'] ?? ''}',
     );
   }
 }

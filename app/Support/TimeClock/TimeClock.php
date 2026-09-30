@@ -62,7 +62,9 @@ final class TimeClock
         $enabled = $this->organizationEnabled($organization);
         $canClock = $user->hasPermission('time_clock.view');
         $open = TimeClockShift::openFor($user);
-        $window = WorkSchedule::windowFor($this->scheduleFor($user), now());
+        $schedule = $this->scheduleFor($user);
+        $window = WorkSchedule::windowFor($schedule, now());
+        $scope = ViewScope::forUser($user)->settingsScope();
 
         // The four gates of design 2026-09-08 §3.8, plus the org's own Clock
         // in switch. A day off never locks; after the scheduled end on a
@@ -90,6 +92,13 @@ final class TimeClock
             // So the lock screen stops saying "start your day" at 5 PM: after
             // the end, Clock In buys one extension, and it should say so.
             'after_hours' => $window !== null && now()->gte($window['end_at']),
+            // "Wednesday, September 30" for the lock screen: the day in the
+            // schedule's zone, so it is the day `today` is about, in the
+            // organization's language. The device's day can be another one.
+            'today_label' => now()
+                ->timezone((string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope)))
+                ->locale((string) $this->settings->get('locale', $scope))
+                ->isoFormat(str_starts_with((string) $this->settings->get('date_format', $scope), 'M') ? 'dddd, MMMM D' : 'dddd D MMMM'),
         ];
     }
 

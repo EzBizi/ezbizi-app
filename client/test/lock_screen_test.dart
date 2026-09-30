@@ -11,7 +11,9 @@ import 'package:http/testing.dart';
 
 /// The route that replaces the shell while `lock` is true (design 2026-09-08 §10.2).
 void main() {
-  testWidgets('shows the sentence, today, Clock In and Sign out', (tester) async {
+  testWidgets('shows the sentence, today, Clock In and Sign out', (
+    tester,
+  ) async {
     await _pump(tester);
 
     expect(find.text('Clock in to start your day.'), findsOneWidget);
@@ -33,6 +35,7 @@ void main() {
     expect(find.byKey(const ValueKey('lock-app-icon')), findsOneWidget);
     expect(find.byKey(EzBiziTheme.wordmarkKey), findsOneWidget);
     expect(find.text('Today 8:00 AM – 5:00 PM'), findsOneWidget);
+    expect(find.text('jueves 24 septiembre'), findsOneWidget);
     expect(find.text('Everdoors'), findsOneWidget);
     expect(find.byKey(const ValueKey('lock-card')), findsOneWidget);
   });
@@ -200,6 +203,8 @@ Future<Session> _pump(
                 'open': null,
                 'lock': true,
                 'today': {'start': '08:00', 'end': '17:00'},
+                // Spanish, so it cannot be the device's day in English.
+                'today_label': 'jueves 24 septiembre',
               },
             },
           }),
