@@ -123,6 +123,39 @@ void main() {
     );
   });
 
+  /// Jose, 2026-09-30: "Also filters to see certain roles only".
+  testWidgets('a role filter narrows the list to that role', (tester) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [
+          {
+            ..._person(),
+            'role': {'id': 'r-1', 'name': 'Dispatcher'},
+          },
+          {
+            ..._person(id: 'u-3', name: 'Cal Reyes'),
+            'role': {'id': 'r-2', 'name': 'Technician'},
+          },
+        ],
+      ),
+    );
+
+    final list = find.byType(ListView).first;
+    Finder row(String name) =>
+        find.descendant(of: list, matching: find.text(name));
+    expect(row('Cal Reyes'), findsOneWidget);
+
+    await tester.tap(find.text('All roles'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dispatcher').last);
+    await tester.pumpAndSettle();
+
+    expect(row('Bea Okafor'), findsOneWidget);
+    expect(row('Cal Reyes'), findsNothing, reason: 'Technician, filtered out.');
+  });
+
   testWidgets('the three numbers he asked for are on the person', (
     tester,
   ) async {

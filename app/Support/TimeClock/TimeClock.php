@@ -753,7 +753,9 @@ final class TimeClock
         $people = User::query()
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->orderBy('name')
-            ->get(['id', 'organization_id', 'name', 'is_active', 'avatar_path', 'work_schedule']);
+            // The role, for the list's role filter (Jose, 2026-09-30).
+            ->with('role:id,name')
+            ->get(['id', 'organization_id', 'name', 'is_active', 'avatar_path', 'work_schedule', 'role_id']);
 
         $records = TimeClockDay::query()
             ->whereIn('user_id', $people->modelKeys())
@@ -921,6 +923,7 @@ final class TimeClock
             'name' => $person->name,
             'is_active' => (bool) $person->is_active,
             'has_avatar' => $person->avatar_path !== null,
+            'role' => $person->role === null ? null : ['id' => $person->role->id, 'name' => $person->role->name],
             'total_seconds' => $total,
             'days_worked' => $worked,
             // Over the days actually WORKED, not over seven: "six hours a day

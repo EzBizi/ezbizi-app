@@ -52,7 +52,7 @@ class TimeClockUiStringsTest extends TestCase
             'time_clock.not_scheduled', 'time_clock.overnight', 'time_clock.exempt_on',
             'time_clock.exempt_off',
             // The people list's show-everyone button (2026-09-30).
-            'time_clock.show_everyone', 'time_clock.only_clocked_in',
+            'time_clock.show_everyone', 'time_clock.only_clocked_in', 'time_clock.all_roles',
         ] as $key) {
             $this->assertSame(2, UiString::query()->where('key', $key)->count(), $key);
         }

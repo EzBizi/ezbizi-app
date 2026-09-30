@@ -105,6 +105,19 @@ class TimeClockWeekTest extends TestCase
         $this->assertSame('9:00 AM', $person['shifts'][3]['clocked_in']);
     }
 
+    /** Each person carries their role, for the list's role filter (2026-09-30). */
+    public function test_each_person_carries_their_role(): void
+    {
+        [$alpha, $worker] = $this->tenantWithAWeek();
+        $viewer = $this->userWithRole($alpha, 'Hr', ['work_hours.general.view', 'work_hours.all'], 'hr@alpha.test');
+        $this->midweek();
+
+        $people = collect($this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')->assertOk()->json('data.people'));
+
+        $this->assertSame(['id' => $worker->role_id, 'name' => 'Tech'], $people->firstWhere('id', $worker->id)['role']);
+        $this->assertSame('Hr', $people->firstWhere('id', $viewer->id)['role']['name']);
+    }
+
     public function test_the_organization_can_start_its_week_on_another_day(): void
     {
         [$alpha, $worker] = $this->tenantWithAWeek();

@@ -109,6 +109,9 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// and a search always looks at everyone.
   bool _everyone = false;
 
+  /// Only this role, or everybody's when null (Jose, 2026-09-30).
+  String? _roleId;
+
   @override
   void initState() {
     super.initState();
@@ -264,7 +267,9 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     final needle = _search.trim().toLowerCase();
     final matching = [
       for (final p in _week?.people ?? const <_Person>[])
-        if (p.name.toLowerCase().contains(needle)) p,
+        if (p.name.toLowerCase().contains(needle) &&
+            (_roleId == null || p.roleId == _roleId))
+          p,
     ];
     final clocked = [
       for (final p in matching)
@@ -281,8 +286,18 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
 
   /// People on the list who clocked nothing this week.
   int get _idleCount => (_week?.people ?? const <_Person>[])
-      .where((p) => p.shifts.isEmpty)
+      .where(
+        (p) => p.shifts.isEmpty && (_roleId == null || p.roleId == _roleId),
+      )
       .length;
+
+  /// The roles of the people in reach, by name: role id → name.
+  Map<String, String> get _roles {
+    final people = [...?_week?.people.where((p) => p.roleId != null)]
+      ..sort((a, b) => a.roleName.compareTo(b.roleName));
+
+    return {for (final p in people) p.roleId!: p.roleName};
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -411,6 +426,27 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
             onChanged: (value) => setState(() => _search = value),
           ),
         ),
+        if (_roles.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: DropdownButton<String?>(
+              isExpanded: true,
+              isDense: true,
+              value: _roles.containsKey(_roleId) ? _roleId : null,
+              items: [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(UiStrings.t('time_clock.all_roles')),
+                ),
+                for (final role in _roles.entries)
+                  DropdownMenuItem(
+                    value: role.key,
+                    child: Text(role.value, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (id) => setState(() => _roleId = id),
+            ),
+          ),
         if (_idleCount > 0)
           Align(
             alignment: Alignment.centerLeft,
@@ -1221,12 +1257,18 @@ class _Person {
     this.records = const {},
     this.schedule = const {},
     this.schedulePersonal = false,
+    this.roleId,
+    this.roleName = '',
   });
 
   /// The schedule the clock runs on for them, weekday → {start, end}. Their
   /// own, or the place's business hours when [schedulePersonal] is false.
   final Map<String, dynamic> schedule;
   final bool schedulePersonal;
+
+  /// Their role, for the list's role filter.
+  final String? roleId;
+  final String roleName;
 
   final String id;
   final String name;
@@ -1270,6 +1312,10 @@ class _Person {
         ? Map<String, dynamic>.from(json['schedule'] as Map)
         : const {},
     schedulePersonal: json['schedule_is_personal'] == true,
+    roleId: json['role'] is Map ? '${(json['role'] as Map)['id']}' : null,
+    roleName: json['role'] is Map
+        ? '${(json['role'] as Map)['name'] ?? ''}'
+        : '',
     records: {
       for (final row in (json['days'] as List?) ?? const [])
         if (row is Map<String, dynamic>) '${row['date']}': _DayRecord.from(row),

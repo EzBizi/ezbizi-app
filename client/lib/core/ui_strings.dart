@@ -85,6 +85,7 @@ class UiStrings {
     'time_clock.no_hours': 'Nothing clocked this week.',
     'time_clock.show_everyone': 'Show {count} who did not clock in',
     'time_clock.only_clocked_in': 'Only who clocked in',
+    'time_clock.all_roles': 'All roles',
     'time_clock.this_week': 'This week',
     'time_clock.previous_week': 'Previous week',
     'time_clock.next_week': 'Next week',
