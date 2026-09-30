@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 33 · Reports · every saved report — 📐 **DRAWN, awaiting Jose**
+### 33 · Reports · every saved report — **Jose: "as you recommend" — 1 and 4** — **BUILT** `59665c6c`
 
 From the deploy desk, 2026-09-29, Jose verbatim, on the "Weekly work hours report" rule: *"i should also
 be able to seelct which role gets reported or not or perhaps that's something that should show on the
@@ -2989,7 +2989,13 @@ Served: Reports `50f58055`, Clock In `64593d3b` (`sent_by` for `automations.view
 no rule sends it). **Open before the build:** `sent_automatically` differs — Reports counts only a rule
 that is on and not auto-disabled; Clock In (`TimeClockReportsController.php:46`, `isset`) counts any
 rule with the step, off ones included, so one library would read the same state two ways. Reports'
-meaning is the one to keep ("will it go out"); not yet sent to Clock In — peer messaging paused.
+meaning is the one to keep ("will it go out"); Clock In aligned it in `c3961bc1`.
+
+**Built:** the library in `reports_screen.dart` (table on a desk, cards on a phone, chips per kind), a Work
+Hours report in `screens/reports/work_hours_report_panel.dart` (docked at 460, in place on a phone), the
+editor shared as `editWorkHoursReport` and the covers line as `workHoursReportCovers` in Work Hours' tab,
+and the step's covers line in `automation_builder.dart`. Reports' `root_label` (`3af98941`) names what a
+Builder report counts. The schedule in words is `core/schedule_words.dart`.
 
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
