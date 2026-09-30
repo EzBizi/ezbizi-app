@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/leads_screen.dart';
+import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -362,6 +363,28 @@ void main() {
       expect(overflows, isEmpty);
     });
   }
+
+  // Jose, 2026-09-30: "add a tag with the name of the company it belongs to,
+  // so this doesn't happen again" - chimney prices went to a garage-door
+  // lead. Every row says whose lead it is.
+  testWidgets('every row tags the company its lead belongs to', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'A'),
+        {
+          ..._lead('lead-2', 'B'),
+          'company': {'id': 'c-2', 'name': 'Harbor Garage Doors'},
+        },
+      ],
+      connections: const [],
+    );
+
+    String tag(String id) =>
+        tester.widget<CompanyTag>(find.byKey(ValueKey('company-tag-$id'))).name;
+    expect(tag('lead-1'), 'A-1 Chimney');
+    expect(tag('lead-2'), 'Harbor Garage Doors');
+  });
 
   // Jose, 2026-09-29: the Google tag says LS Call or LS Text, and every
   // source has its own colour.

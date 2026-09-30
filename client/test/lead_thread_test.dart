@@ -72,6 +72,24 @@ void main() {
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-30: chimney prices went to a garage-door lead. The header
+  /// tags the company the lead belongs to.
+  testWidgets('the header tags the company the lead belongs to', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      company: const {'id': 'co-2', 'name': 'Harbor Garage Doors'},
+    );
+
+    final tag = tester.widget<CompanyTag>(
+      find.byKey(const ValueKey('thread-company')),
+    );
+    expect(tag.name, 'Harbor Garage Doors');
+  });
+
   /// The call row carries the same play bar Voicemail and Records use:
   /// fetch on the first press through the lead's own endpoint, then play,
   /// pause and scrub. Nothing plays before the bytes arrive.
@@ -679,6 +697,7 @@ Future<void> _pump(
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
   Size size = const Size(600, 900),
+  Map<String, dynamic>? company,
 }) async {
   _sent.clear();
   tester.view.physicalSize = size;
@@ -803,13 +822,14 @@ Future<void> _pump(
         body: LeadThread(
           api: api,
           player: player,
-          lead: const {
+          lead: {
             'id': 'lead-1',
             'contact_name': 'Marcus Bell',
             'phone': '+1 (555) 123-4567',
             'service': 'fireplace_chimney',
             'status': 'new',
-            'franchise': {'id': 'f-1', 'name': 'Connecticut'},
+            'franchise': const {'id': 'f-1', 'name': 'Connecticut'},
+            'company': ?company,
           },
           onStatusChanged: (_) async {},
           onRead: onRead,
@@ -879,6 +899,16 @@ void _wordTests() {
 
   /// A website lead with no host recorded falls back rather than losing the
   /// place entirely — older rows predate `summary` carrying the host.
+  /// Beside its tag the line does not say the company a second time.
+  test('with the company tagged the line leaves it out', () {
+    const lead = {
+      'source': 'local_services',
+      'company': {'id': 'c1', 'name': 'A-1 Chimney'},
+    };
+
+    expect(leadHeaderLine(lead, company: false), 'Google Ads');
+  });
+
   test('a website lead with no host still names the company', () {
     final line = leadHeaderLine({
       'source': 'website_chat',

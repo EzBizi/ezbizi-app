@@ -449,6 +449,74 @@ void main() {
     expect(backToLeads, 1);
   });
 
+  /// Jose, 2026-09-30: "inside manage and we can make a connection sub tab
+  /// and templates sub tab". Both tabs stay alive: an account open beside the
+  /// list and a half-typed template both survive a look at the other tab.
+  testWidgets('Manage has Connections and Templates, and each keeps its '
+      'place', (tester) async {
+    await _pump(tester, connections: _many(3));
+
+    expect(find.byKey(const ValueKey('manage-tabs')), findsOneWidget);
+    await _open(tester, 'busy-0');
+    expect(find.byKey(const ValueKey('account-name')), findsOneWidget);
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('reply-templates-manager')),
+      findsOneWidget,
+    );
+    expect(_rows(), findsNothing);
+    expect(
+      find.textContaining('Connect '),
+      findsNothing,
+      reason: 'connecting belongs to the connections tab',
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Thanks for reaching out.'),
+      'Thanks, Harbor here.',
+    );
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('account-name')),
+      findsOneWidget,
+      reason: 'the account stayed open',
+    );
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thanks, Harbor here.'), findsOneWidget);
+  });
+
+  testWidgets('a phone has the tabs on its first step only', (tester) async {
+    await _pump(tester, connections: _many(3), size: const Size(390, 800));
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('reply-templates-manager')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('provider-google_ads')), findsNothing);
+
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('provider-google_ads')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('manage-tabs')),
+      findsNothing,
+      reason: 'a step has its own back, not the tabs',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test('placements are counted, which is the number that changes', () {
     expect(
       placedCount([
@@ -555,6 +623,19 @@ Future<void> _pump(
         _patched[request.url.path] = (jsonDecode(request.body) as Map)
             .cast<String, dynamic>();
         return _json({'data': <String, dynamic>{}});
+      }
+      if (request.url.path.endsWith('/leads/reply-templates')) {
+        return _json({
+          'data': [
+            {
+              'company': {'id': 'co-1', 'name': 'Harbor Chimney'},
+              'templates': [
+                {'name': 'Thank you', 'text': 'Thanks for reaching out.'},
+              ],
+            },
+          ],
+          'meta': {'may_edit': true},
+        });
       }
       return _json({
         'message': 'Nothing stubbed for ${request.url.path}.',

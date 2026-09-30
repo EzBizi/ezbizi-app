@@ -479,6 +479,9 @@ class _LeadThreadState extends State<LeadThread> {
     final lead = _lead;
     final starred = lead['starred'] == true;
     final narrow = MediaQuery.sizeOf(context).width < 600;
+    final company = leadCompany(lead);
+    // The company is on screen as its tag, so the line does not say it again.
+    final line = leadHeaderLine(lead, company: company == null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -561,16 +564,30 @@ class _LeadThreadState extends State<LeadThread> {
                           formatPhoneNumber(lead['phone'] as String?),
                           style: theme.textTheme.bodySmall,
                         ),
-                      Text(
-                        narrow && showsNumberLine(lead)
-                            ? '${formatPhoneNumber(lead['phone'] as String?)} · '
-                                  '${leadHeaderLine(lead)}'
-                            : leadHeaderLine(lead),
-                        maxLines: narrow ? 1 : null,
-                        overflow: narrow ? TextOverflow.ellipsis : null,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                      Row(
+                        children: [
+                          // Whose lead it is, first on the line: chimney prices
+                          // went to a garage-door lead (Jose, 2026-09-30).
+                          if (company != null) ...[
+                            CompanyTag(
+                              company,
+                              key: const ValueKey('thread-company'),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Flexible(
+                            child: Text(
+                              narrow && showsNumberLine(lead)
+                                  ? '${formatPhoneNumber(lead['phone'] as String?)} · $line'
+                                  : line,
+                              maxLines: narrow ? 1 : null,
+                              overflow: narrow ? TextOverflow.ellipsis : null,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       // What it looks like, read by a model, beside what
                       // somebody decided. Only when a reading exists.
@@ -1718,7 +1735,10 @@ String leadTitle(Map<String, dynamic> lead) {
 /// Never the category: 23,686 of those leads are classified "home inspector"
 /// by Google, for a chimney company. A wrong statement about the business,
 /// shown to the business.
-String leadHeaderLine(Map<String, dynamic> lead) {
+///
+/// [company] false leaves the company name out of the place, for where it is
+/// already on screen as its [CompanyTag].
+String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
   final service = humaniseService(lead['service'] as String?);
   final source = lead['source'] as String?;
 
@@ -1745,7 +1765,7 @@ String leadHeaderLine(Map<String, dynamic> lead) {
   final place =
       (host != null && host.isNotEmpty ? host : null) ??
       (lead['franchise'] as Map?)?['name'] as String? ??
-      (lead['company'] as Map?)?['name'] as String?;
+      (company ? ((lead['company'] as Map?)?['name'] as String?) : null);
 
   return [
     ?service,
@@ -1906,6 +1926,58 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     _ => Tone.info,
   },
 );
+
+/// The lead's company name, or null when it carries none.
+String? leadCompany(Map<String, dynamic> lead) {
+  final name = (lead['company'] as Map?)?['name'] as String?;
+  return name == null || name.trim().isEmpty ? null : name;
+}
+
+/// The company a lead belongs to, as a tag on the list's rows and in the
+/// thread's header (Jose, 2026-09-30: "add a tag with the name of the company
+/// it belongs to, so this doesn't happen again" - chimney prices went to a
+/// garage-door lead). Outlined, and the same for every company: the filled
+/// colours on a row already say its source and its status.
+class CompanyTag extends StatelessWidget {
+  const CompanyTag(this.name, {super.key});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onSurface;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 160),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outline),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.storefront_outlined, size: 13, color: ink),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Google's own lead status as a colour: booked and active are good news,
 /// declined is not, the rest is neutral.
