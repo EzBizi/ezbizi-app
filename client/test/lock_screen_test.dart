@@ -30,12 +30,15 @@ void main() {
     await _pump(
       tester,
       display: const {'date_format': 'M/D/YYYY', 'time_format': '12h'},
+      // Spanish, so it cannot be the device's day in English.
+      todayLabel: 'jueves 24 septiembre',
     );
 
     expect(find.byKey(const ValueKey('lock-app-icon')), findsOneWidget);
+    // The organization's day, from the server, not the device's clock.
+    expect(find.text('jueves 24 septiembre'), findsOneWidget);
     expect(find.byKey(EzBiziTheme.wordmarkKey), findsOneWidget);
     expect(find.text('Today 8:00 AM – 5:00 PM'), findsOneWidget);
-    expect(find.text('jueves 24 septiembre'), findsOneWidget);
     expect(find.text('Everdoors'), findsOneWidget);
     expect(find.byKey(const ValueKey('lock-card')), findsOneWidget);
   });
@@ -44,6 +47,8 @@ void main() {
     await _pump(tester, size: const Size(390, 844));
 
     expect(find.byKey(const ValueKey('lock-card')), findsNothing);
+    // No label from the server: no day, rather than the device's.
+    expect(find.byKey(const ValueKey('lock-day')), findsNothing);
     final button = tester.getRect(
       find.widgetWithText(FilledButton, 'Clock In'),
     );
@@ -159,6 +164,7 @@ Future<Session> _pump(
   Future<http.Response?> Function(http.Request)? onRequest,
   Map<String, Object?>? display,
   Size? size,
+  String? todayLabel,
 }) async {
   if (size != null) {
     tester.view.physicalSize = size;
@@ -203,8 +209,7 @@ Future<Session> _pump(
                 'open': null,
                 'lock': true,
                 'today': {'start': '08:00', 'end': '17:00'},
-                // Spanish, so it cannot be the device's day in English.
-                'today_label': 'jueves 24 septiembre',
+                'today_label': ?todayLabel,
               },
             },
           }),

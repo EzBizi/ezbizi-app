@@ -1038,6 +1038,7 @@ class _LeadThreadState extends State<LeadThread> {
           // Ours, not automatic, and nobody in EzBizi named as sending it:
           // it went out from A1 Tools or Google directly.
           outside: mine && c['automatic'] != true && c['sent_by'] == null,
+          automatic: mine && c['automatic'] == true,
           who: who,
           when: when,
         );
@@ -1412,6 +1413,7 @@ class _LeadThreadState extends State<LeadThread> {
     required String who,
     required String when,
     bool outside = false,
+    bool automatic = false,
   }) {
     final attachments = (c['attachments'] as List? ?? const []).cast<String>();
 
@@ -1426,16 +1428,26 @@ class _LeadThreadState extends State<LeadThread> {
     // 2026-09-30: "make it so the sent outside ezbizi messages are red"):
     // said from somewhere nobody here can see, so it stands out from the
     // replies EzBizi sent.
+    //
+    // One an automation sent is GREEN (Jose, 2026-09-30: "the automation
+    // message should also have a different color, instead of blue like the
+    // other, maybe green or yellow"): the ok tone's fill and ink, which
+    // read in both themes and are neither ours, the outside red, nor theirs.
     final scheme = theme.colorScheme;
+    final rule = ToneColours.of(context, Tone.ok);
     final fill = !mine
         ? scheme.surface
         : outside
         ? scheme.error
+        : automatic
+        ? rule.fill
         : scheme.primary;
     final ink = !mine
         ? scheme.onSurface
         : outside
         ? scheme.onError
+        : automatic
+        ? rule.ink
         : scheme.onPrimary;
     final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 

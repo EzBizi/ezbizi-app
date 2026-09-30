@@ -59,6 +59,23 @@ void main() {
         scheme.onError,
       );
       expect(find.textContaining('Sent outside EzBizi'), findsOneWidget);
+
+      // An automation's reply: green, the ok tone's fill and ink (Jose,
+      // 2026-09-30: "instead of blue like the other, maybe green").
+      final rule = ToneColours.of(
+        tester.element(find.text('Thanks! A dispatcher will call shortly.')),
+        Tone.ok,
+      );
+      final automatic = _bubbleAround(
+        tester,
+        'Thanks! A dispatcher will call shortly.',
+      );
+      expect(automatic.color, rule.fill);
+      expect(automatic.color, isNot(scheme.primary));
+      expect(
+        _textColour(tester, 'Thanks! A dispatcher will call shortly.'),
+        rule.ink,
+      );
     });
   }
 }
@@ -123,6 +140,16 @@ Future<void> _pump(WidgetTester tester, ThemeData theme) async {
                   'text': 'Called you back from the office.',
                   'attachments': <String>[],
                   'has_recording': false,
+                },
+                {
+                  'id': 'c-rule',
+                  'channel': 'MESSAGE',
+                  'from': 'ADVERTISER',
+                  'occurred_at': '2026-09-07T09:05:00Z',
+                  'text': 'Thanks! A dispatcher will call shortly.',
+                  'attachments': <String>[],
+                  'has_recording': false,
+                  'automatic': true,
                 },
               ],
             },
