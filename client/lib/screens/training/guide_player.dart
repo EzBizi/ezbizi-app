@@ -425,8 +425,7 @@ class _Outline extends StatelessWidget {
     final isUnlocked = unlocked(i);
     final isDone = done(i);
     final selected = i == current;
-    // The theme's one named green (punch-in); A1 drew completion green.
-    final green = EzBiziTheme.clockIn(context);
+    final green = ToneColours.of(context, Tone.ok).ink;
 
     final color = !isUnlocked
         ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
@@ -471,7 +470,7 @@ class _ProgressCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -538,7 +537,7 @@ class _ChapterCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
         border: Border.all(color: expanded ? scheme.primary : EzBiziTheme.edge(context), width: expanded ? 2 : 1),
       ),
       child: ExpansionTile(
@@ -552,7 +551,7 @@ class _ChapterCard extends StatelessWidget {
           height: 36,
           decoration: BoxDecoration(
             color: scheme.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
           ),
           child: Icon(Icons.auto_stories_outlined, size: 20, color: scheme.primary),
         ),
@@ -693,7 +692,7 @@ class _Topic extends StatelessWidget {
               else if (isLast)
                 Chip(
                   key: const Key('training.all-done'),
-                  avatar: Icon(Icons.celebration, size: 18, color: EzBiziTheme.clockIn(context)),
+                  avatar: Icon(Icons.celebration, size: 18, color: ToneColours.of(context, Tone.ok).ink),
                   label: const Text('All done!'),
                 )
               else
@@ -730,7 +729,7 @@ class _Block extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
               child: url == null || !isHttpUrl(url)
                   ? const _Missing(icon: Icons.broken_image_outlined, label: 'Image unavailable')
                   : Image.network(
@@ -815,7 +814,7 @@ class _VideoBlockState extends State<_VideoBlock> {
         child: AspectRatio(
           aspectRatio: 16 / 9,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
             child: ColoredBox(
               color: scheme.inverseSurface,
               child: _playing && playable != null
