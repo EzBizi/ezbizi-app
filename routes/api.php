@@ -117,6 +117,7 @@ use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingDispatchController;
 use App\Http\Controllers\Api\SchedulingFranchiseLimitsController;
+use App\Http\Controllers\Api\SchedulingLocationsController;
 use App\Http\Controllers\Api\SchedulingOverbookingController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
@@ -1199,6 +1200,14 @@ Route::prefix('v1')
          */
         // The Schedule tab: one day's board, read-only.
         // Scheduling › Overbooking (Jose, 2026-09-29).
+        // Scheduling › Locations (Jovanni, 2026-10-01; queue 49).
+        Route::middleware('permission:scheduling.locations.view')->group(function () {
+            Route::get('scheduling/locations', [SchedulingLocationsController::class, 'index']);
+            Route::get('scheduling/locations/nearest', [SchedulingLocationsController::class, 'nearest']);
+        });
+        Route::middleware('permission:scheduling.settings.view')->group(function () {
+            Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
+        });
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
             Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
