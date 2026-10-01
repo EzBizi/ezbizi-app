@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Onboarding: the employer can mark the new hire\'s questions as not applying, photos and documents included.',
         'An item opened on a wide screen has a back arrow, so you can return to the full Inventory list. The same arrow now appears in Services and Training.',
+        'Live chat: each website\'s chat can have its own Send button, Start chat button and typing-border colours. In Leads, a photo a customer sent opens right in the conversation.',
       ],
     ),
     VersionRelease(
