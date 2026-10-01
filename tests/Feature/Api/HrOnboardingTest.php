@@ -700,6 +700,23 @@ class HrOnboardingTest extends TestCase
         $this->assertArrayNotHasKey('tax_form', $this->form($employee, $id)['missing']);
     }
 
+    /** Finished onboardings are their own archive (a Suggestion Jose said to build, 2026-10-01). */
+    public function test_finished_onboardings_list_apart_from_those_in_progress(): void
+    {
+        [$alpha, $employee, $id] = $this->completeForm();
+        $ids = fn (string $state) => collect($this->as($alpha['admin'])
+            ->getJson("/api/v1/hr/onboardings?state={$state}")->assertOk()->json('data'))->pluck('id')->all();
+
+        $this->assertSame([$id], $ids('open'));
+        $this->assertSame([], $ids('finished'));
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+
+        $this->assertSame([], $ids('open'));
+        $this->assertSame([$id], $ids('finished'));
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

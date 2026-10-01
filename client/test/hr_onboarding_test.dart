@@ -591,6 +591,18 @@ void main() {
     expect(find.text('Cancel'), findsOneWidget);
   });
 
+  // Andy's Suggestion, built on Jose's word (2026-10-01): "a seperate
+  // archieved for all the forms that are already done".
+  testWidgets('finished onboardings are their own list', (tester) async {
+    final asked = <Map<String, String>>[];
+
+    await _pumpTab(tester, _handler(onList: asked.add));
+    expect(asked.last['state'], 'open');
+
+    await _tap(tester, find.byKey(const ValueKey('onboardings-finished')));
+    expect(asked.last['state'], 'finished');
+  });
+
   testWidgets('an in-progress onboarding can be cancelled', (tester) async {
     var cancelled = false;
     await _pumpTab(tester, _handler(onCancel: () => cancelled = true));
@@ -1435,6 +1447,7 @@ MockClientHandler _handler({
   String? savedSignature,
   void Function(Map<String, dynamic> body)? onSaveSignature,
   void Function(Map<String, String> query)? onCounties,
+  void Function(Map<String, String> query)? onList,
 }) {
   final seen = form ?? _asEmployer;
 
@@ -1559,6 +1572,8 @@ MockClientHandler _handler({
         onStart?.call(body);
         return _json({'data': _inFlight.first}, 201);
       }
+
+      onList?.call(request.url.queryParameters);
 
       // Filtered the way the endpoint is: the Records tab asks for one
       // person's onboardings, and everything else asks for all of them.
