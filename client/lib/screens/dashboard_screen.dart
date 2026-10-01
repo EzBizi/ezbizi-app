@@ -417,14 +417,16 @@ class _GlanceBody extends StatelessWidget {
       ];
     }
 
+    final charted = DashboardChart.canDraw(presentation, data);
+
     return [
-      if (DashboardChart.canDraw(presentation, data))
+      if (charted)
         DashboardChart(
           presentation: presentation,
           slices: data['slices'] is List ? data['slices'] as List : null,
           series: data['series'] is List ? data['series'] as List : null,
         ),
-      ..._sentences(data),
+      ..._sentences(data, charted: charted),
       // No money line, ever. Jose, 2026-09-29: "do not show any financial
       // info on the dashboard widgets" — anybody who can open a module sees
       // its box, dispatchers included. There used to be a renderer here that
@@ -436,7 +438,10 @@ class _GlanceBody extends StatelessWidget {
     ];
   }
 
-  static List<Widget> _sentences(Map<String, dynamic> data) {
+  static List<Widget> _sentences(
+    Map<String, dynamic> data, {
+    required bool charted,
+  }) {
     final sentences = data['sentences'];
 
     if (sentences is List && sentences.isNotEmpty) {
@@ -453,8 +458,10 @@ class _GlanceBody extends StatelessWidget {
 
     if (sentence != null) return [Text(sentence)];
 
-    // Same fallback, same reason as the one above.
-    return [const DashboardNote('Nothing to show.')];
+    // Same fallback, same reason as the one above — but not under a drawn
+    // chart, which has already shown something (Fleet, Phone, Email, Jobs and
+    // Automations send slices and no sentence).
+    return [if (!charted) const DashboardNote('Nothing to show.')];
   }
 
   /// Every sentence a payload carries, in order, whichever key it used.
