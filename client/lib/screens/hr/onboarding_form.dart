@@ -15,7 +15,9 @@ import '../../widgets/address_fields.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/pdf_view.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/signature_pad.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import '../../widgets/work_schedule_panel.dart';
@@ -76,6 +78,16 @@ String? stateName(String raw) {
 }
 
 const _payPeriods = ['Hour', 'Week', 'Month', 'Year'];
+
+/// AddressFields' boxes, and the parts the server names them by.
+const _addressParts = {
+  'line1': 'address_line1',
+  'line2': 'address_line2',
+  'city': 'city',
+  'state': 'state',
+  'postal': 'postal_code',
+  'country': 'country',
+};
 
 const _weekDays = [
   'monday',
@@ -338,6 +350,11 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Timer? _previewTimer;
   int _previewRun = 0;
 
+  /// The pane shows the live text, or the PDF it would print as, stamped
+  /// DRAFT (Jose, 2026-10-01: "PDF (Final Result view)").
+  bool _asPdf = false;
+  Uint8List? _pdf;
+
   /// Every key changed since the page opened, highlighted in the contract
   /// (Jose: "Dispatcher Master 5000 should be highlighted on the contract").
   final Set<String> _changed = {};
@@ -409,6 +426,20 @@ class _OnboardingFormState extends State<OnboardingForm> {
     if (mounted && (_form?.anyWritable ?? false)) await _preview();
   }
 
+  /// The pending answers as they go out. A question answered in parts goes
+  /// as its parts, under its own key, so `state` here never meets the
+  /// contract's governing `state`.
+  Map<String, dynamic> _answersOut() => {
+    for (final MapEntry(:key, :value) in _pending.entries)
+      key: switch (_form == null ? null : _question(_form!, key)?.parts) {
+        _? => {
+          for (final MapEntry(key: box, value: part) in _addressParts.entries)
+            part: _addresses[key]?[box]?.text.trim() ?? '',
+        },
+        null => value,
+      },
+  };
+
   /// One answer changed: queue it for Save and redraw the contract beside it.
   void _answer(String key, String value) {
     setState(() {
@@ -423,13 +454,23 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final run = ++_previewRun;
     setState(() => _previewing = true);
 
-    final response = await widget.api.post(
-      '/hr/onboardings/${widget.onboardingId}/preview',
-      {
-        'answers': Map<String, dynamic>.from(_pending),
-        'highlight': _changed.toList(),
-      },
-    );
+    final path = '/hr/onboardings/${widget.onboardingId}/preview';
+    final body = {'answers': _answersOut(), 'highlight': _changed.toList()};
+
+    if (_asPdf) {
+      final pdf = await widget.api.postBytesResponse(path, body, {
+        'format': 'pdf',
+      });
+      if (!mounted || run != _previewRun) return;
+      setState(() {
+        _previewing = false;
+        _previewError = pdf.ok ? null : pdf.message;
+        if (pdf.ok && pdf.bytes != null) _pdf = Uint8List.fromList(pdf.bytes!);
+      });
+      return;
+    }
+
+    final response = await widget.api.post(path, body);
 
     // A slow answer to an older set of answers must not land on a newer one.
     if (!mounted || run != _previewRun) return;
@@ -583,7 +624,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     final response = await widget.api.patch(
       '/hr/onboardings/${widget.onboardingId}',
-      {'answers': Map<String, dynamic>.from(_pending)},
+      {'answers': _answersOut()},
     );
 
     if (!mounted) return;
@@ -670,6 +711,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Future<void> _sign(
     String fieldKey,
     String affirmation,
+    String drawing,
     String documentHash,
   ) async {
     setState(() {
@@ -688,6 +730,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
           // consent must be able to tell, and refuse.
           'consent': true,
           'affirmation': affirmation,
+          // The signature drawn by hand, as A1 Tools took it: a PNG data URL,
+          // drawn into the signature block of the PDF.
+          'drawing': drawing,
           // The fingerprint of the document this screen actually displayed,
           // sent back rather than recomputed anywhere. The server refuses
           // without it: it is what makes the signature evidence of what the
@@ -957,17 +1002,42 @@ class _OnboardingFormState extends State<OnboardingForm> {
         Row(
           children: [
             Expanded(child: _sectionTitle(context, 'The contract')),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                frozen
-                    ? 'As it was signed'
-                    : _previewing
-                    ? 'Updating…'
-                    : 'Changes as the answers do',
-                style: theme.textTheme.bodySmall,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  frozen
+                      ? 'As it was signed'
+                      : _previewing
+                      ? 'Updating…'
+                      : 'Changes as the answers do',
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
             ),
+            if (!frozen) ...[
+              const SizedBox(width: 12),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SegmentedButton<bool>(
+                  key: const Key('contract-view'),
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('Live')),
+                    ButtonSegment(value: true, label: Text('PDF')),
+                  ],
+                  selected: {_asPdf},
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onSelectionChanged: (picked) {
+                    setState(() => _asPdf = picked.first);
+                    _preview();
+                  },
+                ),
+              ),
+            ],
           ],
         ),
         if (_previewError != null && !frozen)
@@ -985,6 +1055,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Widget _contract(BuildContext context) {
     final theme = Theme.of(context);
     final content = _contractHtml;
+    final frozen = _paper != null && !_paper!.isPreview;
 
     return Container(
       key: const Key('onboarding-contract'),
@@ -994,7 +1065,14 @@ class _OnboardingFormState extends State<OnboardingForm> {
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
-      child: content == null || content.isEmpty
+      child: _asPdf && !frozen
+          ? (_pdf == null
+                ? Text(
+                    _previewing ? 'Drawing the PDF…' : 'The PDF will show here.',
+                    style: theme.textTheme.bodyMedium,
+                  )
+                : PdfView(bytes: _pdf!))
+          : content == null || content.isEmpty
           ? Text(
               _paperError ??
                   (_previewing
@@ -1102,7 +1180,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1206,25 +1284,32 @@ class _OnboardingFormState extends State<OnboardingForm> {
         children: [
           Row(
             children: [
-              Flexible(
-                child: Text(
-                  field.required ? '$label *' : label,
-                  style: theme.textTheme.titleSmall,
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        field.required ? '$label *' : label,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    // The one thing position cannot show: that the other side
+                    // may have got there first, and that correcting them is
+                    // expected.
+                    if (field.filledBy == filledByEither)
+                      const Tag('Either of you'),
+                    if (field.sensitive) const Tag('Sensitive'),
+                    // Whose question this is, in the server's word for it.
+                    // Only where it is not this person's to answer — on their
+                    // own half the heading has already said so.
+                    if (!question.writable && field.filledBy.isNotEmpty)
+                      Tag(_vocabulary.filledByLabel(field.filledBy)),
+                  ],
                 ),
               ),
-              // The one thing position cannot show: that the other side may
-              // have got there first, and that correcting them is expected.
-              if (field.filledBy == filledByEither) const Tag('Either of you'),
-              if (field.sensitive) const Tag('Sensitive'),
-              // Whose question this is, in the server's word for it. Only where
-              // it is not this person's to answer — on their own half the
-              // heading has already said so.
-              if (!question.writable && field.filledBy.isNotEmpty)
-                Tag(_vocabulary.filledByLabel(field.filledBy)),
-              if (question.voidable && (question.writable || voided)) ...[
-                const Spacer(),
+              // At the box's right edge, level on every row.
+              if (question.voidable && (question.writable || voided))
                 _applies(question, voided),
-              ],
             ],
           ),
           const SizedBox(height: 6),
@@ -1433,7 +1518,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
           enabled: enabled,
           onPicked: (county) => _answer(question.key, county),
         );
-      case 'employer_address':
+      // The home address in its parts once the server sends them (Jose: "like
+      // in the rest of the app should have separate fields").
+      case 'employer_address' || 'address'
+          when field.key == 'employer_address' || question.parts != null:
         return AddressFields(
           key: answerKey(field.key),
           api: widget.api,
@@ -1444,6 +1532,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
           city: _address(question)['city']!,
           state: _address(question)['state']!,
           postal: _address(question)['postal']!,
+          country: _address(question)['country'],
         );
       case 'work_hours':
         return _schedule(context, question, enabled: enabled);
@@ -1752,18 +1841,23 @@ class _OnboardingFormState extends State<OnboardingForm> {
     );
   }
 
-  /// The five boxes of an address answer, made once. What was a one-line
+  /// The boxes of an address answer, made once. One the server sends in
+  /// parts fills each box from its part, and adds the country; a one-line
   /// answer starts in the street box.
   Map<String, TextEditingController> _address(OnboardingQuestion question) =>
       _addresses.putIfAbsent(question.key, () {
+        final given = question.parts;
         final parts = {
-          for (final part in ['line1', 'line2', 'city', 'state', 'postal'])
-            part: TextEditingController(),
+          for (final MapEntry(key: box, value: part) in _addressParts.entries)
+            if (box != 'country' || given != null)
+              box: TextEditingController(text: given?[part] ?? ''),
         };
-        parts['line1']!.text = question.masked ? '' : question.value;
+        if (given == null) {
+          parts['line1']!.text = question.masked ? '' : question.value;
+        }
 
         String line() {
-          String part(String key) => parts[key]!.text.trim();
+          String part(String key) => parts[key]?.text.trim() ?? '';
           final region = [
             part('state'),
             part('postal'),
@@ -1773,16 +1867,19 @@ class _OnboardingFormState extends State<OnboardingForm> {
             part('line2'),
             part('city'),
             region,
+            part('country'),
           ].where((s) => s.isNotEmpty).join(', ');
         }
 
+        // A controller also notifies for the cursor; only a new line is an
+        // answer. Compared with the last line drawn, not with the stored
+        // value: the server composes that one its own way.
+        var last = line();
         for (final box in parts.values) {
           box.addListener(() {
-            // A controller also notifies for the cursor; only a new line is
-            // an answer.
-            if (line() != _answerOf(question.key)) {
-              _answer(question.key, line());
-            }
+            if (line() == last) return;
+            last = line();
+            _answer(question.key, last);
           });
         }
         return parts;
@@ -2005,7 +2102,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
           color: theme.colorScheme.surfaceContainerHighest.withValues(
             alpha: 0.4,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2090,8 +2187,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
       // contract on screen is not the one it would be taken against.
       blocked: _pending.isEmpty ? null : 'Save your answers first.',
       error: _signErrorKey == signature.fieldKey ? _signError : null,
-      onSign: (affirmation) =>
-          _sign(signature.fieldKey, affirmation, document.contentHash),
+      onSign: (affirmation, drawing) => _sign(
+        signature.fieldKey,
+        affirmation,
+        drawing,
+        document.contentHash,
+      ),
     );
   }
 
@@ -2119,7 +2220,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2278,7 +2379,8 @@ class _SigningStep extends StatefulWidget {
   final String intentStatement;
   final bool busy;
   final String? error;
-  final void Function(String affirmation) onSign;
+  /// The typed name, and the drawn signature as a PNG data URL.
+  final void Function(String affirmation, String drawing) onSign;
 
   @override
   State<_SigningStep> createState() => _SigningStepState();
@@ -2287,11 +2389,23 @@ class _SigningStep extends StatefulWidget {
 class _SigningStepState extends State<_SigningStep> {
   final _affirmation = TextEditingController();
 
+  /// Drawn by hand, as in A1 Tools (Jose, 2026-10-01).
+  final _ink = SignatureController();
+
   bool _consented = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ink.addListener(_redraw);
+  }
+
+  void _redraw() => setState(() {});
 
   @override
   void dispose() {
     _affirmation.dispose();
+    _ink.dispose();
     super.dispose();
   }
 
@@ -2299,7 +2413,17 @@ class _SigningStepState extends State<_SigningStep> {
       !widget.busy &&
       widget.blocked == null &&
       _consented &&
-      _affirmation.text.trim().isNotEmpty;
+      _affirmation.text.trim().isNotEmpty &&
+      !_ink.isEmpty;
+
+  Future<void> _signNow() async {
+    final png = await _ink.toPng();
+    if (png == null || !mounted) return;
+    widget.onSign(
+      _affirmation.text.trim(),
+      'data:image/png;base64,${base64Encode(png)}',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2309,7 +2433,7 @@ class _SigningStepState extends State<_SigningStep> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2343,6 +2467,23 @@ class _SigningStepState extends State<_SigningStep> {
             ),
             onChanged: (_) => setState(() {}),
           ),
+          const SizedBox(height: 14),
+          Text('Draw your signature', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          SignaturePad(
+            key: const Key('signature-pad'),
+            controller: _ink,
+            enabled: !widget.busy,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('signature-clear'),
+              onPressed: _ink.isEmpty || widget.busy ? null : _ink.clear,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Clear'),
+            ),
+          ),
           if (widget.error != null) ...[
             const SizedBox(height: 14),
             ErrorNote(widget.error!),
@@ -2351,9 +2492,7 @@ class _SigningStepState extends State<_SigningStep> {
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton(
-              onPressed: _canSign
-                  ? () => widget.onSign(_affirmation.text.trim())
-                  : null,
+              onPressed: _canSign ? _signNow : null,
               child: Text(widget.busy ? 'Signing…' : 'Sign'),
             ),
           ),
@@ -2361,10 +2500,12 @@ class _SigningStepState extends State<_SigningStep> {
             const SizedBox(height: 8),
             Text(
               widget.blocked ??
-                  (_consented
+                  (!_consented
+                      ? 'Agree to sign electronically, type your name and '
+                            'draw your signature before this can be signed.'
+                      : _affirmation.text.trim().isEmpty
                       ? 'Type your name above to sign.'
-                      : 'Agree to sign electronically, and type your name, '
-                            'before this can be signed.'),
+                      : 'Draw your signature above to sign.'),
               style: theme.textTheme.bodySmall,
             ),
           ],

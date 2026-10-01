@@ -76,6 +76,14 @@ dependencies:
   battery_plus: ^7.1.1
   webview_flutter: ^4.14.1
 
+  # A PDF drawn as its pages, for the onboarding contract's PDF view (Jose,
+  # 2026-10-01: "PDF (Final Result view)"). Android's WebView cannot show a
+  # PDF at all; printing rasterizes with the platform's own renderer on
+  # Android, iOS and macOS, and with pdfium on Windows, which its CMake
+  # downloads at build time. The web build shows the PDF in the browser's own
+  # viewer and never calls it, so pdf.js is never fetched from a CDN.
+  printing: ^5.14.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

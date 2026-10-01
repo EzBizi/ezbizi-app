@@ -2961,6 +2961,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 48 · HR · the onboarding form, second pass — **Jose's own shape (relayed by HR), built directly** — **BUILT** (`2b0814cc` + the PDF view, address and signature commit)
+
+Jose, 2026-10-01, via HR: *"buttons next to the field with like a tick or x… voiding Scheduled increase interval
+voids itself and scheduled increase amount… state should be first… [home address] like in the rest of the app
+should have separate fields… Dispatcher Master 5000 should be highlighted on the contract… PDF (Final Result
+view)"*, then hand-drawn signatures "as in A1 Tools". Built in `onboarding_form.dart`: ✓ / ✗ at each voidable
+row's right edge (✗ voids every question in its `void_group`, ✓ brings them back empty); `state` drawn above
+`county` whatever the version's order; the preview sends `highlight` (keys changed since the page opened) and
+`<mark>` takes the caution fill; the home `address` is AddressFields from the question's `parts`, saved as
+`answers.address = {address_line1, …, country}` — nested, because a flat `state` part is the contract's governing
+`state` (told HR, 05692793); Live | PDF on the contract pane, the PDF from `POST …/preview?format=pdf` through
+`PdfView` (the browser's own viewer on web, `printing` pages elsewhere — Android's WebView cannot show a PDF;
+adding it moved xml 7.0.1→6.6.1 and archive 4.3.0→4.0.9, the newest pdf this SDK resolves); the signing step
+adds A1's pad (`SignaturePad`: white paper, border lit once drawn, Clear, a downstroke draws instead of
+scrolling) and sends `drawing` as a PNG data URL; Sign waits for a drawing. Still to wire when HR sends the
+shapes: "Use my saved signature" / "Save this as my signature" (`GET`/`PUT me/signature`).
+
 ### 47 · Work Hours · a Dashboard tab, first — **out for decision** (`docs/previews/work-hours-dashboard-layouts.html`)
 
 Jose, 2026-10-01, via Clock In: *"i'd also like to have a sub tab dashboard which lets me know details, averages,

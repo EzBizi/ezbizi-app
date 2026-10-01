@@ -373,6 +373,7 @@ class OnboardingQuestion {
     required this.setAt,
     this.voidable = false,
     this.voidGroup,
+    this.parts,
   });
 
   /// The tenant's field definition, in exactly the shape the Contracts tab
@@ -456,6 +457,11 @@ class OnboardingQuestion {
 
   String get group => voidGroup ?? key;
 
+  /// The home address in its parts (`address_line1`, `address_line2`,
+  /// `city`, `state`, `postal_code`, `country`), when the server sends them.
+  /// Null for every other question.
+  final Map<String, String>? parts;
+
   String get key => field.key;
 
   bool get answered => value.trim().isNotEmpty;
@@ -480,6 +486,12 @@ class OnboardingQuestion {
       setAt: json['set_at'] as String?,
       voidable: json['voidable'] == true,
       voidGroup: json['void_group'] as String?,
+      parts: switch (json['parts']) {
+        final Map<dynamic, dynamic> parts => {
+          for (final part in parts.entries) '${part.key}': '${part.value ?? ''}',
+        },
+        _ => null,
+      },
     );
   }
 }

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/contracts.dart';
@@ -8,6 +10,7 @@ import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_form.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
+import 'package:ezbizi_client/widgets/pdf_view_io.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
@@ -280,7 +283,9 @@ void main() {
 
     expect(_signButton(tester).onPressed, isNull);
     expect(
-      find.textContaining('Agree to sign electronically, and type your name'),
+      find.textContaining(
+        'Agree to sign electronically, type your name and draw your signature',
+      ),
       findsOneWidget,
     );
 
@@ -299,19 +304,49 @@ void main() {
     );
 
     await _tap(tester, find.byType(CheckboxListTile));
+
+    // And consent and a name are not yet a signature drawn by hand (Jose,
+    // 2026-10-01: "as in A1 Tools").
+    expect(_signButton(tester).onPressed, isNull);
+    expect(find.text('Draw your signature above to sign.'), findsOneWidget);
+
+    await _draw(tester);
     expect(_signButton(tester).onPressed, isNotNull);
 
-    await _tap(tester, find.widgetWithText(FilledButton, 'Sign'));
+    // Clear takes it back to an empty pad.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    expect(_signButton(tester).onPressed, isNull);
+
+    await _draw(tester);
+    await _pressSign(tester);
 
     // The fingerprint of the document this screen displayed goes back with the
     // act. The server refuses without it, and a hash computed here rather than
     // received would be evidence of nothing.
+    final drawing = signed!.remove('drawing') as String;
     expect(signed, {
       'field_key': 'employee_signature',
       'consent': true,
       'affirmation': 'Bea Okafor',
       'document_hash': _hash,
     });
+
+    // The drawing, as a PNG: the file's own first bytes say so.
+    expect(drawing, startsWith('data:image/png;base64,'));
+    final png = base64Decode(drawing.substring('data:image/png;base64,'.length));
+    expect(png.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+
+    // With the stroke on it: some pixel is not transparent.
+    final inked = await tester.runAsync(() async {
+      final image = await decodeImageFromList(png);
+      final rgba = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final pixels = rgba!.buffer.asUint8List();
+      for (var alpha = 3; alpha < pixels.length; alpha += 4) {
+        if (pixels[alpha] != 0) return true;
+      }
+      return false;
+    });
+    expect(inked, isTrue);
   });
 
   testWidgets('a signature that is not yours is shown and not offered', (
@@ -792,6 +827,7 @@ void main() {
 
     await _tap(tester, find.byType(CheckboxListTile));
     await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    await _draw(tester);
     expect(_signButton(tester).onPressed, isNotNull);
 
     await _type(tester, 'shirt_size_note', 'A jacket');
@@ -880,6 +916,103 @@ void main() {
     final state = tester.getTopLeft(find.byKey(answerKey('state')));
     final county = tester.getTopLeft(find.byKey(answerKey('county')));
     expect(state.dy, lessThan(county.dy));
+  });
+
+  // Jose: "like in the rest of the app should have separate fields, with full
+  // address being the box where u start typing and it suggests".
+  testWidgets('the home address is answered in its parts, and they go out '
+      'under its own key, apart from the governing state', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _addressForm, onSave: (body) => saved = body),
+    );
+
+    final address = find.byKey(answerKey('address'));
+    Finder box(String label) => find.descendant(
+      of: address,
+      matching: find.widgetWithText(TextField, label),
+    );
+    String text(String label) =>
+        tester.widget<TextField>(box(label)).controller!.text;
+
+    expect(text('Street'), '41 Elm St');
+    expect(text('ST'), 'CT');
+    expect(text('Country'), 'US');
+
+    // The server composes the stored line its own way (no country here), and
+    // a tap that only moves the cursor is not an answer.
+    await _tap(tester, box('Street'));
+    expect(find.text('Everything on this page is saved.'), findsOneWidget);
+
+    await tester.ensureVisible(box('City'));
+    await tester.enterText(box('City'), 'Norwalk');
+    await tester.pumpAndSettle();
+    expect(find.text('1 answer not saved yet.'), findsOneWidget);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'address': {
+          'address_line1': '41 Elm St',
+          'address_line2': '',
+          'city': 'Norwalk',
+          'state': 'CT',
+          'postal_code': '06901',
+          'country': 'US',
+        },
+      },
+    });
+  });
+
+  // Jose: "PDF (Final Result view)".
+  testWidgets('PDF shows the contract as it would print, redrawn as the '
+      'answers change, and Live goes back to the text', (tester) async {
+    final drawn = pdfPages;
+    addTearDown(() => pdfPages = drawn);
+    final rasterized = <String>[];
+    pdfPages = (pdf) {
+      rasterized.add(utf8.decode(pdf));
+      return Stream.fromIterable([_png, _png]);
+    };
+
+    final asked = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform: as typed</p>',
+        onPdf: (body) {
+          asked.add(body);
+          return Uint8List.fromList(utf8.encode('%PDF-1.7 draft ${asked.length}'));
+        },
+      ),
+    );
+
+    Finder view(String label) => find.descendant(
+      of: find.byKey(const Key('contract-view')),
+      matching: find.text(label),
+    );
+
+    expect(find.textContaining('Uniform: as typed'), findsOneWidget);
+    expect(asked, isEmpty);
+
+    await _tap(tester, view('PDF'));
+    expect(asked, hasLength(1));
+    expect(find.byKey(const Key('pdf-page-0')), findsOneWidget);
+    expect(find.byKey(const Key('pdf-page-1')), findsOneWidget);
+    expect(find.textContaining('Uniform: as typed'), findsNothing);
+
+    await _type(tester, 'shirt_size_note', 'A jacket');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(asked, hasLength(2));
+    expect(asked.last['answers'], containsPair('shirt_size_note', 'A jacket'));
+    expect(rasterized, ['%PDF-1.7 draft 1', '%PDF-1.7 draft 2']);
+
+    await _tap(tester, view('Live'));
+    expect(find.byKey(const Key('pdf-page-0')), findsNothing);
+    expect(find.textContaining('Uniform: as typed'), findsOneWidget);
   });
 
   // Jose: "Dispatcher Master 5000 should be highlighted on the contract".
@@ -1055,6 +1188,33 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// A stroke across the signature pad.
+Future<void> _draw(WidgetTester tester) async {
+  final pad = find.byKey(const Key('signature-pad'));
+  await tester.ensureVisible(pad);
+  await tester.pumpAndSettle();
+  final page = Scrollable.of(tester.element(pad)).position;
+  final at = page.pixels;
+  // Mostly downward, which is the stroke a scrolling page would take. Read
+  // before the next frame: a hint going away below can shorten the page.
+  await tester.drag(pad, const Offset(40, 80));
+  expect(page.pixels, at, reason: 'The stroke scrolled the page.');
+  await tester.pumpAndSettle();
+}
+
+/// Sign, pressed for real: drawing the PNG needs the engine, and a fake
+/// clock never lets that finish.
+Future<void> _pressSign(WidgetTester tester) async {
+  final sign = find.widgetWithText(FilledButton, 'Sign');
+  await tester.ensureVisible(sign);
+  await tester.pumpAndSettle();
+  await tester.runAsync(() async {
+    await tester.tap(sign);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+  });
+  await tester.pumpAndSettle();
+}
+
 /// Type into the box answering a field, or into the one carrying a label.
 Future<void> _type(
   WidgetTester tester,
@@ -1132,6 +1292,8 @@ MockClientHandler _handler({
   /// leaves the preview unanswered, so the pane shows the document.
   String Function(Map<String, dynamic> answers)? onPreview,
   void Function(Map<String, dynamic> body)? onPreviewBody,
+  /// The draft PDF `POST …/preview?format=pdf` answers with.
+  Uint8List Function(Map<String, dynamic> body)? onPdf,
   void Function(Map<String, String> query)? onCounties,
 }) {
   final seen = form ?? _asEmployer;
@@ -1141,6 +1303,16 @@ MockClientHandler _handler({
     final body = request.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;
+
+    if (onPdf != null &&
+        path.endsWith('/hr/onboardings/o-1/preview') &&
+        request.url.queryParameters['format'] == 'pdf') {
+      return http.Response.bytes(
+        onPdf(body),
+        200,
+        headers: {'content-type': 'application/pdf'},
+      );
+    }
 
     if (onPreview != null && path.endsWith('/hr/onboardings/o-1/preview')) {
       onPreviewBody?.call(body);
@@ -1789,6 +1961,11 @@ final _voidForm = {
   'missing': <String, String>{},
 };
 
+/// One white pixel, standing in for a drawn page.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+);
+
 /// The raise's two terms in one void group, both answered.
 final _groupForm = {
   ..._asEmployer,
@@ -1803,6 +1980,27 @@ final _groupForm = {
       'voidable': true,
       'void_group': 'raise',
     },
+  ],
+  'missing': <String, String>{},
+};
+
+/// The employee's half: their home address in its parts, beside the
+/// contract's own governing state.
+final _addressForm = {
+  ..._asEmployee,
+  'fields': [
+    {
+      ..._field('address', 'Home address', 'text', source: 'core', filledBy: 'employee', writable: true, value: '41 Elm St, Stamford, CT 06901'),
+      'parts': {
+        'address_line1': '41 Elm St',
+        'address_line2': null,
+        'city': 'Stamford',
+        'state': 'CT',
+        'postal_code': '06901',
+        'country': 'US',
+      },
+    },
+    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: false, value: 'FL'),
   ],
   'missing': <String, String>{},
 };

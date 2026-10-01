@@ -375,21 +375,41 @@ class ApiClient {
   Future<ApiBytesResponse> getBytesResponse(
     String path, [
     Map<String, String>? query,
-  ]) async {
+  ]) => _bytes(
+    (headers) => _http.get(
+      Uri.parse('$_root/api/v1$path').replace(queryParameters: query),
+      headers: headers,
+    ),
+  );
+
+  /// The same for a POST: an onboarding's draft PDF is drawn from answers
+  /// nobody has saved yet, so they travel in the body.
+  Future<ApiBytesResponse> postBytesResponse(
+    String path,
+    Map<String, dynamic> body, [
+    Map<String, String>? query,
+  ]) => _bytes(
+    (headers) => _http.post(
+      Uri.parse('$_root/api/v1$path').replace(queryParameters: query),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ),
+  );
+
+  Future<ApiBytesResponse> _bytes(
+    Future<http.Response> Function(Map<String, String> headers) request,
+  ) async {
     final tokenGeneration = _tokenGeneration;
     final authenticated = _token != null;
     try {
-      final response = await _http.get(
-        Uri.parse('$_root/api/v1$path').replace(queryParameters: query),
-        headers: {
-          if (_token != null) 'Authorization': 'Bearer $_token',
-          // A download is a request like any other and can be refused like any
-          // other. Without these two headers this one verb would be invisible to
-          // the gate, and the symptom would be a customer whose whole app says
-          // it is out of date except exports, which fail with nothing on screen.
-          ..._identity,
-        },
-      );
+      final response = await request({
+        if (_token != null) 'Authorization': 'Bearer $_token',
+        // A download is a request like any other and can be refused like any
+        // other. Without these two headers this one verb would be invisible to
+        // the gate, and the symptom would be a customer whose whole app says
+        // it is out of date except exports, which fail with nothing on screen.
+        ..._identity,
+      });
 
       _noticeResponse(response, tokenGeneration, authenticated);
 
