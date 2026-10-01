@@ -18,6 +18,9 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Windows: before updating, the app closes any update installer left running from an earlier try, so one stuck update can no longer block every later one.',
+        'Onboarding: contracts are laid out like the A1 Tools agreements, and both sides sign with a hand-drawn signature that appears on the PDF.',
+        'Leads: bookings made through Google have their own tab and stay out of All.',
+        'A website chat\'s ZIP code shows on the lead in Leads, ready for the availability check.',
       ],
     ),
     VersionRelease(
