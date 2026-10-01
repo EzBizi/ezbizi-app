@@ -747,6 +747,73 @@ void main() {
     expect(find.descendant(of: row, matching: find.textContaining('item')), findsNothing);
   });
 
+  // UI queue 43, option 1's "An item open": what happened to the item.
+  testWidgets('an open item lists its history, and a hidden end of a '
+      'transfer is said so', (tester) async {
+    await _pumpScreen(
+      tester,
+      stock: [_balanceOf('4.000')],
+      movements: const [
+        {
+          'occurred_at': '2026-09-30',
+          'kind': 'issued',
+          'qty': '-1.000',
+          'location': {'id': 'loc-1', 'name': 'Main shop', 'kind': 'shop'},
+          'to_location': null,
+          'reference': {'type': 'job', 'id': 'j-1', 'number': 'J-10482'},
+          'note': null,
+          'by': {'id': 'u-9', 'name': 'Marco Reyes'},
+        },
+        {
+          'occurred_at': '2026-09-24',
+          'kind': 'transferred',
+          'qty': '2.000',
+          'location': {'id': 'loc-1', 'name': 'Main shop', 'kind': 'shop'},
+          'to_location': null,
+          'reference': {'type': 'transfer', 'id': 't-1', 'number': 'T-00017'},
+          'note': null,
+          'by': null,
+        },
+      ],
+    );
+
+    await tester.tap(find.text('6 mil liner'));
+    await tester.pumpAndSettle();
+
+    final history = find.byKey(const Key('item-history'));
+    expect(history, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('movement-0')),
+        matching: find.textContaining('\u22121 each at Main shop, issued to job J-10482 · Marco Reyes'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('movement-1')),
+        matching: find.textContaining(
+          '2 each moved Main shop \u2192 a place you cannot open, T-00017',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without the Stock tab an item has no history to show', (tester) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['inventory.view', 'inventory.items.view'],
+      items: [_item],
+    );
+
+    await tester.tap(find.text('6 mil liner'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('item-history')), findsNothing);
+    expect(find.textContaining('could not be read'), findsNothing);
+  });
+
   test('a table of values reads by its thousands', () {
     expect(inventoryMoney(505700), r'$5,057.00');
     expect(inventoryMoney(100000000), r'$1,000,000.00');
@@ -1055,6 +1122,7 @@ Future<void> _pumpScreen(
   List<Map<String, dynamic>> vendors = const [],
   List<Map<String, dynamic>> customers = const [],
   List<Map<String, dynamic>> sales = const [],
+  List<Map<String, dynamic>> movements = const [],
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
 }) async {
@@ -1075,6 +1143,7 @@ Future<void> _pumpScreen(
         vendors: vendors,
         customers: customers,
         sales: sales,
+        movements: movements,
         onRequest: onRequest,
       ),
     ),
@@ -1117,6 +1186,7 @@ MockClientHandler _handler({
   List<Map<String, dynamic>> vendors = const [],
   List<Map<String, dynamic>> customers = const [],
   List<Map<String, dynamic>> sales = const [],
+  List<Map<String, dynamic>> movements = const [],
   http.Response? Function(http.Request request)? onRequest,
 }) {
   late final MockClientHandler self;
@@ -1290,6 +1360,16 @@ MockClientHandler _handler({
             },
         ],
         'meta': {'total': items.length, 'last_page': 1},
+      });
+    }
+
+    // GET /inventory/items/{id}/movements (Inventory 6cbdc919), gated on
+    // Stock as the server gates it.
+    if (path.endsWith('/movements')) {
+      if (!mayStock) return _json({'message': 'Forbidden.'}, 403);
+      return _json({
+        'data': movements,
+        'meta': {'total': movements.length, 'last_page': 1},
       });
     }
 
