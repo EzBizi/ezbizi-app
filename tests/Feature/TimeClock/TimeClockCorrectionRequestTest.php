@@ -65,6 +65,35 @@ class TimeClockCorrectionRequestTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    /**
+     * The shift you are in can be asked about too, for its start only (Jose,
+     * 2026-10-01). A clock-out sent with it is ignored, and approving moves
+     * the start and leaves it running.
+     */
+    public function test_a_running_shift_can_be_asked_about_for_its_start_only(): void
+    {
+        [$alpha, $manager, $tech] = $this->tenant();
+        $in = now()->subHours(2)->startOfMinute();
+        $shift = $this->row($alpha['org'], $tech, $in->toDateTimeString(), null);
+
+        $id = $this->signedInAs($tech)
+            ->postJson('/api/v1/time-clock/corrections', [
+                'shift_id' => $shift->id,
+                'clocked_in_at' => $in->copy()->subHour()->toIso8601ZuluString(),
+                'clocked_out_at' => now()->subMinute()->toIso8601ZuluString(),
+                'reason' => 'Got here an hour before I clocked in.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'pending')
+            ->json('data.id');
+
+        $this->signedInAs($manager)->postJson("/api/v1/hr/time-clock/corrections/$id/approve")->assertOk();
+
+        $fresh = $this->fresh($shift);
+        $this->assertSame($in->copy()->subHour()->toDateTimeString(), $fresh->clocked_in_at->toDateTimeString());
+        $this->assertNull($fresh->clocked_out_at, 'still on the clock');
+    }
+
     public function test_a_denied_request_leaves_the_shift_alone_and_says_why(): void
     {
         [$alpha, $manager, $tech] = $this->tenant();

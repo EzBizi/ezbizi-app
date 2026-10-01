@@ -66,7 +66,12 @@ class TimeClockCorrectionsController extends Controller
 
         $tz = $this->timeClock->viewTimezone($user);
         $in = Carbon::parse($data['clocked_in_at'], $tz)->utc();
-        $out = isset($data['clocked_out_at']) ? Carbon::parse($data['clocked_out_at'], $tz)->utc() : null;
+        // A running shift is asked about for its start only (Jose,
+        // 2026-10-01); its end is the person's own Clock Out. Null is
+        // "unchanged" to correct(), so approving never closes it.
+        $out = isset($data['clocked_out_at']) && $shift->clocked_out_at !== null
+            ? Carbon::parse($data['clocked_out_at'], $tz)->utc()
+            : null;
 
         if ($in->gt(now()) || ($out !== null && $out->gt(now()))) {
             throw ValidationException::withMessages(['clocked_in_at' => 'A shift cannot be in the future.']);

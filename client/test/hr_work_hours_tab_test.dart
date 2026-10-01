@@ -999,6 +999,67 @@ void main() {
     },
   );
 
+  /// Jose, 2026-10-01: the shift you are in can be asked about too, for its
+  /// start only; its end is your own Clock Out.
+  testWidgets('your running shift can be asked about, start time only', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [
+          _person(
+            id: 'u-1',
+            name: 'Jose Silva',
+            open: true,
+            shifts: [
+              {
+                ..._bea,
+                'clocked_out': null,
+                'clocked_out_local': null,
+                'open': true,
+              },
+            ],
+          ),
+        ],
+      ),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': {'id': 'r-1', 'status': 'pending'},
+        }, 201);
+      },
+    );
+
+    await _tap(tester, find.byTooltip('Shift actions'));
+    await _tap(tester, find.text('Request a correction'));
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Clock Out'),
+      ),
+      findsNothing,
+      reason: 'still on the clock: there is no end to correct',
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('correction-reason')),
+      'Got here at 7.',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Send for approval'));
+
+    expect(jsonDecode(writes.single.body), {
+      'clocked_in_at': '2026-08-25 08:00',
+      'reason': 'Got here at 7.',
+      'shift_id': 's-1',
+    });
+  });
+
   testWidgets("without manage, somebody else's shift has no menu at all", (
     tester,
   ) async {

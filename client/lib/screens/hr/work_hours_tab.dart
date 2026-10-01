@@ -1210,8 +1210,9 @@ class _ShiftRow extends StatelessWidget {
     );
   }
 
-  bool get _hasMenu =>
-      actions != null && (actions!.manage || (mine && !shift.open));
+  /// Your own running shift too (Jose, 2026-10-01): its clock-in can be
+  /// wrong while you are still on the clock.
+  bool get _hasMenu => actions != null && (actions!.manage || mine);
 
   List<(String, String, IconData, bool)> get _manageItems => [
     if (shift.open)
@@ -1832,11 +1833,15 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
               final at = await _pick(_in);
               if (at != null) setState(() => _in = at);
             }),
-            const SizedBox(height: 10),
-            _row(UiStrings.t('time_clock.clock_out'), _out, () async {
-              final at = await _pick(_out);
-              if (at != null) setState(() => _out = at);
-            }),
+            // Asking about the shift you are in: only its start. Its end is
+            // your Clock Out, still to come.
+            if (!(widget.request && widget.shift.open)) ...[
+              const SizedBox(height: 10),
+              _row(UiStrings.t('time_clock.clock_out'), _out, () async {
+                final at = await _pick(_out);
+                if (at != null) setState(() => _out = at);
+              }),
+            ],
             if (widget.request) ...[
               const SizedBox(height: 12),
               TextField(
