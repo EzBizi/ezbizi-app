@@ -1196,7 +1196,7 @@ void main() {
     // the two boxes this test reads above the top of the pane, where a finder
     // cannot see them.
     await tester.scrollUntilVisible(
-      find.text('Accent colour (#rrggbb)'),
+      find.text('Accent colour'),
       200,
       scrollable: _editor,
     );
@@ -1752,7 +1752,7 @@ void main() {
 
     await tester.tap(group);
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextFormField, 'Colour'), '#ff0000');
+    await tester.enterText(find.widgetWithText(TextField, 'Colour'), '#ff0000');
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);

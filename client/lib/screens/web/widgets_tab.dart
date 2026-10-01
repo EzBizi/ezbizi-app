@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/colour_field.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
@@ -853,17 +854,17 @@ class _WidgetEditorState extends State<_WidgetEditor> {
               chat['hide_on'],
               (v) => _set('chat', 'hide_on', v),
               lines: 3),
-          _text(theme, 'Bubble colour (#rrggbb, empty = accent)',
-              chat['bubble_bg'], (v) => _set('chat', 'bubble_bg', v)),
-          _text(theme, 'Bubble text colour', chat['bubble_color'],
+          _colourBox('Bubble colour', chat['bubble_bg'],
+              (v) => _set('chat', 'bubble_bg', v), hint: 'empty uses the accent'),
+          _colourBox('Bubble text colour', chat['bubble_color'],
               (v) => _set('chat', 'bubble_color', v)),
-          _text(theme, 'Header colour', chat['header_bg'],
+          _colourBox('Header colour', chat['header_bg'],
               (v) => _set('chat', 'header_bg', v)),
-          _text(theme, 'Header text colour', chat['header_color'],
+          _colourBox('Header text colour', chat['header_color'],
               (v) => _set('chat', 'header_color', v)),
-          _text(theme, 'Visitor message colour', chat['visitor_bg'],
+          _colourBox('Visitor message colour', chat['visitor_bg'],
               (v) => _set('chat', 'visitor_bg', v)),
-          _text(theme, 'Business message colour', chat['business_bg'],
+          _colourBox('Business message colour', chat['business_bg'],
               (v) => _set('chat', 'business_bg', v)),
           _flag(theme, 'Shadow', chat['shadow'] != false,
               (on) => _set('chat', 'shadow', on)),
@@ -991,14 +992,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         style: theme.textTheme.bodySmall,
       ),
       const SizedBox(height: 8),
-      _text(theme, 'Accent colour (#rrggbb)', style['accent'],
+      _colourBox('Accent colour', style['accent'],
           (v) => _set('style', 'accent', v)),
       _presets(theme),
-      _text(theme, 'Text on the accent', style['on_accent'],
+      _colourBox('Text on the accent', style['on_accent'],
           (v) => _set('style', 'on_accent', v)),
       _pair(theme, style['on_accent'], style['accent'], 'the accent'),
-      _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
-      _text(theme, 'Background', style['background'],
+      _colourBox('Text colour', style['text'], (v) => _set('style', 'text', v)),
+      _colourBox('Background', style['background'],
           (v) => _set('style', 'background', v)),
       _pair(theme, style['text'], style['background'], 'the background'),
       _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
@@ -1905,6 +1906,19 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     );
   }
 
+  /// A colour: typed, or picked in place (Jose, 2026-10-01).
+  Widget _colourBox(String label, Object? value, void Function(String) onChanged,
+          {String hint = '#rrggbb, empty uses the default'}) =>
+      ColourField(
+        // Keyed like the text boxes, so a site swap shows that site's colour.
+        key: ValueKey('$label:${widget.siteId}:$_external'),
+        label: label,
+        value: '${value ?? ''}',
+        enabled: widget.canEdit,
+        hint: hint,
+        onChanged: onChanged,
+      );
+
   Widget _number(ThemeData theme, String label, Object? value, int fallback,
           void Function(int) onChanged) =>
       _text(theme, label, value ?? fallback,
@@ -2417,31 +2431,6 @@ class _Colour extends _Knob {
   const _Colour(super.key, super.label);
 }
 
-/// The colour a box holds, or a hollow square when it holds none (yet).
-class _Swatch extends StatelessWidget {
-  const _Swatch(this.hex);
-
-  final String hex;
-
-  @override
-  Widget build(BuildContext context) {
-    final raw = hex.replaceFirst('#', '');
-    final full = raw.length == 3
-        ? raw.split('').map((c) => '$c$c').join()
-        : raw;
-    final value = full.length == 6 ? int.tryParse('FF$full', radix: 16) : null;
-
-    return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: value == null ? null : Color(value),
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-        borderRadius: BorderRadius.circular(3),
-      ),
-    );
-  }
-}
 
 /// An option somebody types.
 ///
@@ -3327,27 +3316,13 @@ class _PresetCardState extends State<_PresetCard> {
           onChanged: widget.canEdit ? (on) => set(on) : null,
           title: Text(flag.label, style: theme.textTheme.bodyMedium),
         ),
-      _Colour colour => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: TextFormField(
-            key: ValueKey('$preset:${colour.key}'),
-            initialValue: '${values[colour.key] ?? ''}',
-            enabled: widget.canEdit,
-            maxLength: 9,
-            decoration: InputDecoration(
-              labelText: colour.label,
-              hintText: '#rrggbb — empty uses the website\'s',
-              isDense: true,
-              counterText: '',
-              prefixIcon: Padding(
-                padding: const EdgeInsets.all(10),
-                child: _Swatch('${values[colour.key] ?? ''}'),
-              ),
-              prefixIconConstraints:
-                  const BoxConstraints(minWidth: 36, minHeight: 36),
-            ),
-            onChanged: (v) => set(v.trim()),
-          ),
+      _Colour colour => ColourField(
+          key: ValueKey('$preset:${colour.key}'),
+          label: colour.label,
+          value: '${values[colour.key] ?? ''}',
+          enabled: widget.canEdit,
+          hint: "#rrggbb, empty uses the website's",
+          onChanged: (v) => set(v.trim()),
         ),
       _Text text => Padding(
           padding: const EdgeInsets.only(bottom: 8),
