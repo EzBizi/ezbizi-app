@@ -1,0 +1,622 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Work Hours · Dashboard</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light): tone pills are ToneColours (never Tone.review,
+   the violet), avatars are PersonColours, the on-the-clock dot is StateColour.on. The day cells
+   use StateColour.on (on time), EzBiziTheme.meterWarning (late), and DashboardChart's red and
+   blue (missed, away), so all four read at 3:1 or better on white. One 10px radius for every
+   control and card; the window and phone frames are frames, not cards. Every person, number and
+   the organization are invented; the numbers are judged by TimeClockStats' own rules. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+
+<div class="wrap">
+<h1>Work Hours · Dashboard</h1>
+<p class="sub">Jose, 2026-10-01: <i>“i'd also like to have a sub tab dashboard which lets me know details, averages, for each employee, how many clock in on time, or outside schedule, etc, etc.”</i></p>
+<p class="cap">Pick one desktop layout (<b>1–3</b>) and one phone layout (<b>4–6</b>), for example “1, 4”. A dashed <span class="new">server</span> tag marks what the server does not send today.</p>
+
+<h2 class="plain">What exists today</h2>
+<div class="now">
+ <div class="nr"><span class="nl">Today</span><span class="tab on"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span><span class="tab"><span class="ic">⚙</span>Settings</span></div>
+ <div class="nr"><span class="nl">With this tab</span><span class="tab on add"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span><span class="tab"><span class="ic">⚙</span>Settings</span><span class="tiny" style="margin-left:6px">first, and what Work Hours opens on for anyone who has it</span></div>
+</div>
+<ul class="cap">
+ <li><b>Four tabs, each behind its own grant.</b> General is one person’s week at a time: people down the left, that person’s days on the right, with Auto and Outside schedule on a shift. No tab says who was late, missed a day or left early, and none adds up more than one week.</li>
+ <li><b>The numbers are already on main</b> (<code>GET hr/time-clock/stats</code>, 559529c7) and nothing draws them. The route sits under General’s grant until this tab exists; its own comment says it then moves to <code>work_hours.dashboard.view</code>.</li>
+ <li><b>How a day is judged:</b> its first clock-in against that person’s schedule, on their place’s clock, with the grace period (5 minutes, Work Hours › Settings); its last clock-out for leaving early, and only when they clocked out themselves. A lunch break in between is neither. Today cannot be missed, and days still to come are not counted. <b>Outside schedule</b> is a shift begun on a day off or more than 30 minutes before the start.</li>
+ <li><b>Who is counted:</b> active people the reader can see who clocked in or were tagged in the period, or who have a schedule of their own. Somebody on the place’s business hours who never clocked in during the period is left out, not counted as missed.</li>
+</ul>
+
+<h2 class="plain">Every option keeps</h2>
+<ul class="cap">
+ <li>Only the people the reader can see in Work Hours: the same people General lists, and nobody else.</li>
+ <li>The period picker: <b>This week</b> (what it opens on), <b>Last week</b>, <b>This month</b>, <b>Custom</b>. Custom is two calendar days that open under their fields, at most 92 days. Days are the organization’s, and the week starts on its own week-start day.</li>
+ <li>On time means within the grace period from Work Hours › Settings (5 minutes here), and the screen says so beside the figures.</li>
+ <li>A person opens in place: a panel docked beside the list on a desk, the same area with ← back on a phone. No dialog, no new page.</li>
+ <li>Nothing to judge is a dash, not 0% (Wes Halloran is on vacation all week). With Clock in switched off, the tab shows the server’s sentence instead of numbers.</li>
+</ul>
+
+<!-- ═════════════════════════════ 1 ═════════════════════════════ -->
+<h2><span class="n">1</span>The team’s figures, then one row per person <span class="rec">Recommended</span><span class="why">every number for every person on one screen, and it needs one new read</span></h2>
+<p class="cap">Seven equal figures for the team; each one sorts the table by itself (On time is the sort here, lowest first). One row per person carries everything the server counts for them over the period. Clicking a row docks that person’s days beside the list, so the list stays where it was.</p>
+<p class="need"><b>What it needs from the server.</b> Every figure and column exists: <code>team</code>, and per person <code>on_time_rate</code>, <code>on_time</code>, <code>late</code>, <code>late_average_minutes</code>, <code>left_early</code>, <code>missed</code>, <code>outside_schedule</code>, <code>auto_closed</code>, <code>average_in</code>, <code>average_out</code>, <code>total_seconds</code>, <code>tags</code> and <code>role</code>. <b>New:</b> the person’s days for the panel, one row per day with its schedule, first in, last out, minutes late, minutes early, the tag, and whether the clock ended it (a <code>?user=</code> on the same read would do). <b>Change:</b> <code>average_in</code> and <code>average_out</code> average every day worked, days off included, so Anjali Desai’s Sunday call-in (7:35 to 9:50 AM) makes her usual clock-out 2:30 PM; over her scheduled days it is 4:03 PM. Sorting, search and the role filter are the client’s.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Ridgeway Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Work Hours</div></div>
+  <div class="tabs"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span><span class="tab"><span class="ic">⚙</span>Settings</span></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">This week</span><span class="chip">Last week</span><span class="chip">This month</span><span class="chip">Custom</span></div><span class="tiny" style="margin-left:4px">Sep 27 – Oct 3, 2026 · counted to today</span><span class="sp"></span><div class="srch" style="width:170px">⌕ Find someone</div><div class="srch pick" style="width:118px">All roles <span class="muted">▾</span></div><span class="ib">↻</span></div>
+   <div class="tiles t7">
+    <div class="tile on"><div class="k">On time ▲</div><div class="v">73%</div><div class="d">29 of 40 days · 5 min grace</div></div>
+    <div class="tile"><div class="k">Late</div><div class="v cau">11<small>days</small></div><div class="d">18 min late on average</div></div>
+    <div class="tile"><div class="k">Left early</div><div class="v">3<small>days</small></div><div class="d">clocked out before the end</div></div>
+    <div class="tile"><div class="k">Missed</div><div class="v bad">2<small>days</small></div><div class="d">no clock-in and no tag</div></div>
+    <div class="tile"><div class="k">Outside schedule</div><div class="v">3<small>shifts</small></div><div class="d">a day off, or early</div></div>
+    <div class="tile"><div class="k">Forgot to clock out</div><div class="v cau">4<small>shifts</small></div><div class="d">the clock ended them</div></div>
+    <div class="tile"><div class="k">Hours</div><div class="v">290h 09m</div><div class="d">6h 54m a worked day</div></div>
+   </div>
+   <div style="display:flex;gap:10px;flex:1;min-height:0">
+    <div class="tbl" id="t1" style="flex:1"></div>
+    <div class="dock" style="width:330px">
+     <div class="dh"><span class="av a1">VL</span><div style="min-width:0;flex:1"><div class="t">Victor Lam</div><div class="tiny">Technician · on the clock since 8:09 AM</div></div><span class="muted">✕</span></div>
+     <div class="db">
+      <div class="facts">
+       <div><div class="k">On time</div><div class="v"><b>25%</b>1 of 4 days</div></div>
+       <div><div class="k">Late</div><div class="v"><b class="cau">3</b>15 min on average</div></div>
+       <div><div class="k">Usually in – out</div><div class="v"><b style="font-size:13px">8:12 AM – 4:23 PM</b></div></div>
+       <div><div class="k">Hours</div><div class="v"><b>28h 10m</b>7h 02m a day</div></div>
+      </div>
+      <div class="lbl">Day by day <span class="new">server</span><span class="sp"></span><span class="tiny" style="text-transform:none;letter-spacing:0;font-weight:600">scheduled 8:00 AM – 4:30 PM</span></div>
+      <div>
+       <div class="day"><div class="dt"><b>Oct 1</b><span>Thu · today</span></div><div class="tm">8:09 AM – <b style="color:var(--on)">still in</b><span>3h 41m so far</span></div><div class="fl"><span class="pill p-cau">9 min late</span></div></div>
+       <div class="day"><div class="dt"><b>Sep 30</b><span>Wed</span></div><div class="tm">8:22 AM – 4:28 PM<span>8h 06m</span></div><div class="fl"><span class="pill p-cau">22 min late</span></div></div>
+       <div class="day"><div class="dt"><b>Sep 29</b><span>Tue</span></div><div class="tm">8:03 AM – 4:10 PM<span>8h 07m · out 20 min early</span></div><div class="fl"><span class="pill p-cau">Left early</span></div></div>
+       <div class="day"><div class="dt"><b>Sep 28</b><span>Mon</span></div><div class="tm">8:14 AM – 4:30 PM<span>8h 16m · the clock ended it</span></div><div class="fl"><span class="pill p-cau">14 min late</span></div></div>
+       <div class="day"><div class="dt"><b>Sep 27</b><span>Sun</span></div><div class="tm muted">Day off</div><div class="fl"></div></div>
+      </div>
+     </div>
+     <div class="df"><span class="btn">Open this week in General ›</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 2 ═════════════════════════════ -->
+<h2><span class="n">2</span>What needs a look, first</h2>
+<p class="cap">Six equal lists, each ranked by one number: who was late most often, who missed a day, who forgot to clock out, who left early, who clocked in outside their schedule, and who was on time every day. The team’s figures sit in one strip above them. A name opens the same docked panel as 1.</p>
+<p class="need"><b>What it needs from the server.</b> Nothing new for the lists: each one is <code>people[]</code> sorted by one number, and on time every day is <code>on_time_rate</code> 100 with <code>missed</code> 0. Naming the days in a row (“Tue, Wed”) needs the per-day list from 1. <b>On the clock now is not in it:</b> <code>team.clocked_in</code> counts people who clocked in at least once in the period (11 here, the same as on the clock now only by coincidence); General’s week read has an <code>open</code> flag per person, or the stats could add one number.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Ridgeway Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Work Hours</div></div>
+  <div class="tabs"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span><span class="tab"><span class="ic">⚙</span>Settings</span></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">This week</span><span class="chip">Last week</span><span class="chip">This month</span><span class="chip">Custom</span></div><span class="tiny" style="margin-left:4px">Sep 27 – Oct 3, 2026 · counted to today</span><span class="sp"></span><div class="srch pick" style="width:118px">All roles <span class="muted">▾</span></div><span class="ib">↻</span></div>
+   <div class="strip">
+    <div class="f"><b>73%</b><span>on time · 29 of 40 days · 5 min grace</span></div><span class="vsep"></span>
+    <div class="f"><b class="cau">11</b><span>late · 18 min on average</span></div><span class="vsep"></span>
+    <div class="f"><b>3</b><span>left early</span></div><span class="vsep"></span>
+    <div class="f"><b class="bad">2</b><span>missed</span></div><span class="vsep"></span>
+    <div class="f"><b>3</b><span>outside schedule</span></div><span class="vsep"></span>
+    <div class="f"><b class="cau">4</b><span>forgot to clock out</span></div><span class="vsep"></span>
+    <div class="f"><b>290h 09m</b><span>worked · 12 people</span></div>
+    <span class="sp"></span>
+    <div class="f" style="align-items:flex-end"><b style="display:flex;align-items:center;gap:6px"><span class="dot"></span>11</b><span>on the clock now <span class="new">server</span></span></div>
+   </div>
+   <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;flex:1;min-height:0" id="g2"></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 3 ═════════════════════════════ -->
+<h2><span class="n">3</span>One card per person, with the period as a strip of days</h2>
+<p class="cap">Each card carries the person’s rate and counts, and every day of the period as a cell: on time, late, missed, away, or a day off. Cards sort worst first and the chips filter them. Here the period is Custom, September. A card docks the person’s month beside the grid as a calendar, and clicking a day says what happened on it.</p>
+<p class="need"><b>What it needs from the server.</b> The numbers on each card exist. <b>New:</b> a status for every day of the period for every person (on time, late, missed, a tag, a day off worked), up to 92 a person, for the strips and the month: the same per-day list as 1, for everyone at once.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Ridgeway Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Work Hours</div></div>
+  <div class="tabs"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span><span class="tab"><span class="ic">⚙</span>Settings</span></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip">This week</span><span class="chip">Last week</span><span class="chip">This month</span><span class="chip on">Custom</span></div><span class="tiny" style="margin-left:6px">From</span><span class="fld">09 / 01 / 2026 <span class="cal-ic">▦</span></span><span class="tiny">to</span><span class="fld">09 / 30 / 2026 <span class="cal-ic">▦</span></span><span class="tiny">30 days · at most 92</span><span class="sp"></span><span class="tiny">Team: <b class="ink">85%</b> on time, 5 min grace · <b class="ink">1984h 51m</b></span><span class="ib">↻</span></div>
+   <div class="prow"><div class="chips"><span class="chip on">Everyone <span class="c">12</span></span><span class="chip">Late <span class="c">8</span></span><span class="chip">Missed <span class="c">2</span></span><span class="chip">Forgot to clock out <span class="c">4</span></span><span class="chip">Outside schedule <span class="c">3</span></span></div><span class="sp"></span><div class="leg" style="margin-right:6px"><span><i style="background:var(--on)"></i>On time</span><span><i style="background:var(--late)"></i>Late</span><span><i style="background:var(--miss)"></i>Missed</span><span><i style="background:var(--away)"></i>Away</span><span><i style="background:var(--off)"></i>Day off</span><span><i style="background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a"></i>Worked a day off</span></div><div class="srch pick" style="width:124px">Worst first <span class="muted">▾</span></div></div>
+   <div style="display:flex;gap:10px;flex:1;min-height:0">
+    <div class="grid3" id="g3"></div>
+    <div class="dock" style="width:330px">
+     <div class="dh"><span class="av a6">SW</span><div style="min-width:0;flex:1"><div class="t">Sam Whitley</div><div class="tiny">Technician · September</div></div><span class="muted">✕</span></div>
+     <div class="db">
+      <div class="facts">
+       <div><div class="k">On time</div><div class="v"><b>41%</b>7 of 17 days</div></div>
+       <div><div class="k">Late</div><div class="v"><b class="cau">10</b>27 min on average</div></div>
+       <div><div class="k">Missed</div><div class="v"><b class="bad">4</b>days</div></div>
+       <div><div class="k">Forgot to clock out</div><div class="v"><b class="cau">8</b>shifts</div></div>
+      </div>
+      <div class="lbl">September, day by day <span class="new">server</span></div>
+      <div class="cal sm" id="cal3"></div>
+      <div class="leg"><span><i style="background:var(--okc);box-shadow:inset 0 0 0 1px var(--ok)"></i>On time</span><span><i style="background:var(--cauc);box-shadow:inset 0 0 0 1px var(--cau)"></i>Late</span><span><i style="background:var(--badc);box-shadow:inset 0 0 0 1px var(--bad)"></i>Missed</span><span><i style="background:var(--infoc);box-shadow:inset 0 0 0 1px var(--info)"></i>Away</span><span><i style="background:var(--cau);border-radius:50%;width:6px;height:6px"></i>Clock ended it</span></div>
+      <div class="hint bad"><b>Tue, Sep 29 · Missed.</b> Scheduled 8:00 AM – 4:30 PM, no clock-in and no tag.</div>
+     </div>
+     <div class="df"><span class="btn">Open the week of Sep 29 in General ›</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 4 ═════════════════════════════ -->
+<h2><span class="n">4</span>On a phone: option 1 in a column <span class="rec">Recommended</span><span class="why">1’s figures and people, sorted the same way, with a person’s days in place</span></h2>
+<p class="cap">Four figures two by two, the other three in one line under them, then one row per person, lowest on-time rate first. Tapping a person replaces the list with their days and a ← back; the tabs stay where they are.</p>
+<p class="need"><b>What it needs from the server.</b> The same as 1: everything on the first phone exists; the days on the second are the new per-day list.</p>
+<div class="pairp">
+ <div><div class="pl">4 · the dashboard</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="pb">
+    <div class="prow"><span class="srch pick" style="width:132px">This week <span class="muted">▾</span></span><span class="tiny">Sep 27 – Oct 3</span><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="tiles t2">
+     <div class="tile"><div class="k">On time</div><div class="v">73%</div><div class="d">29 of 40 days</div></div>
+     <div class="tile"><div class="k">Late</div><div class="v cau">11<small>days</small></div><div class="d">18 min on average</div></div>
+     <div class="tile"><div class="k">Missed</div><div class="v bad">2<small>days</small></div><div class="d">no clock-in, no tag</div></div>
+     <div class="tile"><div class="k">Forgot to clock out</div><div class="v cau">4<small>shifts</small></div><div class="d">the clock ended them</div></div>
+    </div>
+    <div class="tiny" style="padding:0 2px">On time is within 5 minutes · 3 left early · 3 outside schedule · 290h 09m worked</div>
+    <div class="prow" style="padding:0 2px"><b style="font-size:13px">12 people</b><span class="sp"></span><span class="tiny b" style="color:var(--pri)">Lowest on time first ▾</span></div>
+    <div class="card" id="p4"></div>
+   </div>
+  </div></div>
+ <div><div class="pl">4 · after tapping Victor Lam</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="bk"><span class="ar">←</span><span class="av a1">VL</span><div style="min-width:0"><div class="t">Victor Lam</div><div class="tiny">Technician · this week</div></div></div>
+   <div class="pb">
+    <div class="tiles t2">
+     <div class="tile"><div class="k">On time</div><div class="v">25%</div><div class="d">1 of 4 days</div></div>
+     <div class="tile"><div class="k">Late</div><div class="v cau">3<small>days</small></div><div class="d">15 min on average</div></div>
+     <div class="tile"><div class="k">Left early</div><div class="v">1<small>day</small></div><div class="d">before the end</div></div>
+     <div class="tile"><div class="k">Forgot to clock out</div><div class="v cau">1<small>shift</small></div><div class="d">the clock ended it</div></div>
+    </div>
+    <div class="tiny" style="padding:0 2px">Usually in <b class="ink">8:12 AM</b>, out <b class="ink">4:23 PM</b> · 28h 10m, 7h 02m a day</div>
+    <div class="lbl" style="padding:0 2px">Day by day <span class="new">server</span><span class="sp"></span><span class="tiny" style="text-transform:none;letter-spacing:0;font-weight:600">8:00 AM – 4:30 PM</span></div>
+    <div class="card" style="padding:0 12px">
+     <div class="day"><div class="dt"><b>Oct 1</b><span>Thu · today</span></div><div class="tm">8:09 AM – <b style="color:var(--on)">still in</b><span>3h 41m so far</span></div><div class="fl"><span class="pill p-cau">9 min late</span></div></div>
+     <div class="day"><div class="dt"><b>Sep 30</b><span>Wed</span></div><div class="tm">8:22 AM – 4:28 PM<span>8h 06m</span></div><div class="fl"><span class="pill p-cau">22 min late</span></div></div>
+     <div class="day"><div class="dt"><b>Sep 29</b><span>Tue</span></div><div class="tm">8:03 AM – 4:10 PM<span>8h 07m · out 20 min early</span></div><div class="fl"><span class="pill p-cau">Left early</span></div></div>
+     <div class="day"><div class="dt"><b>Sep 28</b><span>Mon</span></div><div class="tm">8:14 AM – 4:30 PM<span>8h 16m · the clock ended it</span></div><div class="fl"><span class="pill p-cau">14 min late</span></div></div>
+     <div class="day"><div class="dt"><b>Sep 27</b><span>Sun</span></div><div class="tm muted">Day off</div><div class="fl"></div></div>
+    </div>
+    <span class="btn" style="height:38px">Open this week in General</span>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ 5 ═════════════════════════════ -->
+<h2><span class="n">5</span>On a phone: what needs a look, first</h2>
+<p class="cap">The team in one line, then the lists: who was late most often, who forgot to clock out, who missed a day; the shorter ones fold to a line. Tapping a list’s title opens the whole list in place with a ← back, and a name there opens the same days as 4.</p>
+<p class="need"><b>What it needs from the server.</b> The same as 2: nothing new for the lists; a person’s days are the per-day list.</p>
+<div class="pairp">
+ <div><div class="pl">5 · needs a look</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="pb">
+    <div class="prow"><span class="srch pick" style="width:132px">This week <span class="muted">▾</span></span><span class="tiny">Sep 27 – Oct 3</span><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="card" style="display:flex;padding:8px 4px">
+     <div style="flex:1;text-align:center;line-height:1.2"><b style="font-size:18px">73%</b><div class="tiny">on time</div></div><span class="vsep"></span>
+     <div style="flex:1;text-align:center;line-height:1.2"><b style="font-size:18px;color:var(--cau)">11</b><div class="tiny">late</div></div><span class="vsep"></span>
+     <div style="flex:1;text-align:center;line-height:1.2"><b style="font-size:18px;color:var(--bad)">2</b><div class="tiny">missed</div></div>
+    </div>
+    <div class="card" id="p5late"></div>
+    <div class="card" id="p5forgot"></div>
+    <div class="card">
+     <div class="one"><span class="pill p-bad">2</span><b>Missed a day</b><span class="tiny">Sam, Tomás</span><span class="chev">›</span></div>
+     <div class="one" style="border-top:1px solid var(--line2)"><span class="pill p-cau">3</span><b>Left early</b><span class="tiny">Victor, Ruth, Jonah</span><span class="chev">›</span></div>
+     <div class="one" style="border-top:1px solid var(--line2)"><span class="pill p-info">3</span><b>Outside schedule</b><span class="tiny">Anjali, Elena, Felix</span><span class="chev">›</span></div>
+    </div>
+    <div class="tiny clear" style="padding:0 2px"><span class="ck">✓</span><span>On time every day: Anjali, Elena, Felix, Grace, Lucia.</span></div>
+   </div>
+  </div></div>
+ <div><div class="pl">5 · after tapping Late most often</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="bk"><span class="ar">←</span><div style="min-width:0"><div class="t">Late this week</div><div class="tiny">11 days across 6 people · 18 min on average</div></div></div>
+   <div class="pb">
+    <div class="tiny" style="padding:0 2px">Most days late first. Late is the first clock-in more than 5 minutes after the start.</div>
+    <div class="card" id="p5all"></div>
+    <div class="tiny clear" style="padding:0 2px"><span class="ck">✓</span><span>The other 5 people clocked in on time every day they were scheduled. Wes Halloran was away all week.</span></div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ 6 ═════════════════════════════ -->
+<h2><span class="n">6</span>On a phone: one card per person, with the strip of days</h2>
+<p class="cap">One card a person with their rate, the period’s strip and the counts that need a look; the chips filter and the cards sort worst first. Tapping a card opens that person’s month in place with a ← back; tapping a day says what happened.</p>
+<p class="need"><b>What it needs from the server.</b> The same as 3: a status for every day of the period for everyone.</p>
+<div class="pairp">
+ <div><div class="pl">6 · the cards</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="pb">
+    <div class="prow"><span class="srch pick" style="width:132px">Custom <span class="muted">▾</span></span><span class="tiny">Sep 1 – Sep 30</span><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="hs"><span class="chip on">Everyone <span class="c">12</span></span><span class="chip">Late <span class="c">8</span></span><span class="chip">Missed <span class="c">2</span></span><span class="chip">Forgot to clock out <span class="c">4</span></span></div>
+    <div class="leg" style="padding:0 2px;gap:4px 10px"><span><i style="background:var(--on)"></i>On time</span><span><i style="background:var(--late)"></i>Late</span><span><i style="background:var(--miss)"></i>Missed</span><span><i style="background:var(--away)"></i>Away</span><span style="flex-basis:100%;display:flex;gap:10px"><span><i style="background:var(--off)"></i>Day off</span><span><i style="background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a"></i>Worked a day off</span></span></div>
+    <div id="p6" style="display:flex;flex-direction:column;gap:8px"></div>
+   </div>
+  </div></div>
+ <div><div class="pl">6 · after tapping Sam Whitley</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Work Hours</span><span class="org">Ridgeway Group ▾</span></div>
+   <div class="tabs" style="display:flex;gap:6px"><span class="tab on"><span class="ic">▦</span>Dashboard</span><span class="tab"><span class="ic">◷</span>General</span><span class="tab"><span class="ic">☂</span>Paid Time Off</span><span class="tab"><span class="ic">▤</span>Reports</span></div>
+   <div class="bk"><span class="ar">←</span><span class="av a6">SW</span><div style="min-width:0"><div class="t">Sam Whitley</div><div class="tiny">Technician · September</div></div></div>
+   <div class="pb">
+    <div class="tiles t2">
+     <div class="tile"><div class="k">On time</div><div class="v">41%</div><div class="d">7 of 17 days</div></div>
+     <div class="tile"><div class="k">Late</div><div class="v cau">10<small>days</small></div><div class="d">27 min on average</div></div>
+     <div class="tile"><div class="k">Missed</div><div class="v bad">4<small>days</small></div><div class="d">no clock-in, no tag</div></div>
+     <div class="tile"><div class="k">Forgot to clock out</div><div class="v cau">8<small>shifts</small></div><div class="d">the clock ended them</div></div>
+    </div>
+    <div class="lbl" style="padding:0 2px">September, day by day <span class="new">server</span></div>
+    <div class="card" style="padding:8px 10px"><div class="cal" id="cal6"></div></div>
+    <div class="leg" style="padding:0 2px"><span><i style="background:var(--okc);box-shadow:inset 0 0 0 1px var(--ok)"></i>On time</span><span><i style="background:var(--cauc);box-shadow:inset 0 0 0 1px var(--cau)"></i>Late</span><span><i style="background:var(--badc);box-shadow:inset 0 0 0 1px var(--bad)"></i>Missed</span><span><i style="background:var(--infoc);box-shadow:inset 0 0 0 1px var(--info)"></i>Away</span><span><i style="background:var(--cau);border-radius:50%;width:6px;height:6px"></i>Clock ended it</span></div>
+    <div class="hint bad"><b>Tue, Sep 29 · Missed.</b> Scheduled 8:00 AM – 4:30 PM, no clock-in and no tag.</div>
+   </div>
+  </div></div>
+</div>
+
+<h2 class="plain">Recommendation</h2>
+<p class="cap"><b>1 on a desk, 4 on a phone.</b> The question was “for each employee”, and the table answers it on one screen: one row per person with every number the server already counts, the figures above it sorting it, and one person’s days beside it without leaving the list. It needs one new read, a person’s days, and one change, the usual in and out over scheduled days only. 2’s lists are what sorting 1 by Late, Missed or Forgot to clock out already shows; 3’s strip is the best picture of a month, but it needs a status for every day for everyone.</p>
+<p class="cap"><b>One thing to decide:</b> somebody on the place’s business hours who never clocks in during the period is left out of every option, not counted as missed. The server does that so an owner who never clocks in does not read as missing every day. Should they count?</p>
+
+<p class="cap" style="margin-top:36px">People, numbers and the organization are invented, and judged by the server’s own rules. Times print as the server sends them, in the organization’s 12- or 24-hour clock; hours as General prints them.</p>
+</div>
+
+<script>
+// Invented, and worked out with TimeClockStats' rules: grace 5 minutes, Thursday Oct 1 at 11:50 AM.
+// [key, name, role, initials, avatar, scheduled_days, on_time, late, late_average_minutes, left_early, missed,
+//  outside_schedule, auto_closed, extensions, days_worked, total_seconds, average_seconds, on_time_rate, average_in, average_out, tags]
+const WEEK = [["lf","Lucia Ferreira","Technician","LF","a3",4,4,0,null,0,0,0,0,0,4,107520,26880,100,"7:54 AM","4:33 PM",{}],["vl","Victor Lam","Technician","VL","a1",4,1,3,15,1,0,0,1,0,4,101400,25350,25,"8:12 AM","4:23 PM",{}],["ad","Anjali Desai","Dispatcher","AD","a6",4,4,0,null,0,0,1,0,0,5,116580,23316,100,"7:29 AM","2:30 PM",{}],["th","Tomás Herrera","Technician","TH","a5",4,2,1,12,0,1,0,0,0,3,78600,26200,67,"7:02 AM","3:33 PM",{}],["ga","Grace Adeyemi","Office manager","GA","a2",4,4,0,null,0,0,0,0,3,4,106020,26505,100,"8:57 AM","5:48 PM",{}],["wh","Wes Halloran","Technician","WH","a8",4,0,0,null,0,0,0,0,0,0,0,0,null,null,null,{"vacation":4}],["ns","Nadia Sorensen","Dispatcher","NS","a7",4,2,2,9,0,0,0,1,0,4,106440,26610,50,"7:35 AM","4:01 PM",{}],["ra","Ruth Abara","Office","RA","a4",3,2,1,20,1,0,0,0,0,3,64140,21380,67,"9:06 AM","4:39 PM",{}],["sw","Sam Whitley","Technician","SW","a6",4,0,3,32,0,1,0,2,0,3,69180,23060,0,"8:32 AM","4:30 PM",{}],["em","Elena Marsh","Customer service","EM","a1",4,3,0,null,0,0,1,0,0,4,80700,20175,100,"8:30 AM","2:52 PM",{"sick":1}],["jp","Jonah Pierce","Apprentice","JP","a3",4,3,1,6,1,0,0,0,0,4,102960,25740,75,"8:01 AM","4:17 PM",{}],["fd","Felix Duarte","Technician","FD","a5",4,4,0,null,0,0,1,0,1,4,111000,27750,100,"7:41 AM","4:34 PM",{}]];
+const SEPT = [["lf","Lucia Ferreira","Technician","LF","a3",22,20,1,6,0,0,0,0,0,21,648900,30900,95,"7:58 AM","4:33 PM",{"holiday":1}],["vl","Victor Lam","Technician","VL","a1",22,13,8,17,2,0,0,3,0,21,634800,30228,62,"8:05 AM","4:29 PM",{"holiday":1}],["ad","Anjali Desai","Dispatcher","AD","a6",22,21,0,null,0,0,3,0,0,24,675540,28147,100,"7:28 AM","3:18 PM",{"holiday":1}],["th","Tomás Herrera","Technician","TH","a5",22,17,2,10,0,2,0,0,0,19,585780,30830,89,"6:58 AM","3:32 PM",{"holiday":1}],["ga","Grace Adeyemi","Office manager","GA","a2",22,21,0,null,0,0,0,0,6,21,625260,29774,100,"8:58 AM","5:14 PM",{"holiday":1}],["wh","Wes Halloran","Technician","WH","a8",22,17,1,8,0,0,0,1,0,18,556620,30923,94,"7:57 AM","4:33 PM",{"holiday":1,"vacation":3}],["ns","Nadia Sorensen","Dispatcher","NS","a7",22,15,6,10,0,0,0,3,0,21,643320,30634,71,"7:32 AM","4:03 PM",{"holiday":1}],["ra","Ruth Abara","Office","RA","a4",14,12,2,20,3,0,0,0,0,14,397560,28397,86,"9:01 AM","4:54 PM",{}],["sw","Sam Whitley","Technician","SW","a6",22,7,10,27,0,4,0,8,0,17,506460,29791,41,"8:14 AM","4:31 PM",{"holiday":1}],["em","Elena Marsh","Customer service","EM","a1",22,18,0,null,0,0,2,0,0,20,571560,28578,100,"8:28 AM","4:24 PM",{"sick":3,"holiday":1}],["jp","Jonah Pierce","Apprentice","JP","a3",22,17,4,9,3,0,0,0,0,21,637260,30345,81,"8:02 AM","4:27 PM",{"holiday":1}],["fd","Felix Duarte","Technician","FD","a5",22,21,0,null,0,0,4,0,3,21,662400,31542,100,"7:49 AM","4:35 PM",{"holiday":1}]];
+// Sep 1-30, one letter a day: + on time, L late, X missed, T tagged away, . day off, o worked a day off
+const STRIP = {"lf":"++++..T++++..++++L..+++++..+++","vl":"L+L+..T+++L..+++L+..L+L++..L+L","ad":"++++.oT++++..+++++.o+++++.o+++","th":"+++X..T+L++..+++++..++++L..++X","ga":"++++..T++++..+++++..+++++..+++","wh":"++++..T++L+..+++++..+++++..TTT","ns":"++++..T+++L..+L++L..++++L..L+L","ra":"+++....L++....+++....+++....+L","sw":"XL+L..TL++L..XLX++..+L+LL..LXL","em":"++++.oT++TT..+++++..+++++.oT++","jp":"+++L..T+L++..+++++..L++++..+L+","fd":"++++..T++++..+++++..+++++..+++"};
+// Sam Whitley's September: [day, status, minutes late, the clock ended it]
+const SAM = [[1,"X",null,0],[2,"L",19,1],[3,"+",null,1],[4,"L",24,0],[5,".",null,0],[6,".",null,0],[7,"T",null,0],[8,"L",29,0],[9,"+",null,1],[10,"+",null,1],[11,"L",34,0],[12,".",null,0],[13,".",null,0],[14,"X",null,0],[15,"L",29,1],[16,"X",null,0],[17,"+",null,0],[18,"+",null,0],[19,".",null,0],[20,".",null,0],[21,"+",null,0],[22,"L",27,0],[23,"+",null,0],[24,"L",23,1],[25,"L",29,0],[26,".",null,0],[27,".",null,0],[28,"L",31,1],[29,"X",null,0],[30,"L",26,1]];
+
+const rec = r => ({k: r[0], n: r[1], role: r[2], ini: r[3], av: r[4], sd: r[5], ot: r[6], lt: r[7], la: r[8], le: r[9], ms: r[10], os: r[11], ac: r[12], ex: r[13], dw: r[14], ts: r[15], as: r[16], rt: r[17], ain: r[18], aout: r[19], tags: r[20]});
+const week = WEEK.map(rec), sept = SEPT.map(rec);
+const hm = s => s <= 0 ? '0h 00m' : `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}m`;
+const worst = (a, b) => (a.rt === null) - (b.rt === null) || (a.rt ?? 0) - (b.rt ?? 0) || a.n.localeCompare(b.n);
+const zero = '<span class="z">0</span>';
+const av = (p, cls = '') => `<span class="av ${p.av} ${cls}">${p.ini}</span>`;
+const first = p => p.n.split(' ')[0];
+const away = p => Object.entries(p.tags).map(([t, c]) => `${c} ${t} ${c === 1 ? 'day' : 'days'}`).join(', ');
+const put = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+// 1 · the table, lowest on-time rate first; nothing to judge sorts last.
+(function () {
+  const g = '--g:minmax(0,1fr) 104px 70px 44px 44px 58px 56px 54px 54px 56px';
+  const head = `<div class="tr hd" style="${g}"><span>Person</span><span class="srt">On time ▲</span><span>Late</span><span>Left early</span><span>Missed</span><span>Outside schedule</span><span>Forgot to clock out</span><span>Usually in</span><span>Usually out</span><span class="num">Hours</span></div>`;
+  const rows = [...week].sort(worst).map(p => {
+    const rate = p.rt === null
+      ? `<span class="pill p-info">${away(p)}</span>`
+      : `<span class="rate"><span class="mtr"><i style="width:${p.rt}%"></i></span><b>${p.rt}%</b><span class="tiny">of ${p.ot + p.lt}</span></span>`;
+    return `<div class="tr${p.k === 'vl' ? ' on' : ''}" style="${g}">`
+      + `<span class="who">${av(p)}<span class="nm"><b>${p.n}</b><i>${p.role}</i></span></span>`
+      + `<span style="grid-column:${p.rt === null ? '2 / span 1' : 'auto'};min-width:0;overflow:hidden">${rate}</span>`
+      + `<span>${p.lt ? `<span class="pill p-cau">${p.lt}</span> <span class="tiny">${p.la} min</span>` : zero}</span>`
+      + `<span>${p.le || zero}</span>`
+      + `<span>${p.ms ? `<span class="pill p-bad">${p.ms}</span>` : zero}</span>`
+      + `<span>${p.os || zero}</span>`
+      + `<span>${p.ac ? `<span class="pill p-cau">${p.ac}</span>` : zero}</span>`
+      + `<span>${p.ain || '<span class="z">—</span>'}</span>`
+      + `<span>${p.aout || '<span class="z">—</span>'}</span>`
+      + `<span class="num">${p.ts ? hm(p.ts) : '<span class="z">—</span>'}</span></div>`;
+  }).join('');
+  put('t1', head + rows);
+})();
+
+// 2 · six lists, each one number ranked.
+(function () {
+  const list = (key, tone, sub) => week.filter(p => p[key] > 0).sort((a, b) => b[key] - a[key] || (b.la ?? 0) - (a.la ?? 0) || a.n.localeCompare(b.n));
+  const row = (p, right, sub) => `<div class="lr">${av(p)}<div class="g"><b>${p.n}</b><span>${sub}</span></div><div class="rt">${right}</div></div>`;
+  const box = (icon, colour, title, count, rows, foot) => `<div class="box"><div class="bh"><span class="ic" style="color:${colour}">${icon}</span><b>${title}</b><span class="sp"></span><span class="tiny b">${count}</span></div>${rows}<div class="foot">${foot}</div></div>`;
+  const late = list('lt');
+  const missed = list('ms');
+  const forgot = list('ac');
+  const early = list('le');
+  const outside = list('os');
+  const clean = week.filter(p => p.rt === 100 && p.ms === 0).sort((a, b) => a.n.localeCompare(b.n));
+  put('g2', [
+    box('◷', 'var(--cau)', 'Late most often', '11 days', late.slice(0, 4).map(p => row(p, `<span class="pill p-cau">${p.lt} late</span>`, `${p.lt} of ${p.ot + p.lt} days · ${p.la} min on average`)).join(''), `<span class="more">${late.length - 4} more ›</span>`),
+    box('✕', 'var(--bad)', 'Missed a day', '2 days', missed.map(p => row(p, `<span class="pill p-bad">${p.ms} missed</span>`, `${p.role} · scheduled ${p.sd} days`)).join(''), `<div class="clear"><span class="ck">✓</span><span>Everyone else clocked in, or was tagged away, on every scheduled day that has ended.</span></div>`),
+    box('⏻', 'var(--cau)', 'Forgot to clock out', '4 shifts', forgot.map(p => row(p, `<span class="pill p-cau">${p.ac}</span>`, `${p.ac} of ${p.dw} days worked`)).join(''), 'The clock ended these at the scheduled end. They show as Auto on General.'),
+    box('↤', 'var(--neu)', 'Left early', '3 days', early.map(p => row(p, `<span class="pill p-neu">${p.le}</span>`, `${p.role} · usually out ${p.aout}`)).join(''), 'Clocked out themselves more than 5 minutes before the end.'),
+    box('☾', 'var(--info)', 'Outside schedule', '3 shifts', outside.map(p => row(p, `<span class="pill p-info">${p.os}</span>`, `${p.role} · ${p.dw} days worked`)).join(''), 'A shift begun on a day off, or more than 30 minutes before the start. Informational: Clock in never refuses one.'),
+    box('✓', 'var(--ok)', 'On time every day', '5 people', clean.slice(0, 4).map(p => row(p, `<span class="pill p-ok">${p.ot} of ${p.ot}</span>`, `${p.role} · usually in ${p.ain}`)).join(''), `<span class="more">${clean.length - 4} more ›</span> · Not judged: Wes Halloran, on vacation all week.`),
+  ].join(''));
+})();
+
+// 3 · the cards, worst first, and Sam Whitley's month.
+const cellClass = {'+': 'ok', 'L': 'late', 'X': 'miss', 'T': 'tag', '.': 'off', 'o': 'offw'};
+const cells = k => `<div class="cells">${[...STRIP[k]].map(c => `<i class="${cellClass[c]}"></i>`).join('')}</div>`;
+// Late, missed and forgot first; the others only while there is room for them.
+const counts = p => {
+  const bits = [];
+  if (p.lt) bits.push(`<b class="cau">${p.lt}</b> late`);
+  if (p.ms) bits.push(`<b class="bad">${p.ms}</b> missed`);
+  if (p.ac) bits.push(`<b class="cau">${p.ac}</b> forgot to clock out`);
+  if (p.le && bits.length < 2) bits.push(`<b>${p.le}</b> left early`);
+  if (p.os && bits.length < 2) bits.push(`<b>${p.os}</b> outside schedule`);
+  if (!bits.length) bits.push('<span style="color:var(--ok);font-weight:700">✓ on time every day</span>');
+  return bits.join(' · ');
+};
+(function () {
+  put('g3', [...sept].sort(worst).map(p => `<div class="pc${p.k === 'sw' ? ' on' : ''}">`
+    + `<div class="hdr">${av(p)}<div class="nm"><b>${p.n}</b><i>${p.role}${Object.keys(p.tags).filter(t => t !== 'holiday').length ? ' · ' + away({tags: Object.fromEntries(Object.entries(p.tags).filter(([t]) => t !== 'holiday'))}) : ''}</i></div><div class="big"><b>${p.rt}%</b><span>on time</span></div></div>`
+    + `<div>${cells(p.k)}<div class="ticks"><span>Sep 1</span><span>Sep 15</span><span>Sep 30</span></div></div>`
+    + `<div class="ln">${counts(p)}</div>`
+    + `<div class="ln">In ${p.ain} · out ${p.aout} · ${hm(p.ts)}</div></div>`).join(''));
+})();
+function month(id) {
+  const wd = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<div class="wd">${d}</div>`).join('');
+  const lead = [30, 31].map(d => `<div class="c out">${d}</div>`).join(''); // Aug 30, 31: Sunday-start week
+  const days = SAM.map(([d, s, m, auto]) => `<div class="c ${cellClass[s] === 'offw' ? 'off' : cellClass[s]}${auto ? ' au' : ''}${d === 29 ? ' sel' : ''}" title="${m ? m + ' min late' : ''}">${d}</div>`).join('');
+  const tail = [1, 2, 3].map(d => `<div class="c out">${d}</div>`).join('');
+  put(id, wd + lead + days + tail);
+}
+month('cal3');
+month('cal6');
+
+// 4 · the phone list, the same order as 1.
+put('p4', [...week].sort(worst).slice(0, 6).map(p => {
+  const bits = [];
+  if (p.lt) bits.push(`${p.lt} late`);
+  if (p.ms) bits.push(`${p.ms} missed`);
+  if (p.ac) bits.push(`${p.ac} forgot to clock out`);
+  if (p.le) bits.push(`${p.le} left early`);
+  const sub = p.rt === null ? away(p) : (bits.length ? bits.slice(0, 2).join(' · ') : `${p.role} · in ${p.ain}`);
+  const right = p.rt === null ? '<b class="z">—</b><span class="tiny">nothing to judge</span>'
+    : `<b>${p.rt}%</b><span class="mtr" style="width:44px"><i style="width:${p.rt}%"></i></span>`;
+  return `<div class="prr">${av(p)}<div class="g"><b>${p.n}</b><span>${sub}</span></div><div class="r">${right}</div></div>`;
+}).join(''));
+
+// 5 · the phone lists.
+(function () {
+  const late = week.filter(p => p.lt > 0).sort((a, b) => b.lt - a.lt || b.la - a.la || a.n.localeCompare(b.n));
+  const r = (p, right, sub) => `<div class="prr">${av(p)}<div class="g"><b>${p.n}</b><span>${sub}</span></div><div class="r">${right}</div></div>`;
+  put('p5late', `<div class="sh"><span class="pill p-cau">11</span><b>Late most often</b><span class="chev">All 6 ›</span></div>`
+    + late.slice(0, 3).map(p => r(p, `<b style="color:var(--cau)">${p.lt}</b>`, `${p.lt} of ${p.ot + p.lt} days · ${p.la} min on average`)).join(''));
+  const forgot = week.filter(p => p.ac > 0).sort((a, b) => b.ac - a.ac || a.n.localeCompare(b.n));
+  put('p5forgot', `<div class="sh"><span class="pill p-cau">4</span><b>Forgot to clock out</b><span class="chev">All ${forgot.length} ›</span></div>`
+    + forgot.slice(0, 2).map(p => r(p, `<b style="color:var(--cau)">${p.ac}</b>`, `the clock ended ${p.ac === 1 ? 'one shift' : p.ac + ' shifts'}`)).join(''));
+  const max = Math.max(...late.map(p => p.lt));
+  put('p5all', late.map(p => `<div class="prr">${av(p)}<div class="g"><b>${p.n}</b><span>${p.lt} of ${p.ot + p.lt} days · ${p.la} min on average</span></div><div class="r"><b style="color:var(--cau)">${p.lt}</b><span class="mtr" style="width:44px"><i style="width:${p.lt / max * 100}%;background:var(--late)"></i></span></div></div>`).join(''));
+})();
+
+// 6 · the phone cards.
+put('p6', [...sept].sort(worst).slice(0, 4).map(p => `<div class="ppc">`
+  + `<div class="pc" style="all:unset;display:flex;align-items:center;gap:8px">${av(p)}<div style="flex:1;min-width:0;line-height:1.2"><b style="display:block;font-size:12.5px">${p.n}</b><span class="tiny">${p.role}</span></div><div style="text-align:right;line-height:1.05"><b style="font-size:17px">${p.rt}%</b><div style="font-size:9.5px" class="muted">on time</div></div></div>`
+  + `${cells(p.k)}`
+  + `<div class="pc" style="all:unset;display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${counts(p).replace(/<b class="cau">/g, '<b style="color:var(--cau)">').replace(/<b class="bad">/g, '<b style="color:var(--bad)">').replace(/<b>/g, '<b style="color:var(--ink)">')}</div></div>`).join(''));
+</script>

@@ -2961,6 +2961,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 47 · Work Hours · a Dashboard tab, first — **out for decision** (`docs/previews/work-hours-dashboard-layouts.html`)
+
+Jose, 2026-10-01, via Clock In: *"i'd also like to have a sub tab dashboard which lets me know details, averages,
+for each employee, how many clock in on time, or outside schedule, etc, etc."* Data: `GET hr/time-clock/stats`
+(559529c7). Desktop **1** seven team figures over one row per person (on time, late with average minutes, left
+early, missed, outside schedule, forgot to clock out, usual in and out, hours), a person's days docked beside the
+list (recommended); **2** six ranked lists; **3** a card per person with a cell per day. Phone **4**
+(recommended)-**6**. Option 1/4 needs one new read, a person's days (`?user=`), and `average_in`/`average_out`
+over scheduled days only. Found while drawing (told Clock In): `team.clocked_in` is "clocked in during the
+period", not "now"; `outside_schedule` misses a clock-in after the day's end; General still has five dialogs, a
+bottom sheet and a full-screen push.
+
 ### 46 · Monitoring · browsing an employee's PC files — **out for decision** (`docs/previews/monitoring-files-layouts.html`)
 
 Jose, 2026-10-01, via Monitoring: *"me who has access to monitoring being able to access files on one of my
