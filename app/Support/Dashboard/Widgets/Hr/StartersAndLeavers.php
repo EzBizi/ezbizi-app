@@ -11,10 +11,10 @@ use Illuminate\Support\Carbon;
 /**
  * Who has just joined, and who left (EZBIZI-HR-PLAN.md — Dashboard).
  *
- * Starting is dated. An account comes into being when an invitation is accepted,
- * so a `started` employment event is written then — the same moment
- * `users.created_at` is set — and this panel reads that event so Records and
- * the dashboard cannot disagree.
+ * Starting is dated by each person's first `started` employment event, the
+ * start date Records shows — written when an invitation is accepted, moved by
+ * HR, and carried over by an import. Not `users.created_at`: an imported
+ * account is new and its person is not.
  *
  * Leaving is dated from the day this table shipped. Deactivate writes a `left`
  * row. People who were already inactive before then have no leaving date; they
@@ -51,10 +51,20 @@ class StartersAndLeavers implements Widget
             ? $options['since']
             : $this->since($options);
 
+        // Their first `started` day, not when the account row was made: the
+        // 64 people brought over from A1 Tools on 2026-09-29 have accounts
+        // from that day and start dates from years ago.
+        $firsts = EmploymentEvent::query()
+            ->where('kind', EmploymentEvent::STARTED)
+            ->groupBy('user_id')
+            ->selectRaw('user_id, min(occurred_on) as first_started');
+
         $starters = $this->inView($places)
-            ->where('is_active', true)
-            ->where('created_at', '>=', $since)
-            ->orderByDesc('created_at');
+            ->joinSub($firsts, 'firsts', 'firsts.user_id', '=', 'users.id')
+            ->where('users.is_active', true)
+            ->where('firsts.first_started', '>=', $since->toDateString())
+            ->select('users.*', 'firsts.first_started')
+            ->orderByDesc('firsts.first_started');
 
         $started = (clone $starters)->count();
 
@@ -85,7 +95,7 @@ class StartersAndLeavers implements Widget
                 ->map(fn (User $person) => [
                     'id'        => $person->getKey(),
                     'name'      => $person->name,
-                    'joined_at' => $person->created_at?->toIso8601String(),
+                    'joined_at' => Carbon::parse($person->first_started)->toIso8601String(),
                 ])->all(),
 
             'more_people' => max(0, $started - self::NAMES_SHOWN),

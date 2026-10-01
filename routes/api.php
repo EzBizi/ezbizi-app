@@ -1538,6 +1538,9 @@ Route::prefix('v1')
         // headcount on somebody's main dashboard are the same code.
         Route::middleware('permission:hr.dashboard.view')
             ->get('hr/dashboard', [HrDashboardController::class, 'index']);
+        // The redesigned dashboard's one read (2026-10-01): HrOverview.
+        Route::middleware('permission:hr.dashboard.view')
+            ->get('hr/dashboard/overview', [HrDashboardController::class, 'overview']);
 
         /*
          * UNGATED, and it is not an oversight: `scope-options` is the INVITE
