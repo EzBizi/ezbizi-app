@@ -362,6 +362,10 @@ class HrOnboardingsController extends Controller
         $changed = DB::transaction(function () use ($onboarding, $actor, $parties, $request) {
             $changed = $this->form->save($onboarding, $actor, $parties, (array) $request->input('answers'));
 
+            if (array_intersect(['work_days', 'work_hours'], $changed['answers']) !== []) {
+                app(OnboardingToRecord::class)->saveSchedule($onboarding);
+            }
+
             if ($changed['answers'] !== [] || $changed['identity'] !== []) {
                 /*
                  * The KEYS, never the values.

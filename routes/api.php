@@ -1383,6 +1383,7 @@ Route::prefix('v1')
         Route::put('organization/canvas', [OrganizationCanvasController::class, 'save']);
         Route::patch('organization', [OrganizationProfileController::class, 'update']);
         Route::get('address-lookup', AddressLookupController::class);
+        Route::get('places/counties', \App\Http\Controllers\Api\CountyLookupController::class);
 
         // ── Branding (§12) ───────────────────────────────────────
         //
