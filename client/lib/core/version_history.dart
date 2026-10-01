@@ -14,18 +14,11 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0342',
+      version: '0.0.0341',
       date: '1 Oct 2026',
       items: [
         'Onboarding: the home address is filled in its parts, with address search. The contract can be seen as the PDF it will print as, stamped DRAFT. Each side draws their signature by hand when signing.',
         'Windows: before updating, the app closes any update installer left running from an earlier try, so one stuck update can no longer block every later one.',
-        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0341, which reached the web first.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0341',
-      date: '1 Oct 2026',
-      items: [
         'Onboarding: ✗ on a term also voids the terms tied to it, the contract preview highlights what changed, and contracts are laid out like the A1 Tools agreements.',
         'Leads: bookings made through Google have their own tab and stay out of All.',
         'A website chat\'s ZIP code shows on the lead in Leads, ready for the availability check.',
