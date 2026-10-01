@@ -462,10 +462,20 @@ class _OnboardingFormState extends State<OnboardingForm> {
         'format': 'pdf',
       });
       if (!mounted || run != _previewRun) return;
+      // A file says it is a PDF in its first bytes. A server from before the
+      // PDF view answers this with the JSON preview, which is not one.
+      final bytes = pdf.bytes;
+      final isPdf = bytes != null &&
+          bytes.length > 4 &&
+          String.fromCharCodes(bytes.take(4)) == '%PDF';
       setState(() {
         _previewing = false;
-        _previewError = pdf.ok ? null : pdf.message;
-        if (pdf.ok && pdf.bytes != null) _pdf = Uint8List.fromList(pdf.bytes!);
+        _previewError = !pdf.ok
+            ? pdf.message
+            : isPdf
+            ? null
+            : 'The PDF view is not available yet.';
+        if (isPdf) _pdf = Uint8List.fromList(bytes);
       });
       return;
     }

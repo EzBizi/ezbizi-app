@@ -1015,6 +1015,31 @@ void main() {
     expect(find.textContaining('Uniform: as typed'), findsOneWidget);
   });
 
+  testWidgets('a server that answers the PDF with something else is said '
+      'so, not drawn', (tester) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform: as typed</p>',
+        onPdf: (body) => Uint8List.fromList(utf8.encode('{"data":{}}')),
+      ),
+    );
+
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byKey(const Key('contract-view')),
+        matching: find.text('PDF'),
+      ),
+    );
+    expect(find.byKey(const Key('pdf-page-0')), findsNothing);
+    expect(
+      find.textContaining('The PDF view is not available yet.'),
+      findsOneWidget,
+    );
+  });
+
   // Jose: "Dispatcher Master 5000 should be highlighted on the contract".
   testWidgets('the preview is asked to mark what changed since the page '
       'opened', (tester) async {
