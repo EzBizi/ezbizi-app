@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0341',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: the home address is filled in its parts, related terms can be marked as not applying together, and the contract can be viewed as the PDF it will print as.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0340',
       date: '1 Oct 2026',
       items: [
