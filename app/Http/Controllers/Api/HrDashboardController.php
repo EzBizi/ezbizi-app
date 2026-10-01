@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlanceRegistry;
+use App\Support\Hr\HrOverview;
 use Illuminate\Http\Request;
 
 /**
@@ -66,6 +67,24 @@ class HrDashboardController extends Controller
      * Does not read `dashboard.order['hr']`. Order on this chip is meaningless
      * with one box; presentation is shared with the main board.
      */
+    /**
+     * GET /api/v1/hr/dashboard/overview?period=week|month|quarter|year — the
+     * redesigned dashboard's one read (HrOverview). Without `period`, the saved
+     * dashboard period, as index() uses.
+     */
+    public function overview(Request $request): array
+    {
+        $this->authorize('viewAny', User::class);
+
+        $user = $request->user();
+        $asked = $request->query('period');
+        $period = is_string($asked) && in_array($asked, DashboardPeriod::VALUES, true)
+            ? DashboardPeriod::for($user, $asked)
+            : $this->periodFor($user);
+
+        return ['data' => app(HrOverview::class)->for($user, $period)];
+    }
+
     private function storedPresentation(Glance $glance, User $user): string
     {
         $allowed = $glance->allowedPresentations();
