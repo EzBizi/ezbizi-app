@@ -286,7 +286,14 @@ class _StockListState extends State<StockList> {
         key: 'low',
         label: 'Below reorder',
         value: '${low.length}',
-        note: covered == 0 ? 'none covered by an order' : '$covered covered by an order',
+        // Orders were only fetched for a role holding Orders. Without it
+        // `covered` is 0 because nobody looked, not because nothing is coming,
+        // and "none covered" would tell a clerk to order what may be on its way.
+        note: !_may('inventory.orders.view')
+            ? ''
+            : covered == 0
+            ? 'none covered by an order'
+            : '$covered covered by an order',
         tone: low.isEmpty ? null : Tone.caution,
       ),
       _tileCard(
@@ -305,9 +312,12 @@ class _StockListState extends State<StockList> {
         context,
         key: 'ordered',
         label: 'On order',
-        value: '${ordered.length}',
-        note: '${ordered.length == 1 ? 'item' : 'items'}, on '
-            '${_count(orders, 'order')}',
+        // Same reason: a zero here would be a count of orders nobody fetched.
+        value: _may('inventory.orders.view') ? '${ordered.length}' : '—',
+        note: _may('inventory.orders.view')
+            ? '${ordered.length == 1 ? 'item' : 'items'}, on '
+                  '${_count(orders, 'order')}'
+            : '',
       ),
     ];
 

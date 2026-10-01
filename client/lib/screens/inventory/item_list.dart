@@ -48,6 +48,14 @@ class _ItemListState extends State<ItemList> {
   /// On hand per item, for the table's column (UI queue 43).
   Map<String, double> _onHand = const {};
 
+  /// On-hand is the Stock tab's answer, gated on `inventory.stock.view`. A role
+  /// granted Items and not Stock has been told "the catalogue, not the
+  /// quantities", so this does not ask — and the column says it does not know
+  /// rather than reading the refusal as an empty stock list. An item absent
+  /// from `_onHand` means "holds nothing" ONLY when we were allowed to ask.
+  bool get _maySeeStock =>
+      widget.session.me?.permissions.contains('inventory.stock.view') ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -73,7 +81,7 @@ class _ItemListState extends State<ItemList> {
 
     final request = ++_request;
 
-    if (page == 1) {
+    if (page == 1 && _maySeeStock) {
       inventoryOnHand(widget.api).then((onHand) {
         if (mounted) setState(() => _onHand = onHand);
       });
@@ -313,7 +321,9 @@ class _ItemListState extends State<ItemList> {
               (
                 2,
                 right(
-                  _onHand.containsKey(item['id'])
+                  !_maySeeStock
+                      ? '—'
+                      : _onHand.containsKey(item['id'])
                       ? '${inventoryQty(_onHand[item['id']])} '
                             '${inventoryUnitLabel(item['unit'] as String?)}'
                       : '0',

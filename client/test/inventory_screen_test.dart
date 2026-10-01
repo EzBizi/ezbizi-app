@@ -802,6 +802,60 @@ void main() {
     expect(find.byKey(const Key('stock-item-item-1')), findsNothing);
   });
 
+  testWidgets('Stock without the Orders tab makes no claim about orders', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['inventory.view', 'inventory.stock.view'],
+      stock: [_balance], // below its reorder point
+      orders: [_openPo],
+    );
+
+    // Positive control: the Stock tab drew its tiles.
+    expect(find.text('Below reorder'), findsOneWidget);
+
+    // The role cannot see purchase orders, so it was never shown whether a
+    // low item is already on order. "none covered by an order" would tell a
+    // stock clerk to raise one when it may already be coming.
+    expect(find.text('none covered by an order'), findsNothing);
+    expect(find.textContaining('on 0 orders'), findsNothing);
+  });
+
+  testWidgets('Items without the Stock tab does not claim 0 on hand', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['inventory.view', 'inventory.items.view'],
+      stock: [_balanceOf('4.000')],
+      // What the server answers this role: `/inventory/stock` is gated on
+      // `inventory.stock.view`. The mock serves it to anyone unless told, so
+      // without this the test cannot see the bug it is here to catch.
+      onRequest: (request) {
+        if (request.url.path.endsWith('/inventory/stock')) {
+          return _json({
+            'message': 'You do not have permission to open this tab.',
+          }, 403);
+        }
+        return null;
+      },
+    );
+
+    // Items is this role's only chip, so it opens first.
+    final row = find.byKey(const Key('item-row-item-1'));
+    expect(row, findsOneWidget);
+
+    // The role was never shown quantities, so the cell says it does not know
+    // rather than that the item holds nothing. A "0" here is a fact invented
+    // out of a refusal — the item really holds 4.
+    expect(find.descendant(of: row, matching: find.text('—')), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.text('0')),
+      findsNothing,
+    );
+  });
+
   testWidgets('Items, Orders and Locations are tables with their totals', (tester) async {
     await _pumpScreen(
       tester,
