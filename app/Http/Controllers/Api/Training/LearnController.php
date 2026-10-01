@@ -790,6 +790,9 @@ class LearnController extends Controller
             'screens' => TrainingMediaLinks::resolve($guide->screens ?? [], $guide),
             'last_screen' => $progress?->last_screen,
             'completed_at' => $progress?->completed_at?->toIso8601String(),
+            // When this person last completed a topic of it — what a "Continue"
+            // card picks between two half-read guides by.
+            'last_read_at' => $progress?->updated_at?->toIso8601String(),
         ];
     }
 

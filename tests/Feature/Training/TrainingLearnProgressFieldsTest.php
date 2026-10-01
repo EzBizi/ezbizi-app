@@ -54,6 +54,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
 
         $this->assertSame(3, $row['last_screen']);
         $this->assertNull($row['completed_at'], 'Screen 3 of 8 is not the last screen.');
+        $this->assertNotNull($row['last_read_at'], 'What a Continue card picks the latest guide by.');
     }
 
     public function test_a_library_guide_carries_completed_at_once_finished(): void
@@ -90,6 +91,7 @@ class TrainingLearnProgressFieldsTest extends TestCase
 
         $this->assertNull($row['last_screen']);
         $this->assertNull($row['completed_at']);
+        $this->assertNull($row['last_read_at']);
     }
 
     /** One learner's reading position must never appear on a different learner's card. */
