@@ -465,6 +465,38 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.say', 'Technician is about 18 minutes away and should arrive around 2:18 PM.');
     }
 
+    public function test_headquarters_with_an_address_are_on_the_map_for_their_view_only(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        Http::fake(['maps.googleapis.com/*' => Http::response([
+            'status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => 41.5, 'lng' => -81.7]]]],
+        ])]);
+
+        $this->inTenant($this->t['org'], fn () => $this->t['company']->forceFill([
+            'address_line1' => '100 Main St', 'city' => 'Cleveland', 'state' => 'OH', 'postal_code' => '44114',
+        ])->save());
+        $sibling = $this->inTenant($this->t['org'], fn () => \App\Models\Company::query()->create([
+            'name' => 'Sibling Co', 'address_line1' => '1 Elm St', 'city' => 'Akron', 'state' => 'OH',
+        ]));
+        $local = $this->userWithRole($this->t, 'Local', ['field.view', 'field.map.view'], onlyAt: $this->t['franchise']);
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/places')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.name', 'Alpha Co')
+            ->assertJsonPath('data.0.lat', 41.5)
+            ->assertJsonPath('data.0.has_logo', false);
+
+        // Standing in the franchise: only its own company, never the sibling.
+        $this->signedInAs($local)->getJson('/api/v1/field/places')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.company_id', $this->t['company']->id);
+
+        // Asked of Google once per address, then remembered.
+        Http::assertSentCount(2);
+    }
+
     public function test_the_dashboard_counts_only_people_you_can_see(): void
     {
         $this->mode('always');

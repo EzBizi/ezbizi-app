@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/logo_badge.dart';
 import 'map_overlays.dart';
 
 /// Field › Map: everyone you can see and the day's jobs on a quiet map.
@@ -48,6 +49,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   final Set<String> _tilesAsked = {};
   List<Map<String, dynamic>> _people = const [];
   List<Map<String, dynamic>> _jobs = const [];
+  List<Map<String, dynamic>> _places = const [];
 
   String _tab = 'people';
   String _query = '';
@@ -81,6 +83,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   void initState() {
     super.initState();
     _load();
+    _loadPlaces();
     _refresh = Timer.periodic(const Duration(seconds: 30), (_) {
       _load();
       if (_personId != null && _isToday) _loadTrail(fit: false);
@@ -99,6 +102,38 @@ class _FieldMapTabState extends State<FieldMapTab> {
     return _day.year == now.year &&
         _day.month == now.month &&
         _day.day == now.day;
+  }
+
+  /// The map's day, as the server wants it.
+  String get _ymd =>
+      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+
+  /// One day for the whole map (Jose, 2026-10-01): that day's jobs, and the
+  /// route a person drove on it. Today is the default; the arrows step back
+  /// to see where technicians went, and forward to see what is booked.
+  void _setDay(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(day.year, day.month, day.day);
+    setState(() {
+      _day = d.isAfter(today.add(const Duration(days: 60))) ? today : d;
+      _jobId = null;
+      _eta = null;
+      _route = null;
+      _road = const [];
+      _trail = const [];
+    });
+    _load();
+    _loadTrail();
+  }
+
+  Future<void> _loadPlaces() async {
+    final response = await widget.api.get('/field/places');
+    if (!mounted || !response.ok) return;
+    setState(
+      () => _places = (response.body['data'] as List? ?? const [])
+          .cast<Map<String, dynamic>>(),
+    );
   }
 
   Map<String, dynamic>? _person(String? id) {
@@ -130,7 +165,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   Future<void> _load() async {
     final responses = await Future.wait([
       widget.api.get('/field/map'),
-      if (widget.canSeeJobs) widget.api.get('/field/jobs'),
+      if (widget.canSeeJobs) widget.api.get('/field/jobs', {'date': _ymd}),
     ]);
     if (!mounted) return;
     final people = responses.first;
@@ -159,8 +194,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   Future<void> _loadTrail({bool fit = true}) async {
     final id = _personId;
     if (id == null) return;
-    final date =
-        '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+    final date = _ymd;
     final response = await widget.api.get('/field/map', {
       'user_id': id,
       'date': date,
@@ -192,7 +226,6 @@ class _FieldMapTabState extends State<FieldMapTab> {
     setState(() {
       _personId = _personId == id ? null : id;
       _trail = const [];
-      _day = DateTime.now();
     });
     if (_personId != null) {
       _fit([_at(person)]);
@@ -406,6 +439,32 @@ class _FieldMapTabState extends State<FieldMapTab> {
                 ),
               MarkerLayer(
                 markers: [
+                  for (final place in _places)
+                    Marker(
+                      point: _at(place),
+                      width: 160,
+                      height: 58,
+                      alignment: Alignment.topCenter,
+                      child: Tooltip(
+                        message: '${place['name']}\n${place['address'] ?? ''}',
+                        child: FieldPlacePin(
+                          name: '${place['name']}',
+                          logo: LogoBadge(
+                            api: widget.api,
+                            path: '/branding/companies/${place['company_id']}',
+                            hasOwn: place['has_logo'] == true,
+                            mayEdit: false,
+                            bare: true,
+                            size: 26,
+                            fallbackIcon: Icons.apartment,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              MarkerLayer(
+                markers: [
                   if (_trail.isNotEmpty)
                     Marker(
                       point: _trail.first,
@@ -486,6 +545,12 @@ class _FieldMapTabState extends State<FieldMapTab> {
                       onRefresh: _load,
                       onClose: () => setState(() => _panelOpen = false),
                       day: person == null ? null : _day,
+                      mapDay: _day,
+                      onPrevDay: () =>
+                          _setDay(_day.subtract(const Duration(days: 1))),
+                      onNextDay: () =>
+                          _setDay(_day.add(const Duration(days: 1))),
+                      onToday: _isToday ? null : () => _setDay(DateTime.now()),
                       trailEmpty: _trail.isEmpty,
                       onPickDay: () async {
                         final picked = await showDatePicker(
@@ -494,11 +559,11 @@ class _FieldMapTabState extends State<FieldMapTab> {
                           firstDate: DateTime.now().subtract(
                             const Duration(days: 90),
                           ),
-                          lastDate: DateTime.now(),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 60),
+                          ),
                         );
-                        if (picked == null) return;
-                        setState(() => _day = picked);
-                        _loadTrail();
+                        if (picked != null) _setDay(picked);
                       },
                     ),
                   )

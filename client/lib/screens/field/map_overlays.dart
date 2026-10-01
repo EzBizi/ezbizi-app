@@ -123,7 +123,18 @@ class FieldMapPanel extends StatelessWidget {
     required this.day,
     required this.trailEmpty,
     required this.onPickDay,
+    required this.mapDay,
+    required this.onPrevDay,
+    required this.onNextDay,
+    required this.onToday,
   });
+
+  final DateTime mapDay;
+  final VoidCallback onPrevDay;
+  final VoidCallback onNextDay;
+
+  /// Null when the map already shows today.
+  final VoidCallback? onToday;
 
   final List<Map<String, dynamic>> people;
   final List<Map<String, dynamic>> jobs;
@@ -161,6 +172,13 @@ class FieldMapPanel extends StatelessWidget {
           j,
     ];
     final jobsTab = showJobs && tab == 'jobs';
+    // People are searched by name; the list grows as technicians join.
+    final shownPeople = [
+      for (final p in people)
+        if (q.isEmpty ||
+            '${(p['user'] as Map)['name']}'.toLowerCase().contains(q))
+          p,
+    ];
 
     return Material(
       elevation: 3,
@@ -224,19 +242,53 @@ class FieldMapPanel extends StatelessWidget {
                 ],
               ),
             ),
-            if (jobsTab)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                child: TextField(
-                  onChanged: onQuery,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Job number or customer',
+            // The map's day: that day's jobs and routes.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Previous day',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.chevron_left, size: 20),
+                    onPressed: onPrevDay,
                   ),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: onPickDay,
+                      child: Text(
+                        fieldLongDay(mapDay),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  if (onToday != null)
+                    TextButton(onPressed: onToday, child: const Text('Today')),
+                  IconButton(
+                    tooltip: 'Next day',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.chevron_right, size: 20),
+                    onPressed: onNextDay,
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+              child: TextField(
+                key: ValueKey(jobsTab),
+                onChanged: onQuery,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  hintText: jobsTab
+                      ? 'Job number or customer'
+                      : 'Find a person',
                 ),
-              )
-            else
+              ),
+            ),
+            if (!jobsTab)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
                 child: Text(
@@ -277,7 +329,12 @@ class FieldMapPanel extends StatelessWidget {
                               style: muted,
                             ),
                           ),
-                        for (final p in people)
+                        if (people.isNotEmpty && shownPeople.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text('Nobody matches.', style: muted),
+                          ),
+                        for (final p in shownPeople)
                           _PersonRow(
                             person: p,
                             colour: personColour(p),
@@ -908,6 +965,39 @@ class FieldJobCard extends StatelessWidget {
   }
 }
 
+// ── Headquarters ─────────────────────────────────────────────────────────
+
+/// A company's address on the map, with its logo (Jose, 2026-10-01).
+class FieldPlacePin extends StatelessWidget {
+  const FieldPlacePin({super.key, required this.name, required this.logo});
+
+  final String name;
+  final Widget logo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: scheme.onSurface, width: 2),
+          ),
+          child: ClipOval(child: Center(child: logo)),
+        ),
+        _Label(text: name, bold: true, scheme: scheme),
+      ],
+    );
+  }
+}
+
 // ── The legend ────────────────────────────────────────────────────────────
 
 /// What each colour on the map means, along the bottom (Jose, 2026-09-30:
@@ -954,6 +1044,18 @@ class FieldMapLegend extends StatelessWidget {
       (pin(EzBiziTheme.fieldBlue), 'At a job'),
       (pin(EzBiziTheme.fieldRed), 'Stopped too long'),
       (pin(EzBiziTheme.fieldYellow), 'Not reporting'),
+      (
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: scheme.onSurface, width: 2),
+          ),
+        ),
+        'Headquarters',
+      ),
       if (showJobs) ...[
         (job(EzBiziTheme.fieldBlue), 'Job with a technician'),
         (job(EzBiziTheme.fieldYellow), 'Job not assigned'),
@@ -1077,7 +1179,7 @@ Color fieldInk(Color fill) => fill.computeLuminance() > 0.4
 /// The readable version of a map colour, for words and small icons on a
 /// panel. The map colours are loud enough for pins on tiles and too light
 /// for text on white (yellow is 1.5:1); the tone inks are AA in both themes
-/// (UI/UX, 2026-10-01).
+/// (UI/UX, 2026-09-30).
 Color fieldText(BuildContext context, Color field) => ToneColours.of(
   context,
   field == EzBiziTheme.fieldGreen
@@ -1088,3 +1190,10 @@ Color fieldText(BuildContext context, Color field) => ToneColours.of(
       ? Tone.caution
       : Tone.info,
 ).ink;
+
+/// "Wed 10/1", and "Today" for today, for the map's date control.
+String fieldLongDay(DateTime d) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final label = '${days[d.weekday - 1]} ${d.month}/${d.day}';
+  return fieldDayLabel(d) == 'today' ? 'Today · $label' : label;
+}

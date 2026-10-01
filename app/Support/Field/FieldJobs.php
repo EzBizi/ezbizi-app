@@ -55,8 +55,16 @@ final class FieldJobs
      */
     public function pointFor(Job $job, bool $ask = false): ?array
     {
-        $address = $job->customer ? FieldGeocode::addressOf($job->customer) : null;
+        return $this->pointAt($job->customer ? FieldGeocode::addressOf($job->customer) : null, $ask);
+    }
 
+    /**
+     * Where an address is, from the stored answer, or from Google with $ask.
+     *
+     * @return array{lat: float, lng: float}|null
+     */
+    public function pointAt(?string $address, bool $ask = false): ?array
+    {
         if ($address === null) {
             return null;
         }
