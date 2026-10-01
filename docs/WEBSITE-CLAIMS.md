@@ -99,7 +99,7 @@ touches apps, monitoring, social, Google or mail.
 | "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
 | "WhatsApp … kept for 24 months" · "Facebook or Instagram message is kept with the enquiry … deleted when that enquiry is" | `/privacy/` | `WhatsAppMessage::retention()` (`window(months: 24)`) and `LeadConversation::retention()` (`withParent`). Two different rules; never merge them into one period. |
-| "Who we rely on … **these are all of them**" (AWS, SES, Twilio, Apple and Google, Mailchimp, the accounts you connect) | `/privacy/` | `config/services.php`'s top-level keys, against that list. **An exhaustive list is the only kind of sentence that a new integration falsifies by existing**, and nothing announces it — the integration ships in its own module and never reads this page. Mailchimp and the two push services were missing when this row was written (2026-09-23) and had been for weeks. `bedrock` is configured and **off** (`LeadInsights::enabled()` false, no keys) — the day it gains keys, a model is reading lead text and this list needs a line. `google_speech` (2026-09-28, `CallTranscripts`) is the same: configured and **off** until `GOOGLE_SPEECH_KEY` is set - the day it is, Local Services call audio goes to Google Cloud Speech-to-Text and this list needs a line **before** the key goes in. **2026-09-29: transcription runs on our own box instead** (Whisper in /opt/whisper, `ezbizi-transcribe.timer`; Jose: "i don't want to rely on any physical computers"), so call audio reaches no new processor and this list needs no line - unless somebody sets `GOOGLE_SPEECH_KEY` AND removes /opt/whisper, which is the only way the Google path runs. `google_mail` / `microsoft_mail` are a customer's own mailbox, covered by "the accounts you connect". |
+| "Who we rely on … **these are all of them**" (AWS, SES, Twilio, Apple and Google, Mailchimp, the accounts you connect) | `/privacy/` | `config/services.php`'s top-level keys, against that list. **An exhaustive list is the only kind of sentence that a new integration falsifies by existing**, and nothing announces it — the integration ships in its own module and never reads this page. Mailchimp and the two push services were missing when this row was written (2026-09-23) and had been for weeks. `bedrock` is configured and **off** (`LeadInsights::enabled()` false, no keys) — the day it gains keys, a model is reading lead text and this list needs a line. `google_speech` (2026-09-28, `CallTranscripts`) is the same: configured and **off** until `GOOGLE_SPEECH_KEY` is set - the day it is, Local Services call audio goes to Google Cloud Speech-to-Text and this list needs a line **before** the key goes in. **2026-09-29: transcription runs on our own box instead** (Whisper in /opt/whisper, `ezbizi-transcribe.timer`; Jose: "i don't want to rely on any physical computers"), so call audio reaches no new processor and this list needs no line - unless somebody sets `GOOGLE_SPEECH_KEY` AND removes /opt/whisper, which is the only way the Google path runs. `google_mail` / `microsoft_mail` are a customer's own mailbox, covered by "the accounts you connect". **2026-10-01: `config/services.php` is NOT the whole test — it missed Photon (komoot), keyless and hardcoded, which had received typed addresses since 2026-08-24.** Also run `grep -rhoE "https://[a-z0-9.-]+\.[a-z]{2,}" app --include=*.php | sort -u` and account for every host that is not Google/Meta/Twilio/AWS/Apple/Mailchimp or an account the customer connects (Workiz, Airtable, the social networks). |
 
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
@@ -2324,6 +2324,45 @@ Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 `robots.txt` and `sitemap.xml` were byte-identical to production (incl. this
 morning's `69932f83` privacy change). Stores: Play `200`; Apple `resultCount` 1,
 version 0.0.0283; WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
+
+## 2026-10-01: 14 releases, and the sub-processor list had missed Photon since August
+
+**Production is `0.0.0347` at `0b4297f4`** (`/download/windows.json`). Release
+notes `0.0.0334`-`0.0.0347` walked against the load-bearing table. No desk
+asked: `send_message` is unavailable to a scheduled run. `0074` confirms the
+09-30 Google Ads API page published; verified independently below.
+
+**The finding: `/privacy/`'s "these are all of them" omitted Photon (komoot,
+OpenStreetMap).** `AddressLookupController` (since `39add55f`, 2026-08-24),
+`CountyLookupController` and `SchedulingLocationsController::nearest` (`6b7c282f`,
+0.0.0347) send the typed address text from our server to
+`photon.komoot.io` — now including a new hire's home address (onboarding address
+search, 0.0.0341) and a customer address/ZIP for the nearest branch. No key, so
+`config/services.php` never showed it. Added a Photon bullet (what is sent: the
+typed text only; `q`, `limit`, `lang`, our User-Agent); Last updated /
+`dateModified` / sitemap `lastmod` → 2026-10-01 (sitemap had lagged at 09-29).
+The load-bearing row now names a host grep as well.
+
+**Checked, unchanged at `0b4297f4`:** no new permission (three files, `client/lib`
+request calls; `printing` adds none); 0.0.0344's photo pick is the iPhone
+*browser*. W-4/W-9 and saved signatures fall under "onboarding documents and
+signed agreements". Onboarding's new-hire link email and the new automation email
+look: the email paragraph lists kinds, not "all of them". AI Assistance's Ask
+calls nothing external (`AssistantController` has no `Http::`).
+`notifications.email_enabled` and `monitoring.control_indicator` untouched.
+
+**Deliberately unpublished:** Scheduling Locations tab, live-chat visitor
+photos/typing, Leads Completed state, Inventory history, HR dashboard, Training
+"Continue" (Training row's tense rule unchanged), estimates (row above).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Before the edit all seven pages,
+`robots.txt` and `sitemap.xml` were byte-identical to production. Stores: Play
+`200`; Apple `resultCount` 1, version 0.0.0318; WordPress directory 1.10.0.
 
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
