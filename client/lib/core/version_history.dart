@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0337',
+      date: '1 Oct 2026',
+      items: [
+        'Website live chat: visitors see who is answering (name and photo), each reply\'s sender, and \'is typing…\'; they can send a photo; the chat opens at one size; the greeting arrives in seconds. In Leads, a live chat shows when the visitor is typing.',
+        'Leads: mark a conversation Completed when the customer needs nothing more; the red warning clears, and it reopens if they write again.',
+        'Human Resources dashboard: people brought over from A1 Tools no longer count as joining this week.',
+        'AI Assistance: topics down the left, the answer in the middle, and branches found by Ask on the right as cards with Call and Map; on a phone each step is its own page.',
+        'Training: Learn opens on where you left off, with Assigned to you beside it, and the library shows each guide on one card with the test that follows it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0336',
       date: '1 Oct 2026',
       items: [
