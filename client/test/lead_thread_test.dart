@@ -574,6 +574,17 @@ void main() {
     );
   });
 
+  // Jose, 2026-10-01: "see the time of the messages as well like 11:48 13:23".
+  test('a message says its time of day, and how long ago while it is recent', () {
+    final recent = DateTime.now().subtract(const Duration(minutes: 57));
+    final hh = recent.hour.toString().padLeft(2, '0');
+    final mm = recent.minute.toString().padLeft(2, '0');
+    expect(messageWhen(recent.toUtc().toIso8601String()), '$hh:$mm · 57m ago');
+
+    final old = DateTime(2026, 9, 23, 13, 5);
+    expect(messageWhen(old.toUtc().toIso8601String()), '13:05');
+  });
+
   test('the number shows under any name, the customer one included', () {
     expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);

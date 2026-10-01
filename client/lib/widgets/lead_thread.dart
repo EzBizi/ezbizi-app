@@ -1160,7 +1160,7 @@ class _LeadThreadState extends State<LeadThread> {
           : c['automatic'] == true
           ? 'Automation'
           : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
-      final when = _when(c['occurred_at'] as String?);
+      final when = messageWhen(c['occurred_at'] as String?);
 
       final Widget body;
       if (c['channel'] == 'PHONE_CALL') {
@@ -1758,8 +1758,6 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     );
   }
-
-  String _when(String? iso) => leadWhen(iso);
 }
 
 /// The number on its own line under the title, unless the title IS the
@@ -1923,6 +1921,22 @@ String leadWhen(String? iso) {
 
   return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
       '${at.day.toString().padLeft(2, '0')}';
+}
+
+/// A message's time of day, 24-hour, and how long ago while that is still
+/// today's news - "13:23 · 57m ago"; past a day, the clock alone, since the
+/// day divider above already says which day (Jose, 2026-10-01: "see the time
+/// of the messages as well like 11:48 13:23").
+String messageWhen(String? iso) {
+  final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+  if (at == null) return '';
+
+  final clock = '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+
+  return DateTime.now().difference(at).inHours < 24
+      ? '$clock · ${leadWhen(iso)}'
+      : clock;
 }
 
 /// The thread as drawn: a day label (String) where the date changes, then the
