@@ -665,10 +665,19 @@ class HrOnboardingTest extends TestCase
     {
         $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
         [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'tax_id_type', 'label' => 'Tax ID', 'type' => 'choice', 'options' => ['SSN', 'EIN'], 'filled_by' => 'employee', 'required' => true],
             ['key' => 'tax_form', 'label' => 'W-4 or W-9, signed', 'type' => 'file', 'filled_by' => 'employee', 'required' => true],
             ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
         ]);
         $url = "/api/v1/hr/onboardings/{$id}/tax-form";
+
+        // Which form, decided by the server from the tax ID: none until it is answered.
+        $kind = fn () => $this->fieldIn($this->form($employee, $id), 'tax_form')['tax_form_kind'];
+        $this->assertNull($kind());
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['tax_id_type' => 'EIN']])->assertOk();
+        $this->assertSame('w9', $kind());
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['tax_id_type' => 'SSN']])->assertOk();
+        $this->assertSame('w4', $kind());
         $body = ['kind' => 'w4', 'values' => ['ssn' => '123-45-6789', 'filing_status' => 'single'], 'drawing' => $png];
 
         // The employer cannot sign the new hire's tax form.

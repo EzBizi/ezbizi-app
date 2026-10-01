@@ -178,6 +178,25 @@ class OnboardingForm
      * @param  string[]  $parties  which sides this actor is acting as
      * @return array{answers: string[], identity: string[]} the keys that changed
      */
+    /**
+     * W-4 for an employee paid on their SSN, W-9 for an EIN or a 1099
+     * contractor (A1 Tools' rule: ssn → W-4, ssn_1099 or ein → W-9). Null
+     * until the tax ID question is answered.
+     */
+    private function taxFormKind(Onboarding $onboarding, Collection $byKey): ?string
+    {
+        $contract = (string) $onboarding->contractVersion?->contract?->name;
+        if (str_contains($contract, '1099')) {
+            return \App\Support\Hr\TaxForms::W9;
+        }
+
+        return match (strtoupper(trim((string) $byKey->get('tax_id_type')?->value))) {
+            'SSN' => \App\Support\Hr\TaxForms::W4,
+            'EIN' => \App\Support\Hr\TaxForms::W9,
+            default => null,
+        };
+    }
+
     /** Catalog terms that stand or fall together when one is marked "doesn't apply". */
     public const VOID_GROUPS = [
         'raise_amount' => 'raise', 'raise_period' => 'raise',
@@ -897,6 +916,9 @@ class OnboardingForm
                 // (Jose: "voiding Scheduled increase interval voids itself and
                 // scheduled increase amount").
                 'void_group' => $voidable ? (self::VOID_GROUPS[$field->key] ?? $field->key) : null,
+                // Which form the in-app tax form is (TaxForms), decided here
+                // so the client does not keep a second copy of the rule.
+                ...($field->key === 'tax_form' ? ['tax_form_kind' => $this->taxFormKind($onboarding, $byKey)] : []),
                 'writable' => $field->type !== FieldType::SIGNATURE
                     && ! $field->retired
                     && ! $onboarding->isFrozen()
