@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0342',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: you can save your drawn signature and reuse it on the next contract. The contract preview now reads as the printed page, in light and dark mode.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0341',
       date: '1 Oct 2026',
       items: [
