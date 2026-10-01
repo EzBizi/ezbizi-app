@@ -2988,7 +2988,7 @@ General first in the strip (queue #8). Option 1 needs a grouped stock read (row 
 items held nowhere), on-hand on items, totals per place, and a movements list; below ~200 items the client
 can join the first three itself.
 
-### 42 · Human Resources · the Dashboard — **Jose: "looking good, do all ur recommendations" — 1 and 4** — building (`docs/previews/hr-dashboard-layouts.html`)
+### 42 · Human Resources · the Dashboard — **Jose: "looking good, do all ur recommendations" — 1 and 4** — **BUILT** (reads HR's `GET /hr/dashboard/overview`, f3f71879) (`docs/previews/hr-dashboard-layouts.html`)
 
 Jose, 2026-10-01: *"the dashboard at human resources is also lacking, now we have a lot more information that
 could be displayed here"*. Desktop **1** six figures, joined/left by month, where people work, "right now"

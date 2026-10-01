@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/dashboard_tab.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/dashboard_chart.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -223,6 +224,62 @@ void main() {
     expect(find.text('Human Resources is unavailable.'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
   });
+
+  // ── UI queue 42 (Jose's 1 and 4): figures, charts, right now, lists ──
+
+  testWidgets('the overview replaces the one card: six figures and the lists '
+      'with names', (tester) async {
+    await _pump(tester, _handler(overview: _overview));
+
+    expect(find.byType(DashboardCard), findsNothing);
+    for (final key in ['books', 'joined', 'left', 'onboarding', 'stalled', 'certifications']) {
+      expect(find.byKey(Key('hr-figure-$key')), findsOneWidget);
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('hr-figure-books')),
+        matching: find.text('79 active · 3 inactive'),
+      ),
+      findsOneWidget,
+    );
+    // Waiting on someone: the invitation sent first comes first.
+    final waiting = find.byKey(const Key('hr-list-waiting'));
+    final sam = tester.getTopLeft(find.descendant(of: waiting, matching: find.text('Sam Keller')));
+    final marco = tester.getTopLeft(find.descendant(of: waiting, matching: find.text('Marco Reyes')));
+    expect(sam.dy, lessThan(marco.dy));
+    expect(find.descendant(of: waiting, matching: find.text('Expired')), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(const Key('hr-right-now')), matching: find.text('31')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a figure opens its whole list beside the page', (tester) async {
+    await _pump(tester, _handler(overview: _overview));
+
+    await tester.tap(find.byKey(const Key('hr-figure-onboarding')));
+    await tester.pumpAndSettle();
+
+    final panel = find.byType(SidePanel);
+    expect(panel, findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Marco Reyes')), findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Sam Keller')), findsNothing);
+  });
+
+  testWidgets('on a phone a figure opens its list in place, with a way back', (tester) async {
+    await _pump(tester, _handler(overview: _overview), size: const Size(390, 1600));
+
+    await tester.tap(find.byKey(const Key('hr-figure-stalled')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SidePanel), findsNothing);
+    expect(find.text('Sam Keller'), findsOneWidget);
+    expect(find.byKey(const Key('hr-figure-books')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('hr-list-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('hr-figure-books')), findsOneWidget);
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {
@@ -238,8 +295,9 @@ Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
   List<NavigatorObserver> observers = const [],
+  Size size = const Size(1400, 2200),
 }) async {
-  tester.view.physicalSize = const Size(1400, 2200);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -261,6 +319,7 @@ Future<void> _pump(
 }
 
 MockClientHandler _handler({
+  Map<String, dynamic>? overview,
   int status = 200,
   bool empty = false,
   String presentation = 'bar',
@@ -273,6 +332,12 @@ MockClientHandler _handler({
     final path = request.url.path;
 
     if (path.endsWith('/me')) return _json({'data': _me});
+
+    if (path.endsWith('/hr/dashboard/overview')) {
+      return overview == null
+          ? _json({'message': 'Not found.'}, 404)
+          : _json({'data': overview});
+    }
 
     if (request.method == 'PUT' && path.endsWith('/dashboard/layout')) {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -395,4 +460,54 @@ const _me = {
   },
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
+};
+
+/// `GET /hr/dashboard/overview`, as the contract sent to HR describes it.
+/// Invented people.
+final Map<String, dynamic> _overview = {
+  'period': 'year',
+  'from': '2026-01-01',
+  'to': '2026-10-01',
+  'on_the_books': {'total': 82, 'active': 79, 'inactive': 3},
+  'joined': {
+    'count': 2,
+    'people': [
+      {'user_id': 'u-7', 'name': 'Ana Ruiz', 'role': 'Technician', 'place': 'Harbor Chimney', 'started_on': '2026-09-15'},
+      {'user_id': 'u-8', 'name': 'Owen Price', 'role': 'Dispatcher', 'place': 'Harbor Garage Doors', 'started_on': '2026-08-25'},
+    ],
+  },
+  'left': {'count': 1, 'since': '2026-08-18', 'people': [
+    {'user_id': 'u-9', 'name': 'Lena Fox', 'role': 'Office', 'place': 'Harbor Group', 'left_on': '2026-09-02'},
+  ]},
+  'onboarding': {
+    'count': 1,
+    'filling_in': 1,
+    'to_sign': 0,
+    'items': [
+      {'id': 'o-1', 'user_id': 'u-3', 'name': 'Marco Reyes', 'contract': 'Office agreement', 'state': 'filling_in', 'since': '2026-09-25'},
+    ],
+  },
+  'invitations_stalled': {
+    'count': 1,
+    'expired': 1,
+    'not_opened': 0,
+    'items': [
+      {'id': 'i-1', 'name': 'Sam Keller', 'state': 'expired', 'sent_at': '2026-09-18'},
+    ],
+  },
+  'certifications': {'count': 0, 'lapsed': 0, 'expiring': 0, 'items': <Map<String, dynamic>>[]},
+  'by_month': [
+    for (var m = 1; m <= 10; m++)
+      {'month': '2026-${m.toString().padLeft(2, '0')}', 'joined': m % 3, 'left': m == 9 ? 1 : 0},
+  ],
+  'places': [
+    {'name': 'Harbor Chimney', 'count': 36},
+    {'name': null, 'count': 2},
+  ],
+  'overlap': 1,
+  'right_now': {
+    'on_the_clock': {'count': 31, 'of_active': 79},
+    'away_today': {'count': 3, 'vacation': 2, 'sick': 1},
+    'due_for_retaking': null,
+  },
 };
