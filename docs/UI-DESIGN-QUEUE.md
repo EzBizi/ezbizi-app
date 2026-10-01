@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **out for decision** (`docs/previews/scheduling-locations-layouts.html`)
+### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **Jose: "go with ur recommendations" — 1 and 4** (`docs/previews/scheduling-locations-layouts.html`)
 
 Jovanni Martin (A1-Group), suggestion 0080, via Scheduling: *"Add a general information tab that displays company
 addresses with a feature that shows the closest location to the inputed address similar to the a-1 site as well as
