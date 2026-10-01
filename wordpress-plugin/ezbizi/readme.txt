@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.23.3
+Stable tag: 1.24.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,15 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.24.0 =
+* NEW: the live chat shows who answers. The team's faces until somebody
+  replies, then that person's name and photo, their first name on each reply,
+  and "Lenin is typing..." while they write.
+* NEW: visitors can send a photo, and the window opens at one size that never
+  changes (the whole screen on a phone).
+* NEW: a friendlier chat button with a face and an online dot, and "Powered by
+  EzBizi" under the chat.
 
 = 1.23.3 =
 * FIX: on a site connected to EzBizi, an Elementor form whose email step fails

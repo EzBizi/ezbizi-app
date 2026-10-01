@@ -1050,7 +1050,7 @@ check('all three required', substr_count($chat_html, 'required'), 3);
 check('there is a way out of the panel', str_contains($chat_html, 'ezbizi-chat-close'), true);
 
 // The thread exists but is not what they meet first.
-check('the message box waits its turn', str_contains($chat_html, '<div class="ezbizi-chat-thread" hidden>'), true);
+check('the message box waits its turn', str_contains($chat_html, '<div class="ezbizi-chat-log" hidden'), true);
 
 /*
  * The fix for what the photograph actually showed. A theme that sets
@@ -1062,7 +1062,7 @@ check('the input states its own colours', str_contains($chat_html, 'background:#
 check('and the launcher its own shape', str_contains($chat_html, 'border-radius:999px'), true);
 
 // It must not be readable as HTML when it comes back from a stranger.
-check('replies are drawn as text', str_contains($chat_html, 'row.textContent=m.text'), true);
+check('replies are drawn as text', str_contains($chat_html, 'createTextNode(text)') && ! str_contains($chat_html, 'innerHTML=m.'), true);
 check('and never as markup', str_contains($chat_html, 'row.innerHTML=m.text'), false);
 
 echo PHP_EOL . "The chat takes Toula's options" . PHP_EOL;
@@ -1079,18 +1079,23 @@ $GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($toula)];
 ezbizi_fetch();
 $_SERVER['REQUEST_URI'] = '/about/';
 $c = $GLOBALS['sc']['ezbizi_chat']([]);
-check('the agent is named', str_contains($c, 'ezbizi-chat-agent">Maria'), true);
+check('the agent is named', str_contains($c, 'ezbizi-chat-who">Maria'), true);
 check('with a face', str_contains($c, 'src="https://example.com/m.jpg"'), true);
 check('and an online dot', str_contains($c, 'Here now'), true);
 check('where it was put', str_contains($c, 'right:30px;bottom:40px'), true);
 check('hidden until the delay', str_contains($c, 'display:none') && str_contains($c, 'delay=5'), true);
 check('the bubble colour', str_contains($c, 'background:#ff0000'), true);
 check('and size', str_contains($c, 'height:60px'), true);
-check('no shadow when asked', str_contains($c, 'box-shadow:0 6px 20px'), false);
+check('no shadow when asked', str_contains($c, 'box-shadow:0 10px 28px'), false);
 check('phones only', str_contains($c, '@media (min-width:768px)'), true);
 check('fades rather than slides', str_contains($c, 'ezbizi-chat-fade'), true);
 check('and tells analytics', str_contains($c, "event:'ezbizi_chat_'+e"), true);
-check('the phone icon', str_contains($c, 'M6.6 10.8'), true);
+check('the face leads the button when there is one', str_contains($c, 'ezbizi-face ezbizi-face-launch'), true);
+$toula['widgets']['chat']['agent_name'] = '';
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($toula)];
+ezbizi_fetch();
+check('the chosen icon when nobody has a face', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'M6.6 10.8'), true);
+check('and Powered by EzBizi', str_contains($c, 'Powered by <b>EzBizi</b>'), true);
 $_SERVER['REQUEST_URI'] = '/careers/';
 check('never on a hidden page', $GLOBALS['sc']['ezbizi_chat']([]), '');
 $_SERVER['REQUEST_URI'] = '/jobs/roofer/';

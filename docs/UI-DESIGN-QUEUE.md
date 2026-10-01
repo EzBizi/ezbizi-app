@@ -2996,7 +2996,7 @@ could be displayed here"*. Desktop **1** six figures, joined/left by month, wher
 **2** what needs doing first; **3** everyone with today's status. Phone **4** (recommended)-**6**. None is client
 only: option 1 needs the splits and names the server already computes and drops, the unused headcount-by-place
 widget, Joined by START date, and stalled invitations as a list. Found while drawing: "68 people joined this
-week" counts `users.created_at`, so the 64 A1 imports of Sep 29 count as joiners (told HR).
+week" counts `users.created_at`, so the 64 A1 imports of Sep 29 count as joiners; HR fixed it to read start dates (`c2e55267`, session/human-resources).
 
 ### 41 · Training · the Learn tab — **out for decision** (`docs/previews/training-learn-layouts.html`)
 

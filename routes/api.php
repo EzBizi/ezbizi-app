@@ -523,6 +523,15 @@ Route::get('v1/web/chat/{chat}/messages', [WebEnquiriesController::class, 'messa
     ->middleware('throttle:web-chat-poll')
     ->name('web.chat.messages');
 
+// The live chat's people (Jose, 2026-10-01): who answers, who is typing, their photo.
+Route::post('v1/web/chat/{chat}/typing', [WebEnquiriesController::class, 'typing'])
+    ->middleware('throttle:web-chat-poll')
+    ->name('web.chat.typing');
+
+Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'])
+    ->middleware('signed')
+    ->name('web.chat.avatar');
+
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
@@ -842,6 +851,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
+        Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);

@@ -411,6 +411,8 @@ class LeadsController extends Controller
             ]);
 
         $conversations = $lead->conversations;
+        // A website visitor typing right now, shown under the thread (Jose, 2026-10-01).
+        $data['visitor_typing'] = \App\Support\Web\ChatPeople::isVisitorTyping((string) $lead->getKey());
         $data['conversations'] = $conversations
             ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null))
             ->values()
@@ -877,6 +879,15 @@ class LeadsController extends Controller
      * they wrote in and appears in the thread as ours at once. Audited per
      * send, because it is a sentence to a stranger in the customer's name.
      */
+    /** POST /leads/{lead}/typing — a dispatcher is typing; the website chat shows "Lenin is typing…". */
+    public function typing(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        \App\Support\Web\ChatPeople::agentTyping((string) $lead->getKey(), $request->user());
+
+        return response()->json(['ok' => true]);
+    }
+
     public function reply(Request $request, Lead $lead): JsonResponse
     {
         $this->authorize('update', $lead);

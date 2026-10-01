@@ -174,11 +174,30 @@ class _LeadThreadState extends State<LeadThread> {
 
   Timer? _poll;
 
+  /// A website chat is live: the visitor is on the page waiting, so it reads
+  /// itself every few seconds, and both sides see the other typing (Jose,
+  /// 2026-10-01: "nice for the customer to see x is typing").
+  bool get _isLiveChat => _lead['source'] == 'website_chat';
+  bool _visitorTyping = false;
+  DateTime _typedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _typing() {
+    if (!_isLiveChat || _compose.text.trim().isEmpty) return;
+    final now = DateTime.now();
+    if (now.difference(_typedAt) < const Duration(seconds: 3)) return;
+    _typedAt = now;
+    unawaited(widget.api.post('/leads/${widget.lead['id']}/typing', const {}));
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
-    _poll = Timer.periodic(_pollEvery, (_) => _load(quiet: true));
+    _poll = Timer.periodic(
+      _isLiveChat ? const Duration(seconds: 3) : _pollEvery,
+      (_) => _load(quiet: true),
+    );
+    _compose.addListener(_typing);
     // After the first frame: the parent answers by rebuilding its list, and
     // a setState during this widget's own build is an exception, not a mark.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -332,6 +351,7 @@ class _LeadThreadState extends State<LeadThread> {
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
       _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
+      _visitorTyping = data['visitor_typing'] == true;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
@@ -713,6 +733,18 @@ class _LeadThreadState extends State<LeadThread> {
               _sendError!,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        if (_visitorTyping)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              '${(_lead['contact_name'] as String?)?.split(' ').first ?? 'They'} is typing…',
+              key: const ValueKey('visitor-typing'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontStyle: FontStyle.italic,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),

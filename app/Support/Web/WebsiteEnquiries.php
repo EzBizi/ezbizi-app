@@ -9,6 +9,9 @@ use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
+use App\Jobs\DeliverAutomationEvent;
+use App\Models\AutomationEvent;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -74,6 +77,15 @@ final class WebsiteEnquiries
         $this->autoReply($chat, $site);
 
         /*
+         * The greeting rule ("Auto reply to new website chats") answers in
+         * seconds, not at the next sweep. Automation events wait for a
+         * once-a-minute outbox sweep; a person who just opened a chat watched
+         * 35 seconds of nothing (Jose, 2026-10-01). This claims the lead's
+         * event exactly as the sweep does, so the sweep cannot queue it twice.
+         */
+        DB::afterCommit(fn () => self::deliverNow($lead));
+
+        /*
          * The SITE is the subject, not the lead. Leads raises
          * `lead.contact_received` for every source it holds; what a rule cannot
          * get from that is which website the person was standing on, which is
@@ -89,6 +101,21 @@ final class WebsiteEnquiries
         ]);
 
         return [$chat, $plain];
+    }
+
+    /** Queue this lead's arrival event now, claimed as the sweep claims it. */
+    private static function deliverNow(Lead $lead): void
+    {
+        $event = AutomationEvent::withoutGlobalScopes()
+            ->where('event_key', 'lead.received')
+            ->where('subject_id', $lead->getKey())
+            ->whereNull('queued_at')
+            ->first();
+
+        if ($event !== null && AutomationEvent::withoutGlobalScopes()->whereKey($event->getKey())
+            ->whereNull('queued_at')->update(['queued_at' => now()]) === 1) {
+            DeliverAutomationEvent::dispatch($event->getKey());
+        }
     }
 
     /**
@@ -161,6 +188,7 @@ final class WebsiteEnquiries
         string $message,
         string $from,
         bool $automatic = false,
+        array $attachments = [],
     ): LeadConversation {
         $lead = $chat->lead;
 
@@ -170,6 +198,8 @@ final class WebsiteEnquiries
             'is_automatic' => $automatic,
             'occurred_at' => now(),
             'text' => $message,
+            // A visitor's photo, by its signed link; Leads shows attachments as links.
+            'attachments' => $attachments === [] ? null : $attachments,
         ]);
 
         $this->thread->refresh($lead);

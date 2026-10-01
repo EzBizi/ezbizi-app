@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Onboarding: the employer signs their part first, and the new hire is emailed a link to finish theirs.',
         'Onboarding: the county search follows the chosen state, and the work schedule in a contract is saved to the person\'s profile.',
+        'Onboarding: the form takes each answer in its proper format (numbers, state, county, address, work days and hours, pay period), and on a wide screen the contract sits beside it and updates as you type.',
         'Leads: phone numbers from Thumbtack and website forms look like Google\'s.',
         'Leads: leaving a lead clears your name from it straight away.',
         'Leads: a customer left waiting turns the row red, stronger the longer they wait.',
