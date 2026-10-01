@@ -416,22 +416,28 @@ final class DocumentRenderer
         ));
 
         if ($signatureFields !== []) {
-            $out[] = '<section><h2>Signatures</h2>';
+            // A body ends in its own "Acknowledgment & Signatures" clause, so
+            // the blocks follow it with no second heading, as A1 Tools' did.
+            $out[] = $body === null ? '<section><h2>Signatures</h2>' : '<section class="signatures">';
             $out[] = '<p class="note">Executed electronically. Each signature below is '
                 .'recorded separately with the time it was given, the person who gave it, '
                 .'and the fingerprint of this document as they were shown it.</p>';
-            $out[] = '<dl>';
 
+            // A1 Tools' signature block: a space for the drawn signature over
+            // a rule, then the printed name and the date. Empty here, because
+            // this is what is fingerprinted; the PDF copy fills each block
+            // from its signature record (PdfRenderer).
             foreach ($signatureFields as $field) {
-                $out[] = $this->row(
-                    $field->label,
-                    $field->filledBy === FilledBy::EMPLOYER
-                        ? 'To be signed by the employer'
-                        : 'To be signed by the employee',
-                );
+                $key = $this->e($field->key);
+                $out[] = '<div class="sig"><h3>'.$this->e($field->label).'</h3>'
+                    .'<div class="sig-box" data-field="'.$key.'"></div>'
+                    .'<div class="sig-rule">Signature</div>'
+                    .'<p class="sig-line"><b>Print Name:</b> <span class="fill" data-field="'.$key.'" data-part="name"></span></p>'
+                    .'<p class="sig-line"><b>Date:</b> <span class="fill" data-field="'.$key.'" data-part="date"></span></p>'
+                    .'</div>';
             }
 
-            $out[] = '</dl></section>';
+            $out[] = '</section>';
         }
 
         $out[] = '</body></html>';
@@ -661,15 +667,25 @@ final class DocumentRenderer
     }
 
     private const STYLE = <<<'CSS'
-    body{font:14px/1.6 Georgia,serif;max-width:44em;margin:3em auto;padding:0 1.5em;color:#111}
-    header{border-bottom:2px solid #111;padding-bottom:1em;margin-bottom:2em}
-    .org{text-transform:uppercase;letter-spacing:.12em;font-size:11px;margin:0 0 .4em}
-    h1{font-size:24px;margin:0}
-    h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;margin:2.4em 0 .8em}
-    dl{margin:0;display:grid;grid-template-columns:14em 1fr;gap:.5em 1.5em}
-    dt{font-weight:bold}
-    dd{margin:0}
-    .note{color:#555;font-size:12px;margin:0 0 1em}
+    @page{margin:54pt 48pt}
+    body{font-family:Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:9.5pt;line-height:1.45;color:#000;max-width:516pt;margin:24pt auto;padding:0 16pt}
+    @media print{body{max-width:none;margin:0;padding:0}}
+    header{margin:0 0 12pt}
+    .org{color:#757575;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;margin:0 0 2pt}
+    h1{font-size:18pt;font-weight:bold;margin:0}
+    h2{font-size:12pt;font-weight:bold;margin:10pt 0 4pt}
+    h3{font-size:10.5pt;font-weight:bold;margin:10pt 0 4pt}
+    dl{margin:0}
+    dt{font-weight:bold;margin:4pt 0 0}
+    dd{margin:0 0 3pt}
+    .note{color:#757575;font-size:8pt;margin:0 0 6pt}
+    .sig{margin:14pt 0 0;page-break-inside:avoid}
+    .sig-box{height:44pt;width:280pt}
+    .sig-box img{height:40pt}
+    .sig-rule{width:280pt;border-top:0.7pt solid #000;font-size:8pt;padding-top:1pt;margin:0 0 8pt}
+    .sig-line{margin:0 0 3pt;font-size:9pt}
+    .sig-line .fill{display:inline-block;min-width:200pt;border-bottom:0.7pt solid #000}
+    mark{background:#fff1a8;padding:0 1pt}
     CSS;
 
     /**
@@ -710,14 +726,15 @@ final class DocumentRenderer
      * and the styling only reinforces it.
      */
     private const AGREEMENT_STYLE = <<<'CSS'
-    .agreement{margin:2.4em 0}
-    .agreement p{margin:0 0 1em}
-    .agreement h2{font-size:15px;letter-spacing:.06em;margin:1.6em 0 .6em;text-transform:uppercase}
-    .agreement h3{font-size:14px;margin:1.2em 0 .4em}
-    .agreement h4{font-size:13px;margin:1em 0 .3em}
-    .agreement ul{margin:0 0 1em;padding-left:1.2em}
-    .agreement table{width:100%;border-collapse:collapse;margin:0 0 1em;font-size:13px}
-    .agreement th,.agreement td{border:1px solid #333;padding:.35em .5em;text-align:left;vertical-align:top}
+    .agreement{margin:0}
+    .agreement p{margin:0 0 6pt;text-align:justify}
+    .agreement h2{font-size:12pt;margin:10pt 0 4pt}
+    .agreement h3{font-size:10.5pt;margin:10pt 0 4pt}
+    .agreement h4{font-size:9.5pt;margin:8pt 0 3pt}
+    .agreement ul{margin:0 0 6pt;padding-left:12pt}
+    .agreement li{margin:0 0 2pt}
+    .agreement table{width:100%;border-collapse:collapse;margin:6pt 0;font-size:9pt}
+    .agreement th,.agreement td{border:0.5pt solid #9e9e9e;padding:3pt 4pt;text-align:left;vertical-align:top}
     .agreement th{font-weight:bold}
     .unanswered{font-style:italic}
     .unresolved{font-family:monospace;font-weight:bold}

@@ -2590,6 +2590,10 @@ Route::prefix('v1')
         // No policy on any of these: each is bound to the signed-in user's own
         // record, so there is nobody else to authorize against.
         Route::get('me/profile', [ProfileController::class, 'show']);
+        // The signer's own saved drawn signature (2026-10-01).
+        Route::get('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'show']);
+        Route::put('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'update']);
+        Route::delete('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'destroy']);
         Route::patch('me', [ProfileController::class, 'update']);
         // Own schedule, only when the organization's self_schedule switch is on.
         Route::patch('me/schedule', [ProfileController::class, 'updateSchedule']);

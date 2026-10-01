@@ -703,6 +703,10 @@ class HrOnboardingsController extends Controller
             // length is DERIVED from the algorithm rather than written as 64, so
             // the day DocumentFingerprint moves this rule moves with it instead
             // of refusing every signature until somebody notices.
+            // The signature they drew (Jose, 2026-10-01: "the actual
+            // signature, like hand drawn signature"), a PNG data URL.
+            'drawing' => ['sometimes', 'nullable', 'string', 'max:600000'],
+
             'document_hash' => ['required', 'string',
                 'size:'.strlen(hash(DocumentFingerprint::ALGORITHM, ''))],
         ], [
@@ -768,7 +772,13 @@ class HrOnboardingsController extends Controller
         // stays open for the employee, who signs the finished one.
         $presign = $field->filledBy === FilledBy::EMPLOYER && ! $onboarding->isFrozen();
 
-        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign) {
+        $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
+        if (($input['drawing'] ?? null) !== null && $drawing === null) {
+            throw ValidationException::withMessages(['drawing' =>
+                'The drawn signature did not arrive as a PNG image under 400 KB. Draw it again and sign.']);
+        }
+
+        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign, $drawing) {
             $document = match (true) {
                 $onboarding->isFrozen() => $onboarding->currentDocument(),
                 $presign => $this->renderForEmployer($onboarding, $actor),
@@ -805,6 +815,8 @@ class HrOnboardingsController extends Controller
                 'consented_at'      => now(),
                 'intent_statement'  => $ceremony->intent(),
                 'affirmation'       => trim($input['affirmation']),
+                'drawing_attachment_id' => $drawing === null ? null
+                    : $this->documents->storeDrawing($onboarding, $actor, $drawing)->getKey(),
                 'signed_at'         => now(),
             ]);
 
