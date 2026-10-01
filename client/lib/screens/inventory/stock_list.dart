@@ -81,10 +81,7 @@ class _StockListState extends State<StockList> {
       _error = null;
     });
 
-    final (join, error) = await loadStockJoin(
-      widget.api,
-      withOrders: _may('inventory.orders.view'),
-    );
+    final (join, error) = await loadStockItems(widget.api);
 
     if (!mounted || request != _request) return;
     setState(() {
@@ -261,7 +258,7 @@ class _StockListState extends State<StockList> {
       for (final i in join.items)
         if (join.onOrder(i['id'] as String) > 0) i,
     ];
-    final orders = join.orders.where((o) => o['status'] == 'open').length;
+    final orders = join.openOrders ?? 0;
     var valueMinor = 0;
     var priced = false;
     for (final i in join.items) {

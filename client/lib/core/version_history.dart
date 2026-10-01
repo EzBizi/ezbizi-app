@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Leads: every message shows the time it was sent.',
+        'Work Hours: you can ask for a correction to the start of the shift you are in.',
       ],
     ),
     VersionRelease(
