@@ -26,7 +26,8 @@ class VersionHistory {
         'Onboarding: a contract term can be marked as not applying, and its clause is left out of the contract.',
         'Inventory: Stock shows one row per item with its total, value and what is on order, with each place inside it. Four tiles filter it: all items, below reorder, out of stock, on order. Items, Orders and Locations are tables.',
         'Inventory no longer shows a zero for something your role is not allowed to see: on-hand without the Stock tab, and orders without the Orders tab.',
-        'Work Hours: shift and day totals sit at the right edge of each row.',
+        'Work Hours: totals line up at the right.',
+        'Clock In: clocking back in within 2 minutes continues the same shift instead of adding a row.',
       ],
     ),
     VersionRelease(
