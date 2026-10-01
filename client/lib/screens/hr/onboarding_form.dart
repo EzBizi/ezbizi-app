@@ -338,6 +338,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Timer? _previewTimer;
   int _previewRun = 0;
 
+  /// Every key changed since the page opened, highlighted in the contract
+  /// (Jose: "Dispatcher Master 5000 should be highlighted on the contract").
+  final Set<String> _changed = {};
+
   /// On a phone the form and the contract take turns.
   bool _showContract = false;
 
@@ -407,7 +411,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
   /// One answer changed: queue it for Save and redraw the contract beside it.
   void _answer(String key, String value) {
-    setState(() => _pending[key] = value);
+    setState(() {
+      _pending[key] = value;
+      _changed.add(key);
+    });
     _previewTimer?.cancel();
     _previewTimer = Timer(const Duration(milliseconds: 600), _preview);
   }
@@ -418,7 +425,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     final response = await widget.api.post(
       '/hr/onboardings/${widget.onboardingId}/preview',
-      {'answers': Map<String, dynamic>.from(_pending)},
+      {
+        'answers': Map<String, dynamic>.from(_pending),
+        'highlight': _changed.toList(),
+      },
     );
 
     // A slow answer to an older set of answers must not land on a newer one.
@@ -512,9 +522,48 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// appear in the contract". On saves "N/A" and the clause leaves the
   /// preview; off clears the answer back to empty.
   void _setVoided(OnboardingQuestion question, bool voided) {
-    _box(question).clear();
-    _addresses[question.key]?.values.forEach((box) => box.clear());
-    _answer(question.key, voided ? notApplicable : '');
+    for (final q in _form!.questions) {
+      if (!q.voidable || !q.writable || q.group != question.group) continue;
+      _box(q).clear();
+      _addresses[q.key]?.values.forEach((box) => box.clear());
+      _answer(q.key, voided ? notApplicable : '');
+    }
+  }
+
+  /// ✓ applies, ✗ does not (Jose: "buttons next to the field with like a
+  /// tick or x ... clicking the tick re enables it"). The chosen one is
+  /// filled; ✗ voids the term and the terms grouped with it.
+  Widget _applies(OnboardingQuestion question, bool voided) {
+    final enabled = question.writable && !_saving;
+    // The chosen side stays lit and does nothing; the other one changes it.
+    Widget button(bool on, IconData icon, String tip, String key, bool to) {
+      final keyed = Key('$key:${question.key}');
+      final child = Icon(icon, size: 18);
+      return on
+          ? IconButton.filled(
+              key: keyed,
+              tooltip: tip,
+              visualDensity: VisualDensity.compact,
+              onPressed: enabled ? () {} : null,
+              icon: child,
+            )
+          : IconButton.outlined(
+              key: keyed,
+              tooltip: tip,
+              visualDensity: VisualDensity.compact,
+              onPressed: enabled ? () => _setVoided(question, to) : null,
+              icon: child,
+            );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button(!voided, Icons.check, 'This applies', 'apply', false),
+        const SizedBox(width: 4),
+        button(voided, Icons.close, "Doesn't apply", 'void', true),
+      ],
+    );
   }
 
   TextEditingController _box(OnboardingQuestion question) => _boxes.putIfAbsent(
@@ -710,6 +759,14 @@ class _OnboardingFormState extends State<OnboardingForm> {
         if (question.key != 'work_days' || _question(form, 'work_hours') == null)
           question,
     ];
+
+    // The state comes first, so the county can be searched in it (Jose,
+    // 2026-10-01: "state should be first, before country for disputes").
+    final state = rows.indexWhere((q) => q.key == 'state');
+    final county = rows.indexWhere((q) => q.key == 'county');
+    if (state > county && county >= 0) {
+      rows.insert(county, rows.removeAt(state));
+    }
 
     final mine = [
       for (final question in rows)
@@ -956,6 +1013,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
                   fontSize: FontSize(15),
                 ),
                 'p': Style(lineHeight: LineHeight.number(1.5)),
+                'mark': Style(
+                  backgroundColor: ToneColours.of(context, Tone.caution).fill,
+                  color: theme.colorScheme.onSurface,
+                ),
               },
             ),
     );
@@ -1162,21 +1223,13 @@ class _OnboardingFormState extends State<OnboardingForm> {
                 Tag(_vocabulary.filledByLabel(field.filledBy)),
               if (question.voidable && (question.writable || voided)) ...[
                 const Spacer(),
-                Text("Doesn't apply", style: theme.textTheme.bodySmall),
-                Switch(
-                  key: Key('void:${field.key}'),
-                  value: voided,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: question.writable && !_saving
-                      ? (on) => _setVoided(question, on)
-                      : null,
-                ),
+                _applies(question, voided),
               ],
             ],
           ),
           const SizedBox(height: 6),
           // Greyed and still while the term does not apply: its clause is
-          // out of the contract until the switch goes off.
+          // out of the contract until ✓ brings it back.
           IgnorePointer(
             ignoring: voided,
             child: Opacity(

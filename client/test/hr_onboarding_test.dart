@@ -820,35 +820,98 @@ void main() {
   // HR 0c0884af, Jose: "some sections can be entirely voided. so they don't
   // appear in the contract. like the scheduled increase".
   testWidgets("a term that doesn't apply saves N/A, greys its box and loads "
-      'back switched on', (tester) async {
+      'back marked so', (tester) async {
     Map<String, dynamic>? saved;
     await _pumpForm(
       tester,
       _handler(form: _voidForm, onSave: (body) => saved = body),
     );
 
-    // Stored "N/A": the switch is on, the box is empty, and a number box does
-    // not call it "not a number".
-    final period = tester.widget<Switch>(find.byKey(const Key('void:raise_period')));
-    expect(period.value, isTrue);
-    // The interval is a picker (Hour/Week/Month/Year): nothing chosen.
+    // Stored "N/A": greyed and still, the interval picker showing nothing.
+    expect(_frozen(tester, 'raise_period'), isTrue);
     expect(_dropdown(tester, 'raise_period').value, isNull);
 
-    final amount = tester.widget<Switch>(find.byKey(const Key('void:raise_amount')));
-    expect(amount.value, isFalse);
+    // ✗ voids the amount, and a number box does not call it "not a number".
+    expect(_frozen(tester, 'raise_amount'), isFalse);
     await _tap(tester, find.byKey(const Key('void:raise_amount')));
+    expect(_frozen(tester, 'raise_amount'), isTrue);
     expect(_box(tester, 'raise_amount').controller!.text, isEmpty);
     expect(find.text('Not a number: digits and one decimal point only.'), findsNothing);
 
-    // Off again clears it.
-    await _tap(tester, find.byKey(const Key('void:raise_period')));
+    // ✓ brings the interval back, empty.
+    await _tap(tester, find.byKey(const Key('apply:raise_period')));
+    expect(_frozen(tester, 'raise_period'), isFalse);
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
     expect(saved, {
       'answers': {'raise_amount': 'N/A', 'raise_period': ''},
     });
   });
+
+  // Jose: "voiding Scheduled increase interval voids itself and scheduled
+  // increase amount". HR sends the group as `void_group`.
+  testWidgets('voiding one term of a group voids the group, and ✓ brings '
+      'it all back', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _groupForm, onSave: (body) => saved = body),
+    );
+
+    await _tap(tester, find.byKey(const Key('void:raise_period')));
+    expect(_frozen(tester, 'raise_amount'), isTrue);
+    expect(_frozen(tester, 'raise_period'), isTrue);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'raise_amount': 'N/A', 'raise_period': 'N/A'},
+    });
+
+    await _tap(tester, find.byKey(const Key('apply:raise_amount')));
+    expect(_frozen(tester, 'raise_amount'), isFalse);
+    expect(_frozen(tester, 'raise_period'), isFalse);
+  });
+
+  testWidgets('the state comes before the county, whatever the contract says', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _countyFirstForm));
+
+    final state = tester.getTopLeft(find.byKey(answerKey('state')));
+    final county = tester.getTopLeft(find.byKey(answerKey('county')));
+    expect(state.dy, lessThan(county.dy));
+  });
+
+  // Jose: "Dispatcher Master 5000 should be highlighted on the contract".
+  testWidgets('the preview is asked to mark what changed since the page '
+      'opened', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform</p>',
+        onPreviewBody: bodies.add,
+      ),
+    );
+
+    expect(bodies.first['highlight'], isEmpty);
+
+    await _type(tester, 'shirt_size_note', 'A jacket');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(bodies.last['highlight'], ['shirt_size_note']);
+  });
 }
+
+/// Whether a question's control is held still because it does not apply.
+bool _frozen(WidgetTester tester, String key) => tester
+    .widget<IgnorePointer>(
+      find
+          .ancestor(of: find.byKey(answerKey(key)), matching: find.byType(IgnorePointer))
+          .first,
+    )
+    .ignoring;
 
 TextField _countyBox(WidgetTester tester) => tester.widget<TextField>(
   find.descendant(
@@ -1068,6 +1131,7 @@ MockClientHandler _handler({
   /// The contract the preview endpoint draws from the unsaved answers. Null
   /// leaves the preview unanswered, so the pane shows the document.
   String Function(Map<String, dynamic> answers)? onPreview,
+  void Function(Map<String, dynamic> body)? onPreviewBody,
   void Function(Map<String, String> query)? onCounties,
 }) {
   final seen = form ?? _asEmployer;
@@ -1079,6 +1143,7 @@ MockClientHandler _handler({
         : jsonDecode(request.body) as Map<String, dynamic>;
 
     if (onPreview != null && path.endsWith('/hr/onboardings/o-1/preview')) {
+      onPreviewBody?.call(body);
       return _json({
         'data': {
           'content': onPreview(
@@ -1720,6 +1785,34 @@ final _voidForm = {
       ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'N/A'),
       'voidable': true,
     },
+  ],
+  'missing': <String, String>{},
+};
+
+/// The raise's two terms in one void group, both answered.
+final _groupForm = {
+  ..._asEmployer,
+  'fields': [
+    {
+      ..._field('raise_amount', 'Scheduled increase amount', 'number', filledBy: 'employer', writable: true, value: '0'),
+      'voidable': true,
+      'void_group': 'raise',
+    },
+    {
+      ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'Year'),
+      'voidable': true,
+      'void_group': 'raise',
+    },
+  ],
+  'missing': <String, String>{},
+};
+
+/// A contract version that asks for the county first.
+final _countyFirstForm = {
+  ..._asEmployer,
+  'fields': [
+    _field('county', 'County for disputes', 'text', filledBy: 'employer', writable: true, value: 'Broward'),
+    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: true, value: 'FL'),
   ],
   'missing': <String, String>{},
 };
