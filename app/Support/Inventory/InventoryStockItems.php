@@ -167,7 +167,7 @@ final class InventoryStockItems
         );
     }
 
-    private static function status(string $total, mixed $reorderAt): string
+    public static function status(string $total, mixed $reorderAt): string
     {
         if (bccomp($total, '0', 3) <= 0) {
             return 'out_of_stock';

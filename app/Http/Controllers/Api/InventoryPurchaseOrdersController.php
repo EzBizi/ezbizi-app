@@ -21,6 +21,7 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +68,12 @@ class InventoryPurchaseOrdersController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
+        $filter = $request->validate(['filter' => ['nullable', Rule::in(self::TILES)]])['filter'] ?? null;
+
         $query = InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope);
+        if ($filter !== null) {
+            $this->narrow($query, $filter);
+        }
 
         $orders = $query
             ->with(['vendor', 'lines.item'])
@@ -83,8 +89,33 @@ class InventoryPurchaseOrdersController extends Controller
                 'per_page' => $orders->perPage(),
                 'current_page' => $orders->currentPage(),
                 'last_page' => $orders->lastPage(),
+                // Across every page, before the filter: a tapped tile lands on
+                // a list as long as the number it showed.
+                'tiles' => collect(self::TILES)->mapWithKeys(fn (string $tile) => [
+                    $tile => $this->narrow(
+                        InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope),
+                        $tile,
+                    )->count(),
+                ])->all(),
             ],
         ]);
+    }
+
+    private const TILES = ['to_receive', 'open'];
+
+    /**
+     * What a tile counts, and so what its tap shows. To receive is an open
+     * order with a line still short: the client's old chip, now across pages.
+     */
+    private function narrow(Builder $query, string $tile): Builder
+    {
+        $query->where('status', InventoryPurchaseOrderStatus::Open);
+
+        if ($tile === 'to_receive') {
+            $query->whereHas('lines', fn (Builder $line) => $line->whereColumn('qty_received', '<', 'qty_ordered'));
+        }
+
+        return $query;
     }
 
     /** POST /api/v1/inventory/purchase-orders */
