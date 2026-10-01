@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Onboarding: you can save your drawn signature and reuse it on the next contract. The contract preview now reads as the printed page, in light and dark mode.',
         'Work Hours: Add shift for HR, request hours for a day you didn\'t clock, and approved requests read Shift corrected.',
+        'Human Resources, Records: the people list can be filtered by role.',
+        'Monitoring, General: the ownership table scrolls down, so every row can be reached.',
       ],
     ),
     VersionRelease(
