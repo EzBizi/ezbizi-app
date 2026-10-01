@@ -216,6 +216,12 @@ class HrOnboardingsController extends Controller
             'contract_id' => ['required', 'uuid', Rule::exists('contracts', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())
                 ->whereNull('archived_at')],
+            // Under the organization (null) or a company: the employer the
+            // contract names, where it is filed, where the person is assigned
+            // (Ana's Suggestion; Jose, 2026-10-01). Absent: where the
+            // invitation already places them.
+            'company_id' => ['sometimes', 'nullable', 'uuid', Rule::exists('companies', 'id')
+                ->where('organization_id', $this->tenant->idOrFail())],
         ]);
 
         $invitation = Invitation::findOrFail($input['invitation_id']);
@@ -238,8 +244,25 @@ class HrOnboardingsController extends Controller
         // with: 422 carrying an `errors` key the client reads in preference to
         // `message`. `invitation_id` for every one of them, because that is
         // the field the old messages were attached to.
+        $chosen = array_key_exists('company_id', $input);
+        if ($chosen) {
+            $input['company_id'] === null
+                ? $this->reach->assertCovers($actor, Assignment::SCOPE_ORGANIZATION, $actor->organization_id, 'company_id')
+                : $this->reach->assertCovers($actor, Assignment::SCOPE_COMPANY, $input['company_id'], 'company_id');
+        }
+
         try {
-            $onboarding = $this->actions->startOnboarding($invitation, $contract, $actor);
+            $onboarding = DB::transaction(function () use ($invitation, $contract, $actor, $chosen, $input) {
+                $onboarding = $this->actions->startOnboarding(
+                    $invitation, $contract, $actor, $chosen ? $input['company_id'] : null,
+                );
+                if ($chosen) {
+                    $onboarding->forceFill(['company_id' => $input['company_id']])->save();
+                    $this->placeUnder($invitation, $input['company_id']);
+                }
+
+                return $onboarding;
+            });
         } catch (CannotActOnInvitation $e) {
             throw ValidationException::withMessages([
                 $e->field ?? 'invitation_id' => $e->getMessage(),
@@ -1530,6 +1553,53 @@ class HrOnboardingsController extends Controller
         }
     }
 
+    /**
+     * Put the person where their onboarding is: the invitation, if they have
+     * not accepted it, and their assignment, if they have and it lies outside
+     * the chosen company. Somebody already somewhere inside it stays put; the
+     * organization as a choice moves nobody.
+     */
+    private function placeUnder(Invitation $invitation, ?string $companyId): void
+    {
+        if ($companyId === null) {
+            return;
+        }
+
+        $company = \App\Models\Company::query()->findOrFail($companyId);
+        $companies = $company->subtreeCompanyIds();
+        $franchises = \App\Models\Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
+        $inside = fn ($row) => in_array($row->assigned_company_id, $companies, true)
+            || in_array($row->assigned_franchise_id, $franchises, true);
+
+        if ($invitation->accepted_user_id === null) {
+            if (! $inside($invitation)) {
+                $invitation->forceFill([
+                    'assigned_organization_id' => null,
+                    'assigned_company_id' => $companyId,
+                    'assigned_franchise_id' => null,
+                ])->save();
+            }
+
+            return;
+        }
+
+        $user = User::query()->find($invitation->accepted_user_id);
+        if ($user === null || $user->assignments()->get()->contains($inside)) {
+            return;
+        }
+
+        $user->assignments()->delete();
+        Assignment::create([
+            'organization_id' => $user->organization_id,
+            'user_id' => $user->getKey(),
+            'assigned_company_id' => $companyId,
+        ]);
+        $this->audit->log('user.assignment_moved', $user, metadata: [
+            'to' => ['type' => Assignment::SCOPE_COMPANY, 'name' => $company->name],
+            'because' => 'onboarding',
+        ]);
+    }
+
     /** @return array<string, string> field key => who fills it */
     private function ownerByKey(Onboarding $onboarding): array
     {
@@ -1598,6 +1668,10 @@ class HrOnboardingsController extends Controller
                 'version' => $version?->version,
                 'version_id' => $onboarding->contract_version_id,
             ],
+            // The company it is under (the contract's employer), or null for
+            // the organization.
+            'company' => $onboarding->company_id === null ? null
+                : ['id' => $onboarding->company_id, 'name' => $onboarding->company?->name],
             'invitation_id' => $onboarding->invitation_id,
             'started_at'    => $onboarding->started_at?->toIso8601String(),
             'submitted_at'  => $onboarding->submitted_at?->toIso8601String(),

@@ -630,6 +630,26 @@ void main() {
     expect(cancel.onPressed, isNull);
   });
 
+  // Ana's Suggestion, on Jose's word (2026-10-01): starting one can choose the
+  // organization or a company — the contract's employer, where it is filed,
+  // where the person is assigned.
+  testWidgets('starting one can choose what it is under', (tester) async {
+    Map<String, dynamic>? started;
+
+    await _pumpTab(tester, _handler(onStart: (body) => started = body));
+    await _tap(tester, find.text('Start an onboarding'));
+    await _choose(tester, 'Who is this for', 'Kit Weaver (kit@example.com)');
+    await _tap(tester, find.byKey(const ValueKey('onboarding-under')));
+    await _tap(tester, find.text('Everdoors').last);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Start'));
+
+    expect(started, {
+      'invitation_id': 'i-1',
+      'contract_id': 'c-1',
+      'company_id': null,
+    });
+  });
+
   testWidgets('starting one picks the person and the contract, and opens it', (
     tester,
   ) async {

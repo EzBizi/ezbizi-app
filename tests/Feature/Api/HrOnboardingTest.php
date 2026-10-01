@@ -717,6 +717,51 @@ class HrOnboardingTest extends TestCase
         $this->assertSame([$id], $ids('finished'));
     }
 
+    /**
+     * Started under the organization or a company: the contract names that
+     * company as the employer, the onboarding is filed there and the person is
+     * assigned there (Ana's Suggestion; Jose, 2026-10-01: "yes as well as to
+     * where the person is assigned").
+     */
+    public function test_an_onboarding_started_under_a_company_names_it_and_places_the_person(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role = $this->roleFor($alpha);
+        $contract = $this->aContract($alpha);
+        $company = $this->inTenant($alpha['org'], fn () => \App\Models\Company::create([
+            'organization_id' => $alpha['org']->id, 'name' => 'A-1 Chimney', 'is_active' => true,
+            'address_line1' => '9 Flue Rd', 'city' => 'Miami', 'state' => 'FL', 'postal_code' => '33101',
+        ]));
+        $invite = fn (string $email) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
+            'email' => $email, 'first_name' => 'Gino', 'last_name' => 'Test', 'role_id' => $role->id,
+            'scope_type' => 'organization', 'scope_id' => $alpha['org']->id,
+        ])->assertCreated();
+
+        // Not yet accepted: the invitation moves to the company.
+        $waiting = $invite('waiting@example.test')->json('data.id');
+        $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $waiting, 'contract_id' => $contract, 'company_id' => $company->id,
+        ])->assertCreated()->assertJsonPath('data.company.name', 'A-1 Chimney');
+        $this->assertSame($company->id, $this->inTenant($alpha['org'], fn () => Invitation::findOrFail($waiting)->assigned_company_id));
+
+        // Accepted, assigned at the organization: their assignment moves.
+        $accepted = $invite('accepted@example.test');
+        $this->accept($this->tokenFrom($accepted->json('data.accept_url')));
+        $id = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $accepted->json('data.id'), 'contract_id' => $contract, 'company_id' => $company->id,
+        ])->assertCreated()->json('data.id');
+        $person = $this->inTenant($alpha['org'], fn () => User::where('email', 'accepted@example.test')->firstOrFail());
+        $this->assertSame([$company->id], $this->inTenant($alpha['org'],
+            fn () => $person->assignments()->pluck('assigned_company_id')->all()));
+
+        // The contract names the company and its address as the employer.
+        $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
+            ->where('id', Onboarding::findOrFail($id)->contract_version_id)
+            ->update(['body' => 'Employer: {{organization.name}}, {{organization.address}}.']));
+        $content = $this->as($alpha['admin'])->getJson("/api/v1/hr/onboardings/{$id}/document")->json('data.content');
+        $this->assertStringContainsString('Employer: A-1 Chimney, 9 Flue Rd, Miami, FL 33101.', $content);
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {
