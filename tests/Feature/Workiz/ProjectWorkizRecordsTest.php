@@ -1248,4 +1248,21 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertNull($customer->email);
         $this->assertNull($customer->phone);
     }
+
+    /**
+     * When the client first booked: their earliest Workiz job's created date.
+     * Without it the dashboard counts every customer the projection makes on
+     * catch-up as new that day (Customers, b4606536).
+     */
+    public function test_a_projected_customer_is_a_customer_since_their_first_workiz_booking(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->mirror($tenant, ['remote_id' => 'LATER', 'booked_at' => '2026-01-10 08:00:00'], ['UUID' => 'LATER']);
+        $this->mirror($tenant, ['remote_id' => 'FIRST', 'booked_at' => '2025-03-02 22:30:00'], ['UUID' => 'FIRST']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $customer = $this->inTenant($tenant['org'], fn () => Customer::query()->sole());
+        $this->assertSame('2025-03-02', $customer->customer_since?->toDateString());
+    }
 }
