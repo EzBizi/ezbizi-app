@@ -342,7 +342,7 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
             trim((string) ($customer['lastName'] ?? '')),
         ])));
 
-        $phone = trim((string) ($customer['phone'] ?? '')) ?: null;
+        $phone = Lead::e164($customer['phone'] ?? null);
 
         return DB::transaction(function () use ($connection, $remoteId, $raw, $name, $phone, $category) {
             $lead = Lead::query()

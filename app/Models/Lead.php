@@ -575,6 +575,40 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * chain in the WHERE clause cannot use an index, and the search this feeds
      * is the one somebody uses while a customer is on the phone.
      */
+    /**
+     * A number as every source should store it: a US number in E.164
+     * (+18606708648), the form Google sends and the one the screen formats.
+     * Thumbtack and the website forms sent "8606708648" and the lead showed
+     * it raw beside Google's "+1 (617) 504-3242" (Jose, 2026-10-01: "we need
+     * cohesiveness"). Anything that is not certainly a US number is kept as
+     * given rather than guessed into somebody else's.
+     */
+    public static function e164(?string $phone): ?string
+    {
+        $raw = trim((string) $phone);
+        if ($raw === '') {
+            return null;
+        }
+
+        // Another country's number, written with its own code.
+        if (str_starts_with($raw, '+') && ! str_starts_with($raw, '+1')) {
+            return $raw;
+        }
+
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+        if (strlen($digits) === 10) {
+            $digits = '1'.$digits;
+        }
+
+        // A US area code and exchange never begin with 0 or 1.
+        if (strlen($digits) !== 11 || $digits[0] !== '1'
+            || in_array($digits[1], ['0', '1'], true) || in_array($digits[4], ['0', '1'], true)) {
+            return $raw;
+        }
+
+        return '+'.$digits;
+    }
+
     public static function digits(?string $phone): ?string
     {
         $digits = preg_replace('/\D/', '', (string) $phone) ?? '';

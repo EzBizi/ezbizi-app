@@ -261,7 +261,7 @@ final class WebsiteEnquiries
      */
     private function lead(WebSite $site, string $source, string $remoteId, array $visitor, bool $looksLikeSpam = false): Lead
     {
-        $phone = isset($visitor['phone']) ? trim((string) $visitor['phone']) : null;
+        $phone = Lead::e164($visitor['phone'] ?? null);
 
         /*
          * CONSENT IS RECORDED ONLY WHEN IT IS FULLY EVIDENCED.
