@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Onboarding: the employer signs their part first, and the new hire is emailed a link to finish theirs.',
+        'Onboarding: the county search follows the chosen state, and the work schedule in a contract is saved to the person\'s profile.',
         'Leads: phone numbers from Thumbtack and website forms look like Google\'s.',
         'iPhone and Mac: also brings everything listed under 0.0.0335, which reached Windows, Android and the web first.',
       ],
