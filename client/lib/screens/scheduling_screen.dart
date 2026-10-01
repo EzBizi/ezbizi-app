@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
+import 'scheduling/locations_pane.dart';
 import 'scheduling/overbooking_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_links.dart';
@@ -64,6 +65,17 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'Overbooking',
       Icons.warning_amber_outlined,
       () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
+    ),
+    (
+      // Every branch, the closest one, who to call (UI queue 49).
+      'locations',
+      'Locations',
+      Icons.place_outlined,
+      () => LocationsPane(
+        api: widget.api,
+        session: widget.session,
+        visible: _visible('locations'),
+      ),
     ),
     (
       'settings',
@@ -184,9 +196,10 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
   }
 }
 
-/// Settings, in two sub-tabs (Jose, 2026-09-25): Availability is the capacity
+/// Settings, in sub-tabs (Jose, 2026-09-25): Availability is the capacity
 /// screen that was all of Settings until now; Schedule links Workiz
-/// technicians to EzBizi users.
+/// technicians to EzBizi users; Locations keeps each company's note for new
+/// dispatchers (UI queue 49).
 ///
 /// ponytail: both sit under `scheduling.settings.view`. Split the grant when
 /// somebody needs one without the other.
@@ -212,6 +225,11 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
 
   @override
   Widget build(BuildContext context) {
+    // The notes belong to the Locations tab, so they come with its grant: a
+    // server without the tab has nowhere to keep them.
+    final notes =
+        widget.session.me?.permissions.contains('scheduling.locations.view') ??
+        false;
     final panes = [
       () => CapacitySettings(
         api: widget.api,
@@ -222,15 +240,22 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
         api: widget.api,
         visible: widget.visible && _tab == 1,
       ),
+      if (notes)
+        () => DispatcherNotesSettings(
+          api: widget.api,
+          session: widget.session,
+          visible: widget.visible && _tab == 2,
+        ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
-          labels: const [
+          labels: [
             ('Availability', Icons.event_available_outlined),
             ('Schedule', Icons.engineering_outlined),
+            if (notes) ('Locations', Icons.place_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() {

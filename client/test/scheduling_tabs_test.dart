@@ -84,6 +84,29 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
   });
 
+  // UI queue 49: Locations, and its notes in Settings, come with their grant.
+  // Without it (a server from before the tab) neither is drawn.
+  testWidgets('Locations and its Settings notes need the Locations grant', (
+    tester,
+  ) async {
+    const without = [
+      'scheduling.view',
+      'scheduling.availability.view',
+      'scheduling.settings.view',
+    ];
+    await _pump(tester, without);
+    expect(find.text('Locations'), findsNothing);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Locations'), findsNothing);
+
+    await _pump(tester, [...without, 'scheduling.locations.view']);
+    expect(find.text('Locations'), findsOneWidget);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Locations'), findsNWidgets(2));
+  });
+
   /// The clamp has to live in ONE place — and this test does NOT prove a blank
   /// screen, which is worth saying because I claimed one before measuring.
   ///
