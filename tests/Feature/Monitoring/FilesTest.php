@@ -98,8 +98,8 @@ class FilesTest extends TestCase
                 'op' => 'list',
                 'path' => 'C:\\Users\\toula',
                 'entries' => [
-                    ['name' => 'Documents', 'is_dir' => true, 'size' => null, 'modified_at' => '2026-09-30T10:00:00Z'],
-                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size' => 20480, 'modified_at' => '2026-09-29T08:00:00Z'],
+                    ['name' => 'Documents', 'is_dir' => true, 'size_bytes' => null, 'modified_at' => '2026-09-30T10:00:00Z'],
+                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size_bytes' => 20480, 'modified_at' => '2026-09-29T08:00:00Z'],
                 ],
             ])
             ->assertNoContent();
@@ -114,7 +114,7 @@ class FilesTest extends TestCase
                 'path' => 'C:\\Users\\toula',
                 'entries' => [
                     ['name' => 'Documents', 'is_dir' => true],
-                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size' => 20480],
+                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size_bytes' => 20480],
                 ],
             ]]);
     }

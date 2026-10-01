@@ -256,7 +256,7 @@ class FilesController extends Controller
             'entries' => ['sometimes', 'array', 'max:'.self::MAX_ENTRIES],
             'entries.*.name' => ['required_with:entries', 'string', 'max:1024'],
             'entries.*.is_dir' => ['required_with:entries', 'boolean'],
-            'entries.*.size' => ['nullable', 'integer', 'min:0'],
+            'entries.*.size_bytes' => ['nullable', 'integer', 'min:0'],
             'entries.*.modified_at' => ['nullable', 'string', 'max:64'],
 
             // op:download
@@ -320,7 +320,7 @@ class FilesController extends Controller
                 'entries' => array_map(fn (array $e) => [
                     'name' => $e['name'],
                     'is_dir' => (bool) $e['is_dir'],
-                    'size' => $e['size'] ?? null,
+                    'size_bytes' => $e['size_bytes'] ?? null,
                     'modified_at' => $e['modified_at'] ?? null,
                 ], $data['entries'] ?? []),
             ];
