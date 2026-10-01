@@ -1,0 +1,492 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Human Resources · Dashboard</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). Tone pills are ToneColours, avatars are
+   PersonColours, and chart colours are the first six of DashboardChart's light palette
+   (client/lib/widgets/dashboard_chart.dart, _palette). Its seventh swatch, the violet, is
+   never used. Every person, place, date and number here is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --c1:#2A78D6;--c2:#EB6834;--c3:#1BAF7A;--c4:#EDA100;--c5:#E87BA4;--c6:#008300}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:40px 0 4px;display:flex;align-items:center;gap:10px}
+h2.plain{margin-top:22px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1000px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:3px}
+.srv{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1000px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.srv b{color:var(--ink)}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:28px;padding:0 11px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu)}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+svg{display:block}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+.stack{display:flex}.stack .av{width:22px;height:22px;font-size:8.5px;border:2px solid var(--paper);margin-left:-6px}.stack .av:first-child{margin-left:0}
+/* dashboard body */
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;flex:0 0 auto}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:9px 12px;height:84px;display:flex;flex-direction:column;position:relative;min-width:0}
+.tile .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .v{font-size:24px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .d{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:4px;align-items:center}
+.tile .go{position:absolute;right:10px;top:8px;color:#9aa9b1;font-size:13px}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex:0 0 auto}
+.bh .ic{color:var(--pri);font-size:13px;width:16px;text-align:center}
+.bh b{font-size:12.5px;white-space:nowrap}
+.bh .cnt{font-size:11px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.leg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:4px}
+.lr{display:flex;align-items:center;gap:8px;height:34px;border-top:1px solid var(--line2);font-size:12px;min-width:0}
+.lr:first-of-type{border-top:0}
+.lr .g{flex:1;min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .age{width:46px;text-align:right;font-size:11px;color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.lr .chev{color:#9aa9b1;flex:0 0 auto}
+.more{font-size:11.5px;font-weight:700;color:var(--pri);padding-top:6px}
+.meter{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:1}
+.meter i{display:block;height:100%;background:var(--c1);border-radius:3px}
+.mrow{display:grid;grid-template-columns:150px 1fr 26px;gap:8px;align-items:center;height:23px;font-size:11.5px}
+.mrow span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nowr{display:grid;grid-template-columns:1fr auto 12px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line2)}
+.nowr:first-of-type{border-top:0}
+.nowr .l{font-size:11.5px;font-weight:700}
+.nowr .s{font-size:10.5px;color:var(--muted)}
+.nowr .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;text-align:right;line-height:1.1}
+.src{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7b8790}
+/* option 2: the to-do list */
+.todo .grp{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:7px 12px 3px;background:#f7f9fa;border-top:1px solid var(--line2)}
+.td{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;padding:4px 12px;min-height:38px;border-top:1px solid var(--line2)}
+.grp + .td{border-top:0}
+.td .w{min-width:0;line-height:1.3}
+.td .w b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td .w span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td .pill{justify-self:start}
+.clear{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line2);font-size:11px;color:var(--muted)}
+.clear .ck{color:var(--ok);font-weight:800}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mini .tile{height:66px;padding:7px 10px}
+.mini .tile .v{font-size:20px}
+/* option 3: the roster */
+.fg{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fg .gl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 2px 0 8px}
+.fg .chip{height:26px;padding:0 9px;font-size:11.5px}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:1;min-height:0}
+.tr{display:grid;align-items:center;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;gap:10px}
+.tr.hd{height:28px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.on{background:#e8f4f8}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--ink)}
+.who .nm .rl{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tri .cell{border:1px solid var(--line);border-radius:10px;padding:5px 9px;height:54px;position:relative}
+.tri .cell .v{font-size:19px;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums}
+.tri .cell .s{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.tri .cell .go{position:absolute;right:8px;top:6px;color:#9aa9b1;font-size:12px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:5px;vertical-align:1px}
+.panel{background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.ph{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ph .av{width:40px;height:40px;font-size:14px}
+.ps{padding:8px 14px;border-bottom:1px solid var(--line2)}
+.ps .lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;display:flex;align-items:center}
+.ps .lbl a{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--pri);text-decoration:none}
+.gap{display:inline-flex;align-items:center;height:22px;padding:0 8px;border:1px dashed #c99a3b;border-radius:var(--r);font-size:11px;font-weight:600;color:var(--warn);background:#fffaf0;margin:2px 4px 2px 0}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);position:relative;background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tiles{grid-template-columns:1fr 1fr;gap:8px}
+.phn .tile{height:66px;padding:7px 10px}
+.phn .tile .v{font-size:20px}
+.bk{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.bk .ar{font-size:18px;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.bk .t{font-size:15px;font-weight:800}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.tc{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:9px 11px;display:flex;flex-direction:column;gap:4px}
+.tc .top2{display:flex;align-items:center;gap:6px}
+.tc b{font-size:12.5px;line-height:1.3}
+.tc .s{font-size:11px;color:var(--muted)}
+.tc .acts{display:flex;justify-content:flex-end;gap:6px;margin-top:2px}
+.prr{display:flex;align-items:center;gap:9px;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .g{flex:1;min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.prr .h{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hscroll{display:flex;gap:6px;overflow:hidden;white-space:nowrap;flex:0 0 auto}
+</style>
+
+<div class="wrap">
+<h1>Human Resources · Dashboard</h1>
+<p class="sub">Jose, 2026-10-01: <i>“the dashboard at human resources is also lacking, now we have a lot more information that could be displayed here”</i></p>
+<p class="cap">Pick one desktop layout (<b>1–3</b>) and one phone layout (<b>4–6</b>), for example “1, 4”. A figure marked <b>now</b> ignores the period chips; one marked <b>this year</b> (or this week) follows them. Every number and every row opens the list it counts, in place.</p>
+
+<h2 class="plain">What is wrong today</h2>
+<ul class="cap">
+ <li>One card: a ring of active against inactive (one blue circle when almost nobody is inactive) and seven sentences. No sentence can be clicked, and none of them names anybody.</li>
+ <li>The server works out more than it sends. It counts onboardings still being filled in apart from those waiting on a signature, and stalled invitations that expired apart from those never opened; it has the new starters’ names and each certification’s person and date. The screen gets only the totals. A headcount by place is written in the code and never called.</li>
+ <li><b>“68 people joined this week” is wrong.</b> Joined counts accounts created, not start dates, so the 64 people imported from A1 Tools on Sep 29 count as joining this week. Where A1 had a hire date, it is already on their record as the Start date.</li>
+ <li>Nothing from Work Hours or Training, although the module’s own line promises “who is on the clock”. Two thirds of the screen is empty.</li>
+</ul>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>The figures, two charts and “right now”, then three lists <span class="rec">Recommended</span></h2>
+<p class="cap">Six equal figures across the top, then who joined and left month by month, where people work, and who is on the clock right now. Underneath are three short lists with names: paperwork waiting on someone, the newest starters, and certifications that have lapsed or expire within 60 days. Click any figure or row and its whole list opens in a panel docked on the right.</p>
+<p class="srv"><b>Server:</b> already worked out and dropped before it reaches the screen: the onboarding and invitation splits, the starters’ names and the certification rows. Headcount by place is written and never called. <b>New:</b> Joined counted by start date, joined and left per month, and the stalled invitations as a list. <b>On the clock</b> and <b>Due for retaking</b> are the existing Work Hours and Training boxes, shown only to people who may open those modules.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Human Resources</div><div class="s">Everyone on the books, what they have signed, and who is on the clock.</div></div>
+  <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span><span class="tab">▭ Contracts</span></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip on">Year</span></div><span class="sp"></span><span class="tiny">Jan 1 to today</span><span class="ib">↻</span></div>
+   <div class="tiles">
+    <div class="tile"><span class="go">›</span><div class="k">On the books</div><div class="v">82<small>now</small></div><div class="d">79 active · 3 inactive</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Joined</div><div class="v">14<small>this year</small></div><div class="d">counted by start date</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Left</div><div class="v">3<small>this year</small></div><div class="d">leaving dates since Aug 18</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Onboarding</div><div class="v">3<small>now</small></div><div class="d">2 filling in · <span class="pill p-warn">1 to sign</span></div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Invitations stalled</div><div class="v">2<small>now</small></div><div class="d">1 expired · 1 not opened</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Certifications</div><div class="v">3<small>next 60 days</small></div><div class="d"><span class="pill p-bad">1 lapsed</span> 2 expiring</div></div>
+   </div>
+   <div style="display:grid;grid-template-columns:1.45fr 1fr 1fr;gap:10px;height:184px;flex:0 0 auto">
+    <div class="box"><div class="bh"><span class="ic">▥</span><b>Joined and left, by month</b><span class="sp"></span><div class="leg"><span><i style="background:var(--c1)"></i>Joined 14</span><span><i style="background:var(--c2)"></i>Left 3</span></div></div>
+     <svg id="jl1" width="100%" height="122" viewBox="0 0 470 122" preserveAspectRatio="none"></svg>
+     <div class="foot">Leaving dates start Aug 18, 2026, when this record began.</div></div>
+    <div class="box"><div class="bh"><span class="ic">⌂</span><b>Where people work</b><span class="sp"></span><span class="tiny">active, now</span></div>
+     <div class="mrow"><span>Harbor Chimney</span><span class="meter"><i style="width:100%"></i></span><b class="num">36</b></div>
+     <div class="mrow"><span>Harbor Chimney · Stamford</span><span class="meter"><i style="width:31%"></i></span><b class="num">11</b></div>
+     <div class="mrow"><span>Harbor Garage Doors</span><span class="meter"><i style="width:67%"></i></span><b class="num">24</b></div>
+     <div class="mrow"><span>All of Harbor Group</span><span class="meter"><i style="width:19%"></i></span><b class="num">7</b></div>
+     <div class="mrow"><span class="muted">Not assigned to a place</span><span class="meter"><i style="width:6%;background:#9aa9b1"></i></span><b class="num">2</b></div>
+     <div class="foot">1 person works in two places and is counted in both.</div></div>
+    <div class="box"><div class="bh"><span class="ic">◷</span><b>Right now</b></div>
+     <div class="nowr"><div><div class="l">On the clock</div><div class="s"><span class="src">Work Hours</span> · of 79 active</div><div class="meter" style="margin-top:4px;width:150px"><i style="width:39%;background:var(--c3)"></i></div></div><div class="v">31</div><span class="muted">›</span></div>
+     <div class="nowr"><div><div class="l">Away today</div><div class="s"><span class="src">Work Hours</span> · 2 vacation, 1 sick</div></div><div class="v">3</div><span class="muted">›</span></div>
+     <div class="nowr"><div><div class="l">Due for retaking</div><div class="s"><span class="src">Training</span> · a pass has lapsed</div></div><div class="v">3</div><span class="muted">›</span></div>
+    </div>
+   </div>
+   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;flex:1;min-height:0">
+    <div class="box"><div class="bh"><span class="ic">✓</span><b>Waiting on someone</b><span class="cnt">5</span><span class="sp"></span><span class="tiny">oldest first</span></div>
+     <div class="lr"><span class="av a8">SK</span><div class="g"><b>Sam Keller</b><span>Invitation, sent Sep 18</span></div><span class="pill p-warn">Expired</span><span class="age">13 days</span></div>
+     <div class="lr"><span class="av a1">MR</span><div class="g"><b>Marco Reyes</b><span>Office agreement</span></div><span class="pill p-info">Filling in</span><span class="age">6 days</span></div>
+     <div class="lr"><span class="av a2">JP</span><div class="g"><b>Jordan Park</b><span>Invitation, sent Sep 26</span></div><span class="pill p-warn">Not opened</span><span class="age">5 days</span></div>
+     <div class="lr"><span class="av a6">DW</span><div class="g"><b>Dana Whitfield</b><span>Technician agreement</span></div><span class="pill p-warn">To sign</span><span class="age">2 days</span></div>
+     <div class="lr"><span class="av a4">PN</span><div class="g"><b>Priya Nair</b><span>Technician agreement</span></div><span class="pill p-info">Filling in</span><span class="age">1 day</span></div>
+    </div>
+    <div class="box"><div class="bh"><span class="ic">＋</span><b>Joined this year</b><span class="cnt">14</span><span class="sp"></span><span class="tiny">start date</span></div>
+     <div class="lr"><span class="av a3">AR</span><div class="g"><b>Ana Ruiz</b><span>Technician · Harbor Chimney</span></div><span class="age">Sep 15</span></div>
+     <div class="lr"><span class="av a5">OP</span><div class="g"><b>Owen Price</b><span>Dispatcher · Harbor Garage Doors</span></div><span class="age">Aug 25</span></div>
+     <div class="lr"><span class="av a7">LF</span><div class="g"><b>Lena Fox</b><span>Office · Harbor Group</span></div><span class="age">Jul 7</span></div>
+     <div class="lr"><span class="av a1">TG</span><div class="g"><b>Theo Grant</b><span>Technician · Stamford</span></div><span class="age">Jul 1</span></div>
+     <div class="more">10 more ›</div>
+    </div>
+    <div class="box"><div class="bh"><span class="ic">◈</span><b>Certifications</b><span class="cnt">3</span><span class="sp"></span><span class="tiny">lapsed or within 60 days</span></div>
+     <div class="lr"><span class="av a2">KB</span><div class="g"><b>Kevin Brooks</b><span>Driver’s licence</span></div><span class="pill p-bad">Lapsed</span><span class="age">Sep 22</span></div>
+     <div class="lr"><span class="av a6">LO</span><div class="g"><b>Luis Ortega</b><span>Driver’s licence</span></div><span class="pill p-warn">12 days</span><span class="age">Oct 13</span></div>
+     <div class="lr"><span class="av a4">MC</span><div class="g"><b>Maya Chen</b><span>Sweep certificate</span></div><span class="pill p-neu">50 days</span><span class="age">Nov 20</span></div>
+     <div class="foot">Dates people renew themselves, from their contract answers. Training’s retakes are counted apart.</div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>What needs doing, first</h2>
+<p class="cap">A to-do list instead of a report. Each line names the person, says what is stuck and since when, and carries the button that fixes it: Sign, Resend, Open. The team’s figures sit in a narrow column on the right, and the last line says what was checked and found clear, with its window.</p>
+<p class="srv"><b>Server:</b> <b>new</b> — whose turn each onboarding is (yours or the new hire’s), the stalled invitations as a list, one count of records missing details with the box most often empty, contracts signed in the period, and Joined by start date. Sign, Resend and the hours corrections already exist.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Human Resources</div><div class="s">Everyone on the books, what they have signed, and who is on the clock.</div></div>
+  <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span><span class="tab">▭ Contracts</span></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip on">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+   <div style="display:flex;gap:12px;flex:1;min-height:0">
+    <div class="box todo" style="flex:1;padding:0;overflow:hidden">
+     <div class="bh" style="padding:9px 12px 7px;margin:0"><span class="ic">☰</span><b>To do</b><span class="pill p-warn">9</span><span class="sp"></span><span class="tiny">most urgent first in each group</span></div>
+     <div class="grp">Paperwork</div>
+     <div class="td"><span class="pill p-warn">To sign</span><div class="w"><b>Dana Whitfield’s Technician agreement is waiting on your signature.</b><span>She finished and signed her half on Sep 29 · version 3</span></div><span class="btn f">Sign</span></div>
+     <div class="td"><span class="pill p-warn">Expired</span><div class="w"><b>Sam Keller’s invitation expired before anyone accepted it.</b><span>Sent Sep 18 to sam.keller@mail.test</span></div><span class="btn">Resend</span></div>
+     <div class="td"><span class="pill p-warn">Not opened</span><div class="w"><b>Jordan Park has not opened his invitation.</b><span>Sent Sep 26, five days ago</span></div><span class="btn">Resend</span></div>
+     <div class="td"><span class="pill p-info">Filling in</span><div class="w"><b>Marco Reyes has not finished his Office agreement.</b><span>His turn · started Sep 25</span></div><span class="btn">Open</span></div>
+     <div class="grp">Certifications</div>
+     <div class="td"><span class="pill p-bad">Lapsed</span><div class="w"><b>Kevin Brooks’s driver’s licence lapsed on Sep 22.</b><span>From his Technician agreement · he renews it</span></div><span class="btn">Open record</span></div>
+     <div class="td"><span class="pill p-warn">In 12 days</span><div class="w"><b>Luis Ortega’s driver’s licence expires on Oct 13.</b><span>From his Technician agreement</span></div><span class="btn">Open record</span></div>
+     <div class="grp">Records</div>
+     <div class="td"><span class="pill p-warn">12 people</span><div class="w"><b>12 records are missing details.</b><span>Most often an emergency contact (9) or a date of birth (4)</span></div><span class="btn">Open Records</span></div>
+     <div class="grp">Work Hours and Training</div>
+     <div class="td"><span class="pill p-info">3 waiting</span><div class="w"><b>3 requests to correct hours are waiting for an answer.</b><span>Work Hours · the oldest is Hana Kim’s, Sep 29</span></div><span class="btn">Open Work Hours</span></div>
+     <div class="td"><span class="pill p-info">3 people</span><div class="w"><b>3 people are due for retaking a test.</b><span>Training · their pass has lapsed</span></div><span class="btn">Open Training</span></div>
+     <div class="clear"><span class="ck">✓</span>Checked and clear: no other invitation has stalled, no other onboarding is waiting, and nothing else in this view lapses or expires within 60 days.</div>
+    </div>
+    <div style="width:330px;display:flex;flex-direction:column;gap:10px;flex:0 0 auto">
+     <div class="box"><div class="bh"><span class="ic">◔</span><b>The team</b></div>
+      <div class="mini">
+       <div class="tile"><span class="go">›</span><div class="k">On the books</div><div class="v">82<small>now</small></div><div class="d">79 active · 3 inactive</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">Joined</div><div class="v">14<small>this year</small></div><div class="d">by start date</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">Left</div><div class="v">3<small>this year</small></div><div class="d">since Aug 18</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">Contracts signed</div><div class="v">16<small>this year</small></div><div class="d">both sides signed</div></div>
+      </div></div>
+     <div class="box"><div class="bh"><span class="ic">⌂</span><b>Where people work</b></div>
+      <div class="mrow" style="grid-template-columns:140px 1fr 24px"><span>Harbor Chimney</span><span class="meter"><i style="width:100%"></i></span><b class="num">36</b></div>
+      <div class="mrow" style="grid-template-columns:140px 1fr 24px"><span>Harbor Chimney · Stamford</span><span class="meter"><i style="width:31%"></i></span><b class="num">11</b></div>
+      <div class="mrow" style="grid-template-columns:140px 1fr 24px"><span>Harbor Garage Doors</span><span class="meter"><i style="width:67%"></i></span><b class="num">24</b></div>
+      <div class="mrow" style="grid-template-columns:140px 1fr 24px"><span>All of Harbor Group</span><span class="meter"><i style="width:19%"></i></span><b class="num">7</b></div>
+      <div class="mrow" style="grid-template-columns:140px 1fr 24px"><span class="muted">Not assigned</span><span class="meter"><i style="width:6%;background:#9aa9b1"></i></span><b class="num">2</b></div>
+     </div>
+     <div class="box"><div class="bh"><span class="ic">◷</span><b>Right now</b><span class="sp"></span><span class="src">Work Hours</span></div>
+      <div class="tri">
+       <div class="cell"><span class="go">›</span><div class="v">31</div><div class="s">on the clock</div></div>
+       <div class="cell"><span class="go">›</span><div class="v">4</div><div class="s">not in yet</div></div>
+       <div class="cell"><span class="go">›</span><div class="v">3</div><div class="s">away today</div></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>Everyone, with where they are today</h2>
+<p class="cap">People first. One row per person: where they work, where they are today (on the clock, away, not in yet), hours this week, how long they have been here, and anything outstanding on their record. Every count above the list is a filter, and the person you click opens in a panel on the right with a link to their full record.</p>
+<p class="srv"><b>Server:</b> <b>new</b> — one list that puts each person’s record gaps, paperwork, today’s clock and hours side by side (each lives on its own screen today), and work anniversaries from start dates. Not in yet compares the schedule with the clock, both of which Work Hours already has. <b>Birthdays are left out on purpose:</b> dates of birth are kept off every list today, so showing them is your call.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Human Resources</div><div class="s">Everyone on the books, what they have signed, and who is on the clock.</div></div>
+  <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span><span class="tab">▭ Contracts</span></div>
+  <div style="flex:1;min-height:0;display:flex">
+   <div class="dash" style="gap:8px">
+    <div class="prow"><div class="chips"><span class="chip on">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><div class="srch" style="width:190px">⌕ Find someone</div><div class="srch" style="color:var(--ink);font-weight:600">All places ▾</div><span class="ib">↻</span></div>
+    <div class="fg"><span class="chip on">Everyone <span class="c">82</span></span><span class="chip">Inactive <span class="c">3</span></span><span class="gl">Today</span><span class="chip">On the clock <span class="c">31</span></span><span class="chip">Not in yet <span class="c">4</span></span><span class="chip">Away <span class="c">3</span></span><span class="gl">Training</span><span class="chip">Due for retaking <span class="c">3</span></span></div>
+    <div class="fg"><span class="gl" style="margin-left:0">Records</span><span class="chip">Onboarding <span class="c">3</span></span><span class="chip">Missing details <span class="c">12</span></span><span class="chip">Certifications <span class="c">3</span></span><span class="gl">This week</span><span class="chip">Joined <span class="c">1</span></span><span class="chip">Left <span class="c">0</span></span><span class="chip">Anniversaries <span class="c">2</span></span></div>
+    <div class="tbl" id="roster3"></div>
+   </div>
+   <div class="panel" style="width:320px;flex:0 0 auto">
+    <div class="ph"><span class="av a2">BO</span><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:800">Ben Ortiz</div><div class="tiny">Technician · Harbor Chimney · Stamford</div></div><span class="pill p-ok">Active</span><span class="muted" style="margin-left:4px">✕</span></div>
+    <div class="ps"><div class="lbl">Today</div><span class="pill p-info">Vacation</span> <span class="tiny">tagged in Work Hours</span></div>
+    <div class="ps"><div class="lbl">This week <a>24.0 h ›</a></div><svg id="wk3" width="100%" height="64" viewBox="0 0 290 64" preserveAspectRatio="none"></svg><div class="tiny">Scheduled Mon–Fri, 8:00 AM – 4:30 PM</div></div>
+    <div class="ps"><div class="lbl">Here since</div><b>Oct 3, 2019</b> <span class="pill p-info">7 years on Saturday</span></div>
+    <div class="ps"><div class="lbl">Missing from his record <a>Fill in ›</a></div><span class="gap">Emergency contact</span><span class="gap">Date of birth</span></div>
+    <div class="ps"><div class="lbl">Paperwork</div><div style="display:flex;align-items:center;gap:6px"><span class="ell" style="flex:1">Technician agreement, version 2</span><span class="pill p-ok">Signed</span></div></div>
+    <div class="ps"><div class="lbl">Training</div><div style="display:flex;align-items:center;gap:6px"><span class="ell" style="flex:1">Ladder safety</span><span class="pill p-bad">Due for retaking</span></div></div>
+    <div class="ps"><div class="lbl">Paid time off</div>10 days a year · usable since Apr 2020</div>
+    <div style="padding:12px 14px;margin-top:auto;display:flex"><span class="btn f" style="flex:1">Open his full record ›</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ PHONES ═════════ -->
+<h2><span class="n">4</span><span class="n">5</span><span class="n">6</span>On a phone</h2>
+<p class="cap"><b>4</b> <span class="rec">Recommended</span> is option 1 in one column: figures two by two, Right now, the chart, then the lists. Tapping a number replaces the screen with its list and a back arrow (second phone). <b>5</b> is the to-do list, one card per thing with its button. <b>6</b> is the people list with today’s status, filtered by the counts at the top; tapping a person opens their record in place.</p>
+<p class="srv"><b>Server:</b> the same as the desktop option each one copies: 4 as 1, 5 as 2, 6 as 3.</p>
+<div class="pairp">
+ <div><div class="pl">4 · the column</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Human Resources</span><span class="org">Harbor Group ▾</span></div>
+   <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span></div>
+   <div class="pb">
+    <div class="prow"><div class="chips" style="flex-wrap:nowrap"><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip on">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="tiles">
+     <div class="tile"><span class="go">›</span><div class="k">On the books</div><div class="v">82<small>now</small></div><div class="d">79 active</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Joined</div><div class="v">14<small>this year</small></div><div class="d">by start date</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Left</div><div class="v">3<small>this year</small></div><div class="d">since Aug 18</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Onboarding</div><div class="v">3<small>now</small></div><div class="d"><span class="pill p-warn">1 to sign</span></div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Invitations</div><div class="v">2<small>stalled</small></div><div class="d">1 expired</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Certifications</div><div class="v">3<small>60 days</small></div><div class="d"><span class="pill p-bad">1 lapsed</span></div></div>
+    </div>
+    <div class="box" style="padding:6px 11px"><div class="bh" style="margin-bottom:0"><span class="ic">◷</span><b>Right now</b></div>
+     <div class="nowr" style="padding:4px 0"><div><div class="l">On the clock</div><div class="s">of 79 active</div></div><div class="v" style="font-size:17px">31</div><span class="muted">›</span></div>
+     <div class="nowr" style="padding:4px 0"><div><div class="l">Away today</div><div class="s">2 vacation · 1 sick</div></div><div class="v" style="font-size:17px">3</div><span class="muted">›</span></div>
+     <div class="nowr" style="padding:4px 0"><div><div class="l">Due for retaking</div><div class="s">Training</div></div><div class="v" style="font-size:17px">3</div><span class="muted">›</span></div>
+    </div>
+    <div class="box" style="padding:8px 11px"><div class="bh"><b>Joined and left</b><span class="sp"></span><div class="leg"><span><i style="background:var(--c1)"></i>Joined 14</span><span><i style="background:var(--c2)"></i>Left 3</span></div></div><svg id="jl4" width="100%" height="66" viewBox="0 0 296 66" preserveAspectRatio="none"></svg></div>
+    <div class="box" style="padding:8px 11px"><div class="bh"><b>Waiting on someone</b><span class="cnt">5</span><span class="sp"></span><span class="tiny">oldest first</span></div>
+     <div class="lr"><span class="av a8">SK</span><div class="g"><b>Sam Keller</b><span>Invitation, sent Sep 18</span></div><span class="pill p-warn">Expired</span></div>
+     <div class="lr"><span class="av a1">MR</span><div class="g"><b>Marco Reyes</b><span>Office agreement</span></div><span class="pill p-info">Filling in</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="pl">4 · after tapping Onboarding</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Human Resources</span><span class="org">Harbor Group ▾</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Onboarding in flight</span><span class="sp"></span><span class="pill p-neu">3</span></div>
+   <div class="pb">
+    <div class="tiny">Started and not finished, oldest first.</div>
+    <div class="card">
+     <div class="prr"><span class="av a1">MR</span><div class="g"><b>Marco Reyes</b><span>Office agreement</span><span>started Sep 25</span></div><div class="r"><span class="pill p-info">Filling in</span><span class="h">6 days</span></div><span class="muted">›</span></div>
+     <div class="prr"><span class="av a6">DW</span><div class="g"><b>Dana Whitfield</b><span>Technician agreement</span><span>started Sep 29</span></div><div class="r"><span class="pill p-warn">To sign</span><span class="h">2 days</span></div><span class="muted">›</span></div>
+     <div class="prr"><span class="av a4">PN</span><div class="g"><b>Priya Nair</b><span>Technician agreement</span><span>started Sep 30</span></div><div class="r"><span class="pill p-info">Filling in</span><span class="h">1 day</span></div><span class="muted">›</span></div>
+    </div>
+    <div class="tiny">Tap one to open its form, the same one the Onboarding tab opens.</div>
+    <span class="btn" style="align-self:flex-start">Open the Onboarding tab</span>
+   </div>
+  </div></div>
+ <div><div class="pl">5 · to do first</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Human Resources</span><span class="org">Harbor Group ▾</span></div>
+   <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span></div>
+   <div class="pb">
+    <div class="prow"><b style="font-size:14px">To do</b><span class="pill p-warn">9</span><span class="sp"></span><span class="tiny">82 on the books</span><span class="ib">↻</span></div>
+    <div class="tc"><div class="top2"><span class="pill p-warn">To sign</span><span class="sp"></span><span class="tiny">2 days</span></div><b>Dana Whitfield’s Technician agreement is waiting on your signature.</b><div class="acts"><span class="btn f">Sign</span></div></div>
+    <div class="tc"><div class="top2"><span class="pill p-bad">Lapsed</span><span class="sp"></span><span class="tiny">Sep 22</span></div><b>Kevin Brooks’s driver’s licence lapsed.</b><div class="s">From his Technician agreement · he renews it</div><div class="acts"><span class="btn">Open record</span></div></div>
+    <div class="tc"><div class="top2"><span class="pill p-warn">Expired</span><span class="sp"></span><span class="tiny">13 days</span></div><b>Sam Keller’s invitation expired before anyone accepted it.</b><div class="acts"><span class="btn">Resend</span></div></div>
+    <div class="tc"><div class="top2"><span class="pill p-warn">Not opened</span><span class="sp"></span><span class="tiny">5 days</span></div><b>Jordan Park has not opened his invitation.</b><div class="acts"><span class="btn">Resend</span></div></div>
+    <div class="tc"><div class="top2"><span class="pill p-warn">12 people</span></div><b>12 records are missing details.</b><div class="s">Most often an emergency contact (9)</div><div class="acts"><span class="btn">Open Records</span></div></div>
+   </div>
+  </div></div>
+ <div><div class="pl">6 · people, today</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>☰</span><span class="t">Human Resources</span><span class="org">Harbor Group ▾</span></div>
+   <div class="tabs"><span class="tab on">▦ Dashboard</span><span class="tab">✓ Onboarding</span><span class="tab">▤ Records</span><span class="tab">✉ Invitations</span></div>
+   <div class="pb">
+    <div class="srch">⌕ Find someone</div>
+    <div class="hscroll"><span class="chip on">Everyone <span class="c">82</span></span><span class="chip">On the clock <span class="c">31</span></span><span class="chip">Not in yet <span class="c">4</span></span><span class="chip">Away <span class="c">3</span></span><span class="chip">Missing details <span class="c">12</span></span></div>
+    <div class="card" id="people6"></div>
+   </div>
+  </div></div>
+</div>
+
+<p class="cap" style="margin-top:40px">People, places and numbers are invented. The real screen reads the period chosen, in the organization’s time zone, and only for the places in the current view.</p>
+</div>
+
+<script>
+// Invented data, drawn in DashboardChart's palette: blue for Joined, orange for Left.
+const C1 = '#2A78D6', C2 = '#EB6834';
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'];
+const joined = [1, 0, 2, 3, 2, 1, 2, 1, 2, 0];   // 14
+const left   = [0, 0, 0, 0, 0, 0, 0, 1, 2, 0];   // 3, all since Aug 18, when leaving dates began
+function joinLeave(id, w, h, labels) {
+  const el = document.getElementById(id); if (!el) return;
+  const base = h - 16, top = 14, max = 3;
+  const gw = w / months.length, bw = Math.min(14, gw / 3);
+  let s = `<line x1="0" y1="${base + .5}" x2="${w}" y2="${base + .5}" stroke="#d3dce0"/>`;
+  months.forEach((m, i) => {
+    const cx = i * gw + gw / 2;
+    [[joined[i], C1, cx - bw - 1], [left[i], C2, cx + 1]].forEach(([v, c, x]) => {
+      if (!v) return;
+      const bh = v / max * (base - top);
+      s += `<rect x="${x}" y="${base - bh}" width="${bw}" height="${bh}" rx="2.5" fill="${c}"/>`;
+      if (labels) s += `<text x="${x + bw / 2}" y="${base - bh - 3}" font-size="9.5" font-weight="700" text-anchor="middle" fill="#33404a">${v}</text>`;
+    });
+    s += `<text x="${cx}" y="${h - 3}" font-size="9.5" text-anchor="middle" fill="#5b6672">${labels ? m : m[0]}</text>`;
+  });
+  el.innerHTML = s;
+}
+joinLeave('jl1', 470, 122, true);
+joinLeave('jl4', 296, 66, false);
+
+// Ben Ortiz's week: three days worked, vacation on Thursday.
+(function week() {
+  const el = document.getElementById('wk3'); if (!el) return;
+  const d = [['Mon', 8], ['Tue', 8], ['Wed', 8], ['Thu', 'vac'], ['Fri', 0], ['Sat', 0], ['Sun', 0]];
+  const w = 290, h = 64, base = 48, gw = w / 7; let s = `<line x1="0" y1="${base + .5}" x2="${w}" y2="${base + .5}" stroke="#d3dce0"/>`;
+  d.forEach(([n, v], i) => {
+    const x = i * gw + gw / 2;
+    if (v === 'vac') s += `<rect x="${x - 15}" y="${base - 15}" width="30" height="13" rx="6.5" fill="#d9eff8"/><text x="${x}" y="${base - 5.5}" font-size="8.5" font-weight="700" text-anchor="middle" fill="#00566e">away</text>`;
+    else if (v) { const bh = v / 9 * (base - 6); s += `<rect x="${x - 9}" y="${base - bh}" width="18" height="${bh}" rx="2.5" fill="${C1}"/><text x="${x}" y="${base - bh - 3}" font-size="9" font-weight="700" text-anchor="middle" fill="#33404a">${v}.0</text>`; }
+    s += `<text x="${x}" y="${h - 3}" font-size="9.5" text-anchor="middle" fill="#5b6672">${n}</text>`;
+  });
+  el.innerHTML = s;
+})();
+
+// The roster (option 3) and the phone list (option 6).
+const P = {
+  ok: (t) => `<span class="pill p-ok"><span class="dot"></span>On the clock · ${t}</span>`,
+  info: (t) => `<span class="pill p-info">${t}</span>`,
+  warn: (t) => `<span class="pill p-warn">${t}</span>`,
+  bad: (t) => `<span class="pill p-bad">${t}</span>`,
+  neu: (t) => `<span class="pill p-neu">${t}</span>`,
+};
+const roster = [
+  ['AR', 'a3', 'Ana Ruiz', 'Technician', 'Harbor Chimney', P.ok('7:52 AM'), '25.5 h', `Sep 15 ${P.info('New')}`, ''],
+  ['BO', 'a2', 'Ben Ortiz', 'Technician', 'Stamford', P.info('Vacation'), '24.0 h', `7 years ${P.info('Sat')}`, P.warn('2 missing') + ' ' + P.bad('Retake')],
+  ['CD', 'a5', 'Carla Diaz', 'Dispatcher', 'Harbor Garage Doors', P.ok('8:01 AM'), '26.0 h', '5 years', ''],
+  ['DW', 'a6', 'Dana Whitfield', 'Technician', 'Harbor Chimney', '<span class="muted">Starts Oct 6</span>', '—', '—', P.warn('To sign') + ' ' + P.warn('4 missing')],
+  ['EC', 'a1', 'Evan Cole', 'Remote Dispatcher', 'Harbor Group', P.ok('7:30 AM'), '27.5 h', '2 years', ''],
+  ['FS', 'a7', 'Farah Siddiqui', 'Office', 'Harbor Group', P.neu('Off today'), '22.0 h', '3 years', P.warn('1 missing')],
+  ['GM', 'a4', 'Gus Moreno', 'Technician', 'Harbor Garage Doors', P.warn('Sick'), '16.0 h', '1 year', ''],
+  ['HK', 'a2', 'Hana Kim', 'Local Manager', 'Stamford', P.ok('7:45 AM'), '28.0 h', `4 years ${P.info('Fri')}`, ''],
+  ['IP', 'a8', 'Ivan Petrov', 'Technician', 'Harbor Chimney', P.warn('Not in yet · 8:30'), '24.5 h', '6 years', P.warn('3 missing')],
+  ['KB', 'a2', 'Kevin Brooks', 'Technician', 'Harbor Chimney', P.ok('7:58 AM'), '25.0 h', '8 years', P.bad('Licence lapsed')],
+  ['LF', 'a7', 'Lena Fox', 'Office', 'Harbor Group', P.ok('8:05 AM'), '25.0 h', `Jul 7 ${P.info('New')}`, ''],
+  ['LO', 'a6', 'Luis Ortega', 'Technician', 'Harbor Chimney', P.info('Vacation'), '16.0 h', '3 years', P.warn('Licence Oct 13')],
+];
+(function roster3() {
+  const el = document.getElementById('roster3'); if (!el) return;
+  const g = 'grid-template-columns:1.5fr 1.15fr 1.35fr .55fr 1fr 1.45fr';
+  el.innerHTML = `<div class="tr hd" style="${g}"><span>Person ▲</span><span>Works at</span><span>Today</span><span class="num">Hours</span><span>Here since</span><span>Outstanding</span></div>`
+    + roster.map(r => `<div class="tr${r[2] === 'Ben Ortiz' ? ' on' : ''}" style="${g}"><span class="who"><span class="av ${r[1]}">${r[0]}</span><span class="nm"><b>${r[2]}</b><em class="rl">${r[3]}</em></span></span><span class="ell">${r[4]}</span><span class="ell">${r[5]}</span><span class="num">${r[6]}</span><span class="ell">${r[7]}</span><span class="ell">${r[8] || '<span class="muted">—</span>'}</span></div>`).join('');
+})();
+(function people6() {
+  const el = document.getElementById('people6'); if (!el) return;
+  const short = {'7:52 AM': '7:52', '8:01 AM': '8:01', '7:30 AM': '7:30', '7:45 AM': '7:45', '7:58 AM': '7:58', '8:05 AM': '8:05'};
+  el.innerHTML = roster.filter(r => r[2] !== 'Dana Whitfield').slice(0, 10).map(r => {
+    const today = r[5].replace(/On the clock · ([0-9:]+ AM)/, (m, t) => 'In · ' + (short[t] || t)).replace('Not in yet · 8:30', 'Not in yet');
+    return `<div class="prr"><span class="av ${r[1]}">${r[0]}</span><div class="g"><b>${r[2]}</b><span>${r[3]} · ${r[4]}</span></div><div class="r">${today}<span class="h">${r[6]} this week</span></div></div>`;
+  }).join('');
+})();
+</script>

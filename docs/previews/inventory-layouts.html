@@ -1,0 +1,960 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inventory · every tab</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light) and its tone pills. Every item, place, vendor,
+   person, price and number here is invented. Values = on hand x last cost, as /inventory/summary does. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.lede{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:1080px}
+h2{font-size:17px;margin:52px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1100px}
+.cap b{color:var(--ink)}
+code{font:12px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.ink{color:var(--ink)}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.7}
+.body{flex:1;min-height:0;display:flex}
+.col{display:flex;flex-direction:column;min-height:0}
+.sp{flex:1}
+.bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,"Segoe UI",sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.dis{color:#93a1a9;border-color:#d3dce0;background:#f4f7f8}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu)}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip.ins{border-style:dashed;border-color:#93aab3;color:var(--pri)}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:32px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.srv{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.ok-t{color:var(--ok);font-weight:700} .cau-t{color:var(--cau);font-weight:700} .bad-t{color:var(--bad);font-weight:700}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.fld{border:1px solid #b9c7cd;border-radius:var(--r);padding:0 10px;background:var(--paper);font-size:12.5px;color:var(--ink);height:34px;display:flex;align-items:center;gap:6px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden}
+.fld.pick{justify-content:space-between}
+.fld.qty{width:56px;justify-content:flex-end;font-variant-numeric:tabular-nums;flex:0 0 auto}
+.fld.qty.sm{height:26px;width:52px;margin-left:auto}
+.fld.foc{border:2px solid var(--pri)}
+.fld.empty{color:#9aa7ae;font-weight:500}
+.lk{color:var(--pri);font-weight:700;font-size:11.5px;white-space:nowrap}
+/* tiles: siblings are one fixed size */
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:62px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k{color:var(--prid)}
+.tile .vl{display:flex;align-items:baseline;gap:8px;min-width:0}
+.tile .v{font-size:21px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tile.on .d{color:var(--prid)}
+/* tables */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;flex:0 0 auto}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:10px;padding:0 12px;min-height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{min-height:28px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.it{min-height:40px}
+.tr.on{background:var(--pric)}
+.tr.sub{min-height:30px;background:#fafcfd}
+.tr.sub.on{background:var(--pric)}
+.tr.grp{display:block;min-height:0;padding:4px 12px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.flex{display:flex;align-items:center;gap:8px}
+.tr .g{min-width:0;display:block}
+.tr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .g span{color:var(--prid)}
+.tr .pl{padding-left:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tr .pl i{font-style:normal;color:var(--muted);font-size:11px;margin-left:5px}
+.tr .cv{color:var(--muted);font-size:11px}
+.acts{display:flex;gap:10px}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;display:block}
+.prog{display:flex;align-items:center;gap:6px;min-width:0}
+.qbar{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:1;min-width:20px}
+.qbar i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.qbar i.okb{background:var(--ok)}
+/* a spreadsheet's editable cells */
+.cell{border:1px solid #e3e9ec;border-radius:var(--r);padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;display:block}
+.cell.foc{border:2px solid var(--pri);padding:2px 5px;background:#fff}
+.tr.add{display:block;min-height:0;padding:7px 12px;border-top:1px dashed #c9d4d9}
+/* docked panel */
+.dock{width:380px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.dh{display:flex;align-items:center;gap:8px;padding:11px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.db{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.df{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:10px 16px;border-top:1px solid var(--line);flex:0 0 auto}
+.lnc{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:var(--paper)}
+.lnh{display:flex;align-items:center;gap:8px;min-width:0}
+.kv{display:grid;gap:8px 14px;font-size:12px}
+.kv .k{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wh{display:grid;grid-template-columns:120px 1fr 34px;gap:5px 10px;align-items:center;font-size:12px}
+.hist{display:flex;gap:8px;font-size:11.5px;align-items:baseline;min-width:0}
+.hist .dt{width:44px;color:var(--muted);flex:0 0 auto}
+.hist .ell{flex:1}
+/* the grid option */
+.mx .tr{gap:6px}
+.mx .tr.hd{min-height:46px;text-transform:none;letter-spacing:0;font-size:11px;color:var(--neu)}
+.ph{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;text-align:right;border-radius:var(--r);padding:3px 6px}
+.ph b{font-size:11px;color:var(--ink)} .ph i{font-style:normal;font-size:10px;color:var(--muted);font-weight:600}
+.ph.colon{background:var(--pric)} .ph.colon b,.ph.colon i{color:var(--prid)}
+.mx .c{text-align:right;font-variant-numeric:tabular-nums;padding:4px 6px;border-radius:var(--r);white-space:nowrap}
+.mx .nil{color:#b5c0c6}
+.mx .zero{color:var(--muted)}
+.mx .sel{background:var(--pric);outline:2px solid var(--pri);outline-offset:-2px;color:var(--prid);font-weight:800}
+.mx .tr.hl{background:#f2f8fb}
+.mx .tr.ft{background:#f7f9fa;font-weight:700;min-height:32px}
+.tot{display:inline-block;font-weight:800;border-radius:999px;padding:0 8px}
+.tot.cau{background:var(--cauc);color:var(--cau)} .tot.bad{background:var(--badc);color:var(--bad)}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:10px;min-width:0}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* rails and rows */
+.rail{background:var(--paper);border-right:1px solid var(--line);flex:0 0 auto}
+.row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line2);font-size:12.5px;min-width:0}
+.row.on{background:var(--pric)}
+.row.sm{padding:6px 10px;font-size:12px}
+.row .g{flex:1;min-width:0}
+.row .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.on .g span{color:var(--prid)}
+.row .big{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.glbl{padding:9px 12px 3px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0}
+.hint{border-radius:var(--r);padding:8px 10px;font-size:12px}
+.hint.cau{background:var(--cauc);color:var(--cau)}
+.hint.ok{background:var(--okc);color:var(--ok)}
+/* the smaller windows: the other tabs */
+.grid2{display:grid;grid-template-columns:repeat(2,594px);gap:16px 12px;margin-top:16px}
+.ml{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.mini{width:594px;height:360px;background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(6,8,8,.06)}
+.mini .tabs{padding:8px 12px;gap:5px}
+.mini .tab{height:26px;padding:0 9px;font-size:11.5px}
+.mb{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:9px 12px;overflow:hidden}
+.mini .btn{height:28px;padding:0 10px;font-size:12px}
+.mini .chip{height:26px;padding:0 9px;font-size:11.5px}
+.mini .srch{height:28px;font-size:12px}
+.mini .fld{height:30px;font-size:12px}
+.mini .tr{min-height:30px;font-size:11.5px}
+.mini .tr.hd{min-height:26px}
+.mini .dh{padding:9px 14px 8px}
+.mini .dh b{font-size:14px}
+.mini .db{padding:10px 14px;gap:8px}
+.bk{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 8px;flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* phones */
+.prow{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn.short{height:440px}
+.phn .st{height:30px;flex:0 0 auto}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.ptop{display:flex;align-items:center;gap:10px;padding:2px 14px 6px;font-size:16px;font-weight:800;flex:0 0 auto}
+.ptop .ham{font-size:17px;color:var(--neu);font-weight:400}
+.phn .tabs{padding:2px 10px 8px;gap:4px}
+.phn .tab{height:28px;padding:0 8px;font-size:11.5px}
+.pbody{flex:1;min-height:0;overflow:hidden;padding:8px 12px;display:flex;flex-direction:column;gap:8px}
+.pbody>*{flex-shrink:0}
+.o1 .tr>:nth-child(6){padding-left:8px}
+.loc1 .tr{min-height:30px}
+.o3 .tr{min-height:39px}
+.o3 .tr.hd{min-height:28px}
+.phn .tile{height:58px;padding:7px 10px}
+.phn .tile .v{font-size:19px}
+.phn .row{padding:8px 12px}
+.sticky{flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);background:var(--paper)}
+.sticky .btn{height:40px;flex:1}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.step{display:inline-flex;align-items:center;height:36px;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden;flex:0 0 auto;background:var(--paper)}
+.step span{width:36px;height:100%;display:flex;align-items:center;justify-content:center;color:var(--pri);font-weight:800;font-size:16px}
+.step b{min-width:38px;height:100%;display:flex;align-items:center;justify-content:center;border-left:1px solid #c9d4d9;border-right:1px solid #c9d4d9;font-variant-numeric:tabular-nums}
+.seg{display:flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.seg span{flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px 0;color:var(--neu);background:var(--paper)}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.seg span+span{border-left:1px solid #93aab3}
+.sec{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.sh{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.cnt{font-size:11px;font-weight:800;color:var(--neu);background:var(--neuc);border-radius:999px;padding:0 7px}
+.kvs .row{padding:7px 12px;font-size:12px}
+</style>
+
+<div class="wrap">
+<h1>Inventory · Stock, Items, Orders and Locations</h1>
+<p class="lede">Jose, 2026-10-01: <i>“same for the whole inventory tab and sub tabs, this is pretty pathethic atm”</i></p>
+<p class="cap">Answer with one desktop number and one phone number, for example “1, 4”. Each option draws Stock in full, and under it the other three tabs and one more state in the same style.</p>
+<p class="cap"><b>What is wrong today:</b> Stock is one white card per item per place, two lines each. The same 6 mil liner is two cards (8 in the shop, 40 in the warehouse) and nothing adds them up. There are no columns, no money, no grouping by item or by place, and most of the screen is empty. The red Low on the shop’s 8 sits one row above 40 more in the warehouse: the reorder point belongs to the item, so that pill means “this shelf is under the item’s number” and reads as “buy more”. Items, Orders and Locations are the same two-line cards, and a location shows its name and kind but not what it holds or what it is worth.</p>
+<p class="cap"><b>Every option</b> keeps General first in the strip (Jose’s placement, queue #8; General has its own brief and is not drawn here), judges an item by its total across every place (the server already answers that as <code>low_items</code>), opens records and flows in place or in a docked panel and never in a dialog, and keeps the actions that work today: Transfer, Count, Add item, Add location, Purchase order, Receive, Issue, Sale. Values and costs show only to roles with Inventory financials; without it those columns go and the screens still read complete. A dashed <span class="srv">server</span> tag marks what the server does not send today.</p>
+
+<!-- ═════════════════════════════ 1 ═════════════════════════════ -->
+<h2><span class="n">1</span>One row per item, each place inside it <span class="rec">Recommended</span></h2>
+<p class="cap">Four equal tiles are the filters: everything with its value, below reorder, out of stock, on order. One row per item with its total, its reorder point, what is already on order and its value; open a row to see each place, with Transfer and Count on that place’s own line. Transfer docks on the right and shows what both places hold now and after.</p>
+<p class="cap"><span class="srv">server</span> One grouped read of stock: a row per item with its places, value and on-order, including items held nowhere. Today <code>/inventory/stock</code> is one row per place, carries no cost, and leaves out an item with no balance. Plus on-hand on <code>/inventory/items</code>, per-place totals on <code>/inventory/locations</code>, and a movements read for History. Below about 200 items the client can join the first three itself.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Lakeshore Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Inventory</div><div class="s">What you hold, where it is, and what it is worth.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▦</span>General</span><span class="tab on"><span class="ic">▣</span>Stock</span><span class="tab"><span class="ic">◈</span>Items</span><span class="tab"><span class="ic">☰</span>Orders</span><span class="tab"><span class="ic">⌖</span>Locations</span></div>
+  <div class="body">
+   <div class="col" style="flex:1;min-width:0;padding:12px 16px;gap:10px">
+    <div class="tiles">
+     <div class="tile on"><div class="k">All items</div><div class="vl"><span class="v">10</span><span class="d">$11,609.60 at last cost</span></div></div>
+     <div class="tile"><div class="k">Below reorder</div><div class="vl"><span class="v cau">3</span><span class="d">1 covered by an order</span></div></div>
+     <div class="tile"><div class="k">Out of stock</div><div class="vl"><span class="v bad">1</span><span class="d">Crown sealant</span></div></div>
+     <div class="tile"><div class="k">On order</div><div class="vl"><span class="v">4</span><span class="d">items, on 3 orders</span></div></div>
+    </div>
+    <div class="bar">
+     <div class="srch" style="width:250px">⌕ Find an item, SKU or number</div>
+     <div class="srch pick" style="width:160px">All places <span class="muted">▾</span></div>
+     <span class="sp"></span>
+     <span class="btn">+ Purchase order</span>
+     <span class="btn f">⇄ Transfer</span>
+    </div>
+    <div class="tbl o1" style="--g:12px minmax(0,1fr) 100px 66px 70px 108px 78px;flex:1;min-height:0">
+     <div class="tr hd"><span></span><span>Item</span><span>Status</span><span class="num">On hand</span><span class="num">Reorder at</span><span>On order</span><span class="num">Value</span></div>
+     <div class="tr it"><span class="cv">▾</span><span class="g"><b>6 in stainless liner kit</b><span>LNR-6SS · 4 places</span></span><span><span class="pill p-ok">In stock</span></span><span class="num b">13 kits</span><span class="num">4</span><span class="muted">—</span><span class="num">$5,057.00</span></div>
+     <div class="tr sub on"><span></span><span class="pl"><b>Main warehouse</b><i>Warehouse</i></span><span class="acts"><span class="lk">Transfer</span><span class="lk">Count</span></span><span class="num b">9</span><span></span><span></span><span class="num">$3,501.00</span></div>
+     <div class="tr sub"><span></span><span class="pl"><b>Cleveland shop</b><i>Shop</i></span><span class="acts"><span class="lk">Transfer</span><span class="lk">Count</span></span><span class="num b">2</span><span></span><span></span><span class="num">$778.00</span></div>
+     <div class="tr sub"><span></span><span class="pl"><b>Van 12 (Marco)</b><i>Van</i></span><span class="acts"><span class="lk">Transfer</span><span class="lk">Count</span></span><span class="num b">1</span><span></span><span></span><span class="num">$389.00</span></div>
+     <div class="tr sub"><span></span><span class="pl"><b>Van 3 (Luis)</b><i>Van</i></span><span class="acts"><span class="lk">Transfer</span><span class="lk">Count</span></span><span class="num b">1</span><span></span><span></span><span class="num">$389.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>8 in stainless liner kit</b><span>LNR-8SS · 2 places</span></span><span><span class="pill p-cau">Below reorder</span></span><span class="num b">3 kits</span><span class="num">3</span><span><span class="muted">None ·</span> <span class="lk">Order</span></span><span class="num">$1,365.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>Chimney brush 6 in</b><span>BRS-06 · 5 places</span></span><span><span class="pill p-ok">In stock</span></span><span class="num b">44</span><span class="num">12</span><span>24 <span class="muted">PO-00031</span></span><span class="num">$649.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>Chimney cap 13×13</b><span>CAP-1313 · 5 places</span></span><span><span class="pill p-ok">In stock</span></span><span class="num b">36</span><span class="num">10</span><span class="muted">—</span><span class="num">$1,746.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>Chimney cap 9×13</b><span>CAP-0913 · 4 places</span></span><span><span class="pill p-cau">Below reorder</span></span><span class="num b">8</span><span class="num">10</span><span>12 <span class="ok-t">covers it</span></span><span class="num">$336.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>Crown sealant, 1 gal</b><span>SEAL-CRN · held nowhere</span></span><span><span class="pill p-bad">Out of stock</span></span><span class="num b">0 gal</span><span class="num">8</span><span>10 <span class="muted">in a draft</span></span><span class="num">$0.00</span></div>
+     <div class="tr it"><span class="cv">▸</span><span class="g"><b>Firebrick</b><span>BRK-FIRE · 2 places</span></span><span><span class="pill p-ok">In stock</span></span><span class="num b">188</span><span class="num">60</span><span>60 <span class="muted">PO-00033</span></span><span class="num">$601.60</span></div>
+    </div>
+   </div>
+   <div class="dock">
+    <div class="dh"><b>Transfer</b><span class="tiny">from one place to another</span></div>
+    <div class="db">
+     <div><div class="lbl">From</div><div class="fld pick">Main warehouse <span class="muted">Warehouse ▾</span></div></div>
+     <div><div class="lbl">To</div><div class="fld pick">Van 12 (Marco) <span class="muted">Van ▾</span></div></div>
+     <div class="lbl" style="margin:4px 0 -2px">What moves</div>
+     <div class="lnc">
+      <div class="lnh"><b class="ell" style="flex:1">6 in stainless liner kit</b><span class="fld qty">2</span><span class="tiny">kits</span></div>
+      <div class="tiny">Main warehouse 9 → <b class="ink">7</b> · Van 12 (Marco) 1 → <b class="ink">3</b></div>
+     </div>
+     <div class="lnc">
+      <div class="lnh"><b class="ell" style="flex:1">Chimney cap 13×13</b><span class="fld qty">4</span><span class="tiny">each</span></div>
+      <div class="tiny">Main warehouse 24 → <b class="ink">20</b> · Van 12 (Marco) 2 → <b class="ink">6</b></div>
+     </div>
+     <div class="lnc">
+      <div class="lnh"><b class="ell" style="flex:1">Refractory mortar</b><span class="fld qty" style="border-color:var(--bad)">6</span><span class="tiny">gal</span></div>
+      <div class="bad-t" style="font-size:11px">Main warehouse has only 5.</div>
+     </div>
+     <span class="chip ins" style="align-self:flex-start">+ Add a line</span>
+     <div class="tiny">Both places change the moment you press Transfer.</div>
+    </div>
+    <div class="df"><span class="btn q">Cancel</span><span class="btn f" style="opacity:.45">Transfer 3 lines</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">1 · Items</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><div class="srch" style="flex:1">⌕ Name, SKU or number</div><span class="chip">Discontinued</span><span class="btn f">+ Add item</span></div>
+    <div class="tbl" style="--g:minmax(0,1fr) 66px 70px 76px 118px">
+     <div class="tr hd"><span>Item</span><span>SKU</span><span class="num">Last cost</span><span class="num">Reorder at</span><span class="num">On hand <span class="srv">server</span></span></div>
+     <div class="tr"><b class="ell">6 in stainless liner kit</b><span>LNR-6SS</span><span class="num">$389.00</span><span class="num">4 kits</span><span class="num b">13 kits</span></div>
+     <div class="tr"><b class="ell">8 in stainless liner kit</b><span>LNR-8SS</span><span class="num">$455.00</span><span class="num">3 kits</span><span class="num cau-t">3 kits</span></div>
+     <div class="tr"><b class="ell">Chimney brush 6 in</b><span>BRS-06</span><span class="num">$14.75</span><span class="num">12</span><span class="num b">44</span></div>
+     <div class="tr"><b class="ell">Chimney cap 13×13</b><span>CAP-1313</span><span class="num">$48.50</span><span class="num">10</span><span class="num b">36</span></div>
+     <div class="tr"><b class="ell">Chimney cap 9×13</b><span>CAP-0913</span><span class="num">$42.00</span><span class="num">10</span><span class="num cau-t">8</span></div>
+     <div class="tr"><b class="ell">Crown sealant, 1 gal</b><span>SEAL-CRN</span><span class="num">$36.00</span><span class="num">8 gal</span><span class="num bad-t">0 gal</span></div>
+     <div class="tr"><b class="ell">Firebrick</b><span>BRK-FIRE</span><span class="num">$3.20</span><span class="num">60</span><span class="num b">188</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · Orders</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><div class="chips"><span class="chip">To receive 3</span><span class="chip">Drafts 1</span><span class="chip">Sales</span><span class="chip">Issues</span></div><span class="sp"></span><span class="btn">Issue</span><span class="btn">+ Sale</span><span class="btn f">+ Purchase order</span></div>
+    <div class="tbl" style="--g:66px minmax(0,1fr) 110px 92px 70px">
+     <div class="tr hd"><span>Number</span><span>For</span><span>Status</span><span>Progress</span><span class="num">Total</span></div>
+     <div class="tr"><b>PO-00034</b><span class="ell">Lakeview Chimney Supply</span><span><span class="pill p-neu">Draft</span></span><span class="tiny">not sent yet</span><span class="num">$528.00</span></div>
+     <div class="tr on"><b>PO-00033</b><span class="ell">Northline Masonry</span><span><span class="pill p-info">Part received</span></span><span class="prog"><span class="qbar"><i style="width:83%"></i></span><span class="tiny">290/350</span></span><span class="num">$955.00</span></div>
+     <div class="tr"><b>PO-00031</b><span class="ell">Lakeview Chimney Supply</span><span><span class="pill p-info">Open</span></span><span class="prog"><span class="qbar"><i style="width:0"></i></span><span class="tiny">0/36</span></span><span class="num">$858.00</span></div>
+     <div class="tr"><b>PO-00024</b><span class="ell">Ironridge Stainless</span><span><span class="pill p-cau">Open 42 days</span></span><span class="prog"><span class="qbar"><i style="width:0"></i></span><span class="tiny">0/6</span></span><span class="num">$672.00</span></div>
+     <div class="tr"><b>SO-00013</b><span class="ell">Rosa Alvarez · sale</span><span style="display:flex;gap:4px"><span class="pill p-info">Open</span><span class="pill p-cau">Unpaid</span></span><span class="tiny">0/2 fulfilled</span><span class="num">$178.00</span></div>
+     <div class="tr"><b>IS-00045</b><span class="ell">Job J-10482 · from Van 12</span><span><span class="pill p-neu">Issue</span></span><span class="tiny">Sep 30</span><span class="num muted">—</span></div>
+     <div class="tr"><b>PO-00029</b><span class="ell">Ironridge Stainless</span><span><span class="pill p-ok">Received</span></span><span class="prog"><span class="qbar"><i class="okb" style="width:100%"></i></span><span class="tiny">10/10</span></span><span class="num">$3,890.00</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · Locations</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><div class="srch" style="flex:1">⌕ Find a place</div><span class="chip">Closed</span><span class="btn f">+ Add location</span></div>
+    <div class="tbl loc1" style="--g:minmax(0,1fr) 84px 110px 104px">
+     <div class="tr hd"><span>Place</span><span>Kind</span><span>Holds <span class="srv">server</span></span><span class="num">Value <span class="srv">server</span></span></div>
+     <div class="tr"><b class="ell">Main warehouse</b><span><span class="pill p-neu">Warehouse</span></span><span>9 items</span><span class="num">$7,809.50</span></div>
+     <div class="tr"><b class="ell">Parts cage</b><span><span class="pill p-neu">Cage</span></span><span>2 items</span><span class="num">$216.60</span></div>
+     <div class="tr"><b class="ell">Cleveland shop</b><span><span class="pill p-neu">Shop</span></span><span>7 items</span><span class="num">$2,090.00</span></div>
+     <div class="tr"><span class="ell"><b>Van 12 (Marco)</b> <span class="tiny">2021 Transit</span></span><span><span class="pill p-neu">Van</span></span><span>6 items</span><span class="num">$697.50</span></div>
+     <div class="tr"><span class="ell"><b>Van 7 (Dana)</b> <span class="tiny">2019 Transit</span></span><span><span class="pill p-neu">Van</span></span><span>3 items</span><span class="num">$287.00</span></div>
+     <div class="tr"><span class="ell"><b>Van 3 (Luis)</b> <span class="tiny">2022 ProMaster</span></span><span><span class="pill p-neu">Van</span></span><span>4 items</span><span class="num">$509.00</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · An item open (Items or Stock)</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div style="flex:1;min-height:0;display:flex">
+    <div class="col rail" style="width:166px">
+     <div style="padding:8px"><div class="srch" style="height:28px;font-size:12px">⌕ Find</div></div>
+     <div class="row sm on"><div class="g"><b>6 in stainless liner kit</b></div></div>
+     <div class="row sm"><div class="g"><b>8 in stainless liner kit</b></div></div>
+     <div class="row sm"><div class="g"><b>Chimney brush 6 in</b></div></div>
+     <div class="row sm"><div class="g"><b>Chimney cap 13×13</b></div></div>
+     <div class="row sm"><div class="g"><b>Chimney cap 9×13</b></div></div>
+     <div class="row sm"><div class="g"><b>Crown sealant, 1 gal</b></div></div>
+     <div class="row sm"><div class="g"><b>Firebrick</b></div></div>
+    </div>
+    <div class="col" style="flex:1;min-width:0;background:var(--paper)">
+     <div class="dh"><b>6 in stainless liner kit</b><span class="pill p-neu">Active</span><span class="sp"></span><span class="btn s">Transfer</span><span class="btn s">Count</span><span class="btn s">Edit</span></div>
+     <div class="db">
+      <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+       <div><div class="k">SKU · number</div>LNR-6SS · I-00012</div><div><div class="k">Reorder at</div>4 kits</div><div><div class="k">Last cost</div>$389.00 <span class="tiny">PO-00029</span></div>
+      </div>
+      <div><div class="lbl">Where it is · 13 kits · $5,057.00</div>
+       <div class="wh">
+        <span>Main warehouse</span><span class="qbar"><i style="width:100%"></i></span><b class="num">9</b>
+        <span>Cleveland shop</span><span class="qbar"><i style="width:22%"></i></span><b class="num">2</b>
+        <span>Van 12 (Marco)</span><span class="qbar"><i style="width:11%"></i></span><b class="num">1</b>
+        <span>Van 3 (Luis)</span><span class="qbar"><i style="width:11%"></i></span><b class="num">1</b>
+       </div></div>
+      <div><div class="lbl">History <span class="srv">server</span></div>
+       <div class="hist"><span class="dt">Sep 30</span><span class="ell">−1 at Van 12 (Marco), issued to job J-10482</span></div>
+       <div class="hist"><span class="dt">Sep 24</span><span class="ell">2 moved Main warehouse → Cleveland shop, T-00017</span></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ 2 ═════════════════════════════ -->
+<h2><span class="n">2</span>A grid: items down, places across</h2>
+<p class="cap">Every quantity on one screen: one column per place, each item’s total, reorder point and value, and each place’s value along the bottom. Click a cell and the strip under the grid moves stock into that place, counts it or issues from it, without leaving the grid. Items edit in their cells, an order receives in its rows, and counting a place is a column you type into.</p>
+<p class="cap"><span class="srv">server</span> Cost on each <code>/inventory/stock</code> row, or the client joins <code>/inventory/items</code>. The rest is client only up to about 200 items: the grid pivots stock, items and locations; edits use the existing PATCH; one transfer posts many lines; a count posts one adjustment per changed row. Van cells are not shaded: one reorder point per item cannot say what a van should carry, so a per-place minimum would be a new server field.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Lakeshore Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Inventory</div><div class="s">What you hold, where it is, and what it is worth.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▦</span>General</span><span class="tab on"><span class="ic">▣</span>Stock</span><span class="tab"><span class="ic">◈</span>Items</span><span class="tab"><span class="ic">☰</span>Orders</span><span class="tab"><span class="ic">⌖</span>Locations</span></div>
+  <div class="body">
+   <div class="col" style="flex:1;min-width:0;padding:12px 16px;gap:10px">
+    <div class="bar">
+     <div class="srch" style="width:230px">⌕ Find an item or SKU</div>
+     <div class="chips"><span class="chip">Below reorder · 3</span><span class="chip">Out of stock · 1</span></div>
+     <div class="srch pick" style="width:150px">Places: all 6 <span class="muted">▾</span></div>
+     <span class="sp"></span>
+     <span class="tiny"><b class="ink">10</b> items · <b class="ink">6</b> places · <b class="ink">$11,609.60</b> at last cost</span>
+    </div>
+    <div class="tbl mx" style="--g:minmax(0,1fr) repeat(6,88px) 62px 64px 84px">
+     <div class="tr hd"><span style="font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Item</span><span class="ph"><b>Main warehouse</b><i>Warehouse</i></span><span class="ph"><b>Cleveland shop</b><i>Shop</i></span><span class="ph"><b>Parts cage</b><i>Cage</i></span><span class="ph colon"><b>Van 12 (Marco)</b><i>Van</i></span><span class="ph"><b>Van 7 (Dana)</b><i>Van</i></span><span class="ph"><b>Van 3 (Luis)</b><i>Van</i></span><span class="ph"><b>Total</b></span><span class="ph"><b>Reorder at</b></span><span class="ph"><b>Value</b></span></div>
+     <div class="tr"><span class="ell"><b>6 in stainless liner kit</b> <span class="tiny">kit</span></span><span class="c">9</span><span class="c">2</span><span class="c nil">·</span><span class="c">1</span><span class="c nil">·</span><span class="c">1</span><span class="c b">13</span><span class="c muted">4</span><span class="c">$5,057.00</span></div>
+     <div class="tr"><span class="ell"><b>8 in stainless liner kit</b> <span class="tiny">kit</span></span><span class="c">2</span><span class="c">1</span><span class="c nil">·</span><span class="c nil">·</span><span class="c nil">·</span><span class="c nil">·</span><span class="c"><span class="tot cau">3</span></span><span class="c muted">3</span><span class="c">$1,365.00</span></div>
+     <div class="tr"><span class="ell"><b>Chimney brush 6 in</b> <span class="tiny">each</span></span><span class="c">30</span><span class="c">8</span><span class="c nil">·</span><span class="c">2</span><span class="c">2</span><span class="c">2</span><span class="c b">44</span><span class="c muted">12</span><span class="c">$649.00</span></div>
+     <div class="tr hl"><span class="ell"><b>Chimney cap 13×13</b> <span class="tiny">each</span></span><span class="c">24</span><span class="c">6</span><span class="c nil">·</span><span class="c sel">2</span><span class="c">3</span><span class="c">1</span><span class="c b">36</span><span class="c muted">10</span><span class="c">$1,746.00</span></div>
+     <div class="tr"><span class="ell"><b>Chimney cap 9×13</b> <span class="tiny">each</span></span><span class="c">4</span><span class="c">2</span><span class="c nil">·</span><span class="c">1</span><span class="c zero">0</span><span class="c">1</span><span class="c"><span class="tot cau">8</span></span><span class="c muted">10</span><span class="c">$336.00</span></div>
+     <div class="tr"><span class="ell"><b>Crown sealant, 1 gal</b> <span class="tiny">gal</span></span><span class="c zero">0</span><span class="c zero">0</span><span class="c nil">·</span><span class="c zero">0</span><span class="c nil">·</span><span class="c nil">·</span><span class="c"><span class="tot bad">0</span></span><span class="c muted">8</span><span class="c">$0.00</span></div>
+     <div class="tr"><span class="ell"><b>Firebrick</b> <span class="tiny">each</span></span><span class="c">140</span><span class="c zero">0</span><span class="c">48</span><span class="c nil">·</span><span class="c nil">·</span><span class="c nil">·</span><span class="c b">188</span><span class="c muted">60</span><span class="c">$601.60</span></div>
+     <div class="tr"><span class="ell"><b>Refractory mortar</b> <span class="tiny">gal</span></span><span class="c">5</span><span class="c">1</span><span class="c nil">·</span><span class="c">1</span><span class="c nil">·</span><span class="c zero">0</span><span class="c"><span class="tot cau">7</span></span><span class="c muted">8</span><span class="c">$196.00</span></div>
+     <div class="tr"><span class="ell"><b>Spark arrestor mesh</b> <span class="tiny">ft</span></span><span class="c">120</span><span class="c nil">·</span><span class="c">30</span><span class="c nil">·</span><span class="c nil">·</span><span class="c nil">·</span><span class="c b">150</span><span class="c muted">50</span><span class="c">$315.00</span></div>
+     <div class="tr"><span class="ell"><b>Top-sealing damper 8×12</b> <span class="tiny">each</span></span><span class="c">7</span><span class="c">3</span><span class="c nil">·</span><span class="c">1</span><span class="c">1</span><span class="c nil">·</span><span class="c b">12</span><span class="c muted">4</span><span class="c">$1,344.00</span></div>
+     <div class="tr ft"><span>Items here</span><span class="c">9</span><span class="c">7</span><span class="c">2</span><span class="c">6</span><span class="c">3</span><span class="c">4</span><span></span><span></span><span></span></div>
+     <div class="tr ft"><span>Value here</span><span class="c">$7,809.50</span><span class="c">$2,090.00</span><span class="c">$216.60</span><span class="c">$697.50</span><span class="c">$287.00</span><span class="c">$509.00</span><span></span><span></span><span class="c">$11,609.60</span></div>
+    </div>
+    <div class="strip">
+     <div style="min-width:0;flex:0 1 auto"><div class="ell"><b>Chimney cap 13×13</b> at <b>Van 12 (Marco)</b></div><div class="tiny">2 here · 36 in all · reorder at 10</div></div>
+     <span class="vsep"></span>
+     <span class="b">Bring</span><span class="fld qty">4</span><span class="muted">from</span><div class="srch pick" style="width:200px">Main warehouse · has 24 <span class="muted">▾</span></div><span class="btn f">Transfer here</span>
+     <span class="sp"></span>
+     <span class="btn">Count</span><span class="btn">Issue to a job</span>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">2 · Items, edited in their cells</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="mb" style="gap:6px">
+    <div class="bar"><div class="srch" style="flex:1">⌕ Name, SKU or number</div><span class="chip">Discontinued</span><span class="tiny">Saved 2 s ago</span></div>
+    <div class="tbl" style="--g:minmax(0,1fr) 76px 58px 80px 70px 80px">
+     <div class="tr hd"><span>Name</span><span>SKU</span><span>Unit</span><span class="num">Reorder at</span><span class="num">Last cost</span><span>Status</span></div>
+     <div class="tr"><span class="cell">6 in stainless liner kit</span><span class="cell">LNR-6SS</span><span class="cell">Kit ▾</span><span class="cell num">4</span><span class="num muted">$389.00</span><span class="cell">Active ▾</span></div>
+     <div class="tr"><span class="cell">8 in stainless liner kit</span><span class="cell">LNR-8SS</span><span class="cell">Kit ▾</span><span class="cell num">3</span><span class="num muted">$455.00</span><span class="cell">Active ▾</span></div>
+     <div class="tr"><span class="cell">Chimney brush 6 in</span><span class="cell">BRS-06</span><span class="cell">Each ▾</span><span class="cell num">12</span><span class="num muted">$14.75</span><span class="cell">Active ▾</span></div>
+     <div class="tr"><span class="cell">Chimney cap 13×13</span><span class="cell">CAP-1313</span><span class="cell">Each ▾</span><span class="cell num">10</span><span class="num muted">$48.50</span><span class="cell">Active ▾</span></div>
+     <div class="tr on"><span class="cell">Chimney cap 9×13</span><span class="cell">CAP-0913</span><span class="cell">Each ▾</span><span class="cell num foc">12</span><span class="num muted">$42.00</span><span class="cell">Active ▾</span></div>
+     <div class="tr"><span class="cell">Crown sealant, 1 gal</span><span class="cell">SEAL-CRN</span><span class="cell">Gal ▾</span><span class="cell num">8</span><span class="num muted">$36.00</span><span class="cell">Active ▾</span></div>
+     <div class="tr add"><span class="lk">+ New item</span></div>
+    </div>
+    <div class="tiny">Last cost comes from receiving an order, so it is not typed here.</div>
+   </div>
+  </div></div>
+ <div><div class="ml">2 · Orders, received in their rows</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><div class="chips"><span class="chip on">To receive 3</span><span class="chip">Drafts 1</span><span class="chip">Sales</span><span class="chip">Issues</span></div><span class="sp"></span><span class="btn">Issue</span><span class="btn">+ Sale</span><span class="btn f">+ Purchase order</span></div>
+    <div class="tbl" style="--g:minmax(0,1fr) 60px 64px 72px 68px 74px">
+     <div class="tr hd"><span>Line</span><span class="num">Ordered</span><span class="num">Received</span><span class="num">This time</span><span class="num">Unit cost</span><span class="num">Line total</span></div>
+     <div class="tr flex on"><span class="cv">▾</span><b>PO-00033</b><span class="ell">Northline Masonry</span><span class="pill p-info">Part received</span><span class="tiny">ordered Sep 18</span><span class="sp"></span><b class="num">$955.00</b></div>
+     <div class="tr"><span class="pl">Firebrick</span><span class="num">200</span><span class="num">140</span><span class="num"><span class="fld qty sm">60</span></span><span class="num">$3.20</span><span class="num">$640.00</span></div>
+     <div class="tr"><span class="pl">Spark arrestor mesh</span><span class="num">150 ft</span><span class="num">150 ft</span><span class="num"><span class="pill p-ok">Done</span></span><span class="num">$2.10</span><span class="num">$315.00</span></div>
+     <div class="tr flex" style="background:#fafcfd;min-height:40px"><span class="sp"></span><span class="tiny">Receive into</span><div class="srch pick" style="width:150px;height:28px">Main warehouse <span class="muted">▾</span></div><span class="btn f">Receive 60</span></div>
+     <div class="tr flex"><span class="cv">▸</span><b>PO-00031</b><span class="ell">Lakeview Chimney Supply</span><span class="pill p-info">Open</span><span class="tiny">0 of 36 · Sep 22</span><span class="sp"></span><b class="num">$858.00</b></div>
+     <div class="tr flex"><span class="cv">▸</span><b>PO-00024</b><span class="ell">Ironridge Stainless</span><span class="pill p-cau">Open 42 days</span><span class="tiny">0 of 6 · Aug 20</span><span class="sp"></span><b class="num">$672.00</b></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">2 · Locations</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><div class="srch" style="flex:1">⌕ Find a place</div><span class="chip">Closed</span><span class="tiny">Items and value per place</span><span class="srv">server</span></div>
+    <div class="tbl" style="--g:minmax(0,1fr) 112px 54px 92px 70px">
+     <div class="tr hd"><span>Place</span><span>Kind</span><span class="num">Items</span><span class="num">Value</span><span>Status</span></div>
+     <div class="tr"><span class="cell">Main warehouse</span><span class="cell">Warehouse ▾</span><span class="num">9</span><span class="num">$7,809.50</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr"><span class="cell">Parts cage</span><span class="cell">Cage ▾</span><span class="num">2</span><span class="num">$216.60</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr"><span class="cell">Cleveland shop</span><span class="cell">Shop ▾</span><span class="num">7</span><span class="num">$2,090.00</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr"><span class="cell">Van 12 (Marco)</span><span class="cell">Van · Van 12 ▾</span><span class="num">6</span><span class="num">$697.50</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr"><span class="cell">Van 7 (Dana)</span><span class="cell">Van · Van 7 ▾</span><span class="num">3</span><span class="num">$287.00</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr"><span class="cell">Van 3 (Luis)</span><span class="cell">Van · Van 3 ▾</span><span class="num">4</span><span class="num">$509.00</span><span><span class="pill p-ok">Active</span></span></div>
+     <div class="tr add"><span class="lk">+ New location</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">2 · Counting a place: a column you type into</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="mb">
+    <div class="bar"><span class="b">Counting</span><div class="srch pick" style="width:170px">Cleveland shop <span class="muted">▾</span></div><span class="sp"></span><span class="btn q">Cancel</span><span class="btn f">Save 2 counts</span></div>
+    <div class="tbl" style="--g:minmax(0,1fr) 82px 84px 86px">
+     <div class="tr hd"><span>Item</span><span class="num">On record</span><span class="num">Counted</span><span class="num">Difference</span></div>
+     <div class="tr"><b class="ell">6 in stainless liner kit</b><span class="num">2</span><span class="num"><span class="fld qty sm">2</span></span><span class="num muted">—</span></div>
+     <div class="tr on"><b class="ell">Chimney brush 6 in</b><span class="num">8</span><span class="num"><span class="fld qty sm foc">7</span></span><span class="num"><span class="pill p-cau">−1</span></span></div>
+     <div class="tr"><b class="ell">Chimney cap 13×13</b><span class="num">6</span><span class="num"><span class="fld qty sm">6</span></span><span class="num muted">—</span></div>
+     <div class="tr"><b class="ell">Chimney cap 9×13</b><span class="num">2</span><span class="num"><span class="fld qty sm empty">2</span></span><span class="num muted">not counted</span></div>
+     <div class="tr on"><b class="ell">Top-sealing damper 8×12</b><span class="num">3</span><span class="num"><span class="fld qty sm">4</span></span><span class="num"><span class="pill p-info">+1</span></span></div>
+    </div>
+    <div class="bar"><span class="b" style="font-size:12px">Reason</span><div class="fld" style="flex:1">Monthly shelf count</div></div>
+    <div class="tiny">Each changed line is saved as its own count with this reason. Lines left alone are not touched.</div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ 3 ═════════════════════════════ -->
+<h2><span class="n">3</span>Places first: pick a place, see what it holds</h2>
+<p class="cap">Places down the left by kind, each with its value and item count; the chosen place shows what it holds, where else each item is, and its last movements. Restock, Count and Issue start from the place, and Restock replaces the area with its own ← back. Items and Orders are the same list beside a detail, and Locations is the place’s own editor.</p>
+<p class="cap"><span class="srv">server</span> A <code>location_id</code> filter on <code>/inventory/stock</code>, per-place totals for the list, a movements read for “Last movements here”, and a per-place minimum if Restock should suggest amounts (without it you type them).</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Lakeshore Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Inventory</div><div class="s">What you hold, where it is, and what it is worth.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▦</span>General</span><span class="tab on"><span class="ic">▣</span>Stock</span><span class="tab"><span class="ic">◈</span>Items</span><span class="tab"><span class="ic">☰</span>Orders</span><span class="tab"><span class="ic">⌖</span>Locations</span></div>
+  <div class="body">
+   <div class="col rail" style="width:250px">
+    <div style="padding:10px 10px 6px"><div class="srch">⌕ Find a place</div></div>
+    <div class="row"><div class="g"><b>All places</b><span>10 items · $11,609.60</span></div><span class="srv">server</span></div>
+    <div class="glbl">Warehouses and cages</div>
+    <div class="row"><div class="g"><b>Main warehouse</b><span>9 items · $7,809.50</span></div></div>
+    <div class="row"><div class="g"><b>Parts cage</b><span>2 items · $216.60</span></div></div>
+    <div class="glbl">Shops</div>
+    <div class="row"><div class="g"><b>Cleveland shop</b><span>7 items · $2,090.00</span></div></div>
+    <div class="glbl">Vans</div>
+    <div class="row on"><div class="g"><b>Van 12 (Marco)</b><span>6 items · $697.50</span></div></div>
+    <div class="row"><div class="g"><b>Van 7 (Dana)</b><span>3 items · $287.00</span></div></div>
+    <div class="row"><div class="g"><b>Van 3 (Luis)</b><span>4 items · $509.00</span></div></div>
+    <span class="sp"></span>
+    <div style="padding:10px;border-top:1px solid var(--line)"><span class="btn" style="width:100%">+ Add location</span></div>
+   </div>
+   <div class="col" style="flex:1;min-width:0;padding:12px 18px;gap:10px">
+    <div class="bar" style="gap:10px">
+     <div style="min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:17px;font-weight:800">Van 12 (Marco)</span><span class="pill p-neu">Van</span></div><div class="tiny">Vehicle Van 12 · 2021 Ford Transit · Lakeshore Chimney</div></div>
+     <span class="sp"></span>
+     <span class="btn">Issue to a job</span><span class="btn">Count this van</span><span class="btn f">⇄ Restock from…</span>
+    </div>
+    <div class="tiles t3">
+     <div class="tile"><div class="k">Items here</div><div class="vl"><span class="v">6</span><span class="d">1 more at zero</span></div></div>
+     <div class="tile"><div class="k">Value here</div><div class="vl"><span class="v">$697.50</span><span class="d">at last cost</span></div></div>
+     <div class="tile"><div class="k">Last restocked <span class="srv">server</span></div><div class="vl"><span class="v">Sep 29</span><span class="d">T-00018 from Main warehouse</span></div></div>
+    </div>
+    <div class="tbl o3" style="--g:minmax(0,1fr) 66px 236px 112px 86px">
+     <div class="tr hd"><span>Item</span><span class="num">Here</span><span>Also at</span><span>Status</span><span class="num">Value here</span></div>
+     <div class="tr"><span class="g"><b>6 in stainless liner kit</b><span>LNR-6SS</span></span><span class="num b">1 kit</span><span class="ell">Main warehouse 9 · Cleveland shop 2 · +1</span><span><span class="pill p-ok">In stock</span></span><span class="num">$389.00</span></div>
+     <div class="tr"><span class="g"><b>Chimney brush 6 in</b><span>BRS-06</span></span><span class="num b">2</span><span class="ell">Main warehouse 30 · Cleveland shop 8 · +2</span><span><span class="pill p-ok">In stock</span></span><span class="num">$29.50</span></div>
+     <div class="tr"><span class="g"><b>Chimney cap 13×13</b><span>CAP-1313</span></span><span class="num b">2</span><span class="ell">Main warehouse 24 · Cleveland shop 6 · +2</span><span><span class="pill p-ok">In stock</span></span><span class="num">$97.00</span></div>
+     <div class="tr"><span class="g"><b>Chimney cap 9×13</b><span>CAP-0913</span></span><span class="num b">1</span><span class="ell">Main warehouse 4 · Cleveland shop 2 · +1</span><span><span class="pill p-cau">Below reorder</span></span><span class="num">$42.00</span></div>
+     <div class="tr"><span class="g"><b>Crown sealant, 1 gal</b><span>SEAL-CRN</span></span><span class="num b">0 gal</span><span class="ell muted">Nowhere · 10 in a draft order</span><span><span class="pill p-bad">Out of stock</span></span><span class="num">$0.00</span></div>
+     <div class="tr"><span class="g"><b>Refractory mortar</b><span>MRT-REF</span></span><span class="num b">1 gal</span><span class="ell">Main warehouse 5 · Cleveland shop 1</span><span><span class="pill p-cau">Below reorder</span></span><span class="num">$28.00</span></div>
+     <div class="tr"><span class="g"><b>Top-sealing damper 8×12</b><span>DMP-0812</span></span><span class="num b">1</span><span class="ell">Main warehouse 7 · Cleveland shop 3 · +1</span><span><span class="pill p-ok">In stock</span></span><span class="num">$112.00</span></div>
+    </div>
+    <div class="box" style="display:flex;flex-direction:column;gap:5px">
+     <div class="lbl" style="margin:0">Last movements here <span class="srv">server</span></div>
+     <div class="hist"><span class="dt">Sep 30</span><span class="ell">−1 6 in stainless liner kit, issued to job J-10482 (IS-00045) by Marco</span></div>
+     <div class="hist"><span class="dt">Sep 29</span><span class="ell">+2 Chimney cap 13×13 from Main warehouse (T-00018) by Dana</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">3 · Items: the list beside one item</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div style="flex:1;min-height:0;display:flex">
+    <div class="col rail" style="width:188px">
+     <div style="padding:8px"><div class="srch" style="height:28px;font-size:12px">⌕ Find an item</div></div>
+     <div class="row sm"><div class="g"><b>6 in stainless liner kit</b><span>13 kits</span></div></div>
+     <div class="row sm"><div class="g"><b>8 in stainless liner kit</b><span class="cau-t">3 kits · below reorder</span></div></div>
+     <div class="row sm"><div class="g"><b>Chimney brush 6 in</b><span>44</span></div></div>
+     <div class="row sm"><div class="g"><b>Chimney cap 13×13</b><span>36</span></div></div>
+     <div class="row sm on"><div class="g"><b>Chimney cap 9×13</b><span>8 · below reorder</span></div></div>
+    </div>
+    <div class="col" style="flex:1;min-width:0;background:var(--paper)">
+     <div class="dh"><b>Chimney cap 9×13</b><span class="pill p-cau">Below reorder</span><span class="sp"></span><span class="btn s">Edit</span></div>
+     <div class="db">
+      <div class="tiny">CAP-0913 · I-00003 · Each · last cost $42.00 · Lakeshore Chimney</div>
+      <div class="hint ok">8 on hand, reorder at 10, and <b>12 on order</b> on PO-00031, so there is nothing to buy.</div>
+      <div><div class="lbl">Where it is</div>
+       <div class="wh">
+        <span>Main warehouse</span><span class="qbar"><i style="width:100%"></i></span><b class="num">4</b>
+        <span>Cleveland shop</span><span class="qbar"><i style="width:50%"></i></span><b class="num">2</b>
+        <span>Van 12 (Marco)</span><span class="qbar"><i style="width:25%"></i></span><b class="num">1</b>
+        <span>Van 3 (Luis)</span><span class="qbar"><i style="width:25%"></i></span><b class="num">1</b>
+        <span>Van 7 (Dana)</span><span class="qbar"><i style="width:0"></i></span><b class="num muted">0</b>
+       </div></div>
+      <div class="bar"><span class="btn s">Transfer</span><span class="btn s">Count</span><span class="sp"></span><span class="btn s q" style="color:var(--bad)">Discontinue</span></div>
+     </div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">3 · Orders: grouped by what they wait for</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div style="flex:1;min-height:0;display:flex">
+    <div class="col rail" style="width:196px">
+     <div style="padding:8px;display:flex;gap:6px"><span class="btn s f" style="flex:1;padding:0 6px">+ PO</span><span class="btn s" style="flex:1;padding:0 6px">+ Sale</span><span class="btn s" style="flex:1;padding:0 6px">Issue</span></div>
+     <div class="glbl" style="padding-top:2px">Drafts</div>
+     <div class="row sm"><b>PO-00034</b><span class="tiny ell">Lakeview</span></div>
+     <div class="glbl">To receive</div>
+     <div class="row sm on"><b>PO-00033</b><span class="tiny ell" style="color:var(--prid)">290 of 350</span></div>
+     <div class="row sm"><b>PO-00031</b><span class="tiny ell">0 of 36</span></div>
+     <div class="row sm"><b>PO-00024</b><span class="tiny ell cau-t">open 42 days</span></div>
+     <div class="glbl">Sales and issues</div>
+     <div class="row sm"><b>SO-00013</b><span class="tiny ell">Rosa Alvarez · unpaid</span></div>
+     <div class="row sm"><b>IS-00045</b><span class="tiny ell">Job J-10482</span></div>
+    </div>
+    <div class="col" style="flex:1;min-width:0;background:var(--paper)">
+     <div class="dh"><b>PO-00033</b><span class="pill p-info">Part received</span><span class="sp"></span><b class="num" style="font-size:13px">$955.00</b></div>
+     <div class="db">
+      <div class="tiny">Northline Masonry · ordered Sep 18 · Lakeshore Chimney</div>
+      <div class="lnc"><div class="lnh"><b class="ell" style="flex:1">Firebrick</b><span class="tiny">140 of 200</span><span class="fld qty sm" style="margin-left:0">60</span></div><div class="qbar" style="flex:0 0 6px"><i style="width:70%"></i></div></div>
+      <div class="lnc"><div class="lnh"><b class="ell" style="flex:1">Spark arrestor mesh</b><span class="tiny">150 of 150 ft</span><span class="pill p-ok">Done</span></div><div class="qbar" style="flex:0 0 6px"><i class="okb" style="width:100%"></i></div></div>
+      <div><div class="lbl">Receive into</div><div class="fld pick">Main warehouse <span class="muted">▾</span></div></div>
+      <div class="bar"><span class="sp"></span><span class="btn s f">Receive 60</span></div>
+     </div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">3 · Locations: the place’s own editor</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div style="flex:1;min-height:0;display:flex">
+    <div class="col rail" style="width:176px">
+     <div style="padding:8px;display:flex"><span class="btn s" style="flex:1">+ Add location</span></div>
+     <div class="glbl" style="padding-top:2px">Warehouses and cages</div>
+     <div class="row sm"><div class="g"><b>Main warehouse</b></div></div>
+     <div class="row sm"><div class="g"><b>Parts cage</b></div></div>
+     <div class="glbl">Shops</div>
+     <div class="row sm on"><div class="g"><b>Cleveland shop</b></div></div>
+     <div class="glbl">Vans</div>
+     <div class="row sm"><div class="g"><b>Van 12 (Marco)</b></div></div>
+     <div class="row sm"><div class="g"><b>Van 7 (Dana)</b></div></div>
+    </div>
+    <div class="col" style="flex:1;min-width:0;background:var(--paper)">
+     <div class="dh"><b>Cleveland shop</b><span class="pill p-ok">Active</span><span class="sp"></span><span class="tiny">7 items · $2,090.00</span><span class="srv">server</span></div>
+     <div class="db">
+      <div><div class="lbl">Name</div><div class="fld">Cleveland shop</div></div>
+      <div><div class="lbl">Kind</div><div class="chips"><span class="chip">Warehouse</span><span class="chip on">Shop</span><span class="chip">Cage</span><span class="chip">Receiving</span><span class="chip">Van</span><span class="chip">Other</span></div></div>
+      <div><div class="lbl">Belongs to</div><div class="fld pick">Lakeshore Chimney · General <span class="muted">▾</span></div></div>
+      <div class="bar" style="align-items:flex-start"><span class="btn s dis">Close location</span><span class="tiny" style="white-space:normal">This location still has stock. Move or adjust it to zero first.</span></div>
+     </div>
+     <div class="df" style="padding:8px 14px"><span class="btn s q">Cancel</span><span class="btn s f">Save</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">3 · Restock, in place, with its own back arrow</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Restock Van 12 (Marco)</span><span class="sp"></span><span class="tiny">from</span><div class="srch pick" style="width:168px;height:28px;font-size:12px">Main warehouse <span class="muted">▾</span></div></div>
+   <div class="mb" style="padding-top:0">
+    <div class="tbl" style="--g:minmax(0,1fr) 58px 82px 62px 72px">
+     <div class="tr hd"><span>Item</span><span class="num">Van has</span><span class="num">Warehouse</span><span class="num">Bring</span><span class="num">Van after</span></div>
+     <div class="tr"><b class="ell">6 in stainless liner kit</b><span class="num">1</span><span class="num">9</span><span class="num"><span class="fld qty sm">1</span></span><span class="num b">2</span></div>
+     <div class="tr"><b class="ell">Chimney brush 6 in</b><span class="num">2</span><span class="num">30</span><span class="num"><span class="fld qty sm empty">0</span></span><span class="num muted">2</span></div>
+     <div class="tr"><b class="ell">Chimney cap 13×13</b><span class="num">2</span><span class="num">24</span><span class="num"><span class="fld qty sm">4</span></span><span class="num b">6</span></div>
+     <div class="tr"><b class="ell">Chimney cap 9×13</b><span class="num">1</span><span class="num">4</span><span class="num"><span class="fld qty sm empty">0</span></span><span class="num muted">1</span></div>
+     <div class="tr"><b class="ell">Refractory mortar</b><span class="num">1</span><span class="num">5</span><span class="num"><span class="fld qty sm">2</span></span><span class="num b">3</span></div>
+     <div class="tr"><b class="ell">Top-sealing damper 8×12</b><span class="num">1</span><span class="num">7</span><span class="num"><span class="fld qty sm empty">0</span></span><span class="num muted">1</span></div>
+    </div>
+    <div class="bar"><span class="tiny">Suggested amounts need what Van 12 should carry</span><span class="srv">server</span><span class="sp"></span><span class="btn q">Cancel</span><span class="btn f">Transfer 3 lines</span></div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ PHONES ═════════════════════════════ -->
+<h2><span class="n">4</span>On a phone: option 1 in a column <span class="rec">Recommended</span></h2>
+<p class="cap">The four tiles two by two, then one row per item, with a pill only on the ones that need you. An item opens on its own page with Count, Transfer and Order at the bottom; Transfer is a page of its own with steppers and the before and after. Items, Orders and Locations are the same rows.</p>
+<p class="cap"><span class="srv">server</span> What 1 needs: the grouped stock read, on-hand on items, per-place totals, and the movements read for History.</p>
+<div class="prow">
+ <div><div class="ml">4 · Stock</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="tiles t2">
+     <div class="tile on"><div class="k">All items</div><div class="vl"><span class="v">10</span><span class="d">$11,609.60</span></div></div>
+     <div class="tile"><div class="k">Below reorder</div><div class="vl"><span class="v cau">3</span><span class="d">1 covered</span></div></div>
+     <div class="tile"><div class="k">Out of stock</div><div class="vl"><span class="v bad">1</span><span class="d">Crown sealant</span></div></div>
+     <div class="tile"><div class="k">On order</div><div class="vl"><span class="v">4</span><span class="d">on 3 orders</span></div></div>
+    </div>
+    <div class="srch">⌕ Find an item or SKU</div>
+    <div class="card">
+     <div class="row"><div class="g"><b>6 in stainless liner kit</b><span>13 kits · 4 places · $5,057.00</span></div><span class="muted">›</span></div>
+     <div class="row"><div class="g"><b>8 in stainless liner kit</b><span>3 kits · none on order</span></div><span class="pill p-cau">Below reorder</span></div>
+     <div class="row"><div class="g"><b>Chimney brush 6 in</b><span>44 · 5 places · $649.00</span></div><span class="muted">›</span></div>
+     <div class="row"><div class="g"><b>Chimney cap 13×13</b><span>36 · 5 places · $1,746.00</span></div><span class="muted">›</span></div>
+     <div class="row"><div class="g"><b>Chimney cap 9×13</b><span>8 · 12 on order covers it</span></div><span class="pill p-cau">Below reorder</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Crown sealant, 1 gal</b><span>held nowhere · 10 in a draft</span></div><span class="pill p-bad">Out</span></div>
+    </div>
+   </div>
+   <div class="sticky"><span class="btn">+ Order</span><span class="btn f">⇄ Transfer</span></div>
+  </div></div></div>
+ <div><div class="ml">4 · One item</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">8 in stainless liner kit</span></div>
+   <div class="pbody" style="gap:9px;padding-top:2px">
+    <div style="display:flex;gap:8px;align-items:center"><span class="pill p-cau">Below reorder</span><span class="tiny">LNR-8SS · I-00013 · Kit</span></div>
+    <div class="tiles t2">
+     <div class="tile"><div class="k">On hand</div><div class="vl"><span class="v">3</span><span class="d">kits</span></div></div>
+     <div class="tile"><div class="k">Value</div><div class="vl"><span class="v">$1,365</span><span class="d">at $455.00</span></div></div>
+    </div>
+    <div class="hint cau">At or under its reorder point of 3, and nothing is on order.<div style="margin-top:7px"><span class="btn s f">Start a purchase order</span></div></div>
+    <div class="lbl" style="margin:2px 0 -3px">Where it is</div>
+    <div class="card">
+     <div class="row"><div class="g"><b>Main warehouse</b><span>Warehouse</span></div><span class="big">2</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Cleveland shop</b><span>Shop</span></div><span class="big">1</span></div>
+    </div>
+    <div class="lbl" style="margin:2px 0 -3px">History <span class="srv">server</span></div>
+    <div class="card">
+     <div class="row"><div class="g"><b>Sep 12 · +4 received</b><span>PO-00026 · Main warehouse</span></div></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Sep 3 · −1 issued</b><span>Job J-10391 · Cleveland shop</span></div></div>
+    </div>
+   </div>
+   <div class="sticky"><span class="btn">Count</span><span class="btn">Transfer</span><span class="btn f">Order</span></div>
+  </div></div></div>
+ <div><div class="ml">4 · Transfer</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Transfer</span></div>
+   <div class="pbody" style="gap:10px;padding-top:2px">
+    <div><div class="lbl">From</div><div class="fld pick" style="height:40px">Main warehouse <span class="muted">▾</span></div></div>
+    <div><div class="lbl">To</div><div class="fld pick" style="height:40px">Van 12 (Marco) <span class="muted">▾</span></div></div>
+    <div class="lbl" style="margin:4px 0 -4px">What moves</div>
+    <div class="lnc"><b>6 in stainless liner kit</b><div class="lnh"><span class="step"><span>−</span><b>2</b><span>+</span></span><span class="tiny">kits</span></div><div class="tiny">Main warehouse 9 → <b class="ink">7</b> · Van 12 1 → <b class="ink">3</b></div></div>
+    <div class="lnc"><b>Chimney cap 13×13</b><div class="lnh"><span class="step"><span>−</span><b>4</b><span>+</span></span><span class="tiny">each</span></div><div class="tiny">Main warehouse 24 → <b class="ink">20</b> · Van 12 2 → <b class="ink">6</b></div></div>
+    <span class="chip ins" style="align-self:flex-start;height:36px">+ Add a line</span>
+   </div>
+   <div class="sticky"><span class="btn q">Cancel</span><span class="btn f">Transfer 2 lines</span></div>
+  </div></div></div>
+</div>
+<div class="prow">
+ <div><div class="ml">4 · Items</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="bar"><div class="srch" style="flex:1">⌕ Name, SKU or number</div><span class="btn f">+ Add</span></div>
+    <div class="card">
+     <div class="row"><div class="g"><b>6 in stainless liner kit</b><span>LNR-6SS · $389.00 · reorder at 4</span></div><b>13</b></div>
+     <div class="row"><div class="g"><b>8 in stainless liner kit</b><span>LNR-8SS · $455.00 · reorder at 3</span></div><b class="cau-t">3</b></div>
+     <div class="row"><div class="g"><b>Chimney brush 6 in</b><span>BRS-06 · $14.75 · reorder at 12</span></div><b>44</b></div>
+     <div class="row"><div class="g"><b>Chimney cap 13×13</b><span>CAP-1313 · $48.50 · reorder at 10</span></div><b>36</b></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Chimney cap 9×13</b><span>CAP-0913 · $42.00 · reorder at 10</span></div><b class="cau-t">8</b></div>
+    </div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">4 · Orders</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="chips"><span class="chip on">To receive 3</span><span class="chip">Drafts 1</span><span class="chip">Sales</span><span class="chip">Issues</span></div>
+    <div class="card">
+     <div class="row"><div class="g"><b>PO-00033 · Northline Masonry</b><span class="prog" style="margin-top:3px"><span class="qbar"><i style="width:83%"></i></span>290 of 350</span></div><span class="pill p-info">Part received</span></div>
+     <div class="row"><div class="g"><b>PO-00031 · Lakeview Chimney</b><span>0 of 36 · ordered Sep 22</span></div><span class="pill p-info">Open</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>PO-00024 · Ironridge Stainless</b><span>0 of 6 · ordered Aug 20</span></div><span class="pill p-cau">42 days</span></div>
+    </div>
+   </div>
+   <div class="sticky"><span class="btn">Issue</span><span class="btn">+ Sale</span><span class="btn f">+ PO</span></div>
+  </div></div></div>
+ <div><div class="ml">4 · Locations</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div class="pbody" style="gap:0">
+    <div class="card">
+     <div class="glbl" style="padding-top:7px">Warehouses and cages</div>
+     <div class="row"><div class="g"><b>Main warehouse</b><span>9 items</span></div><b>$7,809.50</b></div>
+     <div class="row"><div class="g"><b>Parts cage</b><span>2 items</span></div><b>$216.60</b></div>
+     <div class="glbl">Shops</div>
+     <div class="row"><div class="g"><b>Cleveland shop</b><span>7 items</span></div><b>$2,090.00</b></div>
+     <div class="glbl">Vans</div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Van 12 (Marco)</b><span>6 items</span></div><b>$697.50</b></div>
+    </div>
+   </div>
+  </div></div></div>
+</div>
+
+<h2><span class="n">5</span>On a phone: the place you are standing in</h2>
+<p class="cap">Opens on your own van, with what it holds and where the rest is. Restock and Count are steps with their own ← back, built for the parking lot: big steppers, one line per item. Items, Orders and Locations keep the place picker’s rows.</p>
+<p class="cap"><span class="srv">server</span> The server has to say which van is yours (the van’s vehicle assignment), plus the <code>location_id</code> filter. “Carries 2” on Restock is a per-place minimum; without it the step shows what both places hold and you choose.</p>
+<div class="prow">
+ <div><div class="ml">5 · Stock, on your van</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="fld pick" style="height:44px;font-size:14px">Van 12 (Marco) <span style="display:flex;gap:6px;align-items:center"><span class="pill p-info">Yours</span><span class="srv">server</span><span class="muted">▾</span></span></div>
+    <div class="tiles t3">
+     <div class="tile"><div class="k">Items</div><div class="vl"><span class="v">6</span></div></div>
+     <div class="tile"><div class="k">At zero</div><div class="vl"><span class="v">1</span></div></div>
+     <div class="tile"><div class="k">Value</div><div class="vl"><span class="v">$697.50</span></div></div>
+    </div>
+    <div class="card">
+     <div class="row"><div class="g"><b>6 in stainless liner kit</b><span>Main warehouse has 9</span></div><span class="big">1</span></div>
+     <div class="row"><div class="g"><b>Chimney brush 6 in</b><span>Main warehouse has 30</span></div><span class="big">2</span></div>
+     <div class="row"><div class="g"><b>Chimney cap 13×13</b><span>Main warehouse has 24</span></div><span class="big">2</span></div>
+     <div class="row"><div class="g"><b>Chimney cap 9×13</b><span class="cau-t">below reorder · 12 on order</span></div><span class="big">1</span></div>
+     <div class="row"><div class="g"><b>Crown sealant, 1 gal</b><span class="bad-t">out of stock everywhere</span></div><span class="big muted">0</span></div>
+     <div class="row"><div class="g"><b>Refractory mortar</b><span>Main warehouse has 5</span></div><span class="big">1</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Top-sealing damper 8×12</b><span>Main warehouse has 7</span></div><span class="big">1</span></div>
+    </div>
+   </div>
+   <div class="sticky"><span class="btn">Issue</span><span class="btn">Count</span><span class="btn f">Restock</span></div>
+  </div></div></div>
+ <div><div class="ml">5 · Restock</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Restock Van 12 (Marco)</span></div>
+   <div class="pbody" style="gap:9px;padding-top:2px">
+    <div><div class="lbl">From</div><div class="fld pick" style="height:40px">Main warehouse <span class="muted">▾</span></div></div>
+    <div class="lnc"><b>6 in stainless liner kit</b><div class="lnh"><span class="step"><span>−</span><b>1</b><span>+</span></span><span class="tiny">van 1 → <b class="ink">2</b> · warehouse 9</span></div><div class="tiny">Carries 2 <span class="srv">server</span></div></div>
+    <div class="lnc"><b>Chimney cap 13×13</b><div class="lnh"><span class="step"><span>−</span><b>4</b><span>+</span></span><span class="tiny">van 2 → <b class="ink">6</b> · warehouse 24</span></div><div class="tiny">Carries 6</div></div>
+    <div class="lnc"><b>Refractory mortar</b><div class="lnh"><span class="step"><span>−</span><b>2</b><span>+</span></span><span class="tiny">van 1 → <b class="ink">3</b> · warehouse 5</span></div><div class="tiny">Carries 3</div></div>
+    <span class="chip ins" style="align-self:flex-start;height:36px">+ Another item</span>
+   </div>
+   <div class="sticky"><span class="btn q">Cancel</span><span class="btn f">Transfer 3 lines</span></div>
+  </div></div></div>
+ <div><div class="ml">5 · Count</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Count Van 12 (Marco)</span></div>
+   <div class="pbody" style="gap:9px;padding-top:2px">
+    <div class="tiny">Type what is on the shelf. Only lines you change are saved.</div>
+    <div class="card">
+     <div class="row"><div class="g"><b>6 in stainless liner kit</b><span>on record 1</span></div><span class="fld qty">1</span></div>
+     <div class="row"><div class="g"><b>Chimney brush 6 in</b><span>on record 2</span></div><span class="fld qty">2</span></div>
+     <div class="row on"><div class="g"><b>Chimney cap 13×13</b><span>on record 2 · <b style="display:inline">−1</b></span></div><span class="fld qty foc">1</span></div>
+     <div class="row"><div class="g"><b>Chimney cap 9×13</b><span>on record 1</span></div><span class="fld qty">1</span></div>
+     <div class="row"><div class="g"><b>Refractory mortar</b><span>on record 1</span></div><span class="fld qty">1</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Top-sealing damper 8×12</b><span>on record 1</span></div><span class="fld qty">1</span></div>
+    </div>
+    <div><div class="lbl">Reason</div><div class="fld" style="height:40px">Weekly van check</div></div>
+   </div>
+   <div class="sticky"><span class="btn q">Cancel</span><span class="btn f">Save 1 count</span></div>
+  </div></div></div>
+</div>
+<div class="prow">
+ <div><div class="ml">5 · Items</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="srch">⌕ Name, SKU or number</div>
+    <div class="card">
+     <div class="row"><div class="g"><b>6 in stainless liner kit</b><span>Main warehouse 9 · shop 2 · 2 vans</span></div><span class="big">13</span></div>
+     <div class="row"><div class="g"><b>8 in stainless liner kit</b><span class="cau-t">below reorder · warehouse 2 · shop 1</span></div><span class="big">3</span></div>
+     <div class="row"><div class="g"><b>Chimney brush 6 in</b><span>Main warehouse 30 · shop 8 · 3 vans</span></div><span class="big">44</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Chimney cap 13×13</b><span>Main warehouse 24 · shop 6 · 3 vans</span></div><span class="big">36</span></div>
+    </div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">5 · Orders</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="lbl" style="margin:0">Arriving</div>
+    <div class="sec"><div class="sh"><b>PO-00033</b><span class="pill p-info">Part received</span><span class="sp"></span><span class="tiny">Sep 18</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Northline Masonry</b><span>60 firebrick still to come</span></div><span class="btn s f">Receive</span></div></div>
+    <div class="sec"><div class="sh"><b>PO-00031</b><span class="pill p-info">Open</span><span class="sp"></span><span class="tiny">Sep 22</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Lakeview Chimney Supply</b><span>2 lines · 0 of 36 received</span></div><span class="btn s f">Receive</span></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">5 · Locations</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div class="pbody">
+    <div class="card">
+     <div class="row on"><div class="g"><b>Van 12 (Marco)</b><span>Van · 6 items · $697.50</span></div><span class="pill p-info">Yours</span></div>
+     <div class="row"><div class="g"><b>Main warehouse</b><span>Warehouse · 9 items · $7,809.50</span></div><span class="muted">›</span></div>
+     <div class="row"><div class="g"><b>Cleveland shop</b><span>Shop · 7 items · $2,090.00</span></div><span class="muted">›</span></div>
+     <div class="row"><div class="g"><b>Van 7 (Dana)</b><span>Van · 3 items · $287.00</span></div><span class="muted">›</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Van 3 (Luis)</b><span>Van · 4 items · $509.00</span></div><span class="muted">›</span></div>
+    </div>
+   </div>
+  </div></div></div>
+</div>
+
+<h2><span class="n">6</span>On a phone: what needs doing first</h2>
+<p class="cap">Stock opens on a short list of jobs: buy this, finish that draft, receive these, with each one’s button on its row. Everything is the other half of the switch. Receiving and ordering are steps with their own ← back, and the order arrives filled in from the row that started it.</p>
+<p class="cap"><span class="srv">server</span> None for the list: it comes from <code>low_items</code>, the items list (for anything held nowhere), and the open and draft orders’ lines. “Last bought from” as the new order’s vendor is server; without it the vendor starts empty.</p>
+<div class="prow">
+ <div><div class="ml">6 · Stock, needs doing</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="seg"><span class="on">Needs doing · 6</span><span>Everything · 10</span></div>
+    <div class="sec"><div class="sh"><b>To order</b><span class="cnt">1</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>8 in stainless liner kit</b><span>3 kits, reorder at 3, none on order</span></div><span class="btn s f">Order</span></div></div>
+    <div class="sec"><div class="sh"><b>In a draft order</b><span class="cnt">2</span><span class="sp"></span><span class="lk">Open PO-00034</span></div>
+     <div class="row"><div class="g"><b>Refractory mortar</b><span>7 gal, reorder at 8 · 6 on the draft</span></div></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Crown sealant, 1 gal</b><span class="bad-t">out of stock · 10 on the draft</span></div></div></div>
+    <div class="sec"><div class="sh"><b>To receive</b><span class="cnt">3</span></div>
+     <div class="row"><div class="g"><b>PO-00033 · Northline</b><span>290 of 350</span></div><span class="btn s">Receive</span></div>
+     <div class="row"><div class="g"><b>PO-00031 · Lakeview</b><span>0 of 36</span></div><span class="btn s">Receive</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>PO-00024 · Ironridge</b><span class="cau-t">0 of 6 · open 42 days</span></div><span class="btn s">Receive</span></div></div>
+    <div class="sec"><div class="sh"><b>Covered, nothing to do</b><span class="cnt">1</span></div>
+     <div class="row" style="border-bottom:0"><div class="g"><b>Chimney cap 9×13</b><span>8 each, 12 on PO-00031</span></div></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">6 · Receive</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">PO-00033</span><span class="sp"></span><span class="pill p-info">Part received</span></div>
+   <div class="pbody" style="gap:9px;padding-top:2px">
+    <div class="tiny">Northline Masonry · ordered Sep 18 · $955.00</div>
+    <div class="lnc"><b>Firebrick</b><div class="tiny">140 of 200 received</div><div class="lnh"><span class="tiny b ink">This time</span><span class="step"><span>−</span><b>60</b><span>+</span></span></div></div>
+    <div class="lnc"><div class="lnh"><b style="flex:1">Spark arrestor mesh</b><span class="pill p-ok">Done</span></div><div class="tiny">150 of 150 ft received</div></div>
+    <div><div class="lbl">Receive into</div><div class="fld pick" style="height:40px">Main warehouse <span class="muted">▾</span></div></div>
+    <div class="tiny">Last cost of firebrick becomes $3.20.</div>
+   </div>
+   <div class="sticky"><span class="btn q">Cancel</span><span class="btn f">Receive 60</span></div>
+  </div></div></div>
+ <div><div class="ml">6 · Order, filled in from the row</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab on">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">New purchase order</span></div>
+   <div class="pbody" style="gap:9px;padding-top:2px">
+    <div><div class="lbl">Vendor</div><div class="fld pick" style="height:40px">Ironridge Stainless <span class="muted">▾</span></div><div class="tiny" style="margin-top:4px">Last bought from <span class="srv">server</span></div></div>
+    <div class="lnc"><b>8 in stainless liner kit</b><div class="lnh"><span class="tiny b ink" style="width:76px">Qty ordered</span><span class="step"><span>−</span><b>6</b><span>+</span></span><span class="tiny">kits</span></div><div class="lnh"><span class="tiny b ink" style="width:76px">Unit cost</span><span class="fld" style="width:110px;height:36px">$455.00</span></div><div class="tiny">3 on hand · reorder at 3</div></div>
+    <span class="chip ins" style="align-self:flex-start;height:36px">+ Add a line</span>
+    <div class="box" style="display:flex;justify-content:space-between"><span class="muted">Total</span><b>$2,730.00</b></div>
+   </div>
+   <div class="sticky"><span class="btn q">Cancel</span><span class="btn f">Save draft</span></div>
+  </div></div></div>
+</div>
+<div class="prow">
+ <div><div class="ml">6 · Items</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab on">Items</span><span class="tab">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="seg"><span>Below reorder · 3</span><span class="on">All · 10</span></div>
+    <div class="sec"><div class="sh"><b>6 in stainless liner kit</b><span class="sp"></span><b>13</b></div><div class="row" style="border-bottom:0;padding-top:5px"><div class="g"><span>LNR-6SS · Kit · $389.00 · reorder at 4</span></div></div></div>
+    <div class="sec"><div class="sh"><b>8 in stainless liner kit</b><span class="sp"></span><b class="cau-t">3</b></div><div class="row" style="border-bottom:0;padding-top:5px"><div class="g"><span>LNR-8SS · Kit · $455.00 · reorder at 3</span></div></div></div>
+    <div class="sec"><div class="sh"><b>Chimney brush 6 in</b><span class="sp"></span><b>44</b></div><div class="row" style="border-bottom:0;padding-top:5px"><div class="g"><span>BRS-06 · Each · $14.75 · reorder at 12</span></div></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">6 · Orders</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab on">Orders</span><span class="tab">Locations</span></div>
+   <div class="pbody">
+    <div class="seg"><span>Draft 1</span><span class="on">Open 3</span><span>Done</span></div>
+    <div class="sec"><div class="sh"><b>PO-00033</b><span class="pill p-info">Part received</span><span class="sp"></span><b>$955.00</b></div><div class="row" style="border-bottom:0;padding:6px 12px"><div class="g"><span>Northline Masonry · 290 of 350 · Sep 18</span></div></div></div>
+    <div class="sec"><div class="sh"><b>PO-00031</b><span class="pill p-info">Open</span><span class="sp"></span><b>$858.00</b></div><div class="row" style="border-bottom:0;padding:6px 12px"><div class="g"><span>Lakeview Chimney Supply · 0 of 36 · Sep 22</span></div></div></div>
+    <div class="sec"><div class="sh"><b>PO-00024</b><span class="pill p-cau">Open 42 days</span><span class="sp"></span><b>$672.00</b></div><div class="row" style="border-bottom:0;padding:6px 12px"><div class="g"><span>Ironridge Stainless · 0 of 6 · Aug 20</span></div></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">6 · Locations</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Inventory</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Stock</span><span class="tab">Items</span><span class="tab">Orders</span><span class="tab on">Locations</span></div>
+   <div class="pbody">
+    <div class="sec"><div class="sh"><b>Main warehouse</b><span class="pill p-neu">Warehouse</span><span class="sp"></span><b>$7,809.50</b></div><div class="row" style="border-bottom:0"><div class="g"><span>9 items · Lakeshore Chimney</span></div><span class="lk">Count</span></div></div>
+    <div class="sec"><div class="sh"><b>Cleveland shop</b><span class="pill p-neu">Shop</span><span class="sp"></span><b>$2,090.00</b></div><div class="row" style="border-bottom:0"><div class="g"><span>7 items · Lakeshore Chimney</span></div><span class="lk">Count</span></div></div>
+    <div class="sec"><div class="sh"><b>Van 12 (Marco)</b><span class="pill p-neu">Van</span><span class="sp"></span><b>$697.50</b></div><div class="row" style="border-bottom:0"><div class="g"><span>6 items · Van 12, 2021 Transit</span></div><span class="lk">Restock</span></div></div>
+   </div>
+  </div></div></div>
+</div>
+
+<p class="cap" style="margin-top:40px">Items, places, vendors, people, jobs and prices are invented. A value is on hand × last cost, the same sum <code>/inventory/summary</code> makes.</p>
+</div>

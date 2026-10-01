@@ -2961,7 +2961,48 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 39 · Every email EzBizi sends · one branded frame — **out for decision** (`docs/previews/ezbizi-email-layouts.html`)
+### 43 · Inventory · Stock, Items, Orders and Locations — **out for decision** (`docs/previews/inventory-layouts.html`)
+
+Jose, 2026-10-01, with a screenshot of Stock: *"same for the whole inventory tab and sub tabs, this is pretty
+pathethic atm"*. Today Stock is one two-line card per item per place, with no totals, columns or money, and its
+red Low compares one shelf against the item's reorder point, so every van reads Low. Desktop **1** four filter
+tiles, one row per item with its places inside, Transfer docked on the right (recommended); **2** items down,
+places across; **3** places first. Phone **4** option 1 in a column (recommended); **5** the van you stand in;
+**6** what needs doing first. Every option judges an item by its total across places (`low_items`) and keeps
+General first in the strip (queue #8). Option 1 needs a grouped stock read (row per item, value, on-order,
+items held nowhere), on-hand on items, totals per place, and a movements list; below ~200 items the client
+can join the first three itself.
+
+### 42 · Human Resources · the Dashboard — **out for decision** (`docs/previews/hr-dashboard-layouts.html`)
+
+Jose, 2026-10-01: *"the dashboard at human resources is also lacking, now we have a lot more information that
+could be displayed here"*. Desktop **1** six figures, joined/left by month, where people work, "right now"
+(on the clock, away, due for retaking), three named lists, each opening in a docked panel (recommended);
+**2** what needs doing first; **3** everyone with today's status. Phone **4** (recommended)-**6**. None is client
+only: option 1 needs the splits and names the server already computes and drops, the unused headcount-by-place
+widget, Joined by START date, and stalled invitations as a list. Found while drawing: "68 people joined this
+week" counts `users.created_at`, so the 64 A1 imports of Sep 29 count as joiners (told HR).
+
+### 41 · Training · the Learn tab — **out for decision** (`docs/previews/training-learn-layouts.html`)
+
+Jose, 2026-10-01: *"same on training, right now library is just showing everything the same, guides, and tests
+with no difference"*. Desktop **1** Continue first, then each guide joined to its test on one card, status
+chips and search (recommended, client only); **2** one list grouped by what to do next, the open one docked;
+**3** tracks by role (needs a track name and order on the server). Phone **4** (recommended)-**6**. Keeps Learn
+1's rule: Assigned to you comes first and no filter hides it. The A1 import sets `requires_guide => false`, so
+Jose's real technician test is open now; only an invented test shows "after the guide".
+
+### 40 · AI Assistance · the AI tab — **out for decision** (`docs/previews/ai-assistance-layouts.html`)
+
+Jose, 2026-10-01: *"we need also a layout redesign for the AI Assistance tab"*. Today: four full-width folding
+rows, answers two clicks deep, branches as plain lines, the map link dropped, bold stripped. Desktop **1**
+topics down the left, the answer in the middle with its source, branches as cards with Call, Map and Copy on
+the right (recommended); **2** a conversation like the WhatsApp line; **3** a start page with the whole Library.
+Phone **4** (recommended)-**6**. Client only; the Ask is keyword search, not an AI, and no option pretends
+otherwise (2026-09-25 "build free for now"). Optional: each answer's audience on `/menu` and `/ask` for a
+Staff only pill.
+
+### 39 · Every email EzBizi sends · one branded frame — **Jose: "i like it" — 1** — **BUILT** `e15f8fb4` (Automations passes the kind and the rule's name on top) (`docs/previews/ezbizi-email-layouts.html`)
 
 Jose, 2026-10-01, with the overbooking warning in Gmail: *"can we make the overbooking report email more
 formatted, you know, ezbizi colors, etc, not just text, this should apply for any and all automations that

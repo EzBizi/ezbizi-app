@@ -1,0 +1,564 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Training · the Learn tab</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. Every company, person,
+   date and number here is invented; guide and test titles follow the shape of the real library. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:40px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+h2 .co{font-size:11px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid #93aab3;border-radius:var(--r);padding:2px 8px}
+h2 .sv{font-size:11px;font-weight:700;color:#fff;background:var(--ink);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:3px}
+code{font:12px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line)}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu)}
+.tab.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.tab .ic{width:14px;height:14px}
+.body{flex:1;min-height:0;display:flex;overflow:hidden}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,"Segoe UI",sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.lg{height:40px;padding:0 20px;font-size:13.5px;font-weight:700}
+.btn .ic{width:13px;height:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chips.nw{flex-wrap:nowrap;overflow:hidden}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:32px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0;flex:0 0 auto}
+.srch .ic{width:14px;height:14px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.pill .ic{width:11px;height:11px}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.col{display:flex;flex-direction:column;min-height:0}
+.panel{background:var(--paper);border-left:1px solid var(--line)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r)}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0}
+.cnt{font-size:11px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip.on .cnt{color:var(--prid)}
+.seg{display:flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.seg span{flex:1;text-align:center;font-size:12px;font-weight:700;padding:5px 12px;color:var(--neu);white-space:nowrap}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.seg span+span{border-left:1px solid #93aab3}
+
+/* ── Training: kinds, progress, scores ───────────────────────────── */
+.ic{width:16px;height:16px;flex:0 0 auto;display:inline-block}
+.ic.xs{width:12px;height:12px}
+.kd{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.kd .ic{width:17px;height:17px}
+.kd.kg{background:var(--pric);color:var(--pri)}
+.kd.kt{background:var(--neu);color:#fff}
+.kd.sm{width:26px;height:26px}
+.kd.sm .ic{width:15px;height:15px}
+.kd.lg{width:44px;height:44px}
+.kd.lg .ic{width:24px;height:24px}
+.kd.w{background:#fff}
+.kn{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kn.g{color:var(--pri)} .kn.t{color:var(--neu)}
+.bar{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:1;min-width:30px}
+.bar i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.bar i.ok{background:var(--ok)}
+.prog{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:0}
+.sline{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}
+.plc{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
+.due{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--ink);white-space:nowrap}
+.okc{color:var(--ok)} .bdc{color:var(--bad)}
+
+/* option 1: Continue, Assigned, and a guide joined to its test */
+.top2{display:grid;grid-template-columns:1fr 1fr;gap:12px;height:140px;flex:0 0 auto}
+.cont{background:var(--pric);border:1px solid #a9d3e1;border-radius:var(--r);padding:11px 14px;display:flex;flex-direction:column;gap:7px;color:var(--prid);min-width:0}
+.cont .lbl{color:var(--prid);margin:0}
+.cont-m{display:flex;align-items:center;gap:12px;min-width:0}
+.cont .tx{flex:1;min-width:0}
+.ct{font-size:16px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.cs{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0 6px}
+.cont .prog{color:var(--prid)}
+.cont .bar{background:#fff}
+.then{display:flex;align-items:center;gap:6px;font-size:11.5px;border-top:1px solid #a9d3e1;padding-top:7px;white-space:nowrap;overflow:hidden;min-width:0}
+.asg{padding:10px 12px 4px;display:flex;flex-direction:column;min-width:0}
+.asg-h{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+.asg-h b{font-size:14px}
+.ar{display:flex;align-items:center;gap:10px;height:44px;border-top:1px solid var(--line2);min-width:0}
+.ar .g,.lr .g,.prow .g,.asi .g{flex:1;min-width:0}
+.ar .g b,.lr .g b,.prow .g b,.asi .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar .g span,.lr .g span,.asi .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar .btn{width:66px}
+.libh{display:flex;align-items:center;gap:10px;flex:0 0 auto;min-width:0}
+.libh > b{font-size:15px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.crs{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;height:172px;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.crs-h{display:flex;align-items:center;gap:8px;height:20px;margin-bottom:8px;flex:0 0 auto}
+.stp{display:flex;gap:10px;align-items:flex-start;height:54px;min-width:0;flex:0 0 auto}
+.stp .tx{flex:1;min-width:0}
+.stp .tx b{display:block;font-size:12.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp .tx > span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.stp .rt{width:42px;flex:0 0 auto;text-align:right;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px}
+.stp .rt small{display:block;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.stp-l{width:2px;height:10px;background:#b9c7cd;margin:1px 0 3px 14px;border-radius:1px;flex:0 0 auto}
+.stp-l.no{visibility:hidden}
+.stp.none{border:1px dashed #c3cfd5;border-radius:var(--r);align-items:center;justify-content:center;color:var(--muted);font-size:11.5px;gap:6px}
+
+/* option 2: one list, one panel */
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.gh{display:flex;align-items:center;gap:6px;padding:0 12px;height:26px;background:#f7f9fa;border-bottom:1px solid var(--line2);font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.gh .cnt{font-size:10px}
+.lr{display:grid;grid-template-columns:26px minmax(0,1fr) 150px 92px;align-items:center;gap:10px;padding:0 12px;height:40px;border-bottom:1px solid var(--line2)}
+.lr:last-child{border-bottom:0}
+.lr.on{background:var(--pric);box-shadow:inset 3px 0 0 var(--pri)}
+.lr.on .g span{color:var(--prid)}
+.lr .ast{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.lr .asd{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pnh{display:flex;align-items:center;gap:12px;padding:14px 16px 10px}
+.pnh .tx{min-width:0}
+.pt{font-size:17px;font-weight:800;line-height:1.2}
+.pnb{padding:0 16px 14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.big{font-size:24px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.chg{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(6,22px);grid-auto-flow:column;gap:1px 16px}
+.chr{display:flex;align-items:center;gap:6px;font-size:11.5px;min-width:0}
+.chr .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chr .c{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chr .ic{width:12px;height:12px}
+.chr.dn .ic{color:var(--ok)}
+.chr.cur{font-weight:700;color:var(--pri)}
+.chr.cur .c{color:var(--pri)}
+.chr.lk{color:var(--muted)}
+
+/* option 3: tracks */
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 14px 10px;flex:0 0 auto}
+.lane-h{display:flex;align-items:center;gap:8px;height:28px;margin-bottom:4px}
+.lane-h b{font-size:14px}
+.steps{display:flex;align-items:center}
+.node{width:246px;height:84px;flex:0 0 auto;border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;gap:8px;background:var(--paper);min-width:0}
+.node .kd{width:26px;height:26px}
+.node .kd .ic{width:15px;height:15px}
+.node.cur{border:2px solid var(--pri);padding:7px 9px;background:#f2f9fc}
+.node.dn{background:#fbfcfd}
+.node .tx{flex:1;min-width:0}
+.node .tx b{display:block;font-size:12.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .tx > span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.arw{width:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#93aab3}
+.arw .ic{width:18px;height:18px}
+.asi{flex:1;min-width:0;display:flex;align-items:center;gap:10px;border-left:1px solid var(--line2);padding-left:12px}
+
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);position:relative;background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:30px;flex:0 0 auto}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.phn .tabs{padding:2px 12px 8px}
+.phn .tab{height:28px;padding:0 9px;font-size:11.5px}
+.pmh{display:flex;align-items:center;gap:10px;padding:4px 14px 6px}
+.pmh .hb{font-size:17px;color:var(--neu);width:22px}
+.pmh .t{font-size:17px;font-weight:800}
+.pbd{padding:10px 12px;display:flex;flex-direction:column;gap:9px;min-height:0}
+.pbd > *{flex-shrink:0}
+.phn .cont{padding:10px 12px;gap:6px}
+.phn .ct{font-size:14px}
+.phn .crs{height:164px;padding:9px 10px;flex:0 0 auto}
+.phn .crs-h{margin-bottom:6px}
+.phn .stp{height:53px;gap:9px}
+.phn .stp .tx > span{margin-bottom:3px}
+.phn .stp-l{height:8px;margin:1px 0 3px 14px}
+.prow{display:flex;align-items:center;gap:10px;height:50px;padding:0 10px;border-bottom:1px solid var(--line2);min-width:0}
+.prow:last-child{border-bottom:0}
+.prow .g .l2{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;margin-top:2px}
+.prow .chev{color:var(--muted);font-size:15px}
+.vst{display:flex;gap:10px;min-width:0}
+.vst .rail{display:flex;flex-direction:column;align-items:center;width:26px;flex:0 0 auto}
+.vst .rail i{flex:1;width:2px;background:#b9c7cd;margin:3px 0;border-radius:1px}
+.vst .tx{flex:1;min-width:0;padding-bottom:7px}
+.vst .tx b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vst .tx > span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex:0 0 auto;border:2px solid #b9c7cd;color:var(--muted);background:var(--paper)}
+.dot.cur{border-color:var(--pri);color:var(--pri)}
+.dot.dn{border-color:var(--ok);background:var(--ok);color:#fff}
+.dot .ic{width:11px;height:11px}
+.erow{display:flex;align-items:center;gap:6px;height:30px;border-top:1px solid var(--line2);min-width:0}
+.erow b{font-size:12px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.erow .dot{width:18px;height:18px;font-size:10px}
+.erow .kd.sm{width:22px;height:22px}
+.erow .kd.sm .ic{width:13px;height:13px}
+
+/* server table at the end */
+.need{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);overflow:hidden;max-width:1000px}
+.need .r{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:9px 14px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.need .r:last-child{border-bottom:0}
+.need .r b{white-space:nowrap}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M2.5 5.2c2.9-1.3 6-1.1 9.5 1 3.5-2.1 6.6-2.3 9.5-1v13.6c-2.9-1.3-6-1.1-9.5 1-3.5-2.1-6.6-2.3-9.5-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 6.2v13.4" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+ <symbol id="i-quiz" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="15" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2.5 7v11.5a3 3 0 0 0 3 3H17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11.6 8.2a2.5 2.5 0 1 1 3.4 2.3c-.8.3-1 .8-1 1.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="14" cy="14.6" r="1.15" fill="currentColor"/></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5L19.5 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
+ <symbol id="i-stats" viewBox="0 0 24 24"><path d="M5 20v-8M11 20V5M17 20v-5M3 20.5h18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+ <symbol id="i-tune" viewBox="0 0 24 24"><path d="M3 7h10M17 7h4M3 17h4M11 17h10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="15" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+ <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5l5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div class="wrap">
+<h1>Training · the Learn tab</h1>
+<p class="sub">Jose, 2026-10-01: <i>“same on training, right now library is just showing everything the same, guides, and tests with no difference, im sure u can come up with a good overhaul”</i>.</p>
+<p class="cap"><b>What is wrong today:</b> the Library is five identical small white cards in one row, and the rest of a wide screen is empty. A guide and a test differ only by a few grey words (“screens” or “questions”), so a one-video introduction, a long guide and a 60-question test all look like the same thing. The test that follows a guide is a separate card with nothing joining them, and nothing says whether a test is open now or waits until its guide is read. Nothing shows where to pick up: the guide you are halfway through is the third card, with no next topic and no Continue. The cards count “screens” while the reader now says “topics”. A whole shelf is spent saying nothing is assigned, and there is no search or filter for when the library grows.</p>
+<p class="cap"><b>Every option keeps</b> the rule Learn 1 was picked for in the first Training gallery: Assigned to you comes before the library and no filter can hide it. What each option replaces is Learn 1’s library shelf of equal cards. All of them also keep the place each item belongs to, and the reader rebuilt on A1 Tools’ layout, untouched: a guide still opens at its next topic, a test still opens the test screen, both inside Training with ← back. <b>Every option adds</b> a guide and a test that look different at a glance: a guide has the book icon, its topics and a progress bar, and is <b>Completed</b> when read; a test has the question icon, its questions, a score against its pass mark and the attempts left, says whether it is open now or waits for its guide, and is <b>Passed</b> or <b>Not passed</b>. It also adds the test joined to the guide it follows, where you left off by name with one Continue, “topics” in place of “screens”, and search. Chapters, topics, videos and the next topic’s name are counted from the topics <code>GET /training/learn</code> already sends with each guide, and a test names its guide in <code>guide_id</code>, so options 1, 2, 4 and 5 are <b>client only</b>.</p>
+
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>Continue first, then each guide joined to its test <span class="rec">Recommended</span><span class="co">Client only</span></h2>
+<p class="cap">Where you left off is the biggest thing on the page (the guide, the next topic by name, how far you are, one Continue), with Assigned to you beside it, so both things you owe sit above the fold. In the library each guide shares one card with its test, the guide on top with its bar and the test under it with its score, so the pair reads as two steps of one thing; a guide with no test, or a test with no guide, keeps the same card size and says so in words. Status chips and search cover a library that grows.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Training</div><div class="s">Guides and tests, and who has passed what.</div></div>
+  <div class="tabs"><span class="tab on"><svg class="ic"><use href="#i-book"/></svg>Learn</span><span class="tab"><svg class="ic"><use href="#i-stats"/></svg>Dashboard</span><span class="tab"><svg class="ic"><use href="#i-tune"/></svg>Settings</span></div>
+  <div class="body" style="flex-direction:column;padding:12px 18px;gap:12px">
+   <div class="top2">
+    <div class="cont">
+     <div class="lbl">Continue where you left off</div>
+     <div class="cont-m">
+      <span class="kd lg kg w"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx">
+       <div class="ct">Technician Training Guide</div>
+       <div class="cs">Next: <b>Parging the smoke chamber</b> · topic 88</div>
+       <div class="prog"><div class="bar"><i style="width:55%"></i></div><b>87 of 158 topics</b> · chapter 7 of 12</div>
+      </div>
+      <span class="btn f lg"><svg class="ic"><use href="#i-play"/></svg>Continue</span>
+     </div>
+     <div class="then"><svg class="ic xs"><use href="#i-quiz"/></svg>Its test, <b>Technician Training</b> · 60 questions · pass at 85% · open now, before or after the guide</div>
+    </div>
+    <div class="card asg">
+     <div class="asg-h"><b>Assigned to you</b><span class="tiny">2 to do</span></div>
+     <div class="ar"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Ladder Safety</b><span>Guide, then its 12-question test · every Technician</span></div><span class="pill p-info">Due 10/9/2026</span><span class="btn s">Start</span></div>
+     <div class="ar"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Carbon Monoxide Awareness</b><span>Test · you passed with 88% on 9/14/2025</span></div><span class="pill p-warn">Due for retaking</span><span class="btn s">Retake</span></div>
+    </div>
+   </div>
+   <div class="libh"><b>Library</b><span class="tiny">Each guide with the test that follows it · 4 guides, 5 tests</span><span class="sp"></span>
+    <div class="chips"><span class="chip on">All</span><span class="chip">In progress <span class="cnt">2</span></span><span class="chip">Not started <span class="cnt">1</span></span><span class="chip">Due for retaking <span class="cnt">1</span></span><span class="chip">Done <span class="cnt">2</span></span></div>
+    <div class="srch" style="width:196px"><svg class="ic"><use href="#i-search"/></svg>Find a guide or test</div></div>
+   <div class="grid3">
+    <!-- Technician -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Harbor Chimney</span><span class="sp"></span><span class="pill p-info">In progress</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Technician Training Guide</b><span>Guide · 12 chapters · 158 topics · 49 videos</span>
+       <div class="prog"><div class="bar"><i style="width:55%"></i></div>87 / 158</div></div></div>
+     <div class="stp-l"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Technician Training</b><span>Test · 60 questions · pass at 85%</span>
+       <div class="sline"><span class="pill p-neu">Not started</span>open now · 10 attempts</div></div>
+      <div class="rt muted">—</div></div>
+    </div>
+    <!-- Gas appliance, test only, not passed -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Organization</span><span class="sp"></span><span class="pill p-info">In progress</span></div>
+     <div class="stp none">No guide comes before this test</div>
+     <div class="stp-l no"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Gas Appliance Safety</b><span>Test · 20 questions · pass at 80%</span>
+       <div class="sline"><span class="pill p-bad">Not passed</span>1 of 2 attempts left</div></div>
+      <div class="rt bdc">70%</div></div>
+    </div>
+    <!-- Ladder Safety: assigned; its test waits for the guide -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Organization</span><span class="due"><svg class="ic xs"><use href="#i-clock"/></svg>Due 10/9/2026</span><span class="sp"></span><span class="pill p-neu">Not started</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Ladder Safety</b><span>Guide · 3 chapters · 14 topics · 2 videos</span>
+       <div class="prog"><div class="bar"><i style="width:0"></i></div>Not started</div></div></div>
+     <div class="stp-l"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Ladder Safety Check</b><span>Test · 12 questions · pass at 80%</span>
+       <div class="sline"><span class="pill p-neu"><svg class="ic"><use href="#i-lock"/></svg>After the guide</span>3 attempts</div></div>
+      <div class="rt muted">—</div></div>
+    </div>
+    <!-- Carbon monoxide, test only -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Organization</span><span class="sp"></span><span class="pill p-warn">Due for retaking</span></div>
+     <div class="stp none">No guide comes before this test</div>
+     <div class="stp-l no"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Carbon Monoxide Awareness</b><span>Test · 15 questions · pass at 80%</span>
+       <div class="sline">Passed 9/14/2025 · a pass lasts a year</div></div>
+      <div class="rt muted">88%</div></div>
+    </div>
+    <!-- Dispatcher, done -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Harbor Chimney</span><span class="sp"></span><span class="pill p-ok"><svg class="ic"><use href="#i-check"/></svg>Done</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Dispatcher Training Guide</b><span>Guide · 4 chapters · 21 topics · 7 videos</span>
+       <div class="prog"><div class="bar"><i class="ok" style="width:100%"></i></div>Completed 8/12/2026</div></div></div>
+     <div class="stp-l"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Dispatcher Training</b><span>Test · 40 questions · pass at 85%</span>
+       <div class="sline"><span class="pill p-ok">Passed</span>9/30/2026 · attempt 1 of 3</div></div>
+      <div class="rt okc">92%</div></div>
+    </div>
+    <!-- Dispatcher intro, guide only, done -->
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Harbor Chimney</span><span class="sp"></span><span class="pill p-ok"><svg class="ic"><use href="#i-check"/></svg>Done</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Dispatcher Introduction Video</b><span>Guide · 1 topic · 1 video</span>
+       <div class="prog"><div class="bar"><i class="ok" style="width:100%"></i></div>Completed 12/23/2025</div></div></div>
+     <div class="stp-l no"></div>
+     <div class="stp none">No test follows this guide</div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>One list by what to do next, the open one beside it <span class="co">Client only</span></h2>
+<p class="cap">The list-beside-detail shape the rest of the app uses: one short row per guide or test, grouped Assigned to you, In progress, Not started and Done, with Guides / Tests to narrow it; unlike the single filtered list turned down when Learn 1 was picked, Assigned to you is a group no filter hides. Clicking a row opens it in the panel on the right: a guide shows how far you are in each chapter, Continue at the next topic and its test; a test shows its pass mark, attempts left, your last score and the guide it needs. It is the densest of the three and stays readable at fifty items, where cards would not.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Training</div><div class="s">Guides and tests, and who has passed what.</div></div>
+  <div class="tabs"><span class="tab on"><svg class="ic"><use href="#i-book"/></svg>Learn</span><span class="tab"><svg class="ic"><use href="#i-stats"/></svg>Dashboard</span><span class="tab"><svg class="ic"><use href="#i-tune"/></svg>Settings</span></div>
+  <div class="body">
+   <div class="col" style="flex:1;min-width:0;padding:12px 16px;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+     <div class="srch" style="width:240px"><svg class="ic"><use href="#i-search"/></svg>Find a guide or test</div>
+     <div class="seg"><span class="on">All 9</span><span>Guides 4</span><span>Tests 5</span></div>
+     <span class="sp"></span><div class="srch" style="color:var(--ink);font-weight:600">All places <span class="muted">▾</span></div>
+    </div>
+    <div class="lst">
+     <div class="gh">Assigned to you <span class="cnt">2</span><span class="sp"></span><span style="text-transform:none;letter-spacing:0;font-weight:600">Due first</span></div>
+     <div class="lr"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Ladder Safety</b><span>Guide · 14 topics · then Ladder Safety Check</span></div><div class="ast"><span class="pill p-info">Due 10/9/2026</span></div><div class="asd">Not started</div></div>
+     <div class="lr"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Carbon Monoxide Awareness</b><span>Test · 15 questions · pass at 80% · no guide</span></div><div class="ast"><span class="pill p-warn">Due for retaking</span></div><div class="asd">was 88%</div></div>
+     <div class="gh">In progress <span class="cnt">2</span></div>
+     <div class="lr on"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Technician Training Guide</b><span>Guide · 158 topics · now in chapter 7, Smoke Chamber</span></div><div class="ast"><div class="bar"><i style="width:55%"></i></div>87 / 158</div><div class="asd"><span class="btn f s" style="width:88px"><svg class="ic"><use href="#i-play"/></svg>Continue</span></div></div>
+     <div class="lr"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Gas Appliance Safety</b><span>Test · 20 questions · pass at 80% · no guide</span></div><div class="ast"><span class="pill p-bad">Not passed · 70%</span></div><div class="asd">1 of 2 left</div></div>
+     <div class="gh">Not started <span class="cnt">2</span></div>
+     <div class="lr"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Technician Training</b><span>Test · 60 questions · pass at 85% · with its guide</span></div><div class="ast"><span class="pill p-neu">Not started</span></div><div class="asd">open now</div></div>
+     <div class="lr"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Ladder Safety Check</b><span>Test · 12 questions · pass at 80% · after Ladder Safety</span></div><div class="ast"><span class="pill p-neu"><svg class="ic"><use href="#i-lock"/></svg>After its guide</span></div><div class="asd">3 attempts</div></div>
+     <div class="gh">Done <span class="cnt">3</span></div>
+     <div class="lr"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Dispatcher Training</b><span>Test · 40 questions · pass at 85% · attempt 1 of 3</span></div><div class="ast"><span class="pill p-ok">Passed · 92%</span></div><div class="asd">9/30/2026</div></div>
+     <div class="lr"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Dispatcher Training Guide</b><span>Guide · 21 topics · then Dispatcher Training</span></div><div class="ast"><span class="pill p-ok">Completed</span></div><div class="asd">8/12/2026</div></div>
+     <div class="lr"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Dispatcher Introduction Video</b><span>Guide · 1 topic · 1 video</span></div><div class="ast"><span class="pill p-ok">Completed</span></div><div class="asd">12/23/2025</div></div>
+    </div>
+   </div>
+   <div class="col panel" style="width:452px;flex:0 0 auto">
+    <div class="pnh"><span class="kd lg kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="kn g">Guide · Harbor Chimney</div><div class="pt">Technician Training Guide</div></div></div>
+    <div class="pnb">
+     <div class="muted" style="font-size:12px">Everything a technician does on a sweep and an inspection, from the driveway to the written report.</div>
+     <div class="box" style="background:#f7fbfc">
+      <div style="display:flex;align-items:baseline;gap:8px"><span class="big">55%</span><span class="muted">87 of 158 topics completed</span></div>
+      <div class="bar" style="flex:none;margin:8px 0 10px"><i style="width:55%"></i></div>
+      <div style="display:flex;align-items:center;gap:12px"><span class="btn f"><svg class="ic"><use href="#i-play"/></svg>Continue at topic 88</span><span class="tiny" style="line-height:1.35;min-width:0">Next: <b style="color:var(--ink)">Parging the smoke chamber</b><br>Chapter 7 · Smoke Chamber</span></div>
+     </div>
+     <div><div class="lbl">12 chapters · 49 videos</div>
+      <div class="chg">
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">1 · Arriving at the job</span><span class="c">9/9</span></div>
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">2 · Safety on the roof</span><span class="c">14/14</span></div>
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">3 · Tools and the van</span><span class="c">11/11</span></div>
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">4 · The fireplace</span><span class="c">15/15</span></div>
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">5 · The firebox</span><span class="c">12/12</span></div>
+       <div class="chr dn"><svg class="ic"><use href="#i-check"/></svg><span class="nm">6 · The damper</span><span class="c">16/16</span></div>
+       <div class="chr cur"><svg class="ic"><use href="#i-play"/></svg><span class="nm">7 · Smoke Chamber</span><span class="c">10/21</span></div>
+       <div class="chr lk"><svg class="ic"><use href="#i-lock"/></svg><span class="nm">8 · Flue and liner</span><span class="c">0/18</span></div>
+       <div class="chr lk"><svg class="ic"><use href="#i-lock"/></svg><span class="nm">9 · Chimney exterior</span><span class="c">0/14</span></div>
+       <div class="chr lk"><svg class="ic"><use href="#i-lock"/></svg><span class="nm">10 · Caps and crowns</span><span class="c">0/9</span></div>
+       <div class="chr lk"><svg class="ic"><use href="#i-lock"/></svg><span class="nm">11 · Writing the report</span><span class="c">0/12</span></div>
+       <div class="chr lk"><svg class="ic"><use href="#i-lock"/></svg><span class="nm">12 · The customer</span><span class="c">0/7</span></div>
+      </div></div>
+     <div><div class="lbl">Its test</div>
+      <div class="box" style="display:flex;align-items:center;gap:10px"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div style="flex:1;min-width:0"><b style="display:block;font-size:12.5px">Technician Training</b><span class="tiny">60 questions · pass at 85% · 10 attempts · open now</span></div><span class="btn s">Start test</span></div></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>Tracks: each role’s training as steps in order <span class="sv">Needs a server change</span></h2>
+<p class="cap">The library grouped into tracks (Technician, Dispatcher, Everyone), each drawn as its steps in order, so a new hire sees the whole path, the step they are on and what comes next, with their own role’s track first and a finished one marked Complete. A1 Tools grouped its training this way (each guide named the roles it was for), but the import reported those roles and did not keep them. <b>Server:</b> a track name and an order on each guide and test, a field to set them in Settings, and both sent by <code>GET /training/learn</code>.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Training</div><div class="s">Guides and tests, and who has passed what.</div></div>
+  <div class="tabs"><span class="tab on"><svg class="ic"><use href="#i-book"/></svg>Learn</span><span class="tab"><svg class="ic"><use href="#i-stats"/></svg>Dashboard</span><span class="tab"><svg class="ic"><use href="#i-tune"/></svg>Settings</span></div>
+  <div class="body" style="flex-direction:column;padding:12px 18px;gap:10px">
+   <div class="card" style="padding:8px 12px;display:flex;align-items:center;gap:12px;height:54px;flex:0 0 auto">
+    <div style="width:130px;flex:0 0 auto"><b style="font-size:13px;display:block">Assigned to you</b><span class="tiny">2 to do</span></div>
+    <div class="asi"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Ladder Safety</b><span>Guide, then its test · step 1 of Everyone</span></div><span class="pill p-info">Due 10/9/2026</span><span class="btn s" style="width:66px">Start</span></div>
+    <div class="asi"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Carbon Monoxide Awareness</b><span>Test · step 3 of Everyone</span></div><span class="pill p-warn">Due for retaking</span><span class="btn s" style="width:66px">Retake</span></div>
+   </div>
+   <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+    <div class="chips"><span class="chip on">All tracks</span><span class="chip">Technician <span class="cnt">2</span></span><span class="chip">Dispatcher <span class="cnt">3</span></span><span class="chip">Everyone <span class="cnt">4</span></span></div>
+    <span class="sp"></span><div class="srch" style="width:220px"><svg class="ic"><use href="#i-search"/></svg>Find a guide or test</div>
+   </div>
+   <!-- Technician -->
+   <div class="lane">
+    <div class="lane-h"><b>Technician</b><span class="pill p-info">Your role</span><span class="tiny">0 of 2 done · for Technicians and Lead Techs · Harbor Chimney</span><span class="sp"></span><span class="btn f s"><svg class="ic"><use href="#i-play"/></svg>Continue step 1</span></div>
+    <div class="steps">
+     <div class="node cur"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="kn g">Step 1 · Guide</div><b>Technician Training Guide</b><span>12 chapters · 158 topics · 49 videos</span><div class="prog"><div class="bar"><i style="width:55%"></i></div>87 / 158</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="tx"><div class="kn t">Step 2 · Test</div><b>Technician Training</b><span>60 questions · pass at 85%</span><div class="sline"><span class="pill p-neu">Not started</span>open now</div></div></div>
+    </div>
+   </div>
+   <!-- Dispatcher -->
+   <div class="lane">
+    <div class="lane-h"><b>Dispatcher</b><span class="pill p-ok"><svg class="ic"><use href="#i-check"/></svg>Complete</span><span class="tiny">3 of 3 done · for Dispatchers · Harbor Chimney</span></div>
+    <div class="steps">
+     <div class="node dn"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="kn g">Step 1 · Guide</div><b>Dispatcher Introduction Video</b><span>1 topic · 1 video</span><div class="sline"><span class="pill p-ok">Completed</span>12/23/2025</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node dn"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="kn g">Step 2 · Guide</div><b>Dispatcher Training Guide</b><span>4 chapters · 21 topics · 7 videos</span><div class="sline"><span class="pill p-ok">Completed</span>8/12/2026</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node dn"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="tx"><div class="kn t">Step 3 · Test</div><b>Dispatcher Training</b><span>40 questions · pass at 85%</span><div class="sline"><span class="pill p-ok">Passed · 92%</span>9/30/2026</div></div></div>
+    </div>
+   </div>
+   <!-- Everyone -->
+   <div class="lane">
+    <div class="lane-h"><b>Everyone</b><span class="tiny">0 of 4 done · every role · Organization</span></div>
+    <div class="steps">
+     <div class="node"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="kn g">Step 1 · Guide</div><b>Ladder Safety</b><span>3 chapters · 14 topics · 2 videos</span><div class="sline"><span class="pill p-info">Due 10/9/2026</span>Not started</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="tx"><div class="kn t">Step 2 · Test</div><b>Ladder Safety Check</b><span>12 questions · pass at 80%</span><div class="sline"><span class="pill p-neu"><svg class="ic"><use href="#i-lock"/></svg>After step 1</span>3 attempts</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="tx"><div class="kn t">Step 3 · Test</div><b>Carbon Monoxide Awareness</b><span>15 questions · pass at 80%</span><div class="sline"><span class="pill p-warn">Due for retaking</span>was 88%</div></div></div>
+     <div class="arw"><svg class="ic"><use href="#i-arrow"/></svg></div>
+     <div class="node"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="tx"><div class="kn t">Step 4 · Test</div><b>Gas Appliance Safety</b><span>20 questions · pass at 80%</span><div class="sline"><span class="pill p-bad">Not passed · 70%</span>1 of 2 left</div></div></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ PHONES ═════════ -->
+<h2><span class="n">4</span><span class="n">5</span><span class="n">6</span>On a phone</h2>
+<p class="cap"><b>4</b> is 1 on a phone, drawn with today’s real situation (nothing assigned, three guides and two tests): Continue at the top with a full-width button, one line for Assigned to you, then each guide and its test on one card <span class="rec" style="font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:10px;padding:1px 7px">Recommended</span>. <b>5</b> is 2’s list, with Done folded to one line; a tap opens the guide or test in Training’s own area with ← Learn, never a sheet. <b>6</b> is 3’s tracks as steps down the screen, your role’s first and a finished track folded to one line (needs the same server change as 3).</p>
+<div class="pairp">
+ <!-- 4 -->
+ <div><div class="pl">4 · continue, then guide and test together</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="pmh"><span class="hb">☰</span><span class="t">Training</span></div>
+   <div class="tabs"><span class="tab on">Learn</span><span class="tab">Dashboard</span><span class="tab">Settings</span></div>
+   <div class="pbd">
+    <div class="cont">
+     <div class="lbl">Continue where you left off</div>
+     <div class="cont-m" style="gap:10px"><span class="kd kg w" style="width:36px;height:36px"><svg class="ic"><use href="#i-book"/></svg></span><div class="tx"><div class="ct">Technician Training Guide</div><div class="cs" style="margin:0">Ch. 7 › next: <b>Parging the smoke chamber</b></div></div></div>
+     <div class="prog"><div class="bar"><i style="width:55%"></i></div><b>87 of 158 topics</b></div>
+     <span class="btn f lg" style="width:100%"><svg class="ic"><use href="#i-play"/></svg>Continue</span>
+    </div>
+    <div><b style="font-size:13px">Assigned to you</b><div class="tiny" style="font-size:12px">Nothing is assigned to you right now.</div></div>
+    <div style="display:flex;align-items:center;gap:6px"><b style="font-size:14px;margin-right:2px">Library</b><div class="chips nw"><span class="chip on">All</span><span class="chip">In progress</span><span class="chip">Done</span></div><span class="sp"></span><span class="srch" style="width:32px;padding:0;justify-content:center"><svg class="ic"><use href="#i-search"/></svg></span></div>
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Harbor Chimney</span><span class="sp"></span><span class="pill p-info">In progress</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Technician Training Guide</b><span>Guide · 12 chapters · 158 topics</span>
+       <div class="prog"><div class="bar"><i style="width:55%"></i></div>87 / 158</div></div></div>
+     <div class="stp-l"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Technician Training</b><span>Test · 60 questions · pass at 85%</span>
+       <div class="sline"><span class="pill p-neu">Not started</span>open now</div></div>
+      <div class="rt muted">—</div></div>
+    </div>
+    <div class="crs">
+     <div class="crs-h"><span class="plc">Harbor Chimney</span><span class="sp"></span><span class="pill p-ok"><svg class="ic"><use href="#i-check"/></svg>Done</span></div>
+     <div class="stp"><span class="kd kg"><svg class="ic"><use href="#i-book"/></svg></span>
+      <div class="tx"><b>Dispatcher Training Guide</b><span>Guide · 4 chapters · 21 topics</span>
+       <div class="prog"><div class="bar"><i class="ok" style="width:100%"></i></div>Completed 8/12/2026</div></div></div>
+     <div class="stp-l"></div>
+     <div class="stp"><span class="kd kt"><svg class="ic"><use href="#i-quiz"/></svg></span>
+      <div class="tx"><b>Dispatcher Training</b><span>Test · 40 questions · pass at 85%</span>
+       <div class="sline"><span class="pill p-ok">Passed</span>9/30/2026</div></div>
+      <div class="rt okc">92%</div></div>
+    </div>
+   </div>
+  </div></div></div>
+ <!-- 5 -->
+ <div><div class="pl">5 · one list, Done folded</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="pmh"><span class="hb">☰</span><span class="t">Training</span></div>
+   <div class="tabs"><span class="tab on">Learn</span><span class="tab">Dashboard</span><span class="tab">Settings</span></div>
+   <div class="pbd">
+    <div class="srch"><svg class="ic"><use href="#i-search"/></svg>Find a guide or test</div>
+    <div class="seg"><span class="on">All 9</span><span>Guides 4</span><span>Tests 5</span></div>
+    <div class="lst">
+     <div class="gh">Assigned to you <span class="cnt">2</span></div>
+     <div class="prow"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Ladder Safety</b><div class="l2"><span class="pill p-info">Due 10/9/2026</span>Guide · 14 topics</div></div><span class="chev">›</span></div>
+     <div class="prow"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Carbon Monoxide Awareness</b><div class="l2"><span class="pill p-warn">Due for retaking</span>Test · was 88%</div></div><span class="chev">›</span></div>
+     <div class="gh">In progress <span class="cnt">2</span></div>
+     <div class="prow" style="background:var(--pric)"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><div class="g"><b>Technician Training Guide</b><div class="l2" style="color:var(--prid)"><div class="bar" style="max-width:110px;background:#fff"><i style="width:55%"></i></div>87 / 158 · Ch. 7</div></div><span class="btn f s" style="width:40px;padding:0"><svg class="ic"><use href="#i-play"/></svg></span></div>
+     <div class="prow"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Gas Appliance Safety</b><div class="l2"><span class="pill p-bad">Not passed · 70%</span>1 of 2 left</div></div><span class="chev">›</span></div>
+     <div class="gh">Not started <span class="cnt">2</span></div>
+     <div class="prow"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Technician Training</b><div class="l2"><span class="pill p-neu">Not started</span>60 questions · open now</div></div><span class="chev">›</span></div>
+     <div class="prow"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><div class="g"><b>Ladder Safety Check</b><div class="l2"><span class="pill p-neu"><svg class="ic"><use href="#i-lock"/></svg>After its guide</span>12 questions</div></div><span class="chev">›</span></div>
+     <div class="gh" style="height:40px;background:var(--paper);border-top:1px solid var(--line2)">Done <span class="cnt">3</span><span class="sp"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--ok)">1 passed · 2 completed</span><span class="chev" style="font-size:15px">›</span></div>
+    </div>
+   </div>
+  </div></div></div>
+ <!-- 6 -->
+ <div><div class="pl">6 · tracks as steps</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="pmh"><span class="hb">☰</span><span class="t">Training</span></div>
+   <div class="tabs"><span class="tab on">Learn</span><span class="tab">Dashboard</span><span class="tab">Settings</span></div>
+   <div class="pbd">
+    <div class="card" style="padding:8px 10px">
+     <b style="font-size:13px">Assigned to you</b> <span class="tiny">2 to do</span>
+     <div class="erow" style="margin-top:6px"><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><b>Ladder Safety</b><span class="pill p-info">Due 10/9/2026</span></div>
+     <div class="erow"><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><b>Carbon Monoxide Awareness</b><span class="pill p-warn">Retake</span></div>
+    </div>
+    <div class="chips nw"><span class="chip on">All</span><span class="chip">Technician</span><span class="chip">Dispatcher</span><span class="chip">Everyone</span></div>
+    <div class="lane" style="padding:9px 10px 4px">
+     <div class="lane-h" style="margin-bottom:8px"><b>Technician</b><span class="pill p-info">Your role</span><span class="sp"></span><span class="tiny">0 of 2</span></div>
+     <div class="vst"><div class="rail"><span class="dot cur">1</span><i></i></div><div class="tx"><div class="kn g">Guide</div><b>Technician Training Guide</b><span>158 topics · next: Parging the smoke chamber</span><div class="prog"><div class="bar"><i style="width:55%"></i></div>87 / 158<span class="btn f s" style="margin-left:4px"><svg class="ic"><use href="#i-play"/></svg>Continue</span></div></div></div>
+     <div class="vst"><div class="rail"><span class="dot">2</span></div><div class="tx"><div class="kn t">Test</div><b>Technician Training</b><span>60 questions · pass at 85% · open now</span></div></div>
+    </div>
+    <div class="lane" style="padding:9px 10px;display:flex;align-items:center;gap:8px"><b style="font-size:14px">Dispatcher</b><span class="pill p-ok"><svg class="ic"><use href="#i-check"/></svg>Complete</span><span class="sp"></span><span class="tiny">3 of 3</span><span class="muted" style="font-size:15px">›</span></div>
+    <div class="lane" style="padding:9px 10px 4px">
+     <div class="lane-h" style="margin-bottom:2px"><b>Everyone</b><span class="sp"></span><span class="tiny">0 of 4</span></div>
+     <div class="erow"><span class="dot">1</span><span class="kd sm kg"><svg class="ic"><use href="#i-book"/></svg></span><b>Ladder Safety</b><span class="pill p-info">Due 10/9</span></div>
+     <div class="erow"><span class="dot">2</span><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><b>Ladder Safety Check</b><span class="pill p-neu"><svg class="ic"><use href="#i-lock"/></svg>After 1</span></div>
+     <div class="erow"><span class="dot">3</span><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><b>Carbon Monoxide Awareness</b><span class="pill p-warn">Retake</span></div>
+     <div class="erow"><span class="dot">4</span><span class="kd sm kt"><svg class="ic"><use href="#i-quiz"/></svg></span><b>Gas Appliance Safety</b><span class="pill p-bad">Not passed</span></div>
+    </div>
+   </div>
+  </div></div></div>
+</div>
+
+<h2 style="margin-top:44px">What each option needs from the server</h2>
+<div class="need">
+ <div class="r"><b>1 and 4</b><span>Nothing. <span class="muted">Optional: <code>last_read_at</code> on each guide (its progress row’s own <code>updated_at</code>) so Continue picks the guide opened most recently when two are half-read. Without it, Continue picks an assigned guide first, then the one furthest along.</span></span></div>
+ <div class="r"><b>2 and 5</b><span>Nothing for what is drawn. <span class="muted">A test’s panel lists only the last attempt (score, date, attempts left). Listing every attempt would need this person’s attempts sent with the test.</span></span></div>
+ <div class="r"><b>3 and 6</b><span>A <b>track</b>: a name and an order on each guide and test, set in Settings › the guide or test, and sent by <code>GET /training/learn</code>. Putting “your role” first also needs a track to name the roles it is for. <span class="muted">A1 Tools’ own role targeting, which the import printed and did not keep, could fill it in.</span></span></div>
+ <div class="r"><b>Any option</b><span class="muted">“Passed, good until 9/30/2027” would need <code>expires_on</code> of the current pass, which the learner’s read does not send today (it sends the last score and date and how long a pass lasts). None of the six draws it.</span></div>
+</div>
+<p class="cap" style="margin-top:14px">Answer with one desktop number and one phone number, for example “1 and 4”. Names, places, dates and numbers are invented.</p>
+</div>
