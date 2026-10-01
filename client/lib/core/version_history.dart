@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Leads: Send now lines up with the reply box, and a new emoji button beside it opens a tray of emoji. On a phone the status buttons no longer break words in half.',
+        'Reports: the Overbooking warning now shows in the Reports list and opens on the next 7 days.',
       ],
     ),
     VersionRelease(
