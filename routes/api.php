@@ -53,6 +53,7 @@ use App\Http\Controllers\Api\InvitationAcceptanceController;
 use App\Http\Controllers\Api\JobLinesController;
 use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadDashboardController;
+use App\Http\Controllers\Api\LeadPresenceController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\MailboxesController;
@@ -840,6 +841,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
+        Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);

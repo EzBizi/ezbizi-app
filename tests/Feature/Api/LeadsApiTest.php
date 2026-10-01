@@ -222,9 +222,19 @@ class LeadsApiTest extends TestCase
         $this->signedInAs($other);
         $this->assertSame([$t['admin']->name], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
 
-        // Past its 45 seconds, a check-in no longer counts - well inside the
-        // cache's own lifetime, so it is the rule doing this, not expiry.
-        $this->travel(50)->seconds();
+        // Closing the thread takes the name off at once, not when the
+        // check-in runs out (Jose, 2026-10-01).
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT.'/'.$lead->id.'/leave')->assertOk();
+        $this->signedInAs($other);
+        $this->assertSame([], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+
+        // A thread that never said goodbye: past its 25 seconds a check-in no
+        // longer counts - inside the cache's own 40, so it is the rule doing
+        // this, not expiry.
+        $this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk();
+        $this->signedInAs($t['admin']);
+        $this->assertSame([$other->name], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+        $this->travel(30)->seconds();
         $this->assertSame([], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
     }
 

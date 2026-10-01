@@ -215,6 +215,9 @@ class _LeadThreadState extends State<LeadThread> {
   @override
   void dispose() {
     _poll?.cancel();
+    // Off this lead on everybody else's screen now, not when the check-in
+    // runs out (Jose, 2026-10-01). Fire and forget: the thread is closing.
+    unawaited(widget.api.post('/leads/${widget.lead['id']}/leave', const {}));
     _note.dispose();
     _compose.dispose();
     _player.stop();

@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Cache;
  * persons that currently have a specific lead open").
  *
  * Reading a lead is the check-in (the open thread re-reads it every 10
- * seconds); a check-in lasts 45, so a
- * closed thread drops off within a minute with nothing to clean up. Held in
+ * seconds); a check-in lasts 25. Closing the thread checks out at once
+ * (checkOut, POST /leads/{id}/leave) - Jose, 2026-10-01: a name lingering on
+ * leads somebody had already left "can be a bit confusing". The 25 seconds
+ * are only for a thread that never said goodbye: a closed laptop, a crash. Held in
  * the cache, not the database: it is a minute old at most and worth nothing
  * after that.
  *
@@ -21,7 +23,15 @@ use Illuminate\Support\Facades\Cache;
  */
 final class LeadPresence
 {
-    private const LASTS = 45;
+    private const LASTS = 25;
+
+    /** The reader closed the thread: off the lead now, not in 25 seconds. */
+    public static function checkOut(string $leadId, User $user): void
+    {
+        $viewers = (array) Cache::get(self::key($leadId), []);
+        unset($viewers[(string) $user->getKey()]);
+        Cache::put(self::key($leadId), $viewers, self::LASTS + 15);
+    }
 
     public static function checkIn(string $leadId, User $user): void
     {
