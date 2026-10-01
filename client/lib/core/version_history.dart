@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Scheduling › Availability: a zip search with a typo (too few or too many digits) now says it isn\'t a zip code, instead of searching the wrong zip or saying no area covers it. Zip+4 works.',
+        'Roles & Permissions: each role can be given the roles its holders may invite.',
       ],
     ),
     VersionRelease(
