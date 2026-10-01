@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Onboarding: the new hire fills in and signs the W-4 or W-9 inside the app.',
+        'Inventory: Items, Orders and Locations open with the same row of tiles as Stock, and a tap on a tile shows just those.',
       ],
     ),
     VersionRelease(
