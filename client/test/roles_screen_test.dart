@@ -27,6 +27,42 @@ import 'package:http/testing.dart';
 void main() {
   /// The tab IS the module's view permission, and everything else in the module
   /// hangs off it. Untick it and the actions inside go with it.
+  // Jose, 2026-10-01, on Eve's Suggestion: which roles a role may offer when
+  // it invites, chosen on the role. Sent only when changed.
+  testWidgets('a role can be given the roles it may invite as', (tester) async {
+    _wide(tester);
+
+    final sent = <Map<String, dynamic>>[];
+
+    await _pumpRoles(
+      tester,
+      roles: [
+        _role('r-2', 'Lead Manager', permissions: ['customers.view']),
+        _role('r-3', 'Technician', permissions: ['jobs.view']),
+      ],
+      onPatch: sent.add,
+    );
+
+    await tester.tap(find.text('Edit').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(sent.last.containsKey('invitable_roles'), isFalse,
+        reason: 'An unchanged setting was sent back.');
+
+    await tester.tap(find.text('Edit').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Only roles chosen here'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('role-invitable-r-3')));
+    await tester.tap(find.byKey(const ValueKey('role-invitable-r-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(sent.last['invitable_roles'], ['r-3']);
+  });
+
   testWidgets('unticking a tab clears the actions inside it', (tester) async {
     _wide(tester);
 

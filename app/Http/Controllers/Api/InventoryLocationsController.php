@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\InventoryBalance;
 use App\Models\InventoryLocation;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -17,6 +18,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
@@ -58,10 +60,10 @@ class InventoryLocationsController extends Controller
      * uses: a location the caller can open may still hold an item they cannot.
      * Null when the caller lacks `inventory.stock.view`.
      *
-     * @param  \Illuminate\Support\Collection<int, InventoryLocation>  $locations
+     * @param  Collection<int, InventoryLocation>  $locations
      * @return array<string, array{holds:int, value_minor:?int}>|null
      */
-    private function totalsFor(\Illuminate\Support\Collection $locations, User $user, ViewScope $scope): ?array
+    private function totalsFor(Collection $locations, User $user, ViewScope $scope): ?array
     {
         if (! $user->hasPermission('inventory.stock.view')) {
             return null;
@@ -71,7 +73,7 @@ class InventoryLocationsController extends Controller
             return [];
         }
 
-        $rows = \App\Models\InventoryBalance::query()
+        $rows = InventoryBalance::query()
             ->whereIn('location_id', $locations->pluck('id')->all())
             ->where('qty_on_hand', '>', 0)
             ->whereHas('item', fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope))
@@ -112,6 +114,11 @@ class InventoryLocationsController extends Controller
         $statuses = $this->requestedStatuses($request);
         $query->whereIn('status', $statuses);
 
+        $kind = $request->validate(['kind' => ['nullable', Rule::in(array_keys(self::KINDS))]])['kind'] ?? null;
+        if ($kind !== null) {
+            $query->whereIn('kind', self::KINDS[$kind]);
+        }
+
         if (filled($request->query('search'))) {
             $term = trim((string) $request->query('search'));
             $like = '%'.$term.'%';
@@ -148,8 +155,52 @@ class InventoryLocationsController extends Controller
                 'per_page' => $locations->perPage(),
                 'current_page' => $locations->currentPage(),
                 'last_page' => $locations->lastPage(),
+                ...$this->tiles($user, $scope, $withMoney),
             ],
         ]);
+    }
+
+    /** A tile's `kind` filter => the location kinds it counts. */
+    private const KINDS = [
+        'storage' => [InventoryLocationKind::Warehouse, InventoryLocationKind::Cage, InventoryLocationKind::Receiving],
+        'shop' => [InventoryLocationKind::Shop],
+        'van' => [InventoryLocationKind::Van],
+    ];
+
+    /**
+     * The tile row: every open place this caller can see, before search, kind
+     * or page. Closed places stay behind their own chip. With financials, each
+     * tile's stock value sits beside it in `tiles_value_minor` — null where
+     * nothing there is priced or the role cannot see stock, never zero.
+     *
+     * @return array<string, array<string, int|null>>
+     */
+    private function tiles(User $user, ViewScope $scope, bool $withMoney): array
+    {
+        $open = InventoryVisibility::constrain(InventoryLocation::query(), $user, $scope)
+            ->where('status', InventoryLocationStatus::Active)
+            ->get(['id', 'kind']);
+
+        $groups = [
+            'places' => $open,
+            'storage' => $open->whereIn('kind', self::KINDS['storage']),
+            'shops' => $open->whereIn('kind', self::KINDS['shop']),
+            'vans' => $open->whereIn('kind', self::KINDS['van']),
+        ];
+
+        $out = ['tiles' => array_map(fn ($group) => $group->count(), $groups)];
+
+        if ($withMoney) {
+            $totals = $this->totalsFor($open, $user, $scope);
+            $out['tiles_value_minor'] = array_map(function ($group) use ($totals) {
+                $values = $group->map(fn ($place) => $totals[$place->id]['value_minor'] ?? null)
+                    ->filter(fn ($value) => $value !== null);
+
+                return $totals === null || $values->isEmpty() ? null : $values->sum();
+            }, $groups);
+        }
+
+        return $out;
     }
 
     /**

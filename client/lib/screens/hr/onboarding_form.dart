@@ -17,9 +17,11 @@ import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/pdf_view.dart';
 import '../../widgets/search_picker.dart';
-import '../../widgets/signature_pad.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/signature_field.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import 'tax_form_panel.dart';
 import '../../widgets/work_schedule_panel.dart';
 
 /// The key on the control that answers one question.
@@ -78,9 +80,6 @@ String? stateName(String raw) {
 }
 
 const _payPeriods = ['Hour', 'Week', 'Month', 'Year'];
-
-/// How a drawn signature travels: a PNG as a data URL (HR, c2bc2668).
-const _pngUrl = 'data:image/png;base64,';
 
 /// The contract's stylesheet sizes everything in points, for paper (A1's
 /// look: a 9.5pt body, 18pt title). flutter_html reads a point as a pixel,
@@ -1579,6 +1578,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
         );
       case 'work_hours':
         return _schedule(context, question, enabled: enabled);
+      case 'tax_form' when question.signsTaxFormHere:
+        return _taxForm(context, question);
       case 'salary_period' || 'raise_period':
         final current = _chosen(question);
         final period = current == null
@@ -2041,6 +2042,90 @@ class _OnboardingFormState extends State<OnboardingForm> {
     );
   }
 
+  /// The W-4 or W-9, filled in and signed here rather than uploaded (Jose,
+  /// 2026-10-01: "this is not something he should upload, it should be
+  /// signed within the app as well").
+  Widget _taxForm(BuildContext context, OnboardingQuestion question) {
+    final theme = Theme.of(context);
+    final kind = question.taxFormKind;
+    final label = kind == 'w9' ? 'W-9' : 'W-4';
+    final voided = _voided(question);
+    final signed = !voided && question.answered;
+    final file = _revealed[question.key] ?? (question.masked ? null : question.value);
+
+    return Wrap(
+      key: answerKey(question.key),
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (question.writable && kind != null && !voided)
+          FilledButton.icon(
+            key: const Key('tax-form-open'),
+            onPressed: _saving ? null : () => _openTaxForm(question, kind),
+            icon: const Icon(Icons.draw_outlined, size: 18),
+            label: Text(signed ? 'Fill in again' : 'Fill in and sign your $label'),
+          ),
+        if (signed && file != null && file.isNotEmpty)
+          OutlinedButton(
+            key: const Key('tax-form-view'),
+            onPressed: () => _viewTaxForm(file, label),
+            child: const Text('View'),
+          ),
+        Text(
+          voided
+              ? "Doesn't apply."
+              : signed
+              ? 'Signed $label attached.'
+              : kind == null
+              ? 'Answer your tax ID question first.'
+              : 'Not signed yet.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openTaxForm(OnboardingQuestion question, String kind) {
+    final form = _form!;
+    bool answered(String key) => _question(form, key)?.answered ?? false;
+
+    return showSidePanel<void>(
+      context,
+      builder: (panel) => TaxFormPanel(
+        api: widget.api,
+        onboardingId: widget.onboardingId,
+        kind: kind,
+        ssnOnFile: answered('ssn'),
+        einOnFile: answered('ein'),
+        onSigned: (response) async {
+          Navigator.of(panel).pop();
+          setState(() => _adopt(response));
+          await _loadDocument();
+          widget.onChanged?.call();
+        },
+      ),
+    );
+  }
+
+  Future<void> _viewTaxForm(String file, String label) async {
+    final response = await widget.api.getBytesResponse('/attachments/$file');
+    if (!mounted) return;
+    final bytes = response.bytes;
+    if (bytes == null) {
+      setState(() => _actionError = response.message);
+      return;
+    }
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Signed $label',
+        width: 600,
+        child: PdfView(bytes: Uint8List.fromList(bytes)),
+      ),
+    );
+  }
+
   Future<void> _pickFile(OnboardingQuestion question) async {
     final picked = await Files.pickBytes();
     if (picked == null || !mounted) return;
@@ -2443,65 +2528,16 @@ class _SigningStep extends StatefulWidget {
 class _SigningStepState extends State<_SigningStep> {
   final _affirmation = TextEditingController();
 
-  /// Drawn by hand, as in A1 Tools (Jose, 2026-10-01).
-  final _ink = SignatureController();
+  /// Drawn by hand, as in A1 Tools (Jose, 2026-10-01), or the signer's saved
+  /// signature in its place.
+  final _signature = SignatureFieldController();
 
   bool _consented = false;
-
-  /// The signer's own saved signature (`GET /me/signature`), a PNG data URL,
-  /// and whether the pad is showing it in place of new strokes. A1 Tools had
-  /// the employer draw once and reuse it on every contract.
-  String? _saved;
-  bool _usingSaved = false;
-  bool _savingIt = false;
-  String? _saveNote;
 
   @override
   void initState() {
     super.initState();
-    _ink.addListener(_redraw);
-    _loadSaved();
-  }
-
-  /// Quiet when there is none, or when the server has no such endpoint yet:
-  /// the button to use it just does not appear.
-  Future<void> _loadSaved() async {
-    final response = await widget.api.get('/me/signature');
-    final drawing = response.ok && response.data is Map
-        ? (response.data as Map)['drawing']
-        : null;
-    if (!mounted || drawing is! String || !drawing.startsWith(_pngUrl)) {
-      return;
-    }
-    setState(() => _saved = drawing);
-  }
-
-  Future<String?> _drawn() async {
-    final png = await _ink.toPng();
-    return png == null ? null : '$_pngUrl${base64Encode(png)}';
-  }
-
-  Future<void> _saveDrawing() async {
-    final drawing = await _drawn();
-    if (drawing == null || !mounted) return;
-    setState(() {
-      _savingIt = true;
-      _saveNote = null;
-    });
-    final response = await widget.api.put('/me/signature', {
-      'drawing': drawing,
-    });
-    if (!mounted) return;
-    setState(() {
-      _savingIt = false;
-      if (response.ok) _saved = drawing;
-      _saveNote = response.ok ? 'Saved as your signature.' : response.reason;
-    });
-  }
-
-  void _clear() {
-    _ink.clear();
-    setState(() => _usingSaved = false);
+    _signature.addListener(_redraw);
   }
 
   void _redraw() => setState(() {});
@@ -2509,7 +2545,7 @@ class _SigningStepState extends State<_SigningStep> {
   @override
   void dispose() {
     _affirmation.dispose();
-    _ink.dispose();
+    _signature.dispose();
     super.dispose();
   }
 
@@ -2518,10 +2554,10 @@ class _SigningStepState extends State<_SigningStep> {
       widget.blocked == null &&
       _consented &&
       _affirmation.text.trim().isNotEmpty &&
-      (_usingSaved || !_ink.isEmpty);
+      _signature.ready;
 
   Future<void> _signNow() async {
-    final drawing = _usingSaved ? _saved : await _drawn();
+    final drawing = await _signature.dataUrl();
     if (drawing == null || !mounted) return;
     widget.onSign(_affirmation.text.trim(), drawing);
   }
@@ -2571,67 +2607,11 @@ class _SigningStepState extends State<_SigningStep> {
           const SizedBox(height: 14),
           Text('Draw your signature', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          if (_usingSaved)
-            Container(
-              key: const Key('signature-saved'),
-              height: 200,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: EzBiziTheme.paper,
-                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-                border: Border.all(color: theme.colorScheme.primary, width: 2),
-              ),
-              child: Image.memory(
-                base64Decode(_saved!.substring(_pngUrl.length)),
-                fit: BoxFit.contain,
-              ),
-            )
-          else
-            SignaturePad(
-              key: const Key('signature-pad'),
-              controller: _ink,
-              enabled: !widget.busy,
-            ),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 4,
-            children: [
-              if (_saved != null && !_usingSaved)
-                TextButton.icon(
-                  key: const Key('signature-use-saved'),
-                  onPressed: widget.busy
-                      ? null
-                      : () {
-                          _ink.clear();
-                          setState(() => _usingSaved = true);
-                        },
-                  icon: const Icon(Icons.history_edu, size: 18),
-                  label: const Text('Use my saved signature'),
-                ),
-              if (!_ink.isEmpty)
-                TextButton.icon(
-                  key: const Key('signature-save'),
-                  onPressed: widget.busy || _savingIt ? null : _saveDrawing,
-                  icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                  label: Text(
-                    _savingIt ? 'Saving…' : 'Save as my signature',
-                  ),
-                ),
-              TextButton.icon(
-                key: const Key('signature-clear'),
-                onPressed: (_ink.isEmpty && !_usingSaved) || widget.busy
-                    ? null
-                    : _clear,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Clear'),
-              ),
-            ],
+          SignatureField(
+            api: widget.api,
+            controller: _signature,
+            enabled: !widget.busy,
           ),
-          if (_saveNote != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(_saveNote!, style: theme.textTheme.bodySmall),
-            ),
           if (widget.error != null) ...[
             const SizedBox(height: 14),
             ErrorNote(widget.error!),

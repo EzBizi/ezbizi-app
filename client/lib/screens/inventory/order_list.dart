@@ -40,10 +40,13 @@ class _OrderListState extends State<OrderList> {
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _issues = [];
   List<Map<String, dynamic>> _sales = [];
-  bool _toReceive = false;
-  bool _openPos = false;
-  bool _issuesOnly = false;
-  bool _salesOnly = false;
+  /// The tile narrowing the list: null, `receive`, `open`, `sales` or
+  /// `issues`; and the counts on the tiles, across every page (Inventory,
+  /// 83999f2c). A server without them draws the old chips.
+  String? _tile;
+  Map<String, dynamic>? _poTiles;
+  Map<String, dynamic>? _saleTiles;
+  int? _issueTotal;
   String? _kind;
   bool _addingPo = false;
   bool _addingIssue = false;
@@ -72,9 +75,14 @@ class _OrderListState extends State<OrderList> {
       _error = null;
     });
 
-    final po = await widget.api.get('/inventory/purchase-orders');
+    final po = await widget.api.get('/inventory/purchase-orders', {
+      if (_tile == 'receive') 'filter': 'to_receive',
+      if (_tile == 'open') 'filter': 'open',
+    });
     final issues = await widget.api.get('/inventory/issues');
-    final sales = await widget.api.get('/inventory/sales');
+    final sales = await widget.api.get('/inventory/sales', {
+      if (_tile == 'sales') 'filter': 'open',
+    });
 
     if (!mounted) return;
 
@@ -107,6 +115,18 @@ class _OrderListState extends State<OrderList> {
       _orders = inventoryRows(po.data);
       _issues = inventoryRows(issues.data);
       _sales = inventoryRows(sales.data);
+      Map<String, dynamic>? tiles(ApiResponse r) =>
+          switch (r.body['meta']) {
+            {'tiles': final Map<dynamic, dynamic> t} =>
+              Map<String, dynamic>.from(t),
+            _ => null,
+          };
+      _poTiles = tiles(po);
+      _saleTiles = tiles(sales);
+      _issueTotal = switch (issues.body['meta']) {
+        {'total': final num total} => total.toInt(),
+        _ => null,
+      };
       if (_open != null && _selectedId != null && _kind == 'po') {
         final match = _orders.where((row) => row['id'] == _selectedId);
         if (match.isNotEmpty) _open = match.first;
@@ -138,32 +158,75 @@ class _OrderListState extends State<OrderList> {
 
   List<({String kind, Map<String, dynamic> row})> _visible() {
     final rows = <({String kind, Map<String, dynamic> row})>[];
-    final filtering = _toReceive || _openPos || _issuesOnly || _salesOnly;
+    final tile = _tile;
 
-    if (!_issuesOnly && !_salesOnly) {
+    // The server already narrowed what it could; these checks are for one
+    // that did not.
+    if (tile == null || tile == 'receive' || tile == 'open') {
       for (final order in _orders) {
         final status = order['status'] as String?;
-        if (_toReceive && (status != 'open' || !_hasRemaining(order))) {
+        if (tile == 'receive' && (status != 'open' || !_hasRemaining(order))) {
           continue;
         }
-        if (_openPos && status != 'open') continue;
+        if (tile == 'open' && status != 'open') continue;
         rows.add((kind: 'po', row: order));
       }
     }
 
-    if (!filtering || _issuesOnly) {
+    if (tile == null || tile == 'issues') {
       for (final issue in _issues) {
         rows.add((kind: 'issue', row: issue));
       }
     }
 
-    if (!filtering || _salesOnly) {
+    if (tile == null || tile == 'sales') {
       for (final sale in _sales) {
         rows.add((kind: 'sale', row: sale));
       }
     }
 
     return rows;
+  }
+
+  void _pick(String? tile) {
+    setState(() => _tile = tile);
+    _load();
+  }
+
+  /// Stock's tiles, for what is bought, sold and issued (Analorena Ventoso,
+  /// suggestion 0075: "the inventory layout update needs to be for all the
+  /// tabs, not just the front"). They replace the four chips one for one.
+  List<InventoryTile> _tileList() {
+    int count(Map<String, dynamic>? tiles, String key) =>
+        (tiles?[key] as num?)?.toInt() ?? 0;
+    final unpaid = count(_saleTiles, 'unpaid');
+    return [
+      InventoryTile(
+        key: 'receive',
+        label: 'To receive',
+        value: '${count(_poTiles, 'to_receive')}',
+        note: 'open orders still arriving',
+      ),
+      InventoryTile(
+        key: 'open',
+        label: 'Open POs',
+        value: '${count(_poTiles, 'open')}',
+        note: 'sent to a vendor',
+      ),
+      InventoryTile(
+        key: 'sales',
+        label: 'Sales',
+        value: '${count(_saleTiles, 'open')}',
+        note: unpaid == 0 ? 'open, all paid' : 'open, $unpaid unpaid',
+        tone: unpaid == 0 ? null : Tone.caution,
+      ),
+      InventoryTile(
+        key: 'issues',
+        label: 'Issues',
+        value: _issueTotal == null ? '—' : '$_issueTotal',
+        note: 'stock issued to jobs and people',
+      ),
+    ];
   }
 
   @override
@@ -264,33 +327,35 @@ class _OrderListState extends State<OrderList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: const Text('To receive'),
-                selected: _toReceive,
-                onSelected: (_) => setState(() => _toReceive = !_toReceive),
-              ),
-              FilterChip(
-                label: const Text('Open POs'),
-                selected: _openPos,
-                onSelected: (_) => setState(() => _openPos = !_openPos),
-              ),
-              FilterChip(
-                label: const Text('Issues'),
-                selected: _issuesOnly,
-                onSelected: (_) => setState(() => _issuesOnly = !_issuesOnly),
-              ),
-              FilterChip(
-                label: const Text('Sales'),
-                selected: _salesOnly,
-                onSelected: (_) => setState(() => _salesOnly = !_salesOnly),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: _poTiles == null || _saleTiles == null
+              ? Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (key, label) in const [
+                      ('receive', 'To receive'),
+                      ('open', 'Open POs'),
+                      ('issues', 'Issues'),
+                      ('sales', 'Sales'),
+                    ])
+                      FilterChip(
+                        label: Text(label),
+                        selected: _tile == key,
+                        onSelected: (on) => _pick(on ? key : null),
+                      ),
+                  ],
+                )
+              : LayoutBuilder(
+                  builder: (context, box) => inventoryTiles(
+                    context,
+                    prefix: 'orders',
+                    tiles: _tileList(),
+                    picked: _tile,
+                    onPick: _pick,
+                    twoByTwo: box.maxWidth < 760,
+                  ),
+                ),
         ),
         Expanded(
           child: rows.isEmpty

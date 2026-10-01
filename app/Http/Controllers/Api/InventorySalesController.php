@@ -22,6 +22,7 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +61,12 @@ class InventorySalesController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
+        $filter = $request->validate(['filter' => ['nullable', Rule::in(self::TILES)]])['filter'] ?? null;
+
         $query = InventoryVisibility::constrain(InventorySale::query(), $user, $scope);
+        if ($filter !== null) {
+            $this->narrow($query, $filter);
+        }
 
         $sales = $query
             ->with(['customer', 'lines.item'])
@@ -76,8 +82,31 @@ class InventorySalesController extends Controller
                 'per_page' => $sales->perPage(),
                 'current_page' => $sales->currentPage(),
                 'last_page' => $sales->lastPage(),
+                // Across every page, before the filter: a tapped tile lands on
+                // a list as long as the number it showed.
+                'tiles' => collect(self::TILES)->mapWithKeys(fn (string $tile) => [
+                    $tile => $this->narrow(
+                        InventoryVisibility::constrain(InventorySale::query(), $user, $scope),
+                        $tile,
+                    )->count(),
+                ])->all(),
             ],
         ]);
+    }
+
+    private const TILES = ['open', 'unpaid'];
+
+    /**
+     * What a tile counts, and so what its tap shows. Open is not yet fully
+     * handed over; unpaid is owed — so never a draft (not a sale yet) or a
+     * cancelled sale (never was one).
+     */
+    private function narrow(Builder $query, string $tile): Builder
+    {
+        return $tile === 'open'
+            ? $query->whereIn('status', [InventorySaleStatus::Open, InventorySaleStatus::Partial])
+            : $query->where('payment_status', InventorySalePaymentStatus::Unpaid)
+                ->whereNotIn('status', [InventorySaleStatus::Draft, InventorySaleStatus::Cancelled]);
     }
 
     /** POST /api/v1/inventory/sales */

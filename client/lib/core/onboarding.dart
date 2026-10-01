@@ -374,6 +374,8 @@ class OnboardingQuestion {
     this.voidable = false,
     this.voidGroup,
     this.parts,
+    this.taxFormKind,
+    this.signsTaxFormHere = false,
   });
 
   /// The tenant's field definition, in exactly the shape the Contracts tab
@@ -462,6 +464,14 @@ class OnboardingQuestion {
   /// Null for every other question.
   final Map<String, String>? parts;
 
+  /// On the `tax_form` question: `w4` or `w9`, by the server's rule (SSN, or
+  /// EIN and the 1099 contracts). Null until it can tell.
+  final String? taxFormKind;
+
+  /// The server signs the tax form in the app (it sends `tax_form_kind`,
+  /// null included). A server from before still takes an upload.
+  final bool signsTaxFormHere;
+
   String get key => field.key;
 
   bool get answered => value.trim().isNotEmpty;
@@ -492,6 +502,8 @@ class OnboardingQuestion {
         },
         _ => null,
       },
+      taxFormKind: json['tax_form_kind'] as String?,
+      signsTaxFormHere: json.containsKey('tax_form_kind'),
     );
   }
 }

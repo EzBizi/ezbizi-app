@@ -269,8 +269,7 @@ class _StockListState extends State<StockList> {
     }
 
     final tiles = [
-      _tileCard(
-        context,
+      InventoryTile(
         key: null,
         label: 'All items',
         value: '${join.items.length}',
@@ -278,8 +277,7 @@ class _StockListState extends State<StockList> {
             ? '${inventoryMoney(valueMinor)} at last cost'
             : 'in ${_count(join.locations.length, 'place')}',
       ),
-      _tileCard(
-        context,
+      InventoryTile(
         key: 'low',
         label: 'Below reorder',
         value: '${low.length}',
@@ -293,8 +291,7 @@ class _StockListState extends State<StockList> {
             : '$covered covered by an order',
         tone: low.isEmpty ? null : Tone.caution,
       ),
-      _tileCard(
-        context,
+      InventoryTile(
         key: 'out',
         label: 'Out of stock',
         value: '${out.length}',
@@ -305,8 +302,7 @@ class _StockListState extends State<StockList> {
             : '${out.first['name']} and ${out.length - 1} more',
         tone: out.isEmpty ? null : Tone.bad,
       ),
-      _tileCard(
-        context,
+      InventoryTile(
         key: 'ordered',
         label: 'On order',
         // Same reason: a zero here would be a count of orders nobody fetched.
@@ -318,104 +314,13 @@ class _StockListState extends State<StockList> {
       ),
     ];
 
-    // Sibling tiles are one size.
-    if (twoByTwo) {
-      return Column(
-        children: [
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: tiles[0]),
-                const SizedBox(width: 8),
-                Expanded(child: tiles[1]),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: tiles[2]),
-                const SizedBox(width: 8),
-                Expanded(child: tiles[3]),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final (i, tile) in tiles.indexed) ...[
-            if (i > 0) const SizedBox(width: 10),
-            Expanded(child: tile),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _tileCard(
-    BuildContext context, {
-    required String? key,
-    required String label,
-    required String value,
-    required String note,
-    Tone? tone,
-  }) {
-    final theme = Theme.of(context);
-    final picked = _tile == key;
-    final ink = tone == null ? null : ToneColours.of(context, tone).ink;
-    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
-
-    return Material(
-      key: Key('stock-tile-${key ?? 'all'}'),
-      color: picked
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: radius,
-        side: BorderSide(
-          color: picked ? theme.colorScheme.primary : EzBiziTheme.edge(context),
-        ),
-      ),
-      child: InkWell(
-        borderRadius: radius,
-        onTap: () => setState(() => _tile = picked ? null : key),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  letterSpacing: 0.8,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: ink,
-                ),
-              ),
-              Text(
-                note,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ),
+    return inventoryTiles(
+      context,
+      prefix: 'stock',
+      tiles: tiles,
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      twoByTwo: twoByTwo,
     );
   }
 

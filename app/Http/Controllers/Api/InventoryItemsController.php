@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryFinancials;
 use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryStockItems;
 use App\Support\Inventory\InventoryUnit;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -18,8 +20,10 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -52,7 +56,7 @@ class InventoryItemsController extends Controller
      * Two different answers for two different ids is an existence oracle — it
      * tells a caller which ids are real somewhere else on the platform.
      */
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
@@ -67,9 +71,17 @@ class InventoryItemsController extends Controller
         $scope = ViewScope::forUser($user);
 
         $query = InventoryVisibility::constrain(InventoryItem::query(), $user, $scope);
+        $mayMeasure = $user->hasPermission('inventory.stock.view');
+        $stock = $mayMeasure ? $this->stockStatuses($user, $scope) : null;
 
-        $statuses = $this->requestedStatuses($request);
-        $query->whereIn('status', $statuses);
+        $query->whereIn('status', $this->requestedStatuses($request));
+
+        $stockFilter = $request->validate(['stock' => ['nullable', Rule::in(self::STOCK_FILTERS)]])['stock'] ?? null;
+        if ($stockFilter !== null) {
+            // The filtered count is the very stock fact the null tile withholds.
+            abort_unless($mayMeasure, Response::HTTP_FORBIDDEN, 'Stock levels are hidden for your role.');
+            $query->whereIn('id', array_keys($stock, $stockFilter, true));
+        }
 
         if (filled($request->query('search'))) {
             $term = trim((string) $request->query('search'));
@@ -101,8 +113,60 @@ class InventoryItemsController extends Controller
                 'per_page' => $items->perPage(),
                 'current_page' => $items->currentPage(),
                 'last_page' => $items->lastPage(),
+                'tiles' => $this->tiles($user, $scope, $stock),
             ],
         ]);
+    }
+
+    private const STOCK_FILTERS = ['below_reorder', 'out_of_stock'];
+
+    /**
+     * The tile row: the whole visible catalogue, before search or filter, so a
+     * tapped tile lands on a list as long as the number it showed. The two
+     * stock tiles are null for a role without the Stock tab, never zero.
+     *
+     * @param  array<string, string>|null  $stock
+     * @return array<string, int|null>
+     */
+    private function tiles(User $user, ViewScope $scope, ?array $stock): array
+    {
+        $counts = InventoryVisibility::constrain(InventoryItem::query(), $user, $scope)
+            ->toBase()
+            ->groupBy('status')
+            ->selectRaw('status, COUNT(*) as n')
+            ->pluck('n', 'status');
+
+        $measured = $stock === null ? null : array_count_values($stock);
+
+        return [
+            'items' => (int) ($counts[InventoryItemStatus::Active->value] ?? 0),
+            'below_reorder' => $measured === null ? null : ($measured['below_reorder'] ?? 0),
+            'out_of_stock' => $measured === null ? null : ($measured['out_of_stock'] ?? 0),
+            'discontinued' => (int) ($counts[InventoryItemStatus::Discontinued->value] ?? 0),
+        ];
+    }
+
+    /**
+     * Stock status of every visible ACTIVE item, by its total across the places
+     * this caller can see — the Stock tab's rule (InventoryStockItems::status).
+     * A discontinued item is not one to reorder, so it is never low or out.
+     *
+     * ponytail: classifies the whole active catalogue in PHP per request, like
+     * InventoryStockItems; move to SQL if a catalogue outgrows it.
+     *
+     * @return array<string, string> item id => in_stock|below_reorder|out_of_stock
+     */
+    private function stockStatuses(User $user, ViewScope $scope): array
+    {
+        $items = InventoryVisibility::constrain(InventoryItem::query(), $user, $scope)
+            ->where('status', InventoryItemStatus::Active)
+            ->get(['id', 'reorder_at']);
+
+        $totals = $this->onHandFor($items, $user, $scope) ?? [];
+
+        return $items->mapWithKeys(fn (InventoryItem $item) => [
+            $item->id => InventoryStockItems::status($totals[$item->id] ?? '0.000', $item->reorder_at),
+        ])->all();
     }
 
     /**
@@ -401,10 +465,10 @@ class InventoryItemsController extends Controller
      * Null when the caller lacks `inventory.stock.view`: this endpoint is
      * ungated reference data, so the quantity has to carry its own gate.
      *
-     * @param  \Illuminate\Support\Collection<int, InventoryItem>  $items
+     * @param  Collection<int, InventoryItem>  $items
      * @return array<string, string>|null
      */
-    private function onHandFor(\Illuminate\Support\Collection $items, User $user, ViewScope $scope): ?array
+    private function onHandFor(Collection $items, User $user, ViewScope $scope): ?array
     {
         if (! $user->hasPermission('inventory.stock.view')) {
             return null;
@@ -414,7 +478,7 @@ class InventoryItemsController extends Controller
             return [];
         }
 
-        return \App\Models\InventoryBalance::query()
+        return InventoryBalance::query()
             ->whereIn('item_id', $items->pluck('id')->all())
             ->whereHas('location', fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope))
             ->groupBy('item_id')

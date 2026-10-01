@@ -312,8 +312,9 @@ class _RolesScreenState extends State<RolesScreen> {
         catalogue: _catalogue,
         inboxes: _inboxes,
         heldInboxes: _held[role.id] ?? const {},
-        onSave: (name, permissions, nested) =>
-            _save(role, name, permissions, nested),
+        allRoles: _roles,
+        onSave: (name, permissions, nested, invitable) =>
+            _save(role, name, permissions, nested, invitable),
       ),
     );
 
@@ -328,10 +329,14 @@ class _RolesScreenState extends State<RolesScreen> {
     String name,
     Set<String> permissions,
     Map<String, Set<String>?> nested,
+    ({List<String>? ids})? invitable,
   ) async {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
       'permissions': permissions.toList()..sort(),
+      // Only when changed: an unchanged list may name a role this editor
+      // could not list themselves, and sending it back would be refused.
+      if (invitable != null) 'invitable_roles': invitable.ids,
 
       // A null entry is omitted rather than sent empty, and the distinction is
       // load-bearing: an empty list asserts "this role holds none of these",
@@ -562,9 +567,13 @@ class _RoleEditor extends StatefulWidget {
     required this.inboxes,
     required this.heldInboxes,
     required this.onSave,
+    this.allRoles = const [],
   });
 
   final RoleSummary role;
+
+  /// Every role, for "who they can invite".
+  final List<RoleSummary> allRoles;
   final PermissionCatalogue catalogue;
 
   /// The organization's own inboxes, by the module they nest under.
@@ -581,6 +590,7 @@ class _RoleEditor extends StatefulWidget {
     String name,
     Set<String> permissions,
     Map<String, Set<String>?> nested,
+    ({List<String>? ids})? invitable,
   )
   onSave;
 
@@ -605,6 +615,21 @@ class _RoleEditorState extends State<_RoleEditor> {
   /// The inboxes this role may open, as edited. Same rule as [_held]: all of
   /// them, including the ones this person cannot move.
   late final Set<String> _inboxes = {...widget.heldInboxes};
+
+  /// Which roles its holders may offer when inviting, or null for "any role
+  /// reaching no further than their own" (Jose, 2026-10-01, on Eve's
+  /// Suggestion: "select what roles they can offer").
+  late Set<String>? _invitable = widget.role.invitableRoles?.toSet();
+
+  /// What changed about [_invitable], or null when nothing did.
+  ({List<String>? ids})? get _invitableChange {
+    final before = widget.role.invitableRoles?.toSet();
+    final now = _invitable;
+    final same = before == null
+        ? now == null
+        : now != null && now.length == before.length && now.containsAll(before);
+    return same ? null : (ids: now == null ? null : (now.toList()..sort()));
+  }
 
   bool _saving = false;
   String? _error;
@@ -961,6 +986,58 @@ class _RoleEditorState extends State<_RoleEditor> {
     });
   }
 
+  /// Which roles this role's holders may give somebody they invite.
+  Widget _whoTheyCanInvite(ThemeData theme) {
+    final chosen = _invitable;
+
+    return Column(
+      key: const ValueKey('role-invitable'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Who they can invite', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 6),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('Roles within their own')),
+            ButtonSegment(value: true, label: Text('Only roles chosen here')),
+          ],
+          selected: {chosen != null},
+          onSelectionChanged: _writable
+              ? (value) => setState(
+                  () => _invitable = value.first ? (chosen ?? <String>{}) : null,
+                )
+              : null,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          chosen == null
+              ? 'People with this role can invite somebody as any role that '
+                    'reaches no further than their own.'
+              : 'People with this role can invite somebody only as the roles '
+                    'ticked below.',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (chosen != null)
+          for (final role in widget.allRoles)
+            CheckboxListTile(
+              key: ValueKey('role-invitable-${role.id}'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(role.name),
+              value: chosen.contains(role.id),
+              onChanged: _writable
+                  ? (on) => setState(() {
+                      final next = {...chosen};
+                      on == true ? next.add(role.id) : next.remove(role.id);
+                      _invitable = next;
+                    })
+                  : null,
+            ),
+      ],
+    );
+  }
+
   Future<void> _save() async {
     final name = _name.text.trim();
 
@@ -976,7 +1053,7 @@ class _RoleEditorState extends State<_RoleEditor> {
 
     final failure = await widget.onSave(name, _payload, {
       for (final kind in grantKinds) kind: _payloadFor(kind),
-    });
+    }, _invitableChange);
 
     if (!mounted) return;
 
@@ -1037,6 +1114,8 @@ class _RoleEditorState extends State<_RoleEditor> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 20),
+          _whoTheyCanInvite(theme),
           const SizedBox(height: 20),
 
           // Which state means what, said once, above the thing it describes. A

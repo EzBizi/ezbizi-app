@@ -162,6 +162,33 @@ class HrPersonRecordTest extends TestCase
         $this->assertNotContains($tech->id, $ids);
     }
 
+    /** Jose, 2026-10-01: "adding division by company too aside from role". */
+    public function test_the_list_narrows_to_a_company_with_its_franchises_or_to_one_franchise(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $atFranchise = $this->userWithRole($t, 'Technician', ['customers.view'], onlyAt: $t['franchise']);
+        $other = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id, 'name' => 'Elsewhere Co', 'is_active' => true,
+        ]));
+        $atOther = $this->userWithRole($t, 'Dispatcher', ['customers.view']);
+        $this->inTenant($t['org'], function () use ($atOther, $other) {
+            $atOther->assignments()->delete();
+            \App\Models\Assignment::create(['organization_id' => $atOther->organization_id,
+                'user_id' => $atOther->id, 'assigned_company_id' => $other->id]);
+        });
+
+        $ids = fn (string $query) => collect($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?'.$query)->assertOk()->json('data'))->pluck('id')->all();
+
+        // The franchise's company takes in the franchise's people.
+        $this->assertContains($atFranchise->id, $ids('company_id='.$t['franchise']->company_id));
+        $this->assertNotContains($atOther->id, $ids('company_id='.$t['franchise']->company_id));
+        $this->assertSame([$atOther->id], $ids('company_id='.$other->id));
+        $this->assertContains($atFranchise->id, $ids('franchise_id='.$t['franchise']->id));
+        $this->assertNotContains($atOther->id, $ids('franchise_id='.$t['franchise']->id));
+        $this->assertSame([], $ids('company_id='.$other->id.'&role_id='.$atFranchise->role_id), 'The filters did not combine.');
+    }
+
     /** Opening somebody's personal details is itself recorded (§9). */
     public function test_reading_a_record_is_audited(): void
     {

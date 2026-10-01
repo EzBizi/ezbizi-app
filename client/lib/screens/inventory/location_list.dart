@@ -42,6 +42,13 @@ class _LocationListState extends State<LocationList> {
   bool _fetching = false;
   int _request = 0;
   bool _closed = false;
+
+  /// The tile narrowing the list (null, `storage`, `shop` or `van`), and the
+  /// counts on the tiles: open places, across every page (Inventory,
+  /// 83999f2c), with their values beside them for a role with financials.
+  String? _tile;
+  Map<String, dynamic>? _tiles;
+  Map<String, dynamic>? _tileValues;
   bool _adding = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
@@ -83,6 +90,7 @@ class _LocationListState extends State<LocationList> {
       'page': '$page',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       if (_closed) 'status': 'active,closed',
+      'kind': ?_tile,
     });
 
     if (!mounted || request != _request) return;
@@ -105,7 +113,38 @@ class _LocationListState extends State<LocationList> {
       _total = inventoryTotal(response.body, _locations.length);
       _lastPage = inventoryLastPage(response.body);
       _page = page;
+      if (page == 1) {
+        final meta = response.body['meta'];
+        Map<String, dynamic>? block(String key) => meta is Map && meta[key] is Map
+            ? Map<String, dynamic>.from(meta[key] as Map)
+            : null;
+        _tiles = block('tiles');
+        _tileValues = block('tiles_value_minor');
+      }
     });
+  }
+
+  /// Stock's tiles, for the places stock is kept (Analorena Ventoso,
+  /// suggestion 0075). A value is the server's, and null where nothing there
+  /// is priced: said as nothing, never as $0.00.
+  List<InventoryTile> _tileList(Map<String, dynamic> tiles) {
+    InventoryTile tile(String? key, String count, String label, String what) {
+      final n = (tiles[count] as num?)?.toInt() ?? 0;
+      final value = _tileValues?[count] as num?;
+      return InventoryTile(
+        key: key,
+        label: label,
+        value: '$n',
+        note: value == null ? what : '${inventoryMoney(value.toInt())} held',
+      );
+    }
+
+    return [
+      tile(null, 'places', 'All places', 'open places'),
+      tile('storage', 'storage', 'Storage', 'warehouses, cages, receiving'),
+      tile('shop', 'shops', 'Shops', 'shops'),
+      tile('van', 'vans', 'Vans', 'vans'),
+    ];
   }
 
   void _clearPane() => setState(() {
@@ -162,6 +201,23 @@ class _LocationListState extends State<LocationList> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_tiles case final tiles?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: LayoutBuilder(
+              builder: (context, box) => inventoryTiles(
+                context,
+                prefix: 'locations',
+                tiles: _tileList(tiles),
+                picked: _tile,
+                onPick: (key) {
+                  setState(() => _tile = key);
+                  _load();
+                },
+                twoByTwo: box.maxWidth < 760,
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
@@ -202,7 +258,7 @@ class _LocationListState extends State<LocationList> {
           child: _locations.isEmpty
               ? Center(
                   child: Text(
-                    _search.text.trim().isEmpty && !_closed
+                    _search.text.trim().isEmpty && !_closed && _tile == null
                         ? 'There are no locations.'
                         : 'Nothing matches those filters.',
                   ),

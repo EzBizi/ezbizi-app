@@ -595,6 +595,20 @@ class PermissionCatalogue
      */
     public function assertRoleAssignable(User $actor, Role $role): void
     {
+        // A role given its own list offers exactly that list (Jose,
+        // 2026-10-01: "select what roles they can offer").
+        if (($list = $this->invitableBy($actor)) !== null) {
+            if (in_array($role->getKey(), $list, true)) {
+                return;
+            }
+
+            throw ValidationException::withMessages(['role_id' => sprintf(
+                'Your role cannot offer the %s role. Which roles it can offer is set on the role, '
+                .'in Roles & Permissions.',
+                $role->name,
+            )]);
+        }
+
         $beyond = $this->beyondTheReachOf($actor, $role);
 
         if ($beyond === []) {
@@ -621,7 +635,39 @@ class PermissionCatalogue
      */
     public function mayAssignRole(User $actor, Role $role): bool
     {
+        if (($list = $this->invitableBy($actor)) !== null) {
+            return in_array($role->getKey(), $list, true);
+        }
+
         return $this->beyondTheReachOf($actor, $role) === [];
+    }
+
+    /**
+     * The roles the actor's role was given to offer, or null when it has no
+     * list and the rule by reach applies. An administrator always has the
+     * rule by reach, which lets them offer everything.
+     *
+     * @return list<string>|null
+     */
+    private function invitableBy(User $actor): ?array
+    {
+        $role = $actor->role;
+
+        if ($role === null || $role->isAdministrator() || ! is_array($role->invitable_role_ids)) {
+            return null;
+        }
+
+        return array_values(array_map('strval', $role->invitable_role_ids));
+    }
+
+    /**
+     * Whether the editor may put this role on another role's list: only a role
+     * they could offer themselves under the rule by reach, so the list never
+     * becomes a way past "nobody can hand out more than they have".
+     */
+    public function mayListAsInvitable(User $editor, Role $role): bool
+    {
+        return $editor->role?->isAdministrator() || $this->beyondTheReachOf($editor, $role) === [];
     }
 
     /** @return string[] the keys this role grants that the actor does not hold */

@@ -1,0 +1,422 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scheduling · Locations</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light): tone pills are ToneColours (never Tone.review,
+   the violet), avatars are PersonColours, the on-the-clock dot is StateColour.on. The day cells
+   use StateColour.on (on time), EzBiziTheme.meterWarning (late), and DashboardChart's red and
+   blue (missed, away), so all four read at 3:1 or better on white. One 10px radius for every
+   control and card; the window and phone frames are frames, not cards. Every person, number and
+   the organization are invented; the numbers are judged by TimeClockStats' own rules. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every branch, address, phone number and person is invented. */
+.look{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.look .srch{flex:1 1 auto;height:36px;font-size:13px;color:var(--ink);font-weight:600}
+.res{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:10px;flex:0 0 auto}
+.best{background:var(--paper);border:1.5px solid var(--edge);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.alt{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.mi{font:800 18px Inter,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mi small{font-size:11px;font-weight:700;color:var(--muted)}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:10px;flex:1;min-height:0}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.lst .gh{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 12px 4px}
+.li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 12px;border-top:1px solid var(--line2);font-size:12px}
+.li.on{background:var(--pric)}
+.li .nm{font-weight:700}
+.det{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
+.kv{display:grid;grid-template-columns:86px minmax(0,1fr);gap:4px 10px;font-size:12px}
+.kv .k{color:var(--muted);font-weight:600}
+.note{background:var(--cauc);border-radius:var(--r);padding:9px 11px;font-size:12px;color:#3f2a00;display:flex;flex-direction:column;gap:3px}
+.note b{color:#3f2a00}
+.map{position:relative;flex:1;min-height:0;border-radius:var(--r);border:1px solid var(--line);overflow:hidden;
+ background:linear-gradient(135deg,#e8eef0 25%,transparent 25%) 0 0/28px 28px,linear-gradient(225deg,#e8eef0 25%,transparent 25%) 0 0/28px 28px,#f0f4f5}
+.pin{position:absolute;width:14px;height:14px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--pri);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.pin.you{background:#e34948}
+.pin.near{background:#1a7f37;width:18px;height:18px}
+.ml{position:absolute;font:700 10.5px Inter,"Segoe UI",sans-serif;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.over{position:absolute;left:12px;top:12px;width:330px;display:flex;flex-direction:column;gap:8px}
+.cols{--g:minmax(0,1.6fr) minmax(0,2fr) 120px minmax(0,1.2fr) 80px}
+.tr.h{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);height:30px}
+.tr.hot{background:#eaf6ee}
+.pb{flex:1;min-height:0;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.pbtn{display:flex;gap:6px}
+.pbtn .btn{flex:1}
+.tap{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line2);font-size:12.5px}
+.sec{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:2px 2px -4px}
+</style>
+
+<div class="wrap">
+<h1>Scheduling · Locations: where every branch is, which one is closest, and who to call</h1>
+<p class="sub">Jovanni Martin (A1-Group, 2026-10-01), suggestion 0080: <i>"Add a general information tab that displays company addresses with a feature that shows the closest location to the inputed address similar to the a-1 site as well as contact info for newbie dispatchers"</i>. Jose: <i>"Implement"</i>.</p>
+<p class="cap"><b>Where it lives:</b> Scheduling, a <b>Locations</b> tab beside Availability · Schedule · Overbooking · Settings. A dispatcher asks "who covers this address" while booking, and the answer is a branch whose availability is one tab away. Every option offers <b>Check availability</b> on the result.</p>
+<p class="need"><b>What exists today.</b> The branches are already data: <code>web_locations</code> (the store locator and branch pages the websites draw) hold each branch's address, phone, email, map link and coordinates. Typing an address can be geocoded with the same free lookup the app's address boxes use (Photon, OpenStreetMap). It already returns coordinates, which the client currently throws away. Scheduling's service areas know which ZIPs each area covers. <b>New in every option:</b> <code>GET /scheduling/locations</code> (the branch list) and <code>GET /scheduling/locations/nearest?q=</code>: geocode, then straight-line miles to every branch, plus the area whose ZIPs include it. <span class="new">new</span> marks what the server does not send today.</p>
+<p class="cap"><b>Distance, not drive time.</b> Straight-line miles cost nothing. Drive time needs a paid routing service (Google), or a public one with tight limits, so no option shows it. If a dispatcher's question is "who serves this ZIP", the service area answers it better than miles, and every option says so first when the two disagree.</p>
+
+<h2><span class="n">1</span>Look up first, then the list and one branch beside it <span class="rec">Recommended</span></h2>
+<p class="cap">The tab opens on one box: a customer's address or ZIP. The answer is a strip of three, the closest branch large and two runners-up small. Below, every branch grouped by state, and the one picked, with its phones, map link and the notes for new dispatchers. <span class="why">Why: the lookup is the question asked twenty times a day; the directory is the one asked once.</span></p>
+<p class="need"><b>Data:</b> the two reads above, and per company a short <b>"For new dispatchers"</b> note <span class="new">new</span> that holders of <code>scheduling.settings</code> edit in Scheduling › Settings (who to call, extensions, house rules). The branch phones and emails are the published ones.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Scheduling</div></div>
+  <div class="tabs"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span></div>
+  <div class="dash">
+   <div class="look"><span class="srch">⌕ &nbsp;18 Maple Ct, Solon, OH 44139</span><span class="btn">Clear</span></div>
+   <div class="res">
+    <div class="best"><div class="prow"><span class="pill p-ok">Closest</span><span class="pill p-info">Serves 44139</span><span class="sp"></span><span class="mi">6.2 <small>mi</small></span></div>
+     <div class="b" style="font-size:14px">Harbor Chimney · Cleveland</div>
+     <div class="tiny">4120 Mill Creek Rd, Warrensville Heights, OH 44128 · <span class="ink b">(216) 555-0142</span></div>
+     <div class="prow" style="margin-top:4px"><span class="btn f">Check availability</span><span class="btn">Directions</span><span class="btn">Copy phone</span></div></div>
+    <div class="alt"><div class="prow"><span class="b ell">Akron</span><span class="sp"></span><span class="mi">23.8 <small>mi</small></span></div><div class="tiny ell">88 Station St, Akron, OH 44308</div><div class="tiny">(330) 555-0177</div></div>
+    <div class="alt"><div class="prow"><span class="b ell">Columbus</span><span class="sp"></span><span class="mi">128 <small>mi</small></span></div><div class="tiny ell">2301 Kestrel Ave, Columbus, OH 43215</div><div class="tiny">(614) 555-0119</div></div>
+   </div>
+   <div class="row2">
+    <div class="lst">
+     <div class="prow" style="padding:8px 12px"><span class="srch" style="flex:1">⌕ &nbsp;Find a branch</span><span class="chip on">All 8</span><span class="chip">Ohio <span class="c">5</span></span><span class="chip">Illinois <span class="c">2</span></span><span class="chip">Virginia <span class="c">1</span></span></div>
+     <div class="gh">Ohio</div>
+     <div class="li on"><div><div class="nm">Harbor Chimney · Cleveland</div><div class="tiny">Warrensville Heights · serves Cleveland, Ohio</div></div><div class="tiny ink b">(216) 555-0142</div></div>
+     <div class="li"><div><div class="nm">Harbor Chimney · Akron</div><div class="tiny">Akron · serves Summit County</div></div><div class="tiny ink b">(330) 555-0177</div></div>
+     <div class="li"><div><div class="nm">Harbor Chimney · Columbus</div><div class="tiny">Columbus · serves Franklin County</div></div><div class="tiny ink b">(614) 555-0119</div></div>
+     <div class="li"><div><div class="nm">Harbor Dryer Vent · Columbus East</div><div class="tiny">Reynoldsburg</div></div><div class="tiny ink b">(614) 555-0181</div></div>
+     <div class="li"><div><div class="nm">Harbor Chimney · Toledo</div><div class="tiny">Toledo · serves Lucas County</div></div><div class="tiny ink b">(419) 555-0190</div></div>
+     <div class="gh">Illinois</div>
+     <div class="li"><div><div class="nm">Harbor Chimney · Chicago</div><div class="tiny">Chicago · serves Cook County</div></div><div class="tiny ink b">(312) 555-0133</div></div>
+    </div>
+    <div class="det">
+     <div class="prow"><span class="b" style="font-size:15px">Harbor Chimney · Cleveland</span><span class="sp"></span><span class="pill p-info">Cleveland area</span></div>
+     <div class="kv"><span class="k">Address</span><span>4120 Mill Creek Rd, Warrensville Heights, OH 44128 · <span class="b" style="color:var(--pri)">Map</span></span>
+      <span class="k">Phone</span><span class="b">(216) 555-0142</span><span class="k">Email</span><span>cleveland@harbor.example</span><span class="k">Serves</span><span>Cleveland, Ohio · 38 ZIPs</span></div>
+     <div class="note"><b>For new dispatchers</b><span>Office lead: Dana Kim, ext 204. Booking trouble: Marco Ruiz, ext 211.</span><span>After 6 PM: the on-call line, (216) 555-0100.</span><span>Never book a crown repair for a Saturday.</span><span class="tiny" style="color:#5a4310">Harbor Chimney's note · edited in Settings</span></div>
+     <div class="prow"><span class="btn f">Check availability</span><span class="btn">Copy address</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">2</span>The map: every branch a pin, the answer drawn on it</h2>
+<p class="cap">A map fills the tab. The lookup and its three answers float over the top-left, the typed address is a red pin, and the closest branch is green. Clicking a pin opens that branch's card in the same place. The notes for new dispatchers sit behind a <b>Who to call</b> button.</p>
+<p class="need"><b>Data:</b> the same two reads and the same note <span class="new">new</span>, plus map tiles. The app already draws maps with flutter_map (Field's routes). Public OpenStreetMap tiles allow light use with credit, which suits a few dispatchers but not every office all day. Heavier use needs a paid tile service.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Scheduling</div></div>
+  <div class="tabs"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span><span class="sp"></span><span class="btn">Who to call</span></div>
+  <div class="dash">
+   <div class="map">
+    <span class="pin" style="left:520px;top:300px"></span><span class="ml" style="left:540px;top:296px">Toledo</span>
+    <span class="pin near" style="left:790px;top:330px"></span><span class="ml" style="left:812px;top:326px">Cleveland · 6.2 mi</span>
+    <span class="pin you" style="left:820px;top:360px"></span><span class="ml" style="left:842px;top:358px">18 Maple Ct</span>
+    <span class="pin" style="left:760px;top:410px"></span><span class="ml" style="left:780px;top:406px">Akron</span>
+    <span class="pin" style="left:640px;top:520px"></span><span class="ml" style="left:660px;top:516px">Columbus</span>
+    <span class="pin" style="left:690px;top:530px"></span><span class="ml" style="left:710px;top:540px">Columbus East</span>
+    <span class="pin" style="left:240px;top:250px"></span><span class="ml" style="left:260px;top:246px">Chicago</span>
+    <span class="pin" style="left:200px;top:290px"></span><span class="ml" style="left:220px;top:286px">Naperville</span>
+    <div class="over">
+     <div class="look"><span class="srch" style="background:var(--paper)">⌕ &nbsp;18 Maple Ct, Solon, OH 44139</span></div>
+     <div class="best"><div class="prow"><span class="pill p-ok">Closest</span><span class="pill p-info">Serves 44139</span><span class="sp"></span><span class="mi">6.2 <small>mi</small></span></div><div class="b">Harbor Chimney · Cleveland</div><div class="tiny">4120 Mill Creek Rd, Warrensville Heights · (216) 555-0142</div><div class="prow"><span class="btn f">Check availability</span><span class="btn">Directions</span></div></div>
+     <div class="alt"><div class="prow"><span class="b">Akron</span><span class="sp"></span><span class="tiny b">23.8 mi</span></div><div class="prow"><span class="b">Columbus</span><span class="sp"></span><span class="tiny b">128 mi</span></div></div>
+    </div>
+    <span class="tiny" style="position:absolute;right:8px;bottom:6px">© OpenStreetMap contributors</span>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">3</span>One table of every branch; a lookup adds Miles and sorts by it</h2>
+<p class="cap">A directory first: one row per branch with its address, phone and what it serves. Typing an address adds a <b>Miles</b> column, sorts the table by it, and marks the branch that serves the ZIP. The notes for new dispatchers are a banner above the table, folded after the first visit.</p>
+<p class="need"><b>Data:</b> the same two reads and the same note <span class="new">new</span>. <code>nearest</code> answers miles for every branch rather than the top three.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Scheduling</div></div>
+  <div class="tabs"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span></div>
+  <div class="dash">
+   <div class="note" style="flex:0 0 auto"><div class="prow"><b>New to dispatch?</b><span class="sp"></span><span class="tiny" style="color:#5a4310">Fold</span></div><span>Office lead: Dana Kim, ext 204 · Booking trouble: Marco Ruiz, ext 211 · After 6 PM: (216) 555-0100 · Never book a crown repair for a Saturday.</span></div>
+   <div class="look"><span class="srch">⌕ &nbsp;18 Maple Ct, Solon, OH 44139</span><span class="chip on">Sorted by miles</span></div>
+   <div class="tbl cols">
+    <div class="tr h"><span>Branch</span><span>Address</span><span>Phone</span><span>Serves</span><span class="num">Miles</span></div>
+    <div class="tr hot"><span class="b">Cleveland <span class="pill p-info">Serves 44139</span></span><span class="ell">4120 Mill Creek Rd, Warrensville Heights, OH</span><span>(216) 555-0142</span><span class="ell">Cleveland, Ohio</span><span class="num b">6.2</span></div>
+    <div class="tr"><span class="b">Akron</span><span class="ell">88 Station St, Akron, OH</span><span>(330) 555-0177</span><span class="ell">Summit County</span><span class="num">23.8</span></div>
+    <div class="tr"><span class="b">Toledo</span><span class="ell">9 Shore Rd, Toledo, OH</span><span>(419) 555-0190</span><span class="ell">Lucas County</span><span class="num">117</span></div>
+    <div class="tr"><span class="b">Columbus</span><span class="ell">2301 Kestrel Ave, Columbus, OH</span><span>(614) 555-0119</span><span class="ell">Franklin County</span><span class="num">128</span></div>
+    <div class="tr"><span class="b">Columbus East <span class="tiny">Dryer Vent</span></span><span class="ell">77 Oak Hill Dr, Reynoldsburg, OH</span><span>(614) 555-0181</span><span class="ell">Licking County</span><span class="num">131</span></div>
+    <div class="tr"><span class="b">Chicago</span><span class="ell">1450 W Grand Ave, Chicago, IL</span><span>(312) 555-0133</span><span class="ell">Cook County</span><span class="num">309</span></div>
+    <div class="tr"><span class="b">Naperville</span><span class="ell">600 Ogden Ave, Naperville, IL</span><span>(630) 555-0108</span><span class="ell">DuPage County</span><span class="num">330</span></div>
+    <div class="tr"><span class="b">Arlington</span><span class="ell">210 N Glebe Rd, Arlington, VA</span><span>(703) 555-0164</span><span class="ell">Northern Virginia</span><span class="num">303</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · Look up first <span class="rec">Recommended</span></p>
+ <div class="phn">
+  <div class="bk"><span class="b">Scheduling</span><span class="sp"></span><span class="chip on">Locations</span></div>
+  <div class="pb">
+   <div class="look"><span class="srch" style="height:40px">⌕ &nbsp;18 Maple Ct, Solon 44139</span></div>
+   <div class="best"><div class="prow"><span class="pill p-ok">Closest</span><span class="pill p-info">Serves 44139</span><span class="sp"></span><span class="mi">6.2 <small>mi</small></span></div><div class="b">Harbor Chimney · Cleveland</div><div class="tiny">4120 Mill Creek Rd, Warrensville Heights</div>
+    <div class="pbtn"><span class="btn f">Call</span><span class="btn">Directions</span></div><span class="btn" style="width:100%">Check availability</span></div>
+   <div class="sec">Also near</div>
+   <div class="card"><div class="tap"><span class="b">Akron</span><span class="sp"></span><span class="tiny b">23.8 mi</span></div><div class="tap"><span class="b">Columbus</span><span class="sp"></span><span class="tiny b">128 mi</span></div></div>
+   <div class="note"><b>For new dispatchers</b><span>Office lead: Dana Kim, ext 204 · After 6 PM: (216) 555-0100</span></div>
+   <div class="card"><div class="tap"><span class="b">All 8 branches</span><span class="sp"></span><span class="muted">›</span></div></div>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · The directory, one branch at a time</p>
+ <div class="phn">
+  <div class="bk"><span class="b">Scheduling</span><span class="sp"></span><span class="chip on">Locations</span></div>
+  <div class="pb">
+   <div class="prow"><span class="srch" style="flex:1;height:36px">⌕ &nbsp;Find a branch</span><span class="btn f">Closest</span></div>
+   <div class="sec">Ohio</div>
+   <div class="card">
+    <div class="tap"><div><div class="b">Cleveland</div><div class="tiny">Warrensville Heights</div></div><span class="sp"></span><span class="muted">›</span></div>
+    <div class="tap"><div><div class="b">Akron</div><div class="tiny">Akron</div></div><span class="sp"></span><span class="muted">›</span></div>
+    <div class="tap"><div><div class="b">Columbus</div><div class="tiny">Columbus</div></div><span class="sp"></span><span class="muted">›</span></div>
+    <div class="tap"><div><div class="b">Toledo</div><div class="tiny">Toledo</div></div><span class="sp"></span><span class="muted">›</span></div>
+   </div>
+   <div class="sec">Illinois</div>
+   <div class="card">
+    <div class="tap"><div><div class="b">Chicago</div><div class="tiny">Chicago</div></div><span class="sp"></span><span class="muted">›</span></div>
+    <div class="tap"><div><div class="b">Naperville</div><div class="tiny">Naperville</div></div><span class="sp"></span><span class="muted">›</span></div>
+   </div>
+   <p class="tiny">A branch opens in place, with ← back, its phones, map link and the note. <b>Closest</b> opens the lookup as a step of its own.</p>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · New dispatcher first</p>
+ <div class="phn">
+  <div class="bk"><span class="b">Scheduling</span><span class="sp"></span><span class="chip on">Locations</span></div>
+  <div class="pb">
+   <div class="note"><b>New to dispatch?</b><span>Office lead: Dana Kim, ext 204</span><span>Booking trouble: Marco Ruiz, ext 211</span><span>After 6 PM: (216) 555-0100</span><span>Never book a crown repair for a Saturday.</span></div>
+   <div class="look"><span class="srch" style="height:40px">⌕ &nbsp;A customer's address or ZIP</span></div>
+   <div class="sec">Every branch</div>
+   <div class="card">
+    <div class="tap"><div><div class="b">Cleveland</div><div class="tiny">(216) 555-0142</div></div><span class="sp"></span><span class="btn">Call</span></div>
+    <div class="tap"><div><div class="b">Akron</div><div class="tiny">(330) 555-0177</div></div><span class="sp"></span><span class="btn">Call</span></div>
+    <div class="tap"><div><div class="b">Columbus</div><div class="tiny">(614) 555-0119</div></div><span class="sp"></span><span class="btn">Call</span></div>
+    <div class="tap"><div><div class="b">Toledo</div><div class="tiny">(419) 555-0190</div></div><span class="sp"></span><span class="btn">Call</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:22px">Branches, addresses, phone numbers, people and the note are invented. Miles are straight-line, from the typed address's coordinates to each branch's.</p>
+</div>

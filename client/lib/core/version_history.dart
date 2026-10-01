@@ -14,6 +14,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0347',
+      date: '1 Oct 2026',
+      items: [
+        'Scheduling › Availability: a zip search with a typo (too few or too many digits) now says it isn\'t a zip code, instead of searching the wrong zip or saying no area covers it. Zip+4 works.',
+        'Roles & Permissions: each role can be given the roles its holders may invite.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0346',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: the new hire fills in and signs the W-4 or W-9 inside the app.',
+        'Inventory: Items, Orders and Locations open with the same row of tiles as Stock, and a tap on a tile shows just those.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0345',
       date: '1 Oct 2026',
       items: [

@@ -15,6 +15,7 @@ import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/screens/hr/records_tab.dart';
+import 'package:ezbizi_client/screens/hr/tax_form_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -1032,6 +1033,120 @@ void main() {
     expect(find.byKey(const Key('void:drivers_license_front')), findsNothing);
   });
 
+  // Jose, 2026-10-01: "this is not something he should upload, it should be
+  // signed within the app as well, check how a1tools did it".
+  testWidgets('the W-4 is filled in and signed in a panel, then shows as '
+      'attached', (tester) async {
+    final drawn = pdfPages;
+    addTearDown(() => pdfPages = drawn);
+    pdfPages = (pdf) => Stream.value(_png);
+
+    final calls = <(Map<String, String>, Map<String, dynamic>)>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _taxFormForm,
+        onTaxForm: (query, body) => calls.add((query, body)),
+      ),
+    );
+
+    expect(find.text('Not signed yet.'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('tax-form-open')));
+    final panel = find.byType(TaxFormPanel);
+    expect(panel, findsOneWidget);
+
+    // The page as it would print, drawn before anything is chosen; the SSN
+    // on file is not asked again.
+    expect(calls.single.$1, {'preview': '1'});
+    expect(calls.single.$2['kind'], 'w4');
+    expect((calls.single.$2['values'] as Map).containsKey('ssn'), isFalse);
+    expect(
+      find.descendant(of: panel, matching: find.byKey(const Key('pdf-page-0'))),
+      findsOneWidget,
+    );
+
+    FilledButton sign() =>
+        tester.widget<FilledButton>(find.byKey(const Key('tax-form-sign')));
+    expect(sign().onPressed, isNull);
+
+    await _tap(tester, find.byKey(const Key('tax-form-status-single')));
+    final pad = find.descendant(
+      of: panel,
+      matching: find.byKey(const Key('signature-pad')),
+    );
+    await tester.ensureVisible(pad);
+    await tester.pumpAndSettle();
+    await tester.drag(pad, const Offset(60, 20));
+    await tester.pumpAndSettle();
+    expect(sign().onPressed, isNotNull);
+
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('tax-form-sign')));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+
+    final signed = calls.last;
+    expect(signed.$1, isEmpty);
+    expect(signed.$2['kind'], 'w4');
+    expect((signed.$2['values'] as Map)['filing_status'], 'single');
+    expect(signed.$2['drawing'], startsWith('data:image/png;base64,'));
+
+    expect(find.byType(TaxFormPanel), findsNothing);
+    expect(find.text('Signed W-4 attached.'), findsOneWidget);
+    expect(find.byKey(const Key('tax-form-view')), findsOneWidget);
+  });
+
+  testWidgets('a server that does not sign the tax form here still takes an '
+      'upload', (tester) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._taxFormForm,
+          'vocabulary': {
+            ..._catalogue,
+            'field_types': [
+              ...(_catalogue['field_types']! as List),
+              {'key': 'file', 'label': 'A file'},
+            ],
+          },
+          'fields': [
+            for (final f in _taxFormForm['fields'] as List)
+              (f as Map<String, Object?>)['key'] == 'tax_form'
+                  ? ({...f}..remove('tax_form_kind'))
+                  : f,
+          ],
+        },
+      ),
+    );
+
+    expect(find.byKey(const Key('tax-form-open')), findsNothing);
+    expect(find.text('Choose a file'), findsOneWidget);
+  });
+
+  testWidgets('before the form is known the tax form waits for the tax ID', (
+    tester,
+  ) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._taxFormForm,
+          'fields': [
+            for (final f in _taxFormForm['fields'] as List)
+              (f as Map<String, Object?>)['key'] == 'tax_form'
+                  ? {...f, 'tax_form_kind': null}
+                  : f,
+          ],
+        },
+      ),
+    );
+
+    expect(find.byKey(const Key('tax-form-open')), findsNothing);
+    expect(find.text('Answer your tax ID question first.'), findsOneWidget);
+  });
+
   testWidgets('the state comes before the county, whatever the contract says', (
     tester,
   ) async {
@@ -1446,6 +1561,9 @@ MockClientHandler _handler({
   /// The signer's saved signature, `GET /me/signature`; null when none.
   String? savedSignature,
   void Function(Map<String, dynamic> body)? onSaveSignature,
+  /// `POST …/tax-form`: the query and body of each call, previews included.
+  void Function(Map<String, String> query, Map<String, dynamic> body)?
+  onTaxForm,
   void Function(Map<String, String> query)? onCounties,
   void Function(Map<String, String> query)? onList,
 }) {
@@ -1456,6 +1574,26 @@ MockClientHandler _handler({
     final body = request.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;
+
+    if (path.endsWith('/hr/onboardings/o-1/tax-form')) {
+      onTaxForm?.call(request.url.queryParameters, body);
+      if (request.url.queryParameters['preview'] == '1') {
+        return http.Response.bytes(
+          utf8.encode('%PDF-1.7 ${body['kind']}'),
+          200,
+          headers: {'content-type': 'application/pdf'},
+        );
+      }
+      return _json({
+        'data': {
+          ...seen,
+          'fields': [
+            for (final f in seen['fields']! as List)
+              (f as Map)['key'] == 'tax_form' ? {...f, 'value': 'att-9'} : f,
+          ],
+        },
+      });
+    }
 
     if (path.endsWith('/me/signature')) {
       if (request.method == 'PUT') {
@@ -2199,6 +2337,19 @@ final _employerVoidsForm = {
       ..._field('drivers_license_back', "Driver's licence, back", 'file', filledBy: 'employee', writable: false),
       'voidable': true,
       'void_group': 'drivers_license',
+    },
+  ],
+  'missing': <String, String>{},
+};
+
+/// The new hire's half with the SSN answered and the W-4 still to sign.
+final _taxFormForm = {
+  ..._asEmployee,
+  'fields': [
+    _field('ssn', 'Social Security number', 'text', filledBy: 'employee', writable: true, value: '123-45-6789'),
+    {
+      ..._field('tax_form', 'W-4 (employee) or W-9 (contractor), signed', 'file', filledBy: 'employee', writable: true),
+      'tax_form_kind': 'w4',
     },
   ],
   'missing': <String, String>{},
