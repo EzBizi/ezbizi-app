@@ -368,6 +368,7 @@ class _LeadThreadState extends State<LeadThread> {
     final current = switch ('${lead['status'] ?? 'new'}') {
       'archived' => 'archived',
       'not_a_lead' => 'not_a_lead',
+      'completed' => 'completed',
       _ => 'new',
     };
 
@@ -386,6 +387,13 @@ class _LeadThreadState extends State<LeadThread> {
         ButtonSegment(
           value: 'new',
           label: Text('Lead', key: ValueKey('status-lead')),
+        ),
+        // Nobody owes the customer an answer - "Thank you" was their last
+        // word. Clears the red warning (Jose, 2026-10-01); writing again
+        // reopens the lead.
+        ButtonSegment(
+          value: 'completed',
+          label: Text('Completed', key: ValueKey('status-completed')),
         ),
       ],
       selected: {current},
@@ -1960,6 +1968,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'booked' => 'Booked',
     'archived' => 'Archived',
     'not_a_lead' => 'Not a lead',
+    'completed' => 'Completed',
     _ => 'New',
   },
   key: key,
@@ -1967,6 +1976,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'booked' => Tone.ok,
     'archived' => Tone.neutral,
     'not_a_lead' => Tone.caution,
+    'completed' => Tone.ok,
     _ => Tone.info,
   },
 );

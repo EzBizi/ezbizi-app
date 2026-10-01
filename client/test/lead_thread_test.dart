@@ -1266,6 +1266,18 @@ void _statusTests() {
     expect(asked, ['new']);
   });
 
+  // Jose, 2026-10-01: the customer said "Thank you" - nobody owes them an
+  // answer, so the dispatcher can mark it Completed and the warning goes.
+  testWidgets('a lead can be marked Completed, and shows as Completed', (
+    tester,
+  ) async {
+    final asked = await pump(tester);
+    await tester.tap(find.byKey(const ValueKey('status-completed')));
+    expect(asked, ['completed']);
+
+    expect(leadStatusPill('completed').label, 'Completed');
+  });
+
   testWidgets('somebody who may only read sees the status, and no moves', (
     tester,
   ) async {
@@ -1289,8 +1301,10 @@ void _statusTests() {
     final archive = segment('status-archive');
     final notALead = segment('status-not-a-lead');
     final lead = segment('status-lead');
+    final completed = segment('status-completed');
     expect(archive.top, notALead.top);
     expect(notALead.top, lead.top);
+    expect(lead.top, completed.top);
     // Thirds of the row, to the rounding of a third.
     expect(archive.width, closeTo(notALead.width, 0.01));
     expect(notALead.width, closeTo(lead.width, 0.01));

@@ -122,4 +122,29 @@ class ReplyOverdueTest extends TestCase
         $meta = $this->getJson('/api/v1/leads?source=thumbtack')->assertOk()->json('meta.unread_by_source');
         $this->assertSame(['ls_text' => 1], $meta, 'the read call is not counted, and the thumbtack filter does not narrow it');
     }
+
+    /**
+     * Completed: the customer's last word was "Thank you" and nobody owes them
+     * an answer (Jose, 2026-10-01). Off the overdue mark and the Unreplied
+     * list; writing again reopens it.
+     */
+    public function test_completed_clears_the_warning_until_the_customer_writes_again(): void
+    {
+        $lead = $this->lead('thanks', 'MESSAGE', '2026-09-28T14:40:00Z');
+        $this->signedInAs($this->t['admin']);
+
+        $this->assertTrue($this->getJson('/api/v1/leads')->json('data.0.reply_overdue'));
+        $this->patchJson("/api/v1/leads/{$lead->id}", ['status' => Lead::STATUS_COMPLETED])->assertOk();
+
+        $this->assertFalse($this->getJson('/api/v1/leads')->json('data.0.reply_overdue'));
+        $this->assertSame([], $this->getJson('/api/v1/leads?unreplied=1')->json('data'));
+        $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
+        $this->assertSame([], $this->raised());
+
+        $this->inTenant($this->t['org'], fn () => app(\App\Support\Leads\LeadThread::class)->store($lead->fresh(), 'again-1', [
+            'channel' => LeadConversation::CHANNEL_MESSAGE, 'participant' => LeadConversation::FROM_CONSUMER,
+            'occurred_at' => now(), 'text' => 'One more question',
+        ]));
+        $this->assertSame(Lead::STATUS_NEW, $lead->fresh()->status, 'writing again reopens it');
+    }
 }

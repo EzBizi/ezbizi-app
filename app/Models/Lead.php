@@ -295,12 +295,21 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
 
     public const STATUS_NOT_A_LEAD = 'not_a_lead';
 
+    /**
+     * The conversation is done and nobody owes the customer an answer - their
+     * last word was "Thank you" (Jose, 2026-10-01). Clears the overdue mark
+     * and the Unreplied list; a new message from them reopens it as New
+     * (LeadThread::store).
+     */
+    public const STATUS_COMPLETED = 'completed';
+
     /** @var string[] */
     public const STATUSES = [
         self::STATUS_NEW,
         self::STATUS_BOOKED,
         self::STATUS_ARCHIVED,
         self::STATUS_NOT_A_LEAD,
+        self::STATUS_COMPLETED,
     ];
 
     public static function retention(): RetentionPolicy

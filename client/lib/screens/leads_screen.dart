@@ -255,6 +255,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     'booked': 'Booked',
     'archived': 'Archived',
     'not_a_lead': 'Not a lead',
+    'completed': 'Completed',
   };
 
   /// How often the list re-reads itself while somebody is looking at it.

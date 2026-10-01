@@ -270,6 +270,8 @@ class LeadsController extends Controller
              * call back.
              */
             $query->whereIn('leads.source', Lead::INBOX_SOURCES)
+                // Completed: the customer is owed nothing (Jose, 2026-10-01).
+                ->where('leads.status', '!=', Lead::STATUS_COMPLETED)
                 ->where(function ($q) {
                     $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                         ->orWhereNull('leads.last_contact_from');

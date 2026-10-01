@@ -65,6 +65,12 @@ final class LeadThread
         ]);
 
         if ($row->participant === LeadConversation::FROM_CONSUMER) {
+            // They wrote again: whatever made it Completed is over, and
+            // somebody owes them an answer.
+            if ($lead->status === Lead::STATUS_COMPLETED) {
+                $lead->forceFill(['status' => Lead::STATUS_NEW])->save();
+            }
+
             $this->events->emitAfterCommit('lead.contact_received', $lead, [
                 'after' => [
                     'kind'         => $lead->kind(),
