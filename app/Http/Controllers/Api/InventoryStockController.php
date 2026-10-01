@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
+use App\Support\Inventory\InventoryStockItems;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,6 +32,45 @@ use Illuminate\Support\Facades\DB;
 class InventoryStockController extends Controller
 {
     /** GET /api/v1/inventory/stock */
+    /**
+     * GET /api/v1/inventory/stock/items — one row per item. See InventoryStockItems.
+     *
+     * Same gate as `index` (the Stock tab). Orders and money are decided here,
+     * once, from the caller's grants, and passed down rather than re-asked.
+     */
+    public function items(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', InventoryItem::class);
+
+        $user = $request->user();
+        $tile = $request->query('tile');
+
+        $built = InventoryStockItems::build(
+            $user,
+            ViewScope::forUser($user),
+            withOrders: $user->hasPermission('inventory.orders.view'),
+            withMoney: $user->hasPermission('inventory.financials'),
+            locationId: filled($request->query('location_id')) ? (string) $request->query('location_id') : null,
+            search: filled($request->query('search')) ? trim((string) $request->query('search')) : null,
+            tile: in_array($tile, InventoryStockItems::TILES, true) ? $tile : null,
+        );
+
+        $perPage = min(max((int) $request->query('per_page', 50), 1), 200);
+        $page = max((int) $request->query('page', 1), 1);
+        $total = count($built['rows']);
+
+        return response()->json([
+            'data' => array_slice($built['rows'], ($page - 1) * $perPage, $perPage),
+            'meta' => [
+                'total' => $total,
+                'per_page' => $perPage,
+                'current_page' => $page,
+                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'tiles' => $built['tiles'],
+            ],
+        ], options: JSON_PRESERVE_ZERO_FRACTION);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', InventoryItem::class);
