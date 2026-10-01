@@ -499,8 +499,22 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// The row says the stored answer is kept unless something new is typed.
   String _startingText(OnboardingQuestion question) {
     if (_revealed.containsKey(question.key)) return _revealed[question.key]!;
+    if (question.voided) return '';
 
     return question.masked ? '' : question.value;
+  }
+
+  /// Answered "doesn't apply", saved or not.
+  bool _voided(OnboardingQuestion question) =>
+      question.voidable && _answerOf(question.key).trim() == notApplicable;
+
+  /// HR 0c0884af, Jose: "some sections can be entirely voided. so they don't
+  /// appear in the contract". On saves "N/A" and the clause leaves the
+  /// preview; off clears the answer back to empty.
+  void _setVoided(OnboardingQuestion question, bool voided) {
+    _box(question).clear();
+    _addresses[question.key]?.values.forEach((box) => box.clear());
+    _answer(question.key, voided ? notApplicable : '');
   }
 
   TextEditingController _box(OnboardingQuestion question) => _boxes.putIfAbsent(
@@ -1114,6 +1128,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Widget _row(BuildContext context, OnboardingQuestion question) {
     final theme = Theme.of(context);
     final field = question.field;
+    final voided = _voided(question);
 
     // The schedule control answers the days too, so it carries both names.
     final days = field.key == 'work_hours'
@@ -1145,10 +1160,30 @@ class _OnboardingFormState extends State<OnboardingForm> {
               // heading has already said so.
               if (!question.writable && field.filledBy.isNotEmpty)
                 Tag(_vocabulary.filledByLabel(field.filledBy)),
+              if (question.voidable && (question.writable || voided)) ...[
+                const Spacer(),
+                Text("Doesn't apply", style: theme.textTheme.bodySmall),
+                Switch(
+                  key: Key('void:${field.key}'),
+                  value: voided,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: question.writable && !_saving
+                      ? (on) => _setVoided(question, on)
+                      : null,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 6),
-          _control(context, question),
+          // Greyed and still while the term does not apply: its clause is
+          // out of the contract until the switch goes off.
+          IgnorePointer(
+            ignoring: voided,
+            child: Opacity(
+              opacity: voided ? 0.4 : 1,
+              child: _control(context, question),
+            ),
+          ),
           // Why the box is dead, where the server said. A greyed control with
           // no reason beside it reads as a fault; this is the plan's one-home
           // rule showing itself — core identity belongs to the person, and an
@@ -1575,6 +1610,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   }
 
   String? _chosen(OnboardingQuestion question) {
+    if (_voided(question)) return null;
     if (_pending[question.key] case final pending?) {
       return pending.isEmpty ? null : pending;
     }
@@ -1614,6 +1650,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
         // An answer stored before numbers were filtered ("20sdsadsa").
         errorText:
             numeric &&
+                !_voided(question) &&
                 !RegExp(r'^\d*\.?\d*$').hasMatch(_box(question).text.trim())
             ? 'Not a number: digits and one decimal point only.'
             : null,
@@ -1707,7 +1744,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   }) {
     final theme = Theme.of(context);
     final days = _question(_form!, 'work_days');
-    final text = _answerOf(hours.key).trim();
+    final text = _voided(hours) ? '' : _answerOf(hours.key).trim();
     final week = text.isEmpty ? null : scheduleFrom(text);
 
     return Container(

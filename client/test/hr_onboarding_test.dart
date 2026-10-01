@@ -816,6 +816,38 @@ void main() {
     expect(find.byKey(const Key('onboarding-contract')), findsOneWidget);
     expect(find.byKey(answerKey('shirt_size_note')), findsNothing);
   });
+
+  // HR 0c0884af, Jose: "some sections can be entirely voided. so they don't
+  // appear in the contract. like the scheduled increase".
+  testWidgets("a term that doesn't apply saves N/A, greys its box and loads "
+      'back switched on', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _voidForm, onSave: (body) => saved = body),
+    );
+
+    // Stored "N/A": the switch is on, the box is empty, and a number box does
+    // not call it "not a number".
+    final period = tester.widget<Switch>(find.byKey(const Key('void:raise_period')));
+    expect(period.value, isTrue);
+    // The interval is a picker (Hour/Week/Month/Year): nothing chosen.
+    expect(_dropdown(tester, 'raise_period').value, isNull);
+
+    final amount = tester.widget<Switch>(find.byKey(const Key('void:raise_amount')));
+    expect(amount.value, isFalse);
+    await _tap(tester, find.byKey(const Key('void:raise_amount')));
+    expect(_box(tester, 'raise_amount').controller!.text, isEmpty);
+    expect(find.text('Not a number: digits and one decimal point only.'), findsNothing);
+
+    // Off again clears it.
+    await _tap(tester, find.byKey(const Key('void:raise_period')));
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'raise_amount': 'N/A', 'raise_period': ''},
+    });
+  });
 }
 
 TextField _countyBox(WidgetTester tester) => tester.widget<TextField>(
@@ -1674,4 +1706,20 @@ const _scopeOptions = {
   'roles': [
     {'id': 'role-2', 'name': 'Technician', 'assignable': true},
   ],
+};
+
+/// Two employer terms the server lets be voided, one already "N/A".
+final _voidForm = {
+  ..._asEmployer,
+  'fields': [
+    {
+      ..._field('raise_amount', 'Scheduled increase amount', 'number', filledBy: 'employer', writable: true, value: '0'),
+      'voidable': true,
+    },
+    {
+      ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'N/A'),
+      'voidable': true,
+    },
+  ],
+  'missing': <String, String>{},
 };

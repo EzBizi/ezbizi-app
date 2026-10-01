@@ -371,6 +371,7 @@ class OnboardingQuestion {
     required this.setByName,
     required this.setByParty,
     required this.setAt,
+    this.voidable = false,
   });
 
   /// The tenant's field definition, in exactly the shape the Contracts tab
@@ -440,6 +441,13 @@ class OnboardingQuestion {
 
   final String? setAt;
 
+  /// May be answered "N/A", which leaves its clause out of the contract (A1
+  /// Tools' "doesn't apply"; HR 0c0884af). The server's call, carried.
+  final bool voidable;
+
+  /// Answered "doesn't apply".
+  bool get voided => voidable && value.trim() == notApplicable;
+
   String get key => field.key;
 
   bool get answered => value.trim().isNotEmpty;
@@ -462,9 +470,13 @@ class OnboardingQuestion {
       setByName: setBy?['name'] as String?,
       setByParty: setBy?['party'] as String?,
       setAt: json['set_at'] as String?,
+      voidable: json['voidable'] == true,
     );
   }
 }
+
+/// The answer that voids a term: the server drops every paragraph naming it.
+const notApplicable = 'N/A';
 
 /// The rendered document, and the fingerprint of exactly these bytes.
 ///
