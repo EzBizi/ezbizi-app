@@ -207,7 +207,13 @@ class InventorySplitScaffold extends StatelessWidget {
                       flex: 3,
                       child: KeyedSubtree(
                         key: const Key('inventory-pane'),
-                        child: pane(showBack: false),
+                        // A back arrow on wide screens too. The full-width table
+                        // and tiles draw only while no pane is open, so a pane
+                        // without one was a one-way door off the main view
+                        // (Analorena Ventoso, 2026-10-01). Containment: every
+                        // editor drawn in the module's area carries its own way
+                        // back, at every width.
+                        child: pane(showBack: true),
                       ),
                     ),
                   ],

@@ -163,11 +163,31 @@ void main() {
     await tester.tap(find.text('6 mil liner'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Back to the list'), findsNothing);
-
     final list = tester.getRect(find.byKey(const Key('inventory-list')));
     final pane = tester.getRect(find.byKey(const Key('inventory-pane')));
     expect(pane.width, closeTo(list.width * 3, 8));
+  });
+
+  // Analorena Ventoso, 2026-10-01 (suggestion 01a0f8c0): "Clicking on an item
+  // ... you can't go back to the main inventory view." On a wide screen the
+  // full-width table and tiles only draw while no pane is open, and the pane
+  // had no back arrow there, so opening an item was a one-way door. This test
+  // used to assert that absence (`findsNothing`) as if it were the design.
+  testWidgets('at 1280 an opened item has a way back to the full list', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, stock: [_balance], size: const Size(1280, 900));
+
+    await tester.tap(find.text('6 mil liner'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('inventory-pane')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to the list'));
+    await tester.pumpAndSettle();
+
+    // Back where we started: no pane, the list is the whole face again.
+    expect(find.byKey(const Key('inventory-pane')), findsNothing);
+    expect(find.byKey(const Key('inventory-list')), findsOneWidget);
   });
 
   testWidgets('at 375 the pane is the whole body, with Back', (tester) async {
