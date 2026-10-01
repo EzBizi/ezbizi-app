@@ -255,6 +255,40 @@ void main() {
     expect(find.textContaining('USD'), findsNothing);
     expect(find.textContaining('CAD'), findsNothing);
   });
+
+  /// A box whose chart is drawn has said something; "Nothing to show." under
+  /// a full pie is false. UI/UX found it on Fleet, Phone, Email, Jobs and
+  /// Automations (2026-10-01), which all send slices and no sentence.
+  testWidgets('a drawn chart with no sentence gets no "Nothing to show."', (
+    tester,
+  ) async {
+    Map<String, dynamic> box(String key, List<int> totals) => {
+      'key': key,
+      'label': key,
+      'presentation': 'pie',
+      'allowed_presentations': ['pie', 'bar', 'text'],
+      'snapshot': true,
+      'coming_soon': false,
+      'options': <String, dynamic>{},
+      'data': {
+        'empty': false,
+        'slices': [
+          for (final (i, t) in totals.indexed) {'label': 's$i', 'total': t},
+        ],
+      },
+    };
+
+    await _pump(
+      tester,
+      _handler(extraGlances: [box('jobs', [3, 1]), box('phone', [0, 0])]),
+    );
+
+    // Control: Phone, the same shape with nothing to plot, still says so —
+    // so the absence for Jobs is the chart, not a fallback that stopped
+    // drawing anywhere.
+    // Two with the bug (Jobs and Phone), none if the fallback broke.
+    expect(find.text('Nothing to show.'), findsOneWidget);
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {
@@ -296,6 +330,7 @@ MockClientHandler _handler({
   List<Map<String, dynamic>>? record,
   List<Map<String, dynamic>>? stockValue,
   Map<String, dynamic>? extraGlanceData,
+  List<Map<String, dynamic>> extraGlances = const [],
 }) {
   final glances = [
     {
@@ -357,6 +392,7 @@ MockClientHandler _handler({
               'stock_value': stockValue,
             },
     },
+    ...extraGlances,
   ];
 
   return (request) async {
