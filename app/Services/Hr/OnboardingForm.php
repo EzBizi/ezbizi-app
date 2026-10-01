@@ -754,6 +754,8 @@ class OnboardingForm
         $identity  = $this->identity($onboarding);
         $authority = $this->coreAuthority($onboarding);
         $out       = [];
+        $employerSigned = $onboarding->takenSignatures()
+            ->contains(fn ($s) => $s->signer_party === FilledBy::EMPLOYER);
 
         foreach (CommonCore::asked() as $key) {
             $filledBy = $authority[$key]['filled_by'];
@@ -809,6 +811,9 @@ class OnboardingForm
                 'writable' => $field->type !== FieldType::SIGNATURE
                     && ! $field->retired
                     && ! $onboarding->isFrozen()
+                    // Once the employer has signed, only the employee's own
+                    // questions move (HrOnboardingsController::update).
+                    && ($field->filledBy === FilledBy::EMPLOYEE || ! $employerSigned)
                     && $this->mayWrite($field, $parties),
                 'locked_because' => null,
                 'set_by' => $answer === null ? null : [

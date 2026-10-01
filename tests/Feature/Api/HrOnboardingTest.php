@@ -413,8 +413,9 @@ class HrOnboardingTest extends TestCase
 
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
 
-        // One party in: submitted, not completed.
-        $this->assertSame('submitted', $this->form($alpha['admin'], $id)['status']);
+        // The employer signs first and the employee's side stays open (Jose,
+        // 2026-10-01): still in progress, not submitted.
+        $this->assertSame('in_progress', $this->form($alpha['admin'], $id)['status']);
 
         $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
 
@@ -473,6 +474,72 @@ class HrOnboardingTest extends TestCase
 
         $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
         $this->assertNull($mine($employee), 'A finished form stayed on their screen.');
+    }
+
+    /** The contract beside the form, with what is being typed, and nothing saved. */
+    public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
+    {
+        [$alpha, , $id] = $this->scenario([
+            ['key' => 'wage', 'label' => 'Hourly wage', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'iban', 'label' => 'Bank account', 'type' => 'text', 'filled_by' => 'employer',
+                'required' => true, 'sensitive' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $version = Onboarding::findOrFail($id)->contractVersion;
+            DB::table('contract_versions')->where('id', $version->id)
+                ->update(['body' => 'Paid {{wage}} an hour into {{iban}}.']);
+        });
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['iban' => self::IBAN]])->assertOk();
+
+        $content = $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/preview", [
+            'answers' => ['wage' => '22.75'],
+        ])->assertOk()->json('data.content');
+
+        $this->assertStringContainsString('22.75', $content);
+        $this->assertStringNotContainsString('2100 0418', $content, 'A saved secret was printed in a preview.');
+        $this->assertNull($this->rawAnswer($alpha, $id, 'wage'), 'A preview saved the answer.');
+    }
+
+    /**
+     * The employer fills in and signs first; that emails the employee their
+     * half, the employer's answers lock, and the employee finishes and signs
+     * the finished document (Jose, 2026-10-01).
+     */
+    public function test_the_employer_signs_first_and_the_employee_is_sent_their_half(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        [$alpha, $employee, $id] = $this->scenario();
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => '18.50', 'iban' => self::IBAN],
+        ])->assertOk();
+
+        // The employee's question is still empty, and the employer can sign.
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin')->assertCreated();
+        \Illuminate\Support\Facades\Notification::assertSentTo($employee, \App\Notifications\PaperworkReadyToFinish::class);
+
+        // What the employer signed is fixed; the employee's half is not.
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => '99.00'],
+        ])->assertStatus(422);
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['emergency_contact' => 'Ana, 600 111 222'],
+        ])->assertOk();
+
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz')->assertCreated();
+        $this->assertSame('completed', $this->form($employee, $id)['status']);
+
+        // The employer's signature is over the document they saw; the
+        // employee's over the finished one, which carries their answer.
+        [$first, $final] = $this->inTenant($alpha['org'], fn () => [
+            ContractSignature::where('field_key', 'employer_sign')->sole(),
+            ContractSignature::where('field_key', 'employee_sign')->sole(),
+        ]);
+        $this->assertNotSame($first->content_hash, $final->content_hash);
+        $finished = $this->as($employee)->getJson("/api/v1/hr/onboardings/{$id}/document")->assertOk()->json('data');
+        $this->assertSame(2, $finished['revision']);
+        $this->assertSame($final->content_hash, $finished['content_hash']);
     }
 
     /**
@@ -665,15 +732,17 @@ class HrOnboardingTest extends TestCase
 
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
 
+        // Revision 1 by number: until the employee signs, the plain document
+        // endpoint shows the live form they are about to sign.
         $documentAttachment = $this->as($employee)
-            ->getJson("/api/v1/hr/onboardings/{$id}/document")->assertOk()->json('data.attachment_id');
+            ->getJson("/api/v1/hr/onboardings/{$id}/document?revision=1")->assertOk()->json('data.attachment_id');
 
         $this->as($alpha['admin'])->deleteJson("/api/v1/attachments/{$documentAttachment}")
             ->assertStatus(422)
             ->assertJsonValidationErrors('attachment');
 
         // Still there, still verifying.
-        $this->as($employee)->getJson("/api/v1/hr/onboardings/{$id}/document")
+        $this->as($employee)->getJson("/api/v1/hr/onboardings/{$id}/document?revision=1")
             ->assertOk()
             ->assertJsonPath('data.intact', true);
 
