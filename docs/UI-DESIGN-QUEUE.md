@@ -2961,6 +2961,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 44 · HR · the onboarding form: formats, pickers, and the contract beside it — **Jose's own shape (relayed by HR, urgent), built directly** — **BUILT**
+
+Jose, 2026-10-01, via HR: *"we can't just let them put anything anywhere. contracts have format… number based
+fields [no letters], country and state should have search bars, with state being first so the county adapts to
+the chosen state, for works hours we could have a hours and date picker… full address fields with
+recommendation… the employer should be able to see the contract on the right side, changing as they input the
+information, same for the employee"*. Built in `onboarding_form.dart`: numbers take digits and one point (a
+stored "20sdsadsa" says it is not a number); `state` is a US-state picker storing the full name ("FL" reads as
+Florida); `county` searches `GET /places/counties` in that state and empties when the state changes;
+`employer_address` is AddressFields composed to one line; `work_days` + `work_hours` are one control on the
+schedule panel, written as HR's canonical text; `salary_period`/`raise_period` pick Hour/Week/Month/Year. At
+≥980 wide the contract (`POST …/preview`, 600 ms after a change, HTML via flutter_html) fills the right
+column; narrower, Form | Contract take turns. Sign waits for unsaved answers ("Save your answers first."),
+"Still to answer" lists only the signer's side, and the stored bytes moved behind "Show the exact text".
+
 ### 43 · Inventory · Stock, Items, Orders and Locations — **out for decision** (`docs/previews/inventory-layouts.html`)
 
 Jose, 2026-10-01, with a screenshot of Stock: *"same for the whole inventory tab and sub tabs, this is pretty

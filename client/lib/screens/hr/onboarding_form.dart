@@ -1,17 +1,24 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
 import '../../core/files.dart';
 import '../../core/onboarding.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import '../../widgets/work_schedule_panel.dart';
 
 /// The key on the control that answers one question.
 ///
@@ -21,6 +28,144 @@ import '../../widgets/tag.dart';
 /// sits above the box with the tags beside it. The field key is the one thing on
 /// a question that is unique by construction, so it is what the widget carries.
 Key answerKey(String fieldKey) => Key('answer:$fieldKey');
+
+// ── the questions every A-1 contract asks, and their controls ──────
+//
+// Jose, 2026-10-01: "we can't just let them put anything anywhere. contracts
+// have format". These are catalog keys HR named (7ed8111d, d834214e); any
+// other key keeps the control its kind of question gets.
+
+/// Digits and one decimal point. An answer typed before this rule
+/// ("20sdsadsa") loses its letters at the first edit.
+final _decimal = [
+  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+  TextInputFormatter.withFunction(
+    (old, next) => '.'.allMatches(next.text).length > 1 ? old : next,
+  ),
+];
+
+/// ponytail: the same fifty-one as buy_number_panel.dart's US regions; one
+/// shared list when a third screen needs it.
+const usStates = {
+  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+  'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut',
+  'DE': 'Delaware', 'DC': 'District of Columbia', 'FL': 'Florida',
+  'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois',
+  'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas', 'KY': 'Kentucky',
+  'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota',
+  'MS': 'Mississippi', 'MO': 'Missouri', 'MT': 'Montana',
+  'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire',
+  'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+  'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania',
+  'RI': 'Rhode Island', 'SC': 'South Carolina', 'SD': 'South Dakota',
+  'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+  'WI': 'Wisconsin', 'WY': 'Wyoming',
+};
+
+/// A state's full name from "FL" or "florida"; null when it is neither.
+String? stateName(String raw) {
+  final text = raw.trim();
+  if (usStates[text.toUpperCase()] case final name?) return name;
+  for (final name in usStates.values) {
+    if (name.toLowerCase() == text.toLowerCase()) return name;
+  }
+  return null;
+}
+
+const _payPeriods = ['Hour', 'Week', 'Month', 'Year'];
+
+const _weekDays = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+];
+
+String _dayName(int i) =>
+    _weekDays[i][0].toUpperCase() + _weekDays[i].substring(1);
+
+/// "14:00" as "2:00 PM".
+String _clock(String hhmm) {
+  final hour = int.parse(hhmm.substring(0, 2));
+  final twelve = hour % 12 == 0 ? 12 : hour % 12;
+  return '$twelve:${hhmm.substring(3, 5)} ${hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// The week the schedule panel returns, as the two answers the contract prints
+/// and the server reads into the person's schedule (HR, d834214e):
+/// `Monday to Friday, Sunday` and
+/// `Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM`.
+/// Consecutive days share a range; for the hours they must share the times too.
+(String days, String hours) scheduleText(Map<String, dynamic> week) {
+  Map? at(int i) => week[_weekDays[i]] as Map?;
+
+  List<(int, int)> runs(bool Function(int a, int b) same) {
+    final out = <(int, int)>[];
+    for (var i = 0; i < 7; i++) {
+      if (at(i) == null) continue;
+      if (out.isNotEmpty && out.last.$2 == i - 1 && same(out.last.$1, i)) {
+        out.last = (out.last.$1, i);
+      } else {
+        out.add((i, i));
+      }
+    }
+    return out;
+  }
+
+  String span((int, int) run) => run.$1 == run.$2
+      ? _dayName(run.$1)
+      : '${_dayName(run.$1)} to ${_dayName(run.$2)}';
+
+  final days = runs((a, b) => true).map(span).join(', ');
+  final hours = runs(
+    (a, b) =>
+        at(a)!['start'] == at(b)!['start'] && at(a)!['end'] == at(b)!['end'],
+  ).map((run) {
+    final window = at(run.$1)!;
+    return '${span(run)} ${_clock('${window['start']}')} to '
+        '${_clock('${window['end']}')}';
+  }).join('; ');
+
+  return (days, hours);
+}
+
+/// [scheduleText]'s hours read back into the panel's week. Null when the text
+/// is not in that form — an answer typed before the picker existed.
+Map<String, dynamic>? scheduleFrom(String hours) {
+  String? hhmm(String hour, String minute, String half) {
+    final h = int.parse(hour);
+    if (h < 1 || h > 12) return null;
+    final h24 = (h % 12) + (half.toUpperCase() == 'PM' ? 12 : 0);
+    return '${h24.toString().padLeft(2, '0')}:$minute';
+  }
+
+  final week = <String, dynamic>{for (final day in _weekDays) day: null};
+  final group = RegExp(
+    r'^([a-z]+)(?: to ([a-z]+))? (\d{1,2}):(\d{2}) ([AP]M) to (\d{1,2}):(\d{2}) ([AP]M)$',
+    caseSensitive: false,
+  );
+
+  for (final part in hours.split(';')) {
+    final m = group.firstMatch(part.trim());
+    if (m == null) return null;
+    final from = _weekDays.indexOf(m[1]!.toLowerCase());
+    final to = m[2] == null ? from : _weekDays.indexOf(m[2]!.toLowerCase());
+    final start = hhmm(m[3]!, m[4]!, m[5]!);
+    final end = hhmm(m[6]!, m[7]!, m[8]!);
+    if (from < 0 || to < from || start == null || end == null) return null;
+    for (var i = from; i <= to; i++) {
+      week[_weekDays[i]] = {'start': start, 'end': end};
+    }
+  }
+
+  return week;
+}
 
 /// The form both sides fill in (EZBIZI-HR-PLAN.md, "Onboarding").
 ///
@@ -182,6 +327,27 @@ class _OnboardingFormState extends State<OnboardingForm> {
   OnboardingDocument? _paper;
   String? _paperError;
 
+  /// The contract as the answers on screen would make it, saved or not, from
+  /// `POST …/preview` (Jose, 2026-10-01: "see the contract on the right side,
+  /// changing as they input the information"). It writes nothing and keeps
+  /// sensitive answers masked, so it is for READING: the signature still goes
+  /// against [_paper]'s fingerprint, and Sign waits until nothing is unsaved.
+  String? _previewHtml;
+  String? _previewError;
+  bool _previewing = false;
+  Timer? _previewTimer;
+  int _previewRun = 0;
+
+  /// On a phone the form and the contract take turns.
+  bool _showContract = false;
+
+  /// The stored bytes of the document, which the rendered contract replaces
+  /// as the thing to read. Still one tap away: they are what is signed.
+  bool _showBytes = false;
+
+  /// The business address's five boxes, composed into its one-line answer.
+  final Map<String, Map<String, TextEditingController>> _addresses = {};
+
   /// The onboarding's own vocabulary where it sent one, and otherwise whatever
   /// the screen around this was able to fetch.
   ///
@@ -207,6 +373,12 @@ class _OnboardingFormState extends State<OnboardingForm> {
     for (final box in _received.values) {
       box.dispose();
     }
+    for (final parts in _addresses.values) {
+      for (final box in parts.values) {
+        box.dispose();
+      }
+    }
+    _previewTimer?.cancel();
     super.dispose();
   }
 
@@ -229,6 +401,38 @@ class _OnboardingFormState extends State<OnboardingForm> {
     });
 
     await _loadDocument();
+
+    if (mounted && (_form?.anyWritable ?? false)) await _preview();
+  }
+
+  /// One answer changed: queue it for Save and redraw the contract beside it.
+  void _answer(String key, String value) {
+    setState(() => _pending[key] = value);
+    _previewTimer?.cancel();
+    _previewTimer = Timer(const Duration(milliseconds: 600), _preview);
+  }
+
+  Future<void> _preview() async {
+    final run = ++_previewRun;
+    setState(() => _previewing = true);
+
+    final response = await widget.api.post(
+      '/hr/onboardings/${widget.onboardingId}/preview',
+      {'answers': Map<String, dynamic>.from(_pending)},
+    );
+
+    // A slow answer to an older set of answers must not land on a newer one.
+    if (!mounted || run != _previewRun) return;
+
+    final content = response.data is Map
+        ? (response.data as Map)['content']
+        : null;
+
+    setState(() {
+      _previewing = false;
+      _previewError = response.ok ? null : response.reason;
+      if (content is String) _previewHtml = content;
+    });
   }
 
   /// The document, whenever the answers behind it may have moved.
@@ -485,99 +689,261 @@ class _OnboardingFormState extends State<OnboardingForm> {
           question,
     ];
 
-    final mine = [
+    // The schedule answers both of these with one control, drawn on the
+    // hours; the days row would be the same control twice.
+    final rows = [
       for (final question in questions)
+        if (question.key != 'work_days' || _question(form, 'work_hours') == null)
+          question,
+    ];
+
+    final mine = [
+      for (final question in rows)
         if (question.writable) question,
     ];
 
     final theirs = [
-      for (final question in questions)
+      for (final question in rows)
         if (!question.writable) question,
     ];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-      children: [
-        Center(
+    return LayoutBuilder(
+      builder: (context, box) {
+        // The form and, beside it, the contract it is filling in. Under this
+        // width the two take turns behind a Form / Contract switch.
+        final split = box.maxWidth >= 980;
+
+        final head = <Widget>[
+          if (widget.onBack != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back, size: 18),
+                label: Text(widget.backLabel),
+              ),
+            ),
+          _heading(context, form),
+          const SizedBox(height: 18),
+        ];
+
+        final body = <Widget>[
+          _resumeNote(context, form, questions),
+          // Only when there is no Save bar to carry it. A refused save
+          // belongs beside the button that was pressed; a refused reveal
+          // on a record nobody may write has no button to sit beside, and
+          // used to have nowhere at all.
+          if (_actionError != null && mine.isEmpty) ...[
+            const SizedBox(height: 16),
+            ErrorNote(_actionError!),
+          ],
+          if (mine.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            _sectionTitle(context, 'Yours to fill in'),
+            for (final question in mine) _row(context, question),
+            const SizedBox(height: 8),
+            _saveBar(context),
+          ],
+          if (theirs.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            _sectionTitle(
+              context,
+              mine.isEmpty ? 'The answers' : 'Not yours to answer',
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                mine.isEmpty
+                    ? 'Nothing here can be changed from this screen.'
+                    : 'Here so you can see what is still outstanding on '
+                          'the other side. You cannot change these.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            for (final question in theirs) _row(context, question),
+          ],
+          // A contract can genuinely ask nothing of its own — a one-page
+          // agreement with a signature and no fields is a real thing — so
+          // this is stated rather than left as a page that stops after
+          // the heading and reads as a screen that failed to load.
+          if (questions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 28),
+              child: Text(
+                form.signatures.isEmpty
+                    ? 'This contract asks no questions and has nothing to '
+                          'sign. There is nothing to fill in here.'
+                    : 'This contract asks no questions. There is only the '
+                          'document below to agree to.',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          if (form.signatures.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            _signingSection(context, form, split: split),
+          ],
+          if (widget.aside case final aside?) ...[
+            const SizedBox(height: 28),
+            aside,
+          ],
+        ];
+
+        Widget column(List<Widget> children, double width) => Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: BoxConstraints(maxWidth: width),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.onBack != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: widget.onBack,
-                      icon: const Icon(Icons.arrow_back, size: 18),
-                      label: Text(widget.backLabel),
-                    ),
-                  ),
-                _heading(context, form),
-                const SizedBox(height: 18),
-                _resumeNote(context, form, questions),
-                // Only when there is no Save bar to carry it. A refused save
-                // belongs beside the button that was pressed; a refused reveal
-                // on a record nobody may write has no button to sit beside, and
-                // used to have nowhere at all.
-                if (_actionError != null && mine.isEmpty) ...[
-                  const SizedBox(height: 16),
-                  ErrorNote(_actionError!),
-                ],
-                if (mine.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  _sectionTitle(context, 'Yours to fill in'),
-                  for (final question in mine) _row(context, question),
-                  const SizedBox(height: 8),
-                  _saveBar(context),
-                ],
-                if (theirs.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  _sectionTitle(
-                    context,
-                    mine.isEmpty ? 'The answers' : 'Not yours to answer',
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      mine.isEmpty
-                          ? 'Nothing here can be changed from this screen.'
-                          : 'Here so you can see what is still outstanding on '
-                                'the other side. You cannot change these.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  for (final question in theirs) _row(context, question),
-                ],
-                // A contract can genuinely ask nothing of its own — a one-page
-                // agreement with a signature and no fields is a real thing — so
-                // this is stated rather than left as a page that stops after
-                // the heading and reads as a screen that failed to load.
-                if (questions.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 28),
-                    child: Text(
-                      form.signatures.isEmpty
-                          ? 'This contract asks no questions and has nothing to '
-                                'sign. There is nothing to fill in here.'
-                          : 'This contract asks no questions. There is only the '
-                                'document below to agree to.',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                if (form.signatures.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  _signingSection(context, form),
-                ],
-                if (widget.aside case final aside?) ...[
-                  const SizedBox(height: 28),
-                  aside,
-                ],
-              ],
+              children: children,
             ),
           ),
+        );
+
+        if (split) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 11,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+                  children: [
+                    column([...head, ...body], 680),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 10,
+                child: ColoredBox(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+                    children: [
+                      column([
+                        _contractHeader(context),
+                        const SizedBox(height: 12),
+                        _contract(context),
+                      ], 820),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          children: [
+            column([
+              ...head,
+              TabBarLike(
+                key: const Key('onboarding-view'),
+                labels: const [
+                  ('Form', Icons.edit_note_outlined),
+                  ('Contract', Icons.description_outlined),
+                ],
+                selected: _showContract ? 1 : 0,
+                onSelected: (i) => setState(() => _showContract = i == 1),
+              ),
+              const SizedBox(height: 16),
+              if (_showContract) ...[
+                _contractHeader(context),
+                const SizedBox(height: 12),
+                _contract(context),
+              ] else
+                ...body,
+            ], 760),
+          ],
+        );
+      },
+    );
+  }
+
+  OnboardingQuestion? _question(Onboarding form, String key) {
+    for (final question in form.questions) {
+      if (question.key == key) return question;
+    }
+    return null;
+  }
+
+  // ── the contract beside the form ─────────────────────────────────
+
+  /// What the contract pane shows: the stored document once one is frozen;
+  /// otherwise the live preview, or the document until a preview arrives.
+  String? get _contractHtml {
+    final paper = _paper;
+    if (paper != null && !paper.isPreview) return paper.content;
+    return _previewHtml ?? paper?.content;
+  }
+
+  Widget _contractHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final frozen = _paper != null && !_paper!.isPreview;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _sectionTitle(context, 'The contract')),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                frozen
+                    ? 'As it was signed'
+                    : _previewing
+                    ? 'Updating…'
+                    : 'Changes as the answers do',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
         ),
+        if (_previewError != null && !frozen)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: ErrorNote(
+              'The contract could not be redrawn with the latest answers: '
+              '$_previewError',
+            ),
+          ),
       ],
+    );
+  }
+
+  Widget _contract(BuildContext context) {
+    final theme = Theme.of(context);
+    final content = _contractHtml;
+
+    return Container(
+      key: const Key('onboarding-contract'),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: content == null || content.isEmpty
+          ? Text(
+              _paperError ??
+                  (_previewing
+                      ? 'Drawing the contract…'
+                      : 'The contract will show here.'),
+              style: theme.textTheme.bodyMedium,
+            )
+          // Rendered, as it prints. The exact bytes a signature is over are
+          // under "Show the exact text" by the signing step.
+          : Html(
+              data: content,
+              style: {
+                'body': Style(
+                  margin: Margins.zero,
+                  color: theme.colorScheme.onSurface,
+                  fontSize: FontSize(15),
+                ),
+                'p': Style(lineHeight: LineHeight.number(1.5)),
+              },
+            ),
     );
   }
 
@@ -749,6 +1115,14 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final theme = Theme.of(context);
     final field = question.field;
 
+    // The schedule control answers the days too, so it carries both names.
+    final days = field.key == 'work_hours'
+        ? _question(_form!, 'work_days')
+        : null;
+    final label = days == null
+        ? field.label
+        : '${days.field.label} and ${field.label.toLowerCase()}';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 22),
       child: Column(
@@ -758,7 +1132,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
             children: [
               Flexible(
                 child: Text(
-                  field.required ? '${field.label} *' : field.label,
+                  field.required ? '$label *' : label,
                   style: theme.textTheme.titleSmall,
                 ),
               ),
@@ -957,6 +1331,58 @@ class _OnboardingFormState extends State<OnboardingForm> {
     // this end cannot tell an unrecognised kind of question from an ordinary
     // one, and captioning every text box with a warning would be asserting an
     // ignorance it has not established.
+    switch (field.key) {
+      case 'state':
+        return _statePicker(question, enabled: enabled);
+      case 'county':
+        final state = stateName(_answerOf('state'));
+        return _CountySearch(
+          key: answerKey(field.key),
+          api: widget.api,
+          state: state,
+          controller: _box(question),
+          answer: _pending[question.key] ?? question.value,
+          enabled: enabled,
+          onPicked: (county) => _answer(question.key, county),
+        );
+      case 'employer_address':
+        return AddressFields(
+          key: answerKey(field.key),
+          api: widget.api,
+          enabled: enabled,
+          dense: false,
+          line1: _address(question)['line1']!,
+          line2: _address(question)['line2']!,
+          city: _address(question)['city']!,
+          state: _address(question)['state']!,
+          postal: _address(question)['postal']!,
+        );
+      case 'work_hours':
+        return _schedule(context, question, enabled: enabled);
+      case 'salary_period' || 'raise_period':
+        final current = _chosen(question);
+        final period = current == null
+            ? null
+            : _payPeriods.firstWhere(
+                (p) => current.toLowerCase().contains(p.toLowerCase()),
+                orElse: () => current,
+              );
+        return SearchPickerField<String>(
+          key: answerKey(field.key),
+          value: period,
+          border: const OutlineInputBorder(),
+          hint: 'Choose',
+          options: [
+            for (final p in _payPeriods) SearchOption(value: p, label: p),
+            if (period != null && !_payPeriods.contains(period))
+              SearchOption(value: period, label: '$period — not one of these'),
+          ],
+          onChanged: enabled
+              ? (value) => _answer(question.key, value ?? '')
+              : null,
+        );
+    }
+
     if (_vocabulary.isUsable && !_vocabulary.knowsType(field.type)) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -987,7 +1413,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
               SearchOption(value: current, label: '$current — no longer offered'),
         ],
                     onChanged: enabled
-            ? (value) => setState(() => _pending[question.key] = value ?? '')
+            ? (value) => _answer(question.key, value ?? '')
             : null,
                   ),
       'file' => _fileControl(context, question),
@@ -996,9 +1422,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
         controller: _box(question),
         formats: widget.formats,
         enabled: enabled,
-        onChanged: enabled
-            ? (value) => setState(() => _pending[question.key] = value)
-            : null,
+        onChanged: enabled ? (value) => _answer(question.key, value) : null,
       ),
       // A signature reaching this point is one the ceremony below does not
       // cover: [_page] lifts out every question the server named in `signing`,
@@ -1123,16 +1547,17 @@ class _OnboardingFormState extends State<OnboardingForm> {
         ),
     };
     rows[item]![cell] = value;
-    setState(() {
-      _pending[question.key] = jsonEncode([
+    _answer(
+      question.key,
+      jsonEncode([
         for (final option in question.field.options)
           {
             'item': option,
             'quantity': rows[option]!['quantity'] ?? '',
             'received': rows[option]!['received'] ?? '',
           },
-      ]);
-    });
+      ]),
+    );
   }
 
   bool _isShown(Onboarding form, OnboardingQuestion question) {
@@ -1167,7 +1592,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
       key: answerKey(question.key),
       controller: _box(question),
       enabled: enabled,
-      keyboardType: numeric ? TextInputType.number : null,
+      keyboardType: numeric
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : null,
+      inputFormatters: numeric ? _decimal : null,
       decoration: InputDecoration(
         border: const OutlineInputBorder(),
         // What an empty box MEANS when there is a stored answer behind it.
@@ -1183,8 +1611,154 @@ class _OnboardingFormState extends State<OnboardingForm> {
             ? 'Already answered — it is below. Leave this blank to keep it as '
                   'it is, or type a new answer to replace it.'
             : helper,
+        // An answer stored before numbers were filtered ("20sdsadsa").
+        errorText:
+            numeric &&
+                !RegExp(r'^\d*\.?\d*$').hasMatch(_box(question).text.trim())
+            ? 'Not a number: digits and one decimal point only.'
+            : null,
       ),
-      onChanged: (value) => setState(() => _pending[question.key] = value),
+      onChanged: (value) => _answer(question.key, value),
+    );
+  }
+
+  /// The answer as it stands on screen: unsaved first, then saved.
+  String _answerOf(String key) {
+    if (_pending[key] case final pending?) return pending;
+    final form = _form;
+    return form == null ? '' : _valueOf(form, key);
+  }
+
+  /// US states by full name; an older "FL" reads as Florida. Changing it
+  /// empties the county, which belongs to the state it was found in.
+  Widget _statePicker(OnboardingQuestion question, {required bool enabled}) {
+    final raw = _chosen(question);
+    final name = raw == null ? null : stateName(raw) ?? raw;
+
+    return SearchPickerField<String>(
+      key: answerKey(question.key),
+      value: name,
+      border: const OutlineInputBorder(),
+      hint: 'Choose a state',
+      options: [
+        for (final state in usStates.values)
+          SearchOption(value: state, label: state),
+        if (name != null && !usStates.containsValue(name))
+          SearchOption(value: name, label: '$name — not a US state'),
+      ],
+      onChanged: enabled
+          ? (value) {
+              if (value == null || value == name) return;
+              _answer(question.key, value);
+              final county = _question(_form!, 'county');
+              if (county != null &&
+                  county.writable &&
+                  _answerOf('county').isNotEmpty) {
+                _box(county).clear();
+                _answer(county.key, '');
+              }
+            }
+          : null,
+    );
+  }
+
+  /// The five boxes of an address answer, made once. What was a one-line
+  /// answer starts in the street box.
+  Map<String, TextEditingController> _address(OnboardingQuestion question) =>
+      _addresses.putIfAbsent(question.key, () {
+        final parts = {
+          for (final part in ['line1', 'line2', 'city', 'state', 'postal'])
+            part: TextEditingController(),
+        };
+        parts['line1']!.text = question.masked ? '' : question.value;
+
+        String line() {
+          String part(String key) => parts[key]!.text.trim();
+          final region = [
+            part('state'),
+            part('postal'),
+          ].where((s) => s.isNotEmpty).join(' ');
+          return [
+            part('line1'),
+            part('line2'),
+            part('city'),
+            region,
+          ].where((s) => s.isNotEmpty).join(', ');
+        }
+
+        for (final box in parts.values) {
+          box.addListener(() {
+            // A controller also notifies for the cursor; only a new line is
+            // an answer.
+            if (line() != _answerOf(question.key)) {
+              _answer(question.key, line());
+            }
+          });
+        }
+        return parts;
+      });
+
+  /// Work days and work hours, one control: the week, set in the schedule
+  /// panel and written back as the two answers [scheduleText] describes.
+  Widget _schedule(
+    BuildContext context,
+    OnboardingQuestion hours, {
+    required bool enabled,
+  }) {
+    final theme = Theme.of(context);
+    final days = _question(_form!, 'work_days');
+    final text = _answerOf(hours.key).trim();
+    final week = text.isEmpty ? null : scheduleFrom(text);
+
+    return Container(
+      key: answerKey(hours.key),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (text.isEmpty)
+            Text('No schedule yet.', style: theme.textTheme.bodyMedium)
+          else if (week != null)
+            for (final group in text.split(';'))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(group.trim(), style: theme.textTheme.bodyMedium),
+              )
+          else
+            Text(
+              'Written as “$text”, which is not a schedule. Set it to '
+              'replace it.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            key: const Key('onboarding-schedule'),
+            onPressed: enabled
+                ? () async {
+                    final picked = await showWorkSchedulePanel(
+                      context,
+                      title: 'Work schedule',
+                      days: week,
+                      formats: widget.formats,
+                    );
+                    if (picked == null || !mounted) return;
+                    final (dayText, hourText) = scheduleText(picked);
+                    _answer(hours.key, hourText);
+                    if (days != null && days.writable) {
+                      _answer(days.key, dayText);
+                    }
+                  }
+                : null,
+            icon: const Icon(Icons.schedule_outlined, size: 18),
+            label: Text(text.isEmpty ? 'Set the schedule' : 'Change it'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1264,27 +1838,46 @@ class _OnboardingFormState extends State<OnboardingForm> {
       return;
     }
 
-    setState(() => _pending[question.key] = id);
+    _answer(question.key, id);
   }
 
   // ── the signing step ─────────────────────────────────────────────
 
-  Widget _signingSection(BuildContext context, Onboarding form) {
+  Widget _signingSection(
+    BuildContext context,
+    Onboarding form, {
+    required bool split,
+  }) {
     final theme = Theme.of(context);
+
+    // The server's list covers both sides. The person about to sign is owed
+    // THEIR outstanding questions: the employer signs first now, while the
+    // new hire's half is still open (HR, 7ed8111d).
+    final parties = {
+      for (final signature in form.signatures)
+        if (signature.mine && !signature.signed) signature.party,
+    };
+    final missing = [
+      for (final entry in form.missing.entries)
+        if (parties.isEmpty ||
+            parties.contains(_question(form, entry.key)?.field.filledBy) ||
+            _question(form, entry.key)?.field.filledBy == filledByEither)
+          entry.value,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle(context, 'The document'),
         Text(
-          'This is the document itself. The record of a signature holds a '
-          'fingerprint of exactly these bytes, so a copy that has been changed '
-          'afterwards will not match it.',
+          '${split ? 'The contract is on the right.' : 'The contract is under Contract, at the top.'} '
+          'The record of a signature holds a fingerprint of its exact bytes, '
+          'so a copy that has been changed afterwards will not match it.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
         _documentBox(context),
-        if (form.missing.isNotEmpty) ...[
+        if (missing.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text(
             // The server's own list, in its own words for each question.
@@ -1292,7 +1885,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
             // a signature is the server's rule and its refusal says so. What
             // this owes somebody about to press Sign is the list of what they
             // have not done.
-            'Still to answer: ${form.missing.values.join(', ')}.',
+            'Still to answer: ${missing.join(', ')}.',
             style: theme.textTheme.bodyMedium,
           ),
         ],
@@ -1403,6 +1996,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
       consentStatement: form.consentStatement,
       intentStatement: form.intentStatement,
       busy: _signingKey == signature.fieldKey,
+      // The signature is over the SAVED document. With answers unsaved the
+      // contract on screen is not the one it would be taken against.
+      blocked: _pending.isEmpty ? null : 'Save your answers first.',
       error: _signErrorKey == signature.fieldKey ? _signError : null,
       onSign: (affirmation) =>
           _sign(signature.fieldKey, affirmation, document.contentHash),
@@ -1477,41 +2073,58 @@ class _OnboardingFormState extends State<OnboardingForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          constraints: const BoxConstraints(maxHeight: 320),
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SingleChildScrollView(
-            // Selectable, because somebody is entitled to keep a copy of what
-            // they signed — retrievability is one of the five things ESIGN asks
-            // for, and a document you can only look at is not retrievable.
-            //
-            // Shown exactly as it arrived, whatever [OnboardingDocument.mime]
-            // says it is. That is not a nicety: the hash sent back with the
-            // signature is over these bytes, so a prettified version would be
-            // evidence of a document nobody was shown.
-            child: SelectableText(
-              document.content,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const Key('onboarding-exact-text'),
+            onPressed: () => setState(() => _showBytes = !_showBytes),
+            icon: Icon(
+              _showBytes ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+            ),
+            label: Text(
+              _showBytes ? 'Hide the exact text' : 'Show the exact text',
             ),
           ),
         ),
+        if (_showBytes)
+          Container(
+            constraints: const BoxConstraints(maxHeight: 320),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SingleChildScrollView(
+              // Selectable, because somebody is entitled to keep a copy of
+              // what they signed — retrievability is one of the five things
+              // ESIGN asks for, and a document you can only look at is not
+              // retrievable.
+              //
+              // Shown exactly as it arrived, whatever [OnboardingDocument.mime]
+              // says it is. That is not a nicety: the hash sent back with the
+              // signature is over these bytes, so a prettified version would
+              // be evidence of a document nobody was shown. The contract pane
+              // renders it to READ; this is the thing itself.
+              child: SelectableText(
+                document.content,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+              ),
+            ),
+          ),
         // Said out loud when the document is not plain prose.
         //
-        // The renderer produces markup, and this box shows it exactly as it
-        // arrived — because the fingerprint that goes back with the signature
-        // is over these bytes, and a tidied-up version would be a picture of a
-        // document nobody signed. Somebody reading tags deserves to be told why
-        // rather than left thinking the page is broken.
+        // The renderer produces markup, and the exact text shows it exactly as
+        // it arrived — because the fingerprint that goes back with the
+        // signature is over these bytes, and a tidied-up version would be a
+        // picture of a document nobody signed. Somebody reading tags deserves
+        // to be told why rather than left thinking the page is broken.
         if (_notProse(document.mime)) ...[
           const SizedBox(height: 8),
           Text(
-            'This is the document exactly as it is stored — kept as '
+            'The exact text is the document as it is stored — kept as '
             '${document.mime.split(';').first}, markup and all. It is shown '
             'unaltered because what is signed is these bytes: a neatened '
             'version would not be the thing the fingerprint is over.',
@@ -1557,11 +2170,16 @@ class _SigningStep extends StatefulWidget {
     required this.consentStatement,
     required this.intentStatement,
     required this.busy,
+    this.blocked,
     required this.error,
     required this.onSign,
   });
 
   final String title;
+
+  /// Why signing cannot happen yet, whatever is ticked and typed. Null when
+  /// nothing outside the ceremony stands in the way.
+  final String? blocked;
 
   /// Both the server's words, verbatim. They are stored on the signature record
   /// as `consent_statement` and `intent_statement`, so a word changed here
@@ -1588,7 +2206,10 @@ class _SigningStepState extends State<_SigningStep> {
   }
 
   bool get _canSign =>
-      !widget.busy && _consented && _affirmation.text.trim().isNotEmpty;
+      !widget.busy &&
+      widget.blocked == null &&
+      _consented &&
+      _affirmation.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -1649,15 +2270,139 @@ class _SigningStepState extends State<_SigningStep> {
           if (!_canSign && !widget.busy) ...[
             const SizedBox(height: 8),
             Text(
-              _consented
-                  ? 'Type your name above to sign.'
-                  : 'Agree to sign electronically, and type your name, before '
-                        'this can be signed.',
+              widget.blocked ??
+                  (_consented
+                      ? 'Type your name above to sign.'
+                      : 'Agree to sign electronically, and type your name, '
+                            'before this can be signed.'),
               style: theme.textTheme.bodySmall,
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// "County for disputes": a search of the chosen state's counties
+/// (`GET /places/counties`, HR d834214e). Only a picked name is an answer;
+/// typing is the search.
+class _CountySearch extends StatefulWidget {
+  const _CountySearch({
+    super.key,
+    required this.api,
+    required this.state,
+    required this.controller,
+    required this.answer,
+    required this.enabled,
+    required this.onPicked,
+  });
+
+  final ApiClient api;
+
+  /// The governing state's full name; null until one is chosen.
+  final String? state;
+  final TextEditingController controller;
+  final String answer;
+  final bool enabled;
+  final ValueChanged<String> onPicked;
+
+  @override
+  State<_CountySearch> createState() => _CountySearchState();
+}
+
+class _CountySearchState extends State<_CountySearch> {
+  Timer? _debounce;
+  int _run = 0;
+  bool _looking = false;
+  List<String> _found = [];
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _search(String text) {
+    _debounce?.cancel();
+    final query = text.trim();
+    setState(() {
+      if (query.isEmpty) _found = [];
+    });
+    if (query.isEmpty) return;
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final run = ++_run;
+      setState(() => _looking = true);
+      final response = await widget.api.get('/places/counties', {
+        'state': widget.state!,
+        'q': query,
+      });
+      if (!mounted || run != _run) return;
+      setState(() {
+        _looking = false;
+        _found = response.ok && response.data is List
+            ? [for (final name in response.data as List) '$name']
+            : [];
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final typed = widget.controller.text.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: widget.controller,
+          enabled: widget.enabled && state != null,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            hintText: state == null
+                ? 'Choose the governing state first'
+                : 'Search the counties of $state',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _looking
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+            helperText: typed.isNotEmpty && typed != widget.answer
+                ? 'Pick the county from the list to answer.'
+                : null,
+          ),
+          onChanged: _search,
+        ),
+        if (_found.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Material(
+            elevation: 1,
+            borderRadius: BorderRadius.circular(8),
+            child: Column(
+              children: [
+                for (final name in _found)
+                  ListTile(
+                    key: Key('county-$name'),
+                    dense: true,
+                    title: Text(name),
+                    onTap: () {
+                      widget.controller.text = name;
+                      setState(() => _found = []);
+                      widget.onPicked(name);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

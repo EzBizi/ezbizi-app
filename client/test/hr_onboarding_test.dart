@@ -637,7 +637,193 @@ void main() {
     expect(find.textContaining('Filled in by Jose Silva'), findsWidgets);
     expect(find.text('Back to Bea Okafor'), findsOneWidget);
   });
+
+  // ── formats, pickers and the contract beside the form ────────────
+  //
+  // Jose, 2026-10-01: "we can't just let them put anything anywhere" — his
+  // screenshots had "20sdsadsa" for a wage and the same free text in Work days
+  // and Work hours.
+
+  testWidgets('a number takes digits and one decimal point', (tester) async {
+    await _pumpForm(tester, _handler(form: _asEmployer));
+
+    await _type(tester, 'hourly_wage', '20sdsadsa');
+    expect(_box(tester, 'hourly_wage').controller!.text, '20');
+
+    await _type(tester, 'hourly_wage', '1.2.3');
+    expect(_box(tester, 'hourly_wage').controller!.text, '20');
+
+    await _type(tester, 'hourly_wage', '30.75');
+    expect(_box(tester, 'hourly_wage').controller!.text, '30.75');
+  });
+
+  testWidgets('a number stored before the filter says it is not one', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _catalogForm));
+
+    const said = 'Not a number: digits and one decimal point only.';
+    expect(find.text(said), findsOneWidget);
+
+    await _type(tester, 'hourly_rate', '20');
+    expect(find.text(said), findsNothing);
+  });
+
+  testWidgets('the county is searched in the chosen state, and a new state '
+      'empties it', (tester) async {
+    Map<String, dynamic>? saved;
+    final asked = <Map<String, String>>[];
+
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _catalogForm,
+        onSave: (body) => saved = body,
+        onCounties: asked.add,
+      ),
+    );
+
+    // The answers on file say "FL"; the picker reads it as the state.
+    expect(_dropdown(tester, 'state').value, 'Florida');
+    expect(_dropdown(tester, 'salary_period').value, 'Week');
+
+    await _type(tester, 'county', 'pa');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(asked.single, {'state': 'Florida', 'q': 'pa'});
+    expect(find.text('Pick the county from the list to answer.'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const Key('county-Palm Beach')));
+    expect(_countyBox(tester).controller!.text, 'Palm Beach');
+
+    await _tap(tester, find.byKey(answerKey('state')));
+    await _tap(tester, find.text('Alaska').last);
+    expect(_countyBox(tester).controller!.text, isEmpty);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'county': '', 'state': 'Alaska'},
+    });
+  });
+
+  testWidgets('one schedule answers the work days and the work hours', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pumpForm(
+      tester,
+      _handler(form: _catalogForm, onSave: (body) => saved = body),
+    );
+
+    // What was typed before the picker cannot be read as a week, and says so.
+    expect(find.text('Work days and work hours'), findsOneWidget);
+    expect(find.byKey(answerKey('work_days')), findsNothing);
+    expect(find.textContaining('which is not a schedule'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const Key('onboarding-schedule')));
+    // Saturday and Sunday on, as the panel starts a day: 8 to 5.
+    await _tap(tester, find.byType(Switch).at(5));
+    await _tap(tester, find.byType(Switch).at(6));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save').last);
+
+    expect(find.text('Saturday to Sunday 8:00 AM to 5:00 PM'), findsOneWidget);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'work_hours': 'Saturday to Sunday 8:00 AM to 5:00 PM',
+        'work_days': 'Saturday to Sunday',
+      },
+    });
+  });
+
+  test('the schedule text is the one the server reads, both ways', () {
+    final week = <String, dynamic>{
+      for (final day in ['monday', 'tuesday', 'wednesday', 'thursday'])
+        day: {'start': '14:00', 'end': '20:00'},
+      'friday': {'start': '14:00', 'end': '20:00'},
+      'saturday': null,
+      'sunday': {'start': '08:00', 'end': '20:00'},
+    };
+
+    final (days, hours) = scheduleText(week);
+    expect(days, 'Monday to Friday, Sunday');
+    expect(
+      hours,
+      'Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM',
+    );
+    expect(scheduleFrom(hours), week);
+
+    // Same days in a row with different hours are separate groups.
+    week['tuesday'] = {'start': '00:00', 'end': '12:30'};
+    expect(
+      scheduleText(week).$2,
+      'Monday 2:00 PM to 8:00 PM; Tuesday 12:00 AM to 12:30 PM; '
+      'Wednesday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM',
+    );
+    expect(scheduleFrom(scheduleText(week).$2), week);
+
+    expect(scheduleFrom('Monday - Friday 2-8 , Sunday 8-8'), isNull);
+  });
+
+  testWidgets('the contract beside the form is drawn from the unsaved '
+      'answers, and Sign waits for them to be saved', (tester) async {
+    final previews = <Map<String, dynamic>>[];
+
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) {
+          previews.add(answers);
+          return '<h1>Contract</h1><p>Uniform: '
+              '${answers['shirt_size_note'] ?? 'as saved'}</p>';
+        },
+      ),
+    );
+
+    expect(find.byKey(const Key('onboarding-contract')), findsOneWidget);
+    expect(find.textContaining('Uniform: as saved'), findsOneWidget);
+    // The stored bytes are one tap away rather than a second copy on screen.
+    expect(find.textContaining('CONTRACT OF EMPLOYMENT'), findsNothing);
+    await _tap(tester, find.byKey(const Key('onboarding-exact-text')));
+    expect(find.textContaining('CONTRACT OF EMPLOYMENT'), findsOneWidget);
+
+    await _tap(tester, find.byType(CheckboxListTile));
+    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    expect(_signButton(tester).onPressed, isNotNull);
+
+    await _type(tester, 'shirt_size_note', 'A jacket');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+
+    expect(previews.last, {'shirt_size_note': 'A jacket'});
+    expect(find.textContaining('Uniform: A jacket'), findsOneWidget);
+    expect(_signButton(tester).onPressed, isNull);
+    expect(find.text('Save your answers first.'), findsOneWidget);
+  });
+
+  testWidgets('on a phone the form and the contract take turns', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _asEmployee));
+    tester.view.physicalSize = const Size(390, 2400);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('onboarding-contract')), findsNothing);
+    await _tap(tester, find.text('Contract'));
+    expect(find.byKey(const Key('onboarding-contract')), findsOneWidget);
+    expect(find.byKey(answerKey('shirt_size_note')), findsNothing);
+  });
 }
+
+TextField _countyBox(WidgetTester tester) => tester.widget<TextField>(
+  find.descendant(
+    of: find.byKey(answerKey('county')),
+    matching: find.byType(TextField),
+  ),
+);
 
 // ── driving the screens ────────────────────────────────────────────
 
@@ -847,6 +1033,10 @@ MockClientHandler _handler({
   void Function()? onCancel,
   int saveStatus = 200,
   int revealStatus = 200,
+  /// The contract the preview endpoint draws from the unsaved answers. Null
+  /// leaves the preview unanswered, so the pane shows the document.
+  String Function(Map<String, dynamic> answers)? onPreview,
+  void Function(Map<String, String> query)? onCounties,
 }) {
   final seen = form ?? _asEmployer;
 
@@ -855,6 +1045,29 @@ MockClientHandler _handler({
     final body = request.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;
+
+    if (onPreview != null && path.endsWith('/hr/onboardings/o-1/preview')) {
+      return _json({
+        'data': {
+          'content': onPreview(
+            Map<String, dynamic>.from(body['answers'] as Map),
+          ),
+          'mime': 'text/html',
+          'content_hash': 'preview',
+        },
+      });
+    }
+
+    if (path.endsWith('/places/counties')) {
+      onCounties?.call(request.url.queryParameters);
+      final q = request.url.queryParameters['q']!.toLowerCase();
+      return _json({
+        'data': [
+          for (final county in ['Palm Beach', 'Pasco', 'Broward'])
+            if (county.toLowerCase().startsWith(q)) county,
+        ],
+      });
+    }
 
     if (path.endsWith('/hr/onboardings/o-1/document')) {
       return _json({
@@ -1304,6 +1517,31 @@ final _asRecordDocument = _document(stored: true);
 
 final _asEmployer = _form(asEmployer: true);
 final _asEmployee = _form(asEmployer: false);
+
+/// The employer's half of an A-1 contract: the catalog keys that get their own
+/// controls, holding what was typed before they existed.
+final _catalogForm = {
+  ..._asEmployer,
+  'fields': [
+    _field(
+      'hourly_rate',
+      'Hourly rate',
+      'number',
+      filledBy: 'employer',
+      writable: true,
+      value: '20sdsadsa',
+    ),
+    for (final (key, label, value) in [
+      ('salary_period', 'Salary period', 'per week'),
+      ('state', 'Governing state', 'FL'),
+      ('county', 'County for disputes', 'Broward'),
+      ('work_days', 'Work days', 'Monday - Friday 2-8 , Sunday 8-8'),
+      ('work_hours', 'Work hours', 'Monday - Friday 2-8 , Sunday 8-8'),
+    ])
+      _field(key, label, 'text', filledBy: 'employer', writable: true, value: value),
+  ],
+  'missing': <String, String>{},
+};
 
 /// A finished record, which is what the Records tab opens: nothing writable,
 /// the signature already given.
