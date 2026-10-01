@@ -495,6 +495,44 @@ class HrOnboardingTest extends TestCase
         $this->assertEquals(['start' => '08:00', 'end' => '20:00'], $days['sunday']);
     }
 
+    /**
+     * "Doesn't apply" on an employer's term leaves its clause out of the
+     * contract, as A1 Tools' N/A did (Jose, 2026-10-01: "some sections can be
+     * entirely voided so they don't appear in the contract").
+     */
+    public function test_a_term_that_does_not_apply_leaves_its_clause_out(): void
+    {
+        [$alpha, , $id] = $this->scenario([
+            ['key' => 'hourly_rate', 'label' => 'Hourly rate', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'raise_amount', 'label' => 'Raise', 'type' => 'number', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'daily_deduction', 'label' => 'Deduction', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->inTenant($alpha['org'], function () use ($id) {
+            DB::table('contract_versions')->where('id', Onboarding::findOrFail($id)->contract_version_id)->update(['body' =>
+                "Pay: {{hourly_rate}} an hour.\n\n{{#raise_amount}}Scheduled increases: {{raise_amount}}.{{/raise_amount}}\n\n"
+                ."Deduction: {{daily_deduction}} a day.\n\n(f) Absences\n\nAbsence costs {{daily_deduction}}.\n\n5. TERMINATION\n\nThe end."]);
+        });
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'hourly_rate' => '20', 'raise_amount' => 'N/A', 'daily_deduction' => 'N/A',
+        ]])->assertOk();
+
+        $form = $this->form($alpha['admin'], $id);
+        $this->assertArrayNotHasKey('daily_deduction', $form['missing'], 'Doesn\'t apply did not count as answered.');
+        $this->assertTrue($this->fieldIn($form, 'daily_deduction')['voidable']);
+
+        $content = $this->as($alpha['admin'])->getJson("/api/v1/hr/onboardings/{$id}/document")->json('data.content');
+        $this->assertStringContainsString('Pay: 20 an hour.', $content);
+        $this->assertStringContainsString('The end.', $content);
+        $this->assertStringNotContainsString('Scheduled increases', $content);
+        $this->assertStringNotContainsString('Deduction', $content);
+        $this->assertStringNotContainsString('(f) Absences', $content, 'A heading stayed over a clause that went.');
+
+        // Only the employer's terms: an employee cannot opt out of a question.
+        $this->assertFalse($this->fieldIn($form, 'employee_sign')['voidable'] ?? false);
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

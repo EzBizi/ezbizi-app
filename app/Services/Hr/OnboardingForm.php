@@ -11,6 +11,7 @@ use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
+use App\Support\Contracts\MergeValue;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -370,6 +371,14 @@ class OnboardingForm
             );
 
             return null;
+        }
+
+        // "Doesn't apply" on an employer's term (A1 Tools' N/A, 2026-10-01):
+        // kept as written whatever the type, and MergeTags leaves the term's
+        // paragraphs out of the contract.
+        if ($value === MergeValue::NOT_APPLICABLE && $field->filledBy !== FilledBy::EMPLOYEE
+            && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true)) {
+            return $value;
         }
 
         return match ($field->type) {
@@ -808,6 +817,10 @@ class OnboardingForm
                 // clear IBAN on every screen load and leave the audit trail
                 // describing a fraction of the disclosures.
                 'value' => $answer?->toArray()['value'] ?? null,
+                // May be answered "N/A", which leaves its paragraphs out of
+                // the contract (A1 Tools' "doesn't apply", 2026-10-01).
+                'voidable' => $field->filledBy !== FilledBy::EMPLOYEE
+                    && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true),
                 'writable' => $field->type !== FieldType::SIGNATURE
                     && ! $field->retired
                     && ! $onboarding->isFrozen()
