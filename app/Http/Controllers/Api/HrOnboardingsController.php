@@ -163,6 +163,15 @@ class HrOnboardingsController extends Controller
                 $request->query('status'),
                 fn (Builder $q, string $status) => $q->where('status', $status),
             )
+            // In progress apart from finished, so done forms are their own
+            // archive (Andy, a Suggestion Jose said to build, 2026-10-01:
+            // "a seperate archieved for all the forms that are already done").
+            ->when(
+                $request->query('state'),
+                fn (Builder $q, string $state) => $q->whereIn('status', $state === 'finished'
+                    ? [Onboarding::COMPLETED, Onboarding::CANCELLED]
+                    : [Onboarding::IN_PROGRESS, Onboarding::SUBMITTED]),
+            )
             ->when(
                 $request->query('user_id'),
                 fn (Builder $q, string $userId) => $q->where('user_id', $userId),

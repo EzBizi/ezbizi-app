@@ -74,6 +74,11 @@ class _OnboardingTabState extends State<OnboardingTab> {
   /// The onboarding being filled in, or null for the list.
   String? _open;
 
+  /// In progress, or the finished ones — their own archive (a Suggestion
+  /// Jose said to build, 2026-10-01: "a seperate archieved for all the forms
+  /// that are already done"). Asked of the server: the list pages.
+  bool _finished = false;
+
   DisplayFormats get _formats =>
       widget.session.me?.display ?? DisplayFormats.fallback;
 
@@ -103,7 +108,10 @@ class _OnboardingTabState extends State<OnboardingTab> {
     });
 
     final answers = await Future.wait([
-      widget.api.get('/hr/onboardings', {'page': '$page'}),
+      widget.api.get('/hr/onboardings', {
+        'page': '$page',
+        'state': _finished ? 'finished' : 'open',
+      }),
       widget.api.get('/hr/contracts/catalogue'),
     ]);
 
@@ -202,18 +210,50 @@ class _OnboardingTabState extends State<OnboardingTab> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: ErrorNote(_cannotStart!),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: Wrap(
+            spacing: 6,
+            children: [
+              for (final (finished, label) in [
+                (false, 'Ongoing'),
+                (true, 'Finished'),
+              ])
+                ChoiceChip(
+                  key: ValueKey('onboardings-${finished ? 'finished' : 'open'}'),
+                  label: Text(label),
+                  selected: _finished == finished,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) {
+                    if (_finished == finished) return;
+                    setState(() {
+                      _finished = finished;
+                      _rows = const [];
+                    });
+                    _load();
+                  },
+                ),
+            ],
+          ),
+        ),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
             child: _rows.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: SizedBox(
                         width: 460,
-                        child: Text(
+                        child: _finished
+                            ? const Text(
+                                'Nothing finished yet. Completed and cancelled '
+                                'onboardings are kept here.',
+                                textAlign: TextAlign.center,
+                              )
+                            : const Text(
                           'Nobody is being taken on right now.\n\n'
                           'Starting one picks the person and the contract. The '
                           'contract decides what the form asks and which side '
