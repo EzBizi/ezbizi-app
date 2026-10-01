@@ -22,7 +22,7 @@ class VersionHistory {
         'Leads: phone numbers from Thumbtack and website forms look like Google\'s.',
         'Leads: when you leave a lead, your name comes off it at once.',
         'Leads: a customer left waiting turns their whole row red, deeper the longer they wait, from 10 minutes to an hour, and the row pulses.',
-        'Emails: automation emails are formatted in EzBizi\'s colours under your business\'s name, and say which automation sent them; the overbooking warning reads as a report, by day. Notifications and reports share the new look.',
+        'Emails: automation emails now arrive in EzBizi\'s colours, under your business\'s name, and say which automation sent them; the morning overbooking warning lists each day and area as a report. Notifications and reports share the new look.',
         'iPhone and Mac: also brings everything listed under 0.0.0335, which reached Windows, Android and the web first.',
       ],
     ),
