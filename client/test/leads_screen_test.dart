@@ -494,6 +494,27 @@ void main() {
     expect(redness('lead-2'), greaterThan(0));
   });
 
+  // Jose, 2026-10-01: "i should be able to load more ... when scrolling to
+  // the bottom by itself" - ten older leads each time the end is reached.
+  testWidgets('scrolling to the end loads the next ten', (tester) async {
+    await _pump(
+      tester,
+      leads: [for (var i = 0; i < 65; i++) _lead('lead-$i', 'Customer $i')],
+      connections: const [],
+    );
+
+    final list = find.descendant(
+      of: find.byKey(const ValueKey('leads-list')),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(find.text('Customer 49'), 400, scrollable: list);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Customer 64'), 400, scrollable: list);
+    await tester.pumpAndSettle();
+    expect(find.text('Customer 64'), findsOneWidget);
+    expect(_lastListQuery['page'], isNotNull, reason: 'the next rows were asked for by page');
+  });
+
   // Jose, 2026-09-28: a number already in Customers is shown as the customer.
   testWidgets('a lead from a known customer is named and badged as one', (
     tester,
@@ -1908,9 +1929,12 @@ Future<void> _pump(
 
       if (request.url.path.endsWith('/leads')) {
         _lastListQuery = request.url.queryParameters;
+        // Paged as the endpoint pages: per_page rows of page N.
+        final per = int.tryParse(request.url.queryParameters['per_page'] ?? '') ?? leads.length;
+        final page = int.tryParse(request.url.queryParameters['page'] ?? '') ?? 1;
         return http.Response(
           jsonEncode({
-            'data': leads,
+            'data': leads.skip((page - 1) * per).take(per).toList(),
             'meta': {
               'total': leads.length,
               'per_page': 50,
