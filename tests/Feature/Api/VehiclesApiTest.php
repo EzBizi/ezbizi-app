@@ -224,6 +224,70 @@ class VehiclesApiTest extends TestCase
         $this->assertSame(1_200_000, $kept['ownership']['purchase_price_cents']);
     }
 
+    /**
+     * The number beside the row is the count of amber boxes on the card.
+     *
+     * Asserted through GET, not by calling missing(), so it proves the number
+     * reaches the payload the list reads. Trim and notes are empty here and
+     * must NOT count: a field many vans truly lack would keep the count above
+     * zero for ever. And a mileage alone answers "next service".
+     */
+    public function test_missing_counts_only_expected_fields_and_one_for_no_service(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $full = [
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+            'year' => 2022,
+            'make' => 'Ford',
+            'model' => 'Transit',
+            'vin' => '1FTBR1C8XTKB00931',
+            'plate' => 'ABC1234',
+            'plate_state' => 'CT',
+            'colour' => 'White',
+            'odometer_miles' => 12000,
+            'registration_expires_on' => '2027-03-01',
+            'next_service_on' => '2026-12-01',
+            'trim' => null,
+            'notes' => null,
+        ];
+
+        [$complete, $gaps, $milesOnly] = $this->inTenant(
+            $tenant['org'],
+            fn () => [
+                Vehicle::factory()->create($full),
+                Vehicle::factory()->create([
+                    ...$full,
+                    'vin' => '1FTBR1C8XTKB00932',
+                    'plate' => null,
+                    'colour' => null,
+                    'next_service_on' => null,
+                    'next_service_miles' => null,
+                ]),
+                Vehicle::factory()->create([
+                    ...$full,
+                    'vin' => '1FTBR1C8XTKB00933',
+                    'next_service_on' => null,
+                    'next_service_miles' => 15000,
+                ]),
+            ],
+        );
+
+        $read = fn (Vehicle $v) => $this->signedInAs($admin)
+            ->getJson('/api/v1/vehicles/'.$v->id)
+            ->assertOk()
+            ->json('data.missing');
+
+        // Every expected field filled, trim and notes empty: nothing owed.
+        $this->assertSame(0, $read($complete));
+        // Plate, colour, and no next service of either kind.
+        $this->assertSame(3, $read($gaps));
+        // A mileage with no date is an answer, not a gap.
+        $this->assertSame(0, $read($milesOnly));
+    }
+
     public function test_sold_refuses_rental_and_closes_owned_period(): void
     {
         $tenant = $this->provisionTenant('Alpha');

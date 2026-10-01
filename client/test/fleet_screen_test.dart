@@ -601,6 +601,103 @@ void main() {
   });
 
 
+  // ── Missing-field highlights and counters (Analorena, 2026-10-01) ──────
+  //
+  // The look HR's record and Web Management's SEO already use: an expected
+  // box that is empty reads amber "Not filled in", and the list row carries
+  // the server's count of them. Copied, not reinvented.
+
+  /// "Not filled in" inside the text box labelled [label].
+  Finder amberText(String label) => find.descendant(
+    of: find.widgetWithText(TextField, label),
+    matching: find.text('Not filled in'),
+  );
+
+  /// "Not filled in" under the date field labelled [label].
+  Finder amberDay(String label) => find.descendant(
+    of: find.byWidgetPredicate(
+      (w) => w is CalendarDayField && w.label == label,
+    ),
+    matching: find.text('Not filled in'),
+  );
+
+  testWidgets('expected empty fields read Not filled in; others do not', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    // Expected and empty on this van: amber.
+    expect(amberText('Plate number'), findsOneWidget);
+    expect(amberDay('Registration expires on'), findsOneWidget);
+
+    // Expected and filled: not amber.
+    expect(amberText('Colour'), findsNothing);
+    expect(amberText('State'), findsNothing);
+
+    // Empty but NOT expected — the case that proves the subset rule. Most
+    // vans have no trim and many states never inspect; flagging them would
+    // keep the count above zero for ever, which is HR's reason for a subset.
+    expect(find.widgetWithText(TextField, 'Trim'), findsOneWidget);
+    expect(amberText('Trim'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is CalendarDayField && w.label == 'Inspection expires on',
+      ),
+      findsOneWidget,
+    );
+    expect(amberDay('Inspection expires on'), findsNothing);
+  });
+
+  testWidgets('no next service at all is amber on both of its boxes', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    expect(amberDay('Next service on'), findsOneWidget);
+    expect(amberText('Next service at (miles)'), findsOneWidget);
+  });
+
+  testWidgets('a mileage alone answers next service: neither box is amber', (
+    tester,
+  ) async {
+    await _pumpIdentity(
+      tester,
+      vehicle: {..._platedVan, 'next_service_miles': 15000},
+    );
+
+    // Control: the date box is drawn and empty, so absence of amber on it
+    // is the rule, not a missing widget.
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is CalendarDayField && w.label == 'Next service on',
+      ),
+      findsOneWidget,
+    );
+    expect(amberDay('Next service on'), findsNothing);
+    expect(amberText('Next service at (miles)'), findsNothing);
+  });
+
+  testWidgets('the list row carries the server count, and nothing at zero', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      vehicles: [
+        {..._platedVan, 'id': 'v-gaps', 'missing': 4},
+        {
+          ..._platedVan,
+          'id': 'v-full',
+          'label': '2024 Ram ProMaster',
+          'missing': 0,
+        },
+      ],
+    );
+
+    expect(find.byTooltip('4 fields not filled in'), findsOneWidget);
+    expect(find.byTooltip('0 fields not filled in'), findsNothing);
+    expect(find.byTooltip('1 field not filled in'), findsNothing);
+  });
+
 }
 
 const _van = {
@@ -845,15 +942,16 @@ Future<void> _pumpIdentity(
     'fleet_management.view',
     'fleet_management.edit',
   ],
+  Map<String, dynamic> vehicle = _platedVan,
 }) async {
   await _pumpScreen(
     tester,
     permissions: permissions,
-    vehicles: const [_platedVan],
+    vehicles: [vehicle],
     size: const Size(1280, 2400),
   );
 
-  await tester.tap(find.text(_platedVan['label']! as String).first);
+  await tester.tap(find.text(vehicle['label']! as String).first);
   await tester.pumpAndSettle();
 }
 

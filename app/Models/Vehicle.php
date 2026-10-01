@@ -34,6 +34,38 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class Vehicle extends Model implements StatesRetention
 {
+    /**
+     * The fields every vehicle is expected to have: counted when empty beside
+     * the row in the Fleet list, and drawn amber ("Not filled in") on the
+     * Identity card. The same look and the same rule as HR's record
+     * (User::PROFILE_FIELDS) and Web Management's SEO, asked for by
+     * Analorena on 2026-10-01 and built on Jose's "implement them all".
+     *
+     * A deliberate subset, for HR's reason: a field many vehicles truly lack
+     * would stay amber for ever, because nothing can record "has none", and
+     * the count could never reach zero. So not trim, notes or tolls (plenty
+     * of vans have none), not inspection expiry (many states never inspect),
+     * and not the toll flat rate, which is money. Next service is counted
+     * separately in VehiclesController::missing — a date OR a mileage answers
+     * it, so it is one item, not two fields.
+     *
+     * client/lib/screens/fleet/vehicle_identity_card.dart draws these same
+     * fields with `flagEmpty: true` (plate and plate state through
+     * `notFilledIn`). Add one here and flag it there, or the number beside the
+     * row and the amber boxes on the card disagree.
+     */
+    public const EXPECTED_FIELDS = [
+        'year',
+        'make',
+        'model',
+        'vin',
+        'plate',
+        'plate_state',
+        'colour',
+        'odometer_miles',
+        'registration_expires_on',
+    ];
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::forever(

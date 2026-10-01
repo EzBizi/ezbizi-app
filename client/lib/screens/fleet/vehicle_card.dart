@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/money.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
+import '../../widgets/not_filled_in.dart';
 
 /// Shared chrome and labels for the vehicle cards (spec §11).
 class FleetSectionCard extends StatelessWidget {
@@ -146,11 +147,14 @@ int? fleetParseInt(String raw, String sentence) {
 
 int? fleetParseCents(String raw) => parseAmountMinor(raw);
 
+/// [flagEmpty]: amber and "Not filled in" while there is no day — the look
+/// HR's record and Web Management use, from `notFilledIn`.
 Widget fleetCalendarDay(
   TextEditingController controller,
   String label, {
   required DisplayFormats formats,
   bool enabled = true,
+  bool flagEmpty = false,
 }) {
   return Padding(
     padding: const EdgeInsets.only(top: 12),
@@ -159,10 +163,15 @@ Widget fleetCalendarDay(
       label: label,
       formats: formats,
       enabled: enabled,
+      flagEmpty: flagEmpty,
     ),
   );
 }
 
+/// [flagEmpty]: amber and "Not filled in" while the box is empty, through
+/// `notFilledIn` — the one look HR's record and Web Management share. The box
+/// listens to its own controller so the amber clears as the first letter is
+/// typed, without the card having to rebuild.
 Widget fleetField(
   TextEditingController controller,
   String label, {
@@ -171,21 +180,37 @@ Widget fleetField(
   TextInputType? keyboard,
   int minLines = 1,
   int maxLines = 1,
+  bool flagEmpty = false,
 }) {
+  final decoration = InputDecoration(
+    labelText: label,
+    helperText: helper,
+    helperMaxLines: 2,
+  );
+
+  Widget box(InputDecoration decoration) => TextField(
+    controller: controller,
+    enabled: enabled,
+    keyboardType: keyboard,
+    minLines: minLines,
+    maxLines: maxLines,
+    decoration: decoration,
+  );
+
   return Padding(
     padding: const EdgeInsets.only(top: 12),
-    child: TextField(
-      controller: controller,
-      enabled: enabled,
-      keyboardType: keyboard,
-      minLines: minLines,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helper,
-        helperMaxLines: 2,
-      ),
-    ),
+    child: flagEmpty
+        ? ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => box(
+              notFilledIn(
+                context,
+                decoration,
+                empty: value.text.trim().isEmpty,
+              ),
+            ),
+          )
+        : box(decoration),
   );
 }
 

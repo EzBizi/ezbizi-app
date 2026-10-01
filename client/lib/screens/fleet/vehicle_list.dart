@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/load_more.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/tag.dart';
 import 'vehicle_card.dart';
 
@@ -198,16 +199,31 @@ class VehicleList extends StatelessWidget {
     final driver = user is Map ? user['name'] as String? : null;
     final place = fleetPlaceLabel(vehicle);
     final status = vehicle['status'] as String? ?? '';
+    final missing = (vehicle['missing'] as num?)?.toInt() ?? 0;
 
     return Card(
       child: ListTile(
         selected: id != null && id == selectedId,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         onTap: () => onSelect(vehicle),
-        title: Text(
-          vehicle['label'] as String? ?? 'Unidentified vehicle',
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                vehicle['label'] as String? ?? 'Unidentified vehicle',
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            // The amber boxes on its Identity card, counted by the server
+            // (VehiclesController::missing), as HR's list counts a record.
+            MissingCount(
+              missing,
+              tooltip:
+                  '$missing ${missing == 1 ? 'field' : 'fields'} '
+                  'not filled in',
+            ),
+          ],
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),

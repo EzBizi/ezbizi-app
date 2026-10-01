@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
@@ -90,7 +91,15 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   void initState() {
     super.initState();
     _fill(widget.vehicle);
-    for (final c in [_year, _make, _model, _plate, _vin]) {
+    for (final c in [
+      _year,
+      _make,
+      _model,
+      _plate,
+      _vin,
+      _nextServiceOn,
+      _nextServiceMiles,
+    ]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -398,13 +407,14 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               'Year',
               enabled: enabled,
               keyboard: TextInputType.number,
+              flagEmpty: true,
             ),
-            fleetField(_make, 'Make', enabled: enabled),
-            fleetField(_model, 'Model', enabled: enabled),
+            fleetField(_make, 'Make', enabled: enabled, flagEmpty: true),
+            fleetField(_model, 'Model', enabled: enabled, flagEmpty: true),
           ]),
           fleetFieldRow([
             fleetField(_trim, 'Trim', enabled: enabled),
-            fleetField(_colour, 'Colour', enabled: enabled),
+            fleetField(_colour, 'Colour', enabled: enabled, flagEmpty: true),
             _menu(
               'Status',
               _status,
@@ -417,7 +427,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
             ),
           ]),
           fleetFieldRow([
-            fleetField(_vin, 'VIN', enabled: enabled),
+            fleetField(_vin, 'VIN', enabled: enabled, flagEmpty: true),
             _menu(
               'Body type',
               _bodyType,
@@ -557,6 +567,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               'Registration expires on',
               formats: _me.display,
               enabled: enabled,
+              flagEmpty: true,
             ),
           ]),
           fleetCalendarDay(
@@ -591,7 +602,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   enabled: enabled,
                   textCapitalization: TextCapitalization.characters,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'State'),
+                  decoration: notFilledIn(
+                    context,
+                    const InputDecoration(labelText: 'State'),
+                    empty: _plateState.text.trim().isEmpty,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -601,7 +616,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   enabled: enabled,
                   textCapitalization: TextCapitalization.characters,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'Plate number'),
+                  decoration: notFilledIn(
+                    context,
+                    const InputDecoration(labelText: 'Plate number'),
+                    empty: _plate.text.trim().isEmpty,
+                  ),
                 ),
               ),
             ],
@@ -636,6 +655,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               'Odometer (miles)',
               enabled: enabled,
               keyboard: TextInputType.number,
+              flagEmpty: true,
             ),
             fleetCalendarDay(
               _odometerReadOn,
@@ -650,12 +670,14 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               'Next service on',
               formats: _me.display,
               enabled: enabled,
+              flagEmpty: _nextServiceMiles.text.trim().isEmpty,
             ),
             fleetField(
               _nextServiceMiles,
               'Next service at (miles)',
               enabled: enabled,
               keyboard: TextInputType.number,
+              flagEmpty: _nextServiceOn.text.trim().isEmpty,
             ),
           ]),
         ],

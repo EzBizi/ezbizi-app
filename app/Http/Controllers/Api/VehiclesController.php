@@ -577,6 +577,25 @@ class VehiclesController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /**
+     * How many amber boxes the vehicle's Identity card shows: the empty
+     * EXPECTED_FIELDS, plus one when no next service is set at all. A count,
+     * never the values, as HrPeopleController::missing, so the list row stays
+     * short. Reads only the row — no query per vehicle in the list.
+     */
+    private function missing(Vehicle $vehicle): int
+    {
+        $empty = collect(Vehicle::EXPECTED_FIELDS)
+            ->filter(fn (string $field) => blank($vehicle->getAttribute($field)))
+            ->count();
+
+        // Next service is a day OR a mileage; either one is an answer.
+        $noService = $vehicle->next_service_on === null
+            && $vehicle->next_service_miles === null;
+
+        return $empty + ($noService ? 1 : 0);
+    }
+
     private function present(Vehicle $vehicle, User $user): array
     {
         $vehicle->loadMissing([
@@ -614,6 +633,7 @@ class VehiclesController extends Controller
             'toll_flat_rate_cents' => $vehicle->toll_flat_rate_cents,
             'notes' => $vehicle->notes,
             'status' => $vehicle->status->value,
+            'missing' => $this->missing($vehicle),
             'company' => $vehicle->company_id === null ? null : [
                 'id' => $vehicle->company_id,
                 'name' => $vehicle->company?->name,
