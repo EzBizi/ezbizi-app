@@ -218,6 +218,30 @@ class TimeClockController extends Controller
      * PUT /api/v1/hr/time-clock/people/{user}/days/{date} — tag, extra
      * minutes, note. Each key optional; absent is unchanged, null clears.
      */
+    /**
+     * POST /api/v1/hr/time-clock/people/{user}/shifts — a shift nobody punched.
+     * Times are wall clock in the screen's zone, as in update(). Always closed.
+     */
+    public function addShift(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('correct', TimeClockShift::class);
+
+        $data = $request->validate([
+            'clocked_in_at' => ['required', 'date'],
+            'clocked_out_at' => ['required', 'date'],
+        ]);
+
+        $tz = $this->timeClock->viewTimezone($request->user());
+        $this->timeClock->addShift(
+            $request->user(),
+            $user,
+            Carbon::parse($data['clocked_in_at'], $tz)->utc(),
+            Carbon::parse($data['clocked_out_at'], $tz)->utc(),
+        );
+
+        return $this->weekAfterCorrection($request);
+    }
+
     public function recordDay(Request $request, User $user, string $date): JsonResponse
     {
         $this->authorize('correct', TimeClockShift::class);

@@ -777,6 +777,109 @@ void main() {
     );
   });
 
+  // ── Add shift, asking for a day, and the marks (Jose, 2026-10-01) ──
+
+  testWidgets('a requested change reads Shift corrected, an unasked one '
+      'Edited, and your own edit nothing', (tester) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [
+          _person(
+            shifts: [
+              {..._bea, 'edited': 'request'},
+              {..._bea, 'id': 's-2', 'edited': 'hr'},
+              // Ended by a correction, but your own: no mark.
+              {..._bea, 'id': 's-3', 'ended_by': 'correction'},
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('Shift corrected'), findsOneWidget);
+    expect(find.text('Edited'), findsOneWidget);
+  });
+
+  testWidgets('HR adds a shift on a day with nothing, from the day menu', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => _week(
+        people: [
+          {
+            ..._person(),
+            'schedule': {
+              'monday': {'start': '08:00', 'end': '16:00'},
+            },
+          },
+        ],
+      ),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': _week(people: [_person()]),
+        });
+      },
+    );
+
+    // Newest first: Tuesday, Monday, Sunday.
+    await _tap(tester, find.byTooltip('Day actions').at(1));
+    await _tap(tester, find.text('Add shift'));
+    expect(find.byType(SidePanel), findsOneWidget);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    expect(writes.single.method, 'POST');
+    expect(writes.single.url.path, '/api/v1/hr/time-clock/people/u-2/shifts');
+    expect(jsonDecode(writes.single.body), {
+      'clocked_in_at': '2026-08-24 08:00',
+      'clocked_out_at': '2026-08-24 16:00',
+    }, reason: 'their own hours for that weekday');
+  });
+
+  testWidgets('without manage, your own day asks for its hours, no shift', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [_person(id: 'u-1', name: 'Anisa Telfort')],
+      ),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': {'id': 'r-1', 'status': 'pending'},
+        }, 201);
+      },
+    );
+
+    await _tap(tester, find.byTooltip('Day actions').at(1));
+    expect(find.text('Add shift'), findsNothing);
+    await _tap(tester, find.text('Request hours for this day'));
+    await tester.enterText(
+      find.byKey(const Key('correction-reason')),
+      'Worked the switch-over day.',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Send for approval'));
+
+    expect(writes.single.url.path, '/api/v1/time-clock/corrections');
+    expect(jsonDecode(writes.single.body), {
+      'clocked_in_at': '2026-08-24 09:00',
+      'clocked_out_at': '2026-08-24 17:00',
+      'reason': 'Worked the switch-over day.',
+    });
+  });
+
   // ── Work Hours, its own module (Jose, 2026-09-24) ─────────────────
 
   testWidgets('the module draws only the tabs the role holds', (tester) async {

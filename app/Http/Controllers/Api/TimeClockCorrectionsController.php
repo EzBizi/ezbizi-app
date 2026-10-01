@@ -51,16 +51,20 @@ class TimeClockCorrectionsController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'shift_id' => ['required', 'string'],
+            // Absent: a day they worked and never clocked (2026-10-01), so
+            // both times are required and approving adds the shift.
+            'shift_id' => ['nullable', 'string'],
             'clocked_in_at' => ['required', 'date'],
-            'clocked_out_at' => ['nullable', 'date'],
+            'clocked_out_at' => ['nullable', 'date', 'required_without:shift_id'],
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
         // Yours or nothing: 404 for a colleague's shift, as for a missing one.
-        $shift = TimeClockShift::query()->where('user_id', $user->getKey())->find($data['shift_id']);
+        $shift = isset($data['shift_id'])
+            ? TimeClockShift::query()->where('user_id', $user->getKey())->find($data['shift_id'])
+            : null;
 
-        if ($shift === null) {
+        if (isset($data['shift_id']) && $shift === null) {
             return response()->json(['message' => 'That shift no longer exists.'], 404);
         }
 
@@ -69,7 +73,7 @@ class TimeClockCorrectionsController extends Controller
         // A running shift is asked about for its start only (Jose,
         // 2026-10-01); its end is the person's own Clock Out. Null is
         // "unchanged" to correct(), so approving never closes it.
-        $out = isset($data['clocked_out_at']) && $shift->clocked_out_at !== null
+        $out = isset($data['clocked_out_at']) && ($shift === null || $shift->clocked_out_at !== null)
             ? Carbon::parse($data['clocked_out_at'], $tz)->utc()
             : null;
 
@@ -88,7 +92,7 @@ class TimeClockCorrectionsController extends Controller
         }
 
         $row = DB::transaction(function () use ($user, $shift, $in, $out, $reason) {
-            $waiting = TimeClockCorrectionRequest::query()
+            $waiting = $shift !== null && TimeClockCorrectionRequest::query()
                 ->where('shift_id', $shift->getKey())
                 ->where('status', TimeClockCorrectionRequest::PENDING)
                 ->lockForUpdate()
@@ -102,9 +106,9 @@ class TimeClockCorrectionsController extends Controller
 
             return TimeClockCorrectionRequest::create([
                 'user_id' => $user->getKey(),
-                'shift_id' => $shift->getKey(),
-                'was_in_at' => $shift->clocked_in_at,
-                'was_out_at' => $shift->clocked_out_at,
+                'shift_id' => $shift?->getKey(),
+                'was_in_at' => $shift?->clocked_in_at,
+                'was_out_at' => $shift?->clocked_out_at,
                 'clocked_in_at' => $in,
                 'clocked_out_at' => $out,
                 'reason' => $reason,
@@ -182,7 +186,12 @@ class TimeClockCorrectionsController extends Controller
             $this->timeClock->assertReaches($actor, $row->user);
 
             if ($status === TimeClockCorrectionRequest::APPROVED) {
-                $this->timeClock->correct($actor, $row->shift, $row->clocked_in_at, $row->clocked_out_at);
+                // "Shift corrected" on the row, not "Edited": it was asked for.
+                if ($row->shift_id === null) {
+                    $row->shift_id = $this->timeClock->addShift($actor, $row->user, $row->clocked_in_at, $row->clocked_out_at, requested: true)->getKey();
+                } else {
+                    $this->timeClock->correct($actor, $row->shift, $row->clocked_in_at, $row->clocked_out_at, requested: true);
+                }
             }
 
             $row->forceFill([

@@ -46,6 +46,11 @@ class TimeClockShift extends Model implements HoldsPersonalData
      */
     public const ENDED_BY_MANAGER = 'manager';
 
+    /** `edit_source`: HR changed it unasked ("Edited"), or approved a request ("Shift corrected"). */
+    public const EDITED_BY_HR = 'hr';
+
+    public const EDITED_BY_REQUEST = 'request';
+
     // ── §9 data inventory ────────────────────────────────────────
 
     public static function personalDataPurpose(): string
@@ -95,6 +100,7 @@ class TimeClockShift extends Model implements HoldsPersonalData
     protected $fillable = [
         'organization_id', 'user_id', 'clocked_in_at', 'clocked_out_at',
         'scheduled_end_at', 'extensions', 'outside_schedule', 'ended_by', 'import_ref',
+        'edit_source',
     ];
 
     protected function casts(): array

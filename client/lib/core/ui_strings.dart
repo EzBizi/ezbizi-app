@@ -121,6 +121,10 @@ class UiStrings {
     'time_clock.hours': 'Hours',
     'time_clock.minutes': 'Minutes',
     'time_clock.edited': 'Edited',
+    'time_clock.corrected': 'Shift corrected',
+    'time_clock.action.add_shift': 'Add shift',
+    'time_clock.action.request_day': 'Request hours for this day',
+    'time_clock.missing_day': 'Nothing clocked',
     'time_clock.using_business_hours':
         'No schedule of their own — these are the business hours.',
     'time_clock.ended_by_hr': 'Ended by HR',
