@@ -544,6 +544,9 @@ class HrOnboardingTest extends TestCase
             ['key' => 'job_title', 'label' => 'Job title', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
             ['key' => 'raise_amount', 'label' => 'Raise', 'type' => 'number', 'filled_by' => 'employer', 'required' => false],
             ['key' => 'raise_period', 'label' => 'Raise every', 'type' => 'text', 'filled_by' => 'employer', 'required' => false],
+            // The contract's own `state`, beside the home address's state
+            // part: UI/UX caught a flat part key colliding with it.
+            ['key' => 'state', 'label' => 'Governing state', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
             ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
         ]);
         $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
@@ -552,9 +555,12 @@ class HrOnboardingTest extends TestCase
 
         // The address in parts, written to the profile and composed.
         $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
-            'address_line1' => '41 Elm St', 'city' => 'Stamford', 'state' => 'CT', 'postal_code' => '06901',
+            'address' => ['address_line1' => '41 Elm St', 'city' => 'Stamford', 'state' => 'CT', 'postal_code' => '06901'],
         ]])->assertOk();
         $this->assertSame('41 Elm St, Stamford, CT 06901', $employee->fresh()->address);
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['state' => 'Florida']])->assertOk();
+        $this->assertSame('Florida', $this->rawAnswer($alpha, $id, 'state'));
+        $this->assertSame('CT', $employee->fresh()->state, 'The governing state landed on the home address.');
         $address = collect($this->form($employee, $id)['fields'] ?? $this->form($employee, $id)['questions'] ?? [])
             ->firstWhere('key', 'address');
         $this->assertSame('Stamford', $address['parts']['city'] ?? null);
