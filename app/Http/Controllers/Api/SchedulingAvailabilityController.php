@@ -314,13 +314,25 @@ class SchedulingAvailabilityController extends Controller
     /**
      * Five digits, the way the zip map stores them — a four-digit New England
      * zip that lost its leading zero is padded back, or it matches nothing.
+     *
+     * Anything that is not a zip says so (Jovanni, 2026-10-01: "pls improve
+     * the zip code validation"): 5 digits, zip+4, or that 4-digit zip. Before,
+     * "123456" was cut to 12345 and searched as if typed, and "123" came back
+     * as a zip no area covers.
      */
     private function zip5(string $raw): string
     {
         $digits = preg_replace('/\D+/', '', $raw);
 
-        return strlen($digits) < 4 ? $digits : substr(str_pad($digits, 5, '0', STR_PAD_LEFT), 0, 5);
+        if (! in_array(strlen($digits), [4, 5, 9], true)) {
+            throw ValidationException::withMessages(['zip' => self::NOT_A_ZIP]);
+        }
+
+        return substr(str_pad($digits, 5, '0', STR_PAD_LEFT), 0, 5);
     }
+
+    /** What a search says when what was typed is not a zip code. */
+    public const NOT_A_ZIP = 'That is not a zip code. A zip code is 5 digits, like 06810, or zip+4, like 06810-1234.';
 
     /**
      * The area covering a zip, within the franchises in view.

@@ -65,6 +65,48 @@ void main() {
     },
   );
 
+  /// Jovanni, 2026-10-01: "pls improve the zip code validation". A typo is
+  /// said to be one, not cut to five digits and searched, and not reported
+  /// as a zip no area covers. Zip+4 and a 4-digit New England zip still ask.
+  testWidgets('a number that is not a zip says so and is never searched', (
+    tester,
+  ) async {
+    final asked = <String>[];
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (r.url.path.endsWith('/scheduling/availability')) {
+          asked.add(r.url.queryParameters['zip'] ?? '');
+          return _json({'data': _dallas});
+        }
+        return null;
+      },
+    );
+
+    for (final typo in ['123', '123456', '75201-12']) {
+      await tester.enterText(
+        find.byKey(const Key('availability-search')),
+        typo,
+      );
+      await tester.tap(find.text('Check'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('That is not a zip code'),
+        findsOneWidget,
+        reason: '"$typo" is not a zip.',
+      );
+    }
+    expect(asked, isEmpty);
+
+    for (final zip in ['75201', '75201-1234', '6810']) {
+      await tester.enterText(find.byKey(const Key('availability-search')), zip);
+      await tester.tap(find.text('Check'));
+      await tester.pumpAndSettle();
+    }
+    expect(asked, ['75201', '75201-1234', '6810']);
+    expect(find.textContaining('That is not a zip code'), findsNothing);
+  });
+
   /// "We do not cover that" is the answer A1 Tools gave, and dispatchers turned
   /// away jobs A-1 could have done. An uncovered zip says to check Workiz.
   testWidgets(
