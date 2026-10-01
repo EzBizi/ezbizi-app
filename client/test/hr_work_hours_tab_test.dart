@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/work_hours_screen.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -738,6 +739,44 @@ void main() {
     );
   });
 
+  /// Jose's containment rule: on a phone a person draws in the tab's own
+  /// area with its own way back, never as a pushed full-screen page; and the
+  /// edit forms are side panels, not dialogs.
+  testWidgets('on a phone a person opens in place, and edits open a panel', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      size: const Size(390, 844),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+    final scaffolds = find.byType(Scaffold).evaluate().length;
+    await _tap(tester, find.text('Bea Okafor'));
+
+    expect(find.byType(AppBar), findsNothing, reason: 'no pushed page');
+    expect(
+      find.byType(Scaffold).evaluate().length,
+      scaffolds,
+      reason: 'no new route, so no second Scaffold',
+    );
+    expect(find.byTooltip('Shift actions'), findsWidgets);
+
+    await _tap(tester, find.byTooltip('Shift actions'));
+    await _tap(tester, find.text('Edit times').last);
+    expect(find.byType(SidePanel), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    await _tap(tester, find.text('Cancel'));
+
+    await _tap(tester, find.byIcon(Icons.arrow_back));
+    expect(
+      find.byTooltip('Shift actions'),
+      findsNothing,
+      reason: 'back on the list',
+    );
+  });
+
   // ── Work Hours, its own module (Jose, 2026-09-24) ─────────────────
 
   testWidgets('the module draws only the tabs the role holds', (tester) async {
@@ -1037,9 +1076,10 @@ void main() {
 
     await _tap(tester, find.byTooltip('Shift actions'));
     await _tap(tester, find.text('Request a correction'));
+    expect(find.byType(SidePanel), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byType(AlertDialog),
+        of: find.byType(SidePanel),
         matching: find.text('Clock Out'),
       ),
       findsNothing,

@@ -136,7 +136,6 @@ void main() {
       // Stays. Jose's spec (2026-09-08) is a modal at shift end; unanswered,
       // the sweep clocks the person out and the lock screen follows.
       'lib/widgets/shift_reminder.dart': 'Clock In, must interrupt',
-      'lib/screens/hr/work_hours_tab.dart': 'Clock In',
       'lib/screens/a1leads_gbp_screen.dart': 'Google API',
       'lib/screens/organization_screen.dart': 'Settings',
       'lib/screens/settings/integration_provider_screen.dart': 'Settings',

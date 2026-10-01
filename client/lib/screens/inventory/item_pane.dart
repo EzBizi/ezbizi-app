@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
@@ -203,6 +204,15 @@ class _ItemPaneState extends State<ItemPane> {
   bool _loading = true;
   bool _stockFailed = false;
 
+  /// What happened to this item, newest first (`GET /inventory/items/{id}/
+  /// movements`, Inventory 6cbdc919; UI queue 43, option 1's History). Asked
+  /// only with `inventory.stock.view`, the same gate as on-hand.
+  List<Map<String, dynamic>> _history = [];
+  int _historyPage = 0;
+  int _historyLast = 1;
+  bool _historyBusy = false;
+  String? _historyError;
+
   final _countedAs = TextEditingController();
   final _reason = TextEditingController();
   String? _adjustLocationId;
@@ -210,6 +220,8 @@ class _ItemPaneState extends State<ItemPane> {
   String? _adjustError;
 
   bool get _financials => widget.session.me!.can('inventory.financials');
+  bool get _maySeeStock =>
+      widget.session.me?.permissions.contains('inventory.stock.view') ?? false;
   bool get _canEdit => widget.session.me!.can('inventory.edit');
 
   @override
@@ -302,6 +314,78 @@ class _ItemPaneState extends State<ItemPane> {
         _error = stockRes.message;
       }
     });
+
+    _history = [];
+    _historyPage = 0;
+    _historyLast = 1;
+    if (maySeeStock) await _moreHistory();
+  }
+
+  Future<void> _moreHistory() async {
+    if (_historyBusy || _historyPage >= _historyLast) return;
+    setState(() {
+      _historyBusy = true;
+      _historyError = null;
+    });
+    final response = await widget.api.get(
+      '/inventory/items/${widget.itemId}/movements',
+      {'page': '${_historyPage + 1}', 'per_page': '20'},
+    );
+    if (!mounted) return;
+    setState(() {
+      _historyBusy = false;
+      if (!response.ok) {
+        _historyError = response.message;
+        return;
+      }
+      _history = [..._history, ...inventoryRows(response.data)];
+      _historyPage++;
+      _historyLast = inventoryLastPage(response.body);
+    });
+  }
+
+  /// "Sep 30 · −1 at Van 12 (Marco), issued to job J-10482". A transfer's end
+  /// the caller cannot open arrives null and is said so, never invented.
+  String _movementLine(Map<String, dynamic> m) {
+    final unit = inventoryUnitLabel(_item?['unit'] as String?);
+    final raw = inventoryQtyNumber(m['qty']) ?? 0;
+    final size = inventoryQty(raw.abs());
+    final signed = raw < 0 ? '\u2212$size' : raw > 0 ? '+$size' : size;
+    String place(Object? l) =>
+        '${inventoryMap(l)?['name'] ?? 'a place you cannot open'}';
+    final reference = inventoryMap(m['reference']);
+    final number = reference?['number'] as String?;
+    final note = (m['note'] as String?)?.trim();
+    final when = parseCalendarDay(m['occurred_at'] as String?);
+    final by = inventoryMap(m['by'])?['name'] as String?;
+
+    final what = switch (m['kind']) {
+      'received' => [
+        '$signed $unit received at ${place(m['location'])}',
+        ?number,
+        if (_financials && inventoryCents(m['unit_cost_minor']) != null)
+          '${inventoryCents(m['unit_cost_minor'])} each',
+      ].join(', '),
+      'issued' =>
+        '$signed $unit at ${place(m['location'])}, '
+            '${reference?['type'] == 'job' && number != null ? 'issued to job $number' : 'issued${note == null || note.isEmpty ? '' : ': $note'}'}',
+      'transferred' =>
+        '$size $unit moved ${place(m['location'])} \u2192 '
+            '${place(m['to_location'])}${number == null ? '' : ', $number'}',
+      'adjusted' =>
+        '$signed $unit counted at ${place(m['location'])}'
+            '${note == null || note.isEmpty ? '' : ': $note'}',
+      'sold' =>
+        '$signed $unit at ${place(m['location'])}, sold'
+            '${number == null ? '' : ' on $number'}',
+      _ => '$signed $unit at ${place(m['location'])}',
+    };
+
+    return [
+      if (when != null) widget.session.me!.display.formatDate(when),
+      what,
+      ?by,
+    ].join(' · ');
   }
 
   List<Map<String, dynamic>> _unionSeed(List<Map<String, dynamic>> rows) {
@@ -507,6 +591,47 @@ class _ItemPaneState extends State<ItemPane> {
                               onPressed: _adjusting ? null : _adjust,
                               child: const Text('Save count'),
                             ),
+                          ),
+                        ],
+                        if (_maySeeStock) ...[
+                          const SizedBox(height: 20),
+                          Text('History', style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 8),
+                          Column(
+                            key: const Key('item-history'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_history.isEmpty && !_historyBusy)
+                                Text(
+                                  _historyError == null
+                                      ? 'Nothing has moved yet.'
+                                      : 'The history could not be read: '
+                                            '$_historyError',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              for (final (i, m) in _history.indexed)
+                                Padding(
+                                  key: Key('movement-$i'),
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Text(
+                                    _movementLine(m),
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                ),
+                              if (_historyPage < _historyLast &&
+                                  _history.isNotEmpty)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton(
+                                    onPressed: _historyBusy
+                                        ? null
+                                        : _moreHistory,
+                                    child: Text(
+                                      _historyBusy ? 'Loading…' : 'Show more',
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ],

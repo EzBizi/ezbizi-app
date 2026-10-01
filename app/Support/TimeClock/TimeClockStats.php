@@ -33,7 +33,7 @@ class TimeClockStats
     /**
      * @return array{period: array{from: string, to: string, label: string}, team: array<string, mixed>, people: list<array<string, mixed>>}
      */
-    public function for(User $actor, ?string $from, ?string $to): array
+    public function for(User $actor, ?string $from, ?string $to, ?string $userId = null): array
     {
         $scope = ViewScope::forUser($actor)->settingsScope();
         $tz = $this->clock->viewTimezone($actor);
@@ -44,7 +44,10 @@ class TimeClockStats
         [$start, $end] = $this->period($actor, $from, $to, $tz);
 
         $people = $this->clock->visiblePeople($actor)
-            ->where('is_active', true)
+            // One person and their days (`?user=`), for the Dashboard's panel.
+            // Somebody outside reach is a 404, as everywhere in Work Hours.
+            ->when($userId !== null, fn ($q) => $q->whereKey($userId))
+            ->when($userId === null, fn ($q) => $q->where('is_active', true))
             ->orderBy('name')
             ->with('role:id,name')
             ->get(['id', 'organization_id', 'name', 'avatar_path', 'work_schedule', 'role_id']);
@@ -71,7 +74,11 @@ class TimeClockStats
         // the period, or who has a schedule of their own. Not everybody the
         // reader can see: an owner or a field tech who never clocks in would
         // read as "missed" every day and swamp the team's numbers.
-        $people = $people->filter(fn (User $p) => $shifts->has($p->id) || $records->has($p->id) || is_array($p->work_schedule));
+        if ($userId === null) {
+            $people = $people->filter(fn (User $p) => $shifts->has($p->id) || $records->has($p->id) || is_array($p->work_schedule));
+        } elseif ($people->isEmpty()) {
+            abort(404);
+        }
 
         $rows = $people->map(fn (User $person) => $this->person(
             $person,
@@ -81,6 +88,7 @@ class TimeClockStats
             $end->toDateString(),
             $grace,
             $timeFormat,
+            $userId !== null,
         ))->values();
 
         return [
@@ -91,7 +99,7 @@ class TimeClockStats
             ],
             'grace_minutes' => $grace,
             'team' => $this->team($rows),
-            'people' => $rows->map(fn (array $row) => collect($row)->except(['_in_minutes', '_out_minutes', '_late_minutes'])->all())->all(),
+            'people' => $rows->map(fn (array $row) => collect($row)->except(['_late_minutes'])->all())->all(),
         ];
     }
 
@@ -123,12 +131,13 @@ class TimeClockStats
      * @param  Collection<int, TimeClockDay>  $records
      * @return array<string, mixed>
      */
-    private function person(User $person, Collection $shifts, Collection $records, string $from, string $to, int $grace, string $timeFormat): array
+    private function person(User $person, Collection $shifts, Collection $records, string $from, string $to, int $grace, string $timeFormat, bool $withDays = false): array
     {
         $schedule = $this->clock->scheduleFor($person);
         $tz = (string) ($schedule['timezone'] ?? 'UTC');
         $today = Carbon::now($tz)->toDateString();
         $now = now();
+        $clock = fn ($at) => self::wall(Carbon::parse($at)->timezone($tz), $timeFormat);
 
         // Their shifts by THEIR day, inside the period only.
         $byDay = $shifts->groupBy(fn (TimeClockShift $s) => Carbon::parse($s->clocked_in_at)->timezone($tz)->toDateString())
@@ -143,62 +152,90 @@ class TimeClockStats
         $lateMinutes = [];
         $inMinutes = [];
         $outMinutes = [];
-
-        foreach ($byDay as $rows) {
-            foreach ($rows as $shift) {
-                $n['shifts']++;
-                $total += (int) Carbon::parse($shift->clocked_in_at)->diffInSeconds($shift->clocked_out_at ?? $now, true);
-                $n['outside_schedule'] += (int) $shift->outside_schedule;
-                $n['auto_closed'] += (int) ($shift->ended_by === TimeClockShift::ENDED_BY_SCHEDULE);
-                $n['extensions'] += (int) $shift->extensions;
-            }
-            $first = Carbon::parse($rows->first()->clocked_in_at)->timezone($tz);
-            $inMinutes[] = $first->hour * 60 + $first->minute;
-            $last = $rows->last();
-            if ($last->clocked_out_at !== null) {
-                $out = Carbon::parse($last->clocked_out_at)->timezone($tz);
-                $outMinutes[] = $out->hour * 60 + $out->minute;
-            }
-        }
+        $days = [];
 
         for ($day = Carbon::parse($from, $tz); $day->toDateString() <= min($to, $today); $day->addDay()) {
             $date = $day->toDateString();
             $window = WorkSchedule::windowFor($schedule, $day->copy()->setTime(12, 0));
-            if ($window === null) {
-                continue;
+            $rows = $byDay->get($date, collect());
+            $record = $tags->get($date);
+            $worked = 0;
+
+            foreach ($rows as $shift) {
+                $n['shifts']++;
+                $worked += (int) Carbon::parse($shift->clocked_in_at)->diffInSeconds($shift->clocked_out_at ?? $now, true);
+                $n['outside_schedule'] += (int) $shift->outside_schedule;
+                $n['auto_closed'] += (int) ($shift->ended_by === TimeClockShift::ENDED_BY_SCHEDULE);
+                $n['extensions'] += (int) $shift->extensions;
             }
-            $n['scheduled_days']++;
-            $rows = $byDay->get($date);
+            $total += $worked;
 
-            if ($rows === null) {
-                // A tag or extra time says why; nothing at all, on a day that
-                // is over, is a day missed.
-                $record = $tags->get($date);
-                if ($date < $today && ($record === null || ($record->tag === null && (int) $record->extra_minutes === 0))) {
-                    $n['missed']++;
-                }
-
-                continue;
-            }
-
-            $late = (int) floor(Carbon::parse($window['start_at'])->diffInMinutes(Carbon::parse($rows->first()->clocked_in_at), false));
-            if ($late > $grace) {
-                $n['late']++;
-                $lateMinutes[] = $late;
-            } else {
-                $n['on_time']++;
-            }
-
+            $first = $rows->first();
             $last = $rows->last();
-            if ($last->clocked_out_at !== null
-                && $last->ended_by === TimeClockShift::ENDED_BY_PERSON
-                && Carbon::parse($last->clocked_out_at)->lt(Carbon::parse($window['end_at'])->subMinutes($grace))) {
-                $n['left_early']++;
+            $late = null;
+            $early = null;
+            $missed = false;
+
+            if ($window !== null) {
+                $n['scheduled_days']++;
+
+                if ($first === null) {
+                    // A tag or extra time says why; nothing at all, on a day
+                    // that is over, is a day missed.
+                    $missed = $date < $today && ($record === null || ($record->tag === null && (int) $record->extra_minutes === 0));
+                    $n['missed'] += (int) $missed;
+                } else {
+                    // Minutes after the start; negative is early.
+                    $late = (int) floor(Carbon::parse($window['start_at'])->diffInMinutes(Carbon::parse($first->clocked_in_at), false));
+                    if ($late > $grace) {
+                        $n['late']++;
+                        $lateMinutes[] = $late;
+                    } else {
+                        $n['on_time']++;
+                    }
+
+                    if ($last->clocked_out_at !== null) {
+                        // Minutes before the end; negative is after it.
+                        $early = (int) floor(Carbon::parse($last->clocked_out_at)->diffInMinutes(Carbon::parse($window['end_at']), false));
+                        if ($last->ended_by === TimeClockShift::ENDED_BY_PERSON && $early > $grace) {
+                            $n['left_early']++;
+                        }
+                    }
+
+                    // Usual times over SCHEDULED days only: one Sunday call-in
+                    // would otherwise drag a dispatcher's clock-out to 2:30 PM.
+                    $in = Carbon::parse($first->clocked_in_at)->timezone($tz);
+                    $inMinutes[] = $in->hour * 60 + $in->minute;
+                    if ($last->clocked_out_at !== null) {
+                        $out = Carbon::parse($last->clocked_out_at)->timezone($tz);
+                        $outMinutes[] = $out->hour * 60 + $out->minute;
+                    }
+                }
+            }
+
+            if ($withDays && ($window !== null || $first !== null || $record !== null)) {
+                $days[] = [
+                    'date' => $date,
+                    'scheduled' => $window === null ? null : [
+                        'start' => self::wall(Carbon::parse($window['start_at'])->timezone($tz), $timeFormat),
+                        'end' => self::wall(Carbon::parse($window['end_at'])->timezone($tz), $timeFormat),
+                    ],
+                    'first_in' => $first === null ? null : $clock($first->clocked_in_at),
+                    'last_out' => $last?->clocked_out_at === null ? null : $clock($last->clocked_out_at),
+                    'open' => $last !== null && $last->clocked_out_at === null,
+                    'late_minutes' => $late,
+                    'left_early_minutes' => $early,
+                    'auto_closed' => $last?->ended_by === TimeClockShift::ENDED_BY_SCHEDULE,
+                    'shifts' => $rows->count(),
+                    'worked_seconds' => $worked + (int) ($record?->extra_minutes ?? 0) * 60,
+                    'missed' => $missed,
+                    'tag' => $record?->tag,
+                    'extra_minutes' => (int) ($record?->extra_minutes ?? 0),
+                ];
             }
         }
 
-        $extraMinutes = (int) $records->sum('extra_minutes');
-        $total += $extraMinutes * 60;
+        $total += (int) $records->sum('extra_minutes') * 60;
         $worked = $byDay->keys()
             ->merge($records->filter(fn (TimeClockDay $d) => $d->extra_minutes > 0)->map(fn (TimeClockDay $d) => Carbon::parse($d->date)->toDateString()))
             ->unique()->count();
@@ -217,8 +254,8 @@ class TimeClockStats
             'average_in' => self::clockOf($inMinutes, $timeFormat),
             'average_out' => self::clockOf($outMinutes, $timeFormat),
             'tags' => collect(TimeClockDay::TAGS)->mapWithKeys(fn (string $t) => [$t => $records->where('tag', $t)->count()])->all(),
-            '_in_minutes' => $inMinutes,
-            '_out_minutes' => $outMinutes,
+            // Newest first, as General lists them.
+            ...($withDays ? ['days' => array_reverse($days)] : []),
             '_late_minutes' => $lateMinutes,
         ];
     }
@@ -252,8 +289,12 @@ class TimeClockStats
         if ($minutes === []) {
             return null;
         }
-        $at = Carbon::today()->addMinutes((int) round(array_sum($minutes) / count($minutes)));
 
+        return self::wall(Carbon::today()->addMinutes((int) round(array_sum($minutes) / count($minutes))), $timeFormat);
+    }
+
+    private static function wall(Carbon $at, string $timeFormat): string
+    {
         return $timeFormat === '12h' ? $at->format('g:i A') : $at->format('H:i');
     }
 }
