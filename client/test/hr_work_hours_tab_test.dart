@@ -207,6 +207,50 @@ void main() {
     expect(find.text('+2'), findsOneWidget);
   });
 
+  /// Jose, 2026-10-01: on the shift with an Outside schedule chip the total
+  /// and its ⋯ sat mid-row, and every day total did too. The chip's Flexible
+  /// and the Spacer were splitting the free space. Every total ends at the
+  /// same right edge, chip or no chip.
+  testWidgets('totals line up at the right, whatever chips a shift has', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [
+          _person(
+            total: 3900 + 1800,
+            shifts: [
+              {..._bea, 'outside_schedule': true, 'ended_by': 'correction'},
+              {
+                ..._bea,
+                'id': 's-2',
+                'duration_seconds': 1800,
+                'clocked_in_local': '2026-08-25 10:00',
+              },
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final chipped = tester.getTopRight(find.text('1h 05m').last).dx;
+    final plain = tester.getTopRight(find.text('0h 30m').last).dx;
+    expect(
+      chipped,
+      plain,
+      reason: 'The Outside schedule row ends where the plain one does.',
+    );
+
+    final day = tester.getTopRight(find.text('1h 35m').last).dx;
+    expect(
+      day,
+      greaterThan(plain - 60),
+      reason: 'The day total is at the right, not mid-row.',
+    );
+  });
+
   /// An open shift reports the time worked SO FAR rather than null, because
   /// it is summed into the total beside it. So the duration is a number here,
   /// and `open` is what says it is still running.

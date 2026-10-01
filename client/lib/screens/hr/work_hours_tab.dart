@@ -964,15 +964,24 @@ class _DayCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Flexible(child: Text(label, style: theme.textTheme.labelLarge)),
-                if (tag != null) ...[
-                  const SizedBox(width: 8),
-                  _Chip(
-                    text: UiStrings.t('time_clock.tag.$tag'),
-                    colour: _tagColour(context, tag),
+                // One flex child, as on the shift row: a Flexible label beside
+                // a Spacer put the day total mid-row.
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(label, style: theme.textTheme.labelLarge),
+                      ),
+                      if (tag != null) ...[
+                        const SizedBox(width: 8),
+                        _Chip(
+                          text: UiStrings.t('time_clock.tag.$tag'),
+                          colour: _tagColour(context, tag),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-                const Spacer(),
+                ),
                 Text(
                   formatWorked(total),
                   style: theme.textTheme.labelLarge?.copyWith(
@@ -1106,66 +1115,75 @@ class _ShiftRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Green in, red out — his words. The times are the server's own
-          // strings; nothing here formats a clock.
-          _Pip(colour: StateColour.of(context).on),
-          const SizedBox(width: 6),
-          Text(shift.clockedIn, style: theme.textTheme.bodySmall),
-          const SizedBox(width: 12),
-          if (shift.open)
-            Text(
-              UiStrings.t('time_clock.still_in'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: StateColour.of(context).on,
-                fontWeight: FontWeight.w700,
-              ),
-            )
-          else ...[
-            _Pip(colour: scheme.error),
-            const SizedBox(width: 6),
-            Text(shift.clockedOut, style: theme.textTheme.bodySmall),
-          ],
-          // Carried over from the tab this replaces rather than reinvented.
-          // Neither is on Jose's list, and dropping what a screen already
-          // tells somebody is a loss whether or not anybody asked to keep it
-          // -- the old tests pinned all three, which is how I found out.
-          if (shift.endedBy == 'schedule') ...[
-            const SizedBox(width: 8),
-            _Chip(
-              text: UiStrings.t('time_clock.auto'),
-              colour: scheme.onSurfaceVariant,
+          // The left group is ONE flex child. With the Outside chip's
+          // Flexible beside a Spacer, the two split the free space and the
+          // total landed mid-row (Jose, 2026-10-01).
+          Expanded(
+            child: Row(
+              children: [
+                // Green in, red out — his words. The times are the server's own
+                // strings; nothing here formats a clock.
+                _Pip(colour: StateColour.of(context).on),
+                const SizedBox(width: 6),
+                Text(shift.clockedIn, style: theme.textTheme.bodySmall),
+                const SizedBox(width: 12),
+                if (shift.open)
+                  Text(
+                    UiStrings.t('time_clock.still_in'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: StateColour.of(context).on,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                else ...[
+                  _Pip(colour: scheme.error),
+                  const SizedBox(width: 6),
+                  Text(shift.clockedOut, style: theme.textTheme.bodySmall),
+                ],
+                // Carried over from the tab this replaces rather than reinvented.
+                // Neither is on Jose's list, and dropping what a screen already
+                // tells somebody is a loss whether or not anybody asked to keep it
+                // -- the old tests pinned all three, which is how I found out.
+                if (shift.endedBy == 'schedule') ...[
+                  const SizedBox(width: 8),
+                  _Chip(
+                    text: UiStrings.t('time_clock.auto'),
+                    colour: scheme.onSurfaceVariant,
+                  ),
+                ],
+                // Who set the end, when it was not the person: a correction rewrote
+                // it, or somebody in HR pressed Clock out now.
+                if (shift.endedBy == 'correction' ||
+                    shift.endedBy == 'manager') ...[
+                  const SizedBox(width: 8),
+                  _Chip(
+                    text: UiStrings.t(
+                      shift.endedBy == 'correction'
+                          ? 'time_clock.edited'
+                          : 'time_clock.ended_by_hr',
+                    ),
+                    colour: StateColour.of(context).caution,
+                  ),
+                ],
+                if (shift.outsideSchedule) ...[
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: _Chip(
+                      text: UiStrings.t('time_clock.outside'),
+                      colour: StateColour.of(context).caution,
+                    ),
+                  ),
+                ],
+                if (shift.extensions > 0) ...[
+                  const SizedBox(width: 6),
+                  _Chip(
+                    text: '+${shift.extensions}',
+                    colour: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ],
             ),
-          ],
-          // Who set the end, when it was not the person: a correction rewrote
-          // it, or somebody in HR pressed Clock out now.
-          if (shift.endedBy == 'correction' || shift.endedBy == 'manager') ...[
-            const SizedBox(width: 8),
-            _Chip(
-              text: UiStrings.t(
-                shift.endedBy == 'correction'
-                    ? 'time_clock.edited'
-                    : 'time_clock.ended_by_hr',
-              ),
-              colour: StateColour.of(context).caution,
-            ),
-          ],
-          if (shift.outsideSchedule) ...[
-            const SizedBox(width: 6),
-            Flexible(
-              child: _Chip(
-                text: UiStrings.t('time_clock.outside'),
-                colour: StateColour.of(context).caution,
-              ),
-            ),
-          ],
-          if (shift.extensions > 0) ...[
-            const SizedBox(width: 6),
-            _Chip(
-              text: '+${shift.extensions}',
-              colour: scheme.onSurfaceVariant,
-            ),
-          ],
-          const Spacer(),
+          ),
           Text(
             formatWorked(shift.durationSeconds),
             style: theme.textTheme.bodySmall?.copyWith(
