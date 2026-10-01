@@ -22,6 +22,11 @@ class VersionHistory {
         'Human Resources dashboard: people brought over from A1 Tools no longer count as joining this week.',
         'AI Assistance: topics down the left, the answer in the middle, and branches found by Ask on the right as cards with Call and Map; on a phone each step is its own page.',
         'Training: Learn opens on where you left off, with Assigned to you beside it, and the library shows each guide on one card with the test that follows it.',
+        'Leads: scroll to the bottom of the list and older leads keep loading.',
+        'Onboarding: a contract term can be marked as not applying, and its clause is left out of the contract.',
+        'Inventory: Stock shows one row per item with its total, value and what is on order, with each place inside it. Four tiles filter it: all items, below reorder, out of stock, on order. Items, Orders and Locations are tables.',
+        'Inventory no longer shows a zero for something your role is not allowed to see: on-hand without the Stock tab, and orders without the Orders tab.',
+        'Work Hours: shift and day totals sit at the right edge of each row.',
       ],
     ),
     VersionRelease(
