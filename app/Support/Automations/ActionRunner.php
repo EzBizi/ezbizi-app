@@ -1448,6 +1448,12 @@ class ActionRunner
                     body: $this->interpolate((string) $action['body'], $event, $record,
                         forMarkdown: AutomationMessage::RENDERS_MARKDOWN),
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
+                    // EzBizi's band only when EzBizi composed the substance: a
+                    // trigger that declares composedFields. Never widened to
+                    // "any trigger", or a stranger's words would wear our band.
+                    kind: ($trigger = app(ModuleRegistry::class)->findTrigger($event->event_key)) !== null
+                        && $trigger->composedFields !== [] ? $trigger->label : null,
+                    automationName: $automation?->name,
                 ),
                 $to,
             );

@@ -35,6 +35,44 @@ class MarkdownEmailFieldsTest extends TestCase
         });
     }
 
+    /**
+     * EzBizi's band is claimed only by a trigger that declares composed fields.
+     * The email.received rule is the control: same step, a stranger's message,
+     * and it must keep the business's band (kind null).
+     */
+    public function test_only_a_composed_trigger_gets_ezbizis_band(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $tenant = $this->provisionTenant('Alpha');
+
+        $send = fn (string $eventKey) => $this->inTenant($tenant['org'], function () use ($tenant, $eventKey) {
+            $org = $tenant['org']->id;
+            $rule = \App\Models\Automation::create(['organization_id' => $org, 'name' => 'Morning check',
+                'trigger_key' => $eventKey, 'is_active' => true]);
+            $event = AutomationEvent::create(['organization_id' => $org, 'event_key' => $eventKey,
+                'payload' => ['summary' => '## Monday'], 'occurred_at' => now(), 'available_at' => now()]);
+
+            return app(ActionRunner::class)->run(['type' => 'email.send', 'to_field' => 'office@example.test',
+                'subject' => 'Heads up', 'body' => '{{summary}}'], $event, null, automation: $rule);
+        });
+
+        $kinds = [];
+        foreach (['scheduling.overbooking_found', 'email.received'] as $key) {
+            $result = $send($key);
+            $this->assertTrue($result['ok'], $result['detail']);
+        }
+
+        \Illuminate\Support\Facades\Mail::assertSent(AutomationMessage::class, function ($m) use (&$kinds) {
+            $read = fn (string $p) => (new \ReflectionProperty($m, $p))->getValue($m);
+            $kinds[] = [$read('kind'), $read('automationName')];
+
+            return true;
+        });
+
+        $label = app(ModuleRegistry::class)->findTrigger('scheduling.overbooking_found')->label;
+        $this->assertEqualsCanonicalizing([[$label, 'Morning check'], [null, 'Morning check']], $kinds);
+    }
+
     public function test_a_strangers_words_stay_text_and_ezbizis_own_keep_their_markdown(): void
     {
         $registry = app(ModuleRegistry::class);
