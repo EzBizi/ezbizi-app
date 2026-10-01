@@ -25,6 +25,9 @@ use Illuminate\Validation\ValidationException;
 
 final class TimeClock
 {
+    /** Out and back in in LESS than this continues the same shift. */
+    public const MERGE_MINUTES = 2;
+
     /** How early a punch may be before it is "outside schedule" (design 2026-09-08 §6). */
     private const EARLY_GRACE_MINUTES = 30;
 
@@ -144,11 +147,7 @@ final class TimeClock
                 $now = now();
                 $window = WorkSchedule::windowFor($this->scheduleFor($user), $now);
 
-                $shift = TimeClockShift::query()->create([
-                    'organization_id' => $user->organization_id,
-                    'user_id' => $user->getKey(),
-                    'clocked_in_at' => $now,
-                    'clocked_out_at' => null,
+                $fields = [
                     /*
                      * NEVER NULL (2026-09-23). It used to be null whenever the
                      * schedule gave no end ahead of now, on the reasoning that
@@ -198,7 +197,46 @@ final class TimeClock
                     // Clock In is never refused by the schedule (design §3.4).
                     'outside_schedule' => $window === null
                         || $now->lt($window['start_at']->copy()->subMinutes(self::EARLY_GRACE_MINUTES)),
-                ]);
+                ];
+
+                /*
+                 * MERGE A QUICK RE-PUNCH (Jose, 2026-10-01: "merges, for less
+                 * than 2 mins shift changes so we don't have these build ups
+                 * and unnecesary extra rows"). Out and back in within
+                 * MERGE_MINUTES continues the shift that just closed instead of
+                 * starting another: 8:00–8:39, 8:39–8:39, 8:39–8:54 is one
+                 * shift, 8:00–8:54. Not a shift HR ended or edited — reopening
+                 * it would undo their decision.
+                 */
+                $recent = TimeClockShift::query()
+                    ->where('user_id', $user->getKey())
+                    ->whereNotNull('clocked_out_at')
+                    ->whereBetween('clocked_out_at', [$now->copy()->subMinutes(self::MERGE_MINUTES)->addSecond(), $now])
+                    ->whereIn('ended_by', [
+                        TimeClockShift::ENDED_BY_PERSON,
+                        TimeClockShift::ENDED_BY_SCHEDULE,
+                        TimeClockShift::ENDED_BY_AUTOMATION,
+                    ])
+                    ->latest('clocked_out_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($recent !== null) {
+                    $recent->forceFill([
+                        'clocked_out_at' => null,
+                        'ended_by' => null,
+                        'scheduled_end_at' => $fields['scheduled_end_at'],
+                    ])->save();
+                    $shift = $recent;
+                } else {
+                    $shift = TimeClockShift::query()->create([
+                        'organization_id' => $user->organization_id,
+                        'user_id' => $user->getKey(),
+                        'clocked_in_at' => $now,
+                        'clocked_out_at' => null,
+                        ...$fields,
+                    ]);
+                }
 
                 $this->audit->log('time_clock.clocked_in', $shift);
                 $this->events->emit(
