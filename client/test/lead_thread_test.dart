@@ -583,6 +583,12 @@ void main() {
 
     final old = DateTime(2026, 9, 23, 13, 5);
     expect(messageWhen(old.toUtc().toIso8601String()), '13:05');
+
+    // In the organization's clock when there is one (UI/UX, 2026-10-01).
+    expect(
+      messageWhen(old.toUtc().toIso8601String(), clock: (h, m) => 'h$h m$m'),
+      'h13 m5',
+    );
   });
 
   test('the number shows under any name, the customer one included', () {

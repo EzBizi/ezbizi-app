@@ -46,8 +46,6 @@ class _LocationListState extends State<LocationList> {
   String? _selectedId;
   Map<String, dynamic>? _open;
 
-  /// What each place holds and is worth, for the table (UI queue 43).
-  StockJoin? _join;
 
   @override
   void initState() {
@@ -73,12 +71,6 @@ class _LocationListState extends State<LocationList> {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
-
-    if (page == 1) {
-      loadStockJoin(widget.api, withOrders: false).then((loaded) {
-        if (mounted && loaded.$1 != null) setState(() => _join = loaded.$1);
-      });
-    }
 
     setState(() {
       _loading = page == 1 && _locations.isEmpty;
@@ -247,7 +239,6 @@ class _LocationListState extends State<LocationList> {
   Widget _table(BuildContext context) {
     final theme = Theme.of(context);
     final money = widget.session.me!.can('inventory.financials');
-    final join = _join;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -263,21 +254,10 @@ class _LocationListState extends State<LocationList> {
         for (final location in _locations)
           () {
             final id = location['id'] as String?;
-            final rows = [
-              for (final row in join?.byLocation[id] ?? const [])
-                if ((join?.qty(row) ?? 0) > 0) row,
-            ];
-            var cents = 0.0;
-            var priced = false;
-            for (final row in rows) {
-              final item = join?.items
-                  .where((i) => i['id'] == inventoryMap(row['item'])?['id'])
-                  .firstOrNull;
-              final cost = item == null ? null : join?.costMinor(item);
-              if (cost == null) continue;
-              priced = true;
-              cents += cost * join!.qty(row);
-            }
+            // Both null without Stock; value_minor absent without
+            // financials and null when nothing there has a cost (8f2d23be).
+            final holds = location['holds'];
+            final value = location['value_minor'];
             final status = location['status'] as String? ?? '';
             final vehicle = inventoryMap(location['vehicle']);
 
@@ -319,11 +299,11 @@ class _LocationListState extends State<LocationList> {
                 (
                   2,
                   Text(
-                    join == null
-                        ? ''
-                        : rows.length == 1
+                    holds is! num
+                        ? '—'
+                        : holds == 1
                         ? '1 item'
-                        : '${rows.length} items',
+                        : '$holds items',
                     textAlign: TextAlign.right,
                   ),
                 ),
@@ -331,7 +311,7 @@ class _LocationListState extends State<LocationList> {
                   (
                     2,
                     Text(
-                      priced ? inventoryMoney(cents.round()) : '—',
+                      value is num ? inventoryMoney(value.toInt()) : '—',
                       textAlign: TextAlign.right,
                     ),
                   ),

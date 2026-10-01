@@ -18,6 +18,10 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Leads: every message shows the time it was sent.',
+        'Work Hours: you can ask for a correction to the start of the shift you are in.',
+        'Dashboard boxes with a chart no longer also say \'Nothing to show.\' underneath it.',
+        'Dashboard: New customers counts the day someone became a customer, so the A1 Tools import no longer reads as tens of thousands of new customers this week.',
+        'Inventory: Stock, Items and Locations read their totals from the server, so what a role may not see reads as unknown rather than zero.',
       ],
     ),
     VersionRelease(
