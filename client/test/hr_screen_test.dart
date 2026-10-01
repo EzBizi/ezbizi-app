@@ -330,6 +330,22 @@ void main() {
     expect(find.text('The current link stops working.'), findsOneWidget);
   });
 
+  // Jose, 2026-10-01: "on record i should be able to filter by role too".
+  // Asked of the server, because the list arrives a page at a time.
+  testWidgets('the records list filters by role on the server', (tester) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('role_id'), isFalse);
+
+    await _choose(tester, 'Filter by role', 'Technician');
+    expect(queries.last['role_id'], 'role-2');
+
+    await _choose(tester, 'Filter by role', 'All roles');
+    expect(queries.last.containsKey('role_id'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (
@@ -1475,6 +1491,7 @@ MockClientHandler _handler({
   String? createdState,
   List<Map<String, Object?>> invitations = _invitations,
   List<Map<String, Object?>> contracts = const [],
+  void Function(Map<String, String> query)? onPeopleQuery,
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
   int revokeStatus = 200,
@@ -1616,6 +1633,7 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/hr/people')) {
+      onPeopleQuery?.call(request.url.queryParameters);
       return _json({
         'data': _people,
         'meta': {
