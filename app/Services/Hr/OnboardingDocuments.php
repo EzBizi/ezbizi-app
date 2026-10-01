@@ -133,24 +133,36 @@ class OnboardingDocuments
      */
     public function storeDrawing(Onboarding $onboarding, User $actor, string $png): Attachment
     {
+        return $this->storeFile($onboarding, $actor, $png, 'signature.png', 'image/png', 'onboarding-signatures');
+    }
+
+    /** Bytes this server made (a drawn signature, a signed tax form), kept on the onboarding. */
+    public function storeFile(
+        Onboarding $onboarding,
+        User $actor,
+        string $bytes,
+        string $name,
+        string $mime,
+        string $folder = 'onboarding-files',
+    ): Attachment {
         $path = $this->files->putContents(
-            $png,
-            $this->files->directoryFor('onboarding-signatures', $onboarding->organization_id),
-            'png',
+            $bytes,
+            $this->files->directoryFor($folder, $onboarding->organization_id),
+            pathinfo($name, PATHINFO_EXTENSION) ?: 'bin',
         );
 
         $attachment = new Attachment([
             'attachable_type' => 'onboardings',
             'attachable_id' => $onboarding->getKey(),
-            'original_name' => 'signature.png',
-            'mime' => 'image/png',
+            'original_name' => $name,
+            'mime' => $mime,
             'uploaded_by_user_id' => $actor->getKey(),
         ]);
         $attachment->forceFill([
             'disk' => $this->files->defaultDisk(),
             'path' => $path,
-            'size_bytes' => strlen($png),
-            'checksum' => hash('sha256', $png),
+            'size_bytes' => strlen($bytes),
+            'checksum' => hash('sha256', $bytes),
         ])->save();
 
         return $attachment;
