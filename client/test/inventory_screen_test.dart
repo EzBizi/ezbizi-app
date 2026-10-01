@@ -729,6 +729,24 @@ void main() {
     expect((posted!['lines'] as List).first['sale_line_id'], 'sol-1');
   });
 
+  testWidgets('Locations without the Stock tab does not claim what a place holds', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['inventory.view', 'inventory.locations.view'],
+      stock: [_balanceOf('4.000')],
+      locations: [_shop],
+    );
+
+    // Locations is this role's only chip. The server answers `holds: null`
+    // for a role that was never shown quantities (Inventory 8f2d23be).
+    final row = find.byKey(const Key('location-row-loc-1'));
+    expect(row, findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text('—')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.textContaining('item')), findsNothing);
+  });
+
   test('a table of values reads by its thousands', () {
     expect(inventoryMoney(505700), r'$5,057.00');
     expect(inventoryMoney(100000000), r'$1,000,000.00');
@@ -1101,11 +1119,123 @@ MockClientHandler _handler({
   List<Map<String, dynamic>> sales = const [],
   http.Response? Function(http.Request request)? onRequest,
 }) {
-  return (request) async {
+  late final MockClientHandler self;
+
+  /// What /inventory/stock answers THIS test, its overrides included, so the
+  /// server's per-item figures below follow a test that changes stock.
+  Future<List<Map<String, dynamic>>> balances() async {
+    final answer = await self(
+      http.Request('GET', Uri.parse('http://localhost/api/v1/inventory/stock')),
+    );
+    if (answer.statusCode != 200) return const [];
+    return [
+      for (final row in (jsonDecode(answer.body)['data'] as List? ?? const []))
+        Map<String, dynamic>.from(row as Map),
+    ];
+  }
+
+  double qtyOf(Object? raw) => double.tryParse('$raw') ?? 0;
+  final mayStock = permissions.contains('inventory.stock.view');
+  final mayOrders = permissions.contains('inventory.orders.view');
+  final mayMoney = permissions.contains('inventory.financials');
+
+  return self = (request) async {
     final override = onRequest?.call(request);
     if (override != null) return override;
 
     final path = request.url.path;
+
+    // GET /inventory/stock/items (Inventory 51ab95c7), built the way the
+    // server builds it: one row per item, its status by the TOTAL, what is on
+    // order only for a role that may see orders.
+    if (path.endsWith('/inventory/stock/items')) {
+      // A test that fails the stock read fails this one too.
+      final answer = await self(
+        http.Request('GET', Uri.parse('http://localhost/api/v1/inventory/stock')),
+      );
+      if (answer.statusCode != 200) return answer;
+      final rows = [
+        for (final row in (jsonDecode(answer.body)['data'] as List? ?? const []))
+          Map<String, dynamic>.from(row as Map),
+      ];
+      final byItem = <String, List<Map<String, dynamic>>>{};
+      final itemOf = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final item = Map<String, dynamic>.from(row['item'] as Map);
+        byItem.putIfAbsent(item['id'] as String, () => []).add(row);
+        itemOf[item['id'] as String] = item;
+      }
+      for (final item in items) {
+        itemOf.putIfAbsent(item['id'] as String, () => item);
+      }
+
+      double ordered(String id, String status) {
+        var sum = 0.0;
+        for (final order in orders) {
+          if (order['status'] != status) continue;
+          for (final line in (order['lines'] as List? ?? const [])) {
+            if ((line as Map)['item']?['id'] != id) continue;
+            sum += qtyOf(line['qty_ordered']) - qtyOf(line['qty_received']);
+          }
+        }
+        return sum;
+      }
+
+      final grouped = [
+        for (final entry in itemOf.entries)
+          () {
+            final places = byItem[entry.key] ?? const [];
+            final total = places.fold(0.0, (t, r) => t + qtyOf(r['qty_on_hand']));
+            final at = double.tryParse('${entry.value['reorder_at']}');
+            return {
+              // The server leaves the cost out without financials.
+              'item': {
+                for (final field in entry.value.entries)
+                  if (mayMoney || field.key != 'last_cost_minor')
+                    field.key: field.value,
+              },
+              'on_hand': total.toStringAsFixed(3),
+              'status': total <= 0
+                  ? 'out_of_stock'
+                  : at != null && total <= at
+                  ? 'below_reorder'
+                  : 'in_stock',
+              'places': [
+                for (final r in places)
+                  {'location': r['location'], 'qty_on_hand': r['qty_on_hand']},
+              ],
+              'on_order': mayOrders
+                  ? ordered(entry.key, 'open').toStringAsFixed(3)
+                  : null,
+              'in_draft': mayOrders
+                  ? ordered(entry.key, 'draft').toStringAsFixed(3)
+                  : null,
+              'order_numbers': [
+                if (mayOrders)
+                  for (final order in orders)
+                    if (order['status'] == 'open' &&
+                        (order['lines'] as List? ?? const []).any(
+                          (l) => (l as Map)['item']?['id'] == entry.key,
+                        ))
+                      order['number'],
+              ],
+            };
+          }(),
+      ];
+
+      return _json({
+        'data': grouped,
+        'meta': {
+          'total': grouped.length,
+          'last_page': 1,
+          'tiles': {
+            'items': grouped.length,
+            if (mayOrders)
+              'open_orders': orders.where((o) => o['status'] == 'open').length,
+          },
+        },
+      });
+    }
 
     if (path.endsWith('/me')) {
       return _json({
@@ -1145,10 +1275,20 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/inventory/items')) {
+      final rows = mayStock ? await balances() : const <Map<String, dynamic>>[];
+      double onHand(Object? id) => rows
+          .where((r) => (r['item'] as Map)['id'] == id)
+          .fold(0.0, (t, r) => t + qtyOf(r['qty_on_hand']));
       return _json({
-        'data': items.isEmpty && stock.isNotEmpty
-            ? [stock.first['item']]
-            : items,
+        'data': [
+          for (final item in items.isEmpty && stock.isNotEmpty
+              ? [stock.first['item'] as Map<String, dynamic>]
+              : items)
+            {
+              ...item,
+              'on_hand': mayStock ? onHand(item['id']).toStringAsFixed(3) : null,
+            },
+        ],
         'meta': {'total': items.length, 'last_page': 1},
       });
     }
@@ -1164,8 +1304,26 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/inventory/locations')) {
+      final rows = mayStock ? await balances() : const <Map<String, dynamic>>[];
       return _json({
-        'data': locations.isEmpty && stock.isNotEmpty ? [_shop] : locations,
+        'data': [
+          for (final location in locations.isEmpty && stock.isNotEmpty
+              ? [_shop]
+              : locations)
+            {
+              ...location,
+              'holds': mayStock
+                  ? rows
+                        .where(
+                          (r) =>
+                              (r['location'] as Map)['id'] == location['id'] &&
+                              qtyOf(r['qty_on_hand']) > 0,
+                        )
+                        .length
+                  : null,
+              if (mayMoney) 'value_minor': null,
+            },
+        ],
         'meta': {'total': locations.length, 'last_page': 1},
       });
     }
