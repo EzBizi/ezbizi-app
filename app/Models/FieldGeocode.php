@@ -37,8 +37,9 @@ class FieldGeocode extends Model implements HoldsPersonalData
     }
 
     /** The one-line address Google is asked about, or null when there is no street to place. */
-    public static function addressOf(Customer $customer): ?string
+    public static function addressOf(Customer|Company $customer): ?string
     {
+        // A company's headquarters has the same five fields (Field map, 2026-10-01).
         if (trim((string) $customer->address_line1) === '') {
             // A city alone lands mid-town, which is a route to the wrong place.
             return null;

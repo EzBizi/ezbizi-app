@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Company;
 use App\Models\FieldAlert;
 use App\Models\FieldGeocode;
 use App\Models\FieldLocation;
@@ -390,6 +391,48 @@ class FieldController extends Controller
         if (! $user->hasPermission('jobs.view')) {
             throw new AuthorizationException(Refusal::permission('see jobs on the map')->message());
         }
+    }
+
+    /**
+     * GET /field/places — the companies in the current view that have an
+     * address, as headquarters on the map, with whether each has a logo
+     * (the client fetches it from /branding/companies/{id}). A company
+     * address is geocoded the first time it is asked for; there are few.
+     */
+    public function places(Request $request): JsonResponse
+    {
+        // Reach, narrowed to the top-bar view (the Web Management glance's
+        // pattern): companyIds() alone is empty in the organization view.
+        // Somebody placed at a franchise reaches the franchise, not its
+        // company, yet works out of that company's headquarters: so the
+        // companies of reachable franchises count too.
+        $user = $request->user();
+        $view = ViewScope::forUser($user);
+        $ids = $user->reachableCompanies()->modelKeys();
+        $ids = array_merge($ids, $user->reachableFranchises()->pluck('company_id')->filter()->all());
+        $companies = Company::query()
+            ->whereIn('id', array_unique($ids))
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (Company $c) => $view->coversCompany($c->getKey()))
+            ->values();
+
+        return response()->json(['data' => $companies
+            ->map(function (Company $c) {
+                $address = FieldGeocode::addressOf($c);
+                $point = $this->jobs->pointAt($address, ask: true);
+
+                return $point === null ? null : [
+                    'company_id' => $c->getKey(),
+                    'name' => $c->name,
+                    'address' => $address,
+                    'lat' => $point['lat'],
+                    'lng' => $point['lng'],
+                    'has_logo' => $c->logo_path !== null,
+                ];
+            })
+            ->filter()
+            ->values()]);
     }
 
     /** GET /field/map/tiles */

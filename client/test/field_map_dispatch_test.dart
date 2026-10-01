@@ -113,6 +113,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the day arrows move the whole map to another day', (
+    tester,
+  ) async {
+    final dates = <String?>[];
+    await _pump(tester, onJobs: dates.add);
+    final today = DateTime.now();
+    String ymd(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+    expect(dates.last, ymd(today));
+    expect(find.textContaining('Today · '), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Previous day'));
+    await tester.pumpAndSettle();
+    expect(dates.last, ymd(today.subtract(const Duration(days: 1))));
+    expect(find.text('Today'), findsOneWidget, reason: 'a way back to today');
+
+    await tester.tap(find.text('Today'));
+    await tester.pumpAndSettle();
+    expect(dates.last, ymd(today));
+  });
+
+  testWidgets('people can be searched by name', (tester) async {
+    await _pump(tester);
+
+    await tester.enterText(find.byType(TextField), 'zzz');
+    await tester.pumpAndSettle();
+    expect(find.text('Nobody matches.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'andre');
+    await tester.pumpAndSettle();
+    expect(find.text('Andre France'), findsWidgets);
+    expect(find.text('Nobody matches.'), findsNothing);
+  });
+
+  testWidgets('headquarters are on the map with their name', (tester) async {
+    await _pump(tester);
+
+    expect(find.byType(FieldPlacePin), findsOneWidget);
+    expect(find.text('A-1 Chimney'), findsOneWidget);
+  });
+
   testWidgets('without the Jobs grant there is no Jobs list', (tester) async {
     await _pump(tester, canSeeJobs: false);
 
@@ -134,6 +176,7 @@ Future<void> _pump(
   WidgetTester tester, {
   bool canSeeJobs = true,
   void Function(Map<String, String>)? onEta,
+  void Function(String?)? onJobs,
   Size size = const Size(1500, 1000),
 }) async {
   tester.view.physicalSize = size;
@@ -192,7 +235,25 @@ Future<void> _pump(
           ],
         });
       }
+      if (path.endsWith('/field/places')) {
+        return _json({
+          'data': [
+            {
+              'company_id': 'c-1',
+              'name': 'A-1 Chimney',
+              'address': '100 Main St, Cleveland, OH 44114',
+              'lat': 41.49,
+              'lng': -81.69,
+              'has_logo': false,
+            },
+          ],
+        });
+      }
+      if (path.startsWith('/api/v1/branding/')) {
+        return http.Response('', 404);
+      }
       if (path.endsWith('/field/jobs')) {
+        onJobs?.call(q['date']);
         return _json({
           'data': [
             _job('j-1', '1001', 'Dana Smith', 41.52, -81.58, tech: 'u-2'),
