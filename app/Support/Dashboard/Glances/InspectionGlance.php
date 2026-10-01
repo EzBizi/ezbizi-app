@@ -78,7 +78,7 @@ final class InspectionGlance extends DescribedGlance
                 ->where('submitted_at', '<=', $to)
                 ->count();
 
-            $periodWord = $period->key;
+            $periodWord = $period->phrase();
 
             return new GlancePayload(
                 key: $this->key(),
@@ -93,7 +93,7 @@ final class InspectionGlance extends DescribedGlance
                     'slices' => $this->namedSlices($runs, $liveReports),
                     'sentences' => [
                         "{$inProgress} in progress.",
-                        "{$submittedThisPeriod} submitted this {$periodWord}.",
+                        "{$submittedThisPeriod} submitted {$periodWord}.",
                         "{$archived} archived.",
                     ],
                 ],

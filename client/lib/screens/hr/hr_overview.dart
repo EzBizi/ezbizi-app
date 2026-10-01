@@ -67,6 +67,7 @@ class _HrOverviewState extends State<HrOverview> {
   int _int(Object? v) => v is num ? v.toInt() : 0;
 
   String get _periodWord => switch (widget.period) {
+    'day' => 'today',
     'week' => 'this week',
     'month' => 'this month',
     'quarter' => 'this quarter',

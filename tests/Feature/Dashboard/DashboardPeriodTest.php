@@ -73,4 +73,16 @@ class DashboardPeriodTest extends TestCase
         $period = DashboardPeriod::for($this->alpha['admin'], 'week');
         $this->assertSame('2026-08-24', $period->startsOn->toDateString()); // Monday
     }
+
+    /** Jose, 2026-10-01: "i also want the default to be Day ( as in today )". */
+    public function test_a_day_is_today_so_far_and_says_today(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-26 15:30:00', 'America/New_York'));
+        $period = DashboardPeriod::for($this->alpha['admin'], 'day');
+
+        $this->assertSame('2026-08-26T00:00:00-04:00', $period->startsOn->toIso8601String());
+        $this->assertSame('2026-08-26T15:30:00-04:00', $period->endsOn->toIso8601String());
+        $this->assertSame('today', $period->phrase());
+        $this->assertSame('this week', DashboardPeriod::for($this->alpha['admin'], 'week')->phrase());
+    }
 }

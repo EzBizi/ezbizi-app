@@ -54,7 +54,7 @@ final class CustomersGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No new customers this '.$period->key.'.',
+                        'sentence' => 'No new customers '.$period->phrase().'.',
                     ],
                 );
             }
@@ -76,7 +76,7 @@ final class CustomersGlance extends DescribedGlance
             }
 
             $added = array_sum($counts);
-            $periodWord = $period->key;
+            $periodWord = $period->phrase();
             $sentences = [
                 // "listed" names what this box did, which is the whole rule:
                 // these are the customers on this screen, counted. NOT "on the
@@ -91,7 +91,7 @@ final class CustomersGlance extends DescribedGlance
                 // numbers in one box, one scoped and one not, need telling
                 // apart in the sentence rather than by position.
                 $book === 1 ? '1 customer listed.' : "{$book} customers listed.",
-                "{$added} new this {$periodWord}.",
+                "{$added} new {$periodWord}.",
             ];
 
             $organizationTotal = Customer::query()->count();

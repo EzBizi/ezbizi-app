@@ -167,7 +167,7 @@ class DashboardController extends Controller
         $user->forceFill(['preferences' => $preferences])->save();
 
         return [
-            'period' => $preferences['dashboard.period'] ?? 'month',
+            'period' => $preferences['dashboard.period'] ?? 'day',
             'glances' => $preferences['dashboard.glances'] ?? [],
         ];
     }
@@ -318,9 +318,9 @@ class DashboardController extends Controller
     }
     private function periodFor(User $user): DashboardPeriod
     {
-        $key = $user->preferences['dashboard.period'] ?? 'month';
+        $key = $user->preferences['dashboard.period'] ?? 'day';
         if (! in_array($key, DashboardPeriod::VALUES, true)) {
-            $key = 'month';
+            $key = 'day';
         }
 
         return DashboardPeriod::for($user, $key);

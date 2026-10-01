@@ -89,8 +89,8 @@ final class WorkHoursGlance extends DescribedGlance
                 'sentences' => [
                     $in === 1 ? '1 person is clocked in right now.' : "{$in} people are clocked in right now.",
                     $hours === 1
-                        ? "1 hour clocked this {$period->key} in this view."
-                        : "{$hours} hours clocked this {$period->key} in this view.",
+                        ? "1 hour clocked {$period->phrase()} in this view."
+                        : "{$hours} hours clocked {$period->phrase()} in this view.",
                 ],
             ]);
         });

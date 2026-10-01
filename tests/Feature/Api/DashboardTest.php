@@ -602,6 +602,19 @@ class DashboardTest extends TestCase
         $this->assertSame('week', $this->preferencesOf($this->alpha['admin'])['dashboard.period']);
     }
 
+    /** Nobody chose yet: today (Jose, 2026-10-01), in every sentence too. */
+    public function test_with_no_choice_the_dashboard_is_today(): void
+    {
+        $payload = $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json();
+
+        $this->assertSame('day', $payload['period']);
+        $hr = collect($payload['glances'])->firstWhere('key', 'hr');
+        if ($hr !== null) {
+            $words = implode(' ', $hr['data']['sentences'] ?? [$hr['data']['sentence'] ?? '']);
+            $this->assertStringNotContainsString('this day', $words);
+        }
+    }
+
     public function test_the_dashboard_echoes_the_chosen_period(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [

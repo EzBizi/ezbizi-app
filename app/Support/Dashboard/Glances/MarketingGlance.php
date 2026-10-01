@@ -184,7 +184,7 @@ final class MarketingGlance extends DescribedGlance
              */
             $sentences = [
                 $failed === 0
-                    ? "Nothing in this view failed this {$period->key}."
+                    ? "Nothing in this view failed {$period->phrase()}."
                     : ($failed === 1
                         ? '1 post did not reach its account.'
                         : "{$failed} posts did not reach their accounts."),
@@ -194,8 +194,8 @@ final class MarketingGlance extends DescribedGlance
                         ? '1 post is waiting to go out.'
                         : "{$waiting} posts are waiting to go out."),
                 $inPeriod === 1
-                    ? "1 published this {$period->key}."
-                    : "{$inPeriod} published this {$period->key}.",
+                    ? "1 published {$period->phrase()}."
+                    : "{$inPeriod} published {$period->phrase()}.",
             ];
 
             $points = [];

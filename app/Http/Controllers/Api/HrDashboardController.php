@@ -113,9 +113,9 @@ class HrDashboardController extends Controller
 
     private function periodFor(User $user): DashboardPeriod
     {
-        $key = $user->preferences['dashboard.period'] ?? 'month';
+        $key = $user->preferences['dashboard.period'] ?? 'day';
         if (! in_array($key, DashboardPeriod::VALUES, true)) {
-            $key = 'month';
+            $key = 'day';
         }
 
         return DashboardPeriod::for($user, $key);

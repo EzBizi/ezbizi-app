@@ -57,7 +57,7 @@ final class A1LeadsGbpGlance extends DescribedGlance
             if ($arrived->isEmpty()) {
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => "No new Google reviews this {$period->key}.",
+                    'sentence' => "No new Google reviews {$period->phrase()}.",
                 ]);
             }
 
@@ -85,8 +85,8 @@ final class A1LeadsGbpGlance extends DescribedGlance
                 'slices' => $slices,
                 'sentences' => [
                     $total === 1
-                        ? "1 new Google review this {$period->key}."
-                        : "{$total} new Google reviews this {$period->key}.",
+                        ? "1 new Google review {$period->phrase()}."
+                        : "{$total} new Google reviews {$period->phrase()}.",
                     $low === 0
                         ? 'None of them 1 to 3 stars.'
                         : ($low === 1 ? '1 of them 1 to 3 stars.' : "{$low} of them 1 to 3 stars."),

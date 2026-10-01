@@ -36,10 +36,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _request = 0;
   bool _loaded = false;
   String? _error;
-  String _period = 'month';
+  /// Today until somebody picks (Jose, 2026-10-01: "i also want the default
+  /// to be Day ( as in today ) instead of Week").
+  String _period = 'day';
   List<Map<String, dynamic>> _glances = [];
 
   static const _periods = <(String, String)>[
+    ('day', 'Day'),
     ('week', 'Week'),
     ('month', 'Month'),
     ('quarter', 'Quarter'),
@@ -78,7 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       _loaded = true;
       _error = null;
-      _period = response.body['period'] as String? ?? 'month';
+      _period = response.body['period'] as String? ?? 'day';
       _glances = (response.body['glances'] as List<dynamic>)
           .cast<Map<String, dynamic>>();
     });
@@ -295,14 +298,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Expanded(
                 child: Wrap(
-                  spacing: 8,
+                  spacing: MediaQuery.sizeOf(context).width < 600 ? 6 : 8,
                   runSpacing: 8,
                   children: [
                     for (final (key, label) in _periods)
                       ChoiceChip(
                         // The fill says which is chosen. The tick made the
-                        // four too wide to share a phone's line with Refresh.
+                        // four too wide to share a phone's line with Refresh;
+                        // Day made five, so a phone draws them tighter.
                         showCheckmark: false,
+                        visualDensity: MediaQuery.sizeOf(context).width < 600
+                            ? VisualDensity.compact
+                            : null,
+                        labelPadding: MediaQuery.sizeOf(context).width < 600
+                            ? const EdgeInsets.symmetric(horizontal: 2)
+                            : null,
+                        padding: MediaQuery.sizeOf(context).width < 600
+                            ? const EdgeInsets.symmetric(horizontal: 6)
+                            : null,
                         label: Text(label),
                         selected: _period == key,
                         onSelected: (on) {

@@ -125,8 +125,8 @@ final class ReviewsGlance extends DescribedGlance
                     ? 'No star ratings across '.$total.'.'
                     : number_format((float) $average, 1).' stars across '.$total.'.',
                 $inPeriod === 1
-                    ? "1 arrived this {$period->key}."
-                    : "{$inPeriod} arrived this {$period->key}.",
+                    ? "1 arrived {$period->phrase()}."
+                    : "{$inPeriod} arrived {$period->phrase()}.",
             ];
 
             $points = [];

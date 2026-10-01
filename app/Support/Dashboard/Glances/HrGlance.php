@@ -99,7 +99,7 @@ final class HrGlance extends DescribedGlance
                 ['label' => 'Inactive', 'total' => $inactive],
             ];
 
-            $periodWord = $period->key;
+            $periodWord = $period->phrase();
             $joined = (int) (collect($starters['rows'] ?? [])->firstWhere('title', 'Joined')['total'] ?? 0);
             $left = (int) (collect($starters['rows'] ?? [])->firstWhere('title', 'Left')['total'] ?? 0);
 
@@ -114,11 +114,11 @@ final class HrGlance extends DescribedGlance
                     ? '1 invitation has stalled.'
                     : "{$stalledTotal} invitations have stalled.",
                 $joined === 1
-                    ? "1 person joined this {$periodWord}."
-                    : "{$joined} people joined this {$periodWord}.",
+                    ? "1 person joined {$periodWord}."
+                    : "{$joined} people joined {$periodWord}.",
                 $left === 1
-                    ? "1 person left this {$periodWord}."
-                    : "{$left} people left this {$periodWord}.",
+                    ? "1 person left {$periodWord}."
+                    : "{$left} people left {$periodWord}.",
             ];
 
             if (! empty($starters['note'])) {

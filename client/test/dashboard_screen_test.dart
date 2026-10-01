@@ -50,6 +50,29 @@ void main() {
     expect(find.byIcon(Icons.tune), findsNothing);
   });
 
+  // Jose, 2026-10-01: "i also want the default to be Day ( as in today )
+  // instead of Week". The server answers `day` when nobody has picked.
+  testWidgets('Day comes first, and is chosen when the server says today', (
+    tester,
+  ) async {
+    final inner = _handler();
+    await _pump(tester, (request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/dashboard')) {
+        return _json({
+          'period': 'day',
+          'period_starts_on': '2026-08-24T00:00:00-04:00',
+          'period_ends_on': '2026-08-24T16:00:00-04:00',
+          'glances': <Map<String, dynamic>>[],
+        });
+      }
+      return inner(request);
+    });
+
+    final first = tester.widget<ChoiceChip>(find.byType(ChoiceChip).first);
+    expect((first.label as Text).data, 'Day');
+    expect(first.selected, isTrue);
+  });
+
   // Refresh used to have a line to itself above the chips: on a phone, 60px
   // holding one icon.
   testWidgets("Refresh is on the period chips' line", (tester) async {

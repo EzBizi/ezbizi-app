@@ -145,7 +145,7 @@ final class LeadsGlance extends DescribedGlance
                 $counts[$bucket] = ($counts[$bucket] ?? 0) + 1;
             }
 
-            $periodWord = $period->key;
+            $periodWord = $period->phrase();
             $inPeriod   = array_sum($counts);
 
             /*
@@ -165,8 +165,8 @@ final class LeadsGlance extends DescribedGlance
                     ? '1 lead not yet dealt with.'
                     : "{$waiting} leads not yet dealt with.",
                 $inPeriod === 1
-                    ? "1 arrived this {$periodWord}."
-                    : "{$inPeriod} arrived this {$periodWord}.",
+                    ? "1 arrived {$periodWord}."
+                    : "{$inPeriod} arrived {$periodWord}.",
             ];
 
             $points = [];

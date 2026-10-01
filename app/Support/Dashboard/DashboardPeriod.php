@@ -13,13 +13,14 @@ use InvalidArgumentException;
 /**
  * One calendar window for the whole dashboard (spec §6).
  *
- * Week / month / quarter / year in the current view's timezone. End is always
- * now — "this month so far", not a future Sunday. Snapshots ignore the period;
+ * Day / week / month / quarter / year in the current view's timezone. End is
+ * always now — "this month so far", not a future Sunday. Day is today so far
+ * (Jose, 2026-10-01: "i also want the default to be Day ( as in today )"). Snapshots ignore the period;
  * time series ask bucket() for the axis.
  */
 final class DashboardPeriod
 {
-    public const VALUES = ['week', 'month', 'quarter', 'year'];
+    public const VALUES = ['day', 'week', 'month', 'quarter', 'year'];
 
     private function __construct(
         public readonly string $key,
@@ -33,7 +34,7 @@ final class DashboardPeriod
     {
         if (! in_array($key, self::VALUES, true)) {
             throw new InvalidArgumentException(
-                "Dashboard period must be week, month, quarter, or year — not '{$key}'."
+                "Dashboard period must be day, week, month, quarter, or year — not '{$key}'."
             );
         }
 
@@ -46,6 +47,7 @@ final class DashboardPeriod
             $now = Carbon::now($timezone);
             $weekStartsAt = self::weekStartsAtFor($user);
             $startsOn = match ($key) {
+                'day' => $now->copy()->startOfDay(),
                 'week' => $now->copy()->startOfWeek($weekStartsAt),
                 'month' => $now->copy()->startOfMonth()->startOfDay(),
                 'quarter' => $now->copy()->firstOfQuarter()->startOfDay(),
@@ -66,10 +68,18 @@ final class DashboardPeriod
         $local = $at->copy()->timezone($this->timezone);
 
         return match ($this->key) {
-            'week' => $local->toDateString(),
+            'day', 'week' => $local->toDateString(),
             'month', 'quarter' => $local->copy()->startOfWeek($this->weekStartsAt)->toDateString(),
             'year' => $local->format('Y-m'),
         };
+    }
+
+    /**
+     * The words a sentence uses for this window: "today", "this week".
+     */
+    public function phrase(): string
+    {
+        return $this->key === 'day' ? 'today' : 'this '.$this->key;
     }
 
     /**
