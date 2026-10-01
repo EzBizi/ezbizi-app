@@ -66,10 +66,45 @@ final class BodyMarkup
                 $i++;
             }
 
-            $out[] = '<p>'.self::inline(implode('<br>', $block)).'</p>';
+            $out[] = self::block($block);
         }
 
         return implode("\n", $out);
+    }
+
+    /**
+     * A paragraph, or one of the two shapes A1 Tools' agreements set apart
+     * (Jose, 2026-10-01: "look at how the pdf's were presented in a1 tools"):
+     * a numbered section heading ("1. EMPLOYMENT DETAILS", or a line in
+     * capitals), a lettered clause heading ("(e) Scheduled Pay Increases"),
+     * and lines of "Label: value", whose labels are bold.
+     *
+     * @param  list<string>  $block
+     */
+    private static function block(array $block): string
+    {
+        if (count($block) === 1) {
+            $plain = html_entity_decode($block[0], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $short = mb_strlen($plain) <= 80 && preg_match('/[.:;,]$/', $plain) === 0;
+
+            if ($short && preg_match('/\p{Lu}/u', $plain) === 1 && $plain === mb_strtoupper($plain)) {
+                return '<h2>'.self::inline($block[0]).'</h2>';
+            }
+            if ($short && preg_match('/^\([a-z]\) \S/', $plain) === 1) {
+                return '<h3>'.self::inline($block[0]).'</h3>';
+            }
+        }
+
+        // Bold labels only on a block of two or more such lines, A1's parties
+        // and employment-details blocks; a sentence that happens to start with
+        // "Note:" stays a sentence.
+        $label = '/^([A-Z][A-Za-z]*(?: [A-Za-z]+){0,3}):( .*)$/';
+        $fields = count(array_filter($block, fn (string $line) => preg_match($label, $line) === 1)) > 1;
+        if ($fields) {
+            $block = array_map(fn (string $line) => preg_replace($label, '<b>$1:</b>$2', $line), $block);
+        }
+
+        return '<p>'.self::inline(implode('<br>', $block)).'</p>';
     }
 
     private static function heading(string $line): string

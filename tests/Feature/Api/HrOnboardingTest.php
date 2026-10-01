@@ -581,6 +581,44 @@ class HrOnboardingTest extends TestCase
         $this->assertStringStartsWith('%PDF', $pdf->getContent());
     }
 
+    /**
+     * A hand-drawn signature, as A1 Tools had (Jose, 2026-10-01): kept with
+     * the signature record, drawn into the printed copy, and reusable as the
+     * signer's own saved signature.
+     */
+    public function test_a_drawn_signature_is_kept_and_a_signer_can_save_one(): void
+    {
+        // A 1x1 PNG.
+        $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+        [$alpha, $employee, $id] = $this->completeForm();
+
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
+            'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => 'not a picture',
+        ])->assertStatus(422)->assertJsonValidationErrors('drawing');
+
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
+            'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => $png,
+        ])->assertCreated();
+
+        $drawing = $this->inTenant($alpha['org'], fn () => Attachment::findOrFail(
+            ContractSignature::where('field_key', 'employer_sign')->sole()->drawing_attachment_id));
+        $this->assertSame('image/png', $drawing->mime);
+
+        // The printed copy is made with the drawing in its signature block.
+        $this->as($alpha['admin'])->get("/api/v1/hr/onboardings/{$id}/document/pdf?revision=1")->assertOk();
+
+        // A signer's own saved signature: theirs, and never in /me.
+        $this->as($alpha['admin'])->putJson('/api/v1/me/signature', ['drawing' => $png])->assertOk();
+        $this->assertSame($png, $this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
+        $this->assertNull($this->as($employee)->getJson('/api/v1/me/signature')->json('data.drawing'));
+        $this->assertStringNotContainsString('iVBORw0KGgo', $this->as($alpha['admin'])->getJson('/api/v1/me')->getContent());
+        $this->as($alpha['admin'])->deleteJson('/api/v1/me/signature')->assertOk();
+        $this->assertNull($this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

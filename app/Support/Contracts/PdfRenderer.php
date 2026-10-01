@@ -178,12 +178,13 @@ final class PdfRenderer
         string $sourceFingerprint,
         string $sourceAlgorithm,
         DateTimeInterface $sourceStoredAt,
+        array $signatures = [],
     ): string {
         $dompdf = new Dompdf($this->options());
 
         $dompdf->loadHtml(
             $this->withBanner(
-                $storedDocument,
+                $this->withSignatures($storedDocument, $signatures),
                 $organizationName,
                 $contractName,
                 $version,
@@ -228,6 +229,39 @@ final class PdfRenderer
      * What stays here is what is genuinely this class's: the paper size, which
      * is resolved from the CONTRACT setting below.
      */
+    /**
+     * The signature blocks of the copy, filled from the signature records:
+     * the drawn signature over the rule, the typed name, the date — A1
+     * Tools' block (Jose, 2026-10-01). The stored document has them empty,
+     * because it is what each signer fingerprinted before anybody signed.
+     *
+     * @param  array<string, array{name: string, date: string, png: ?string}>  $signatures
+     */
+    private function withSignatures(string $html, array $signatures): string
+    {
+        foreach ($signatures as $key => $block) {
+            $k = preg_quote(htmlspecialchars((string) $key, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), '/');
+            $esc = fn (string $v) => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            if ($block['png'] !== null) {
+                $html = preg_replace(
+                    '/<div class="sig-box" data-field="'.$k.'"><\/div>/',
+                    '<div class="sig-box" data-field="'.$k.'"><img src="data:image/png;base64,'.$block['png'].'" alt=""></div>',
+                    $html, 1,
+                ) ?? $html;
+            }
+            foreach (['name', 'date'] as $part) {
+                $html = preg_replace(
+                    '/<span class="fill" data-field="'.$k.'" data-part="'.$part.'"><\/span>/',
+                    '<span class="fill" data-field="'.$k.'" data-part="'.$part.'">'.$esc($block[$part]).'</span>',
+                    $html, 1,
+                ) ?? $html;
+            }
+        }
+
+        return $html;
+    }
+
     /**
      * The PDF of a form still being filled in: the "final result" view beside
      * the form (Jose, 2026-10-01). Same converter and paper as a signed copy,

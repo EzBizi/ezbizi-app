@@ -40,7 +40,7 @@ use Laravel\Sanctum\HasApiTokens;
     // Records may switch the lock screen off for one person (design 2026-09-08 §4).
     'lock_screen_exempt',
 ])]
-#[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
+#[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes', 'saved_signature'])]
 class User extends Authenticatable implements HoldsPersonalData
 {
     /** @use HasFactory<UserFactory> */
@@ -132,6 +132,10 @@ class User extends Authenticatable implements HoldsPersonalData
                 'The second factor, where the account has one.',
                 Erasure::erase(),
                 encrypted: true),
+            new PersonalDataEntry('saved_signature', PersonalDataEntry::IDENTITY,
+                'A signature they drew and chose to keep, so they need not draw it again on '
+                .'every contract they sign for the business.',
+                Erasure::erase()),
             new PersonalDataEntry('work_schedule', PersonalDataEntry::ACTIVITY,
                 'Which weekdays and hours they are expected to work, in the zone of the '
                 .'place that set it. Read by the shift-end reminder and the lock screen.',
@@ -201,6 +205,8 @@ class User extends Authenticatable implements HoldsPersonalData
             'preferences'         => 'array',
             // HR data, not a preference: Records sets it. Shape in WorkSchedule.
             'work_schedule'       => 'array',
+            // Their own drawn signature, saved to reuse on contracts.
+            'saved_signature'     => 'encrypted',
             'lock_screen_exempt'  => 'boolean',
         ];
     }

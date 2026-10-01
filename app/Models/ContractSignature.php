@@ -118,6 +118,7 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
         'ip_address', 'user_agent',
         'content_hash', 'hash_algorithm', 'content_length',
         'consent_statement', 'consented_at', 'intent_statement', 'affirmation',
+        'drawing_attachment_id',
         'signed_at', 'provider', 'provider_reference',
     ];
 
@@ -207,6 +208,11 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
                 .'affirmative act ESIGN requires.',
                 Erasure::keep('The affirmative act itself. Without it the record says an '
                     .'agreement was reached and cannot say that anybody did anything.')),
+            new PersonalDataEntry('drawing_attachment_id', PersonalDataEntry::IDENTITY,
+                'The signature they drew, as an image on the onboarding, for the signature '
+                .'block of the printed contract (2026-10-01).',
+                Erasure::keep('It is the signature on a signed agreement, kept for the same '
+                    .'reason the typed affirmation is: it is the act itself.')),
             new PersonalDataEntry('ip_address, user_agent', PersonalDataEntry::TECHNICAL,
                 'Where the act came from. Attribution evidence, and the part a dispute '
                 .'turns on.',
