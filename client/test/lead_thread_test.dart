@@ -537,6 +537,43 @@ void main() {
     expect(_sent, isEmpty);
   });
 
+  // Jose, 2026-10-01, a phone screenshot: seven templates in four rows took
+  // the room the thread needs. One line, scrolled sideways.
+  testWidgets('on a phone the templates are one line, not rows', (tester) async {
+    final names = [
+      'Thank you', 'Inspection prices', 'Sweep price', 'Availability',
+      'Booking details', 'Booked', 'We service your area',
+    ];
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 900),
+      templates: [
+        for (final name in names) {'name': name, 'text': 'Text for $name.'},
+      ],
+    );
+
+    final first = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Thank you')));
+    final second = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Inspection prices')));
+    expect(second.dy, first.dy);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('reply-templates'))).height,
+      lessThan(48),
+    );
+
+    // The last one is reached by scrolling, and still fills the box.
+    final last = find.byKey(const ValueKey('reply-template-We service your area'));
+    await tester.ensureVisible(last);
+    await tester.pumpAndSettle();
+    await tester.tap(last);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('reply-box'))).controller!.text,
+      'Text for We service your area.',
+    );
+  });
+
   test('the number shows under any name, the customer one included', () {
     expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
     expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);

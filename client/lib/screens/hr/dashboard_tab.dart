@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/dashboard_chart.dart';
+import 'hr_overview.dart';
 
 /// Human Resources at a glance — the same one box the main dashboard draws.
 ///
@@ -30,6 +31,10 @@ class _DashboardTabState extends State<DashboardTab> {
   int _request = 0;
   String _period = 'month';
   Map<String, dynamic>? _glance;
+
+  /// The whole dashboard (UI queue 42), from `GET /hr/dashboard/overview`.
+  /// Null until that answers, and the glance card stands in.
+  Map<String, dynamic>? _overview;
 
   static const _periods = <(String, String)>[
     ('week', 'Week'),
@@ -67,6 +72,16 @@ class _DashboardTabState extends State<DashboardTab> {
       _period = response.body['period'] as String? ?? 'month';
       final glance = response.body['glance'];
       _glance = glance is Map<String, dynamic> ? glance : null;
+    });
+
+    final overview = await widget.api.get('/hr/dashboard/overview', {
+      'period': _period,
+    });
+    if (!mounted || request != _request) return;
+    setState(() {
+      _overview = overview.ok && overview.data is Map
+          ? Map<String, dynamic>.from(overview.data as Map)
+          : null;
     });
   }
 
@@ -302,7 +317,13 @@ class _DashboardTabState extends State<DashboardTab> {
             ],
           ),
           const SizedBox(height: 16),
-          if (glance != null)
+          if (_overview case final overview?)
+            HrOverview(
+              data: overview,
+              period: _period,
+              session: widget.session,
+            )
+          else if (glance != null)
             DashboardCard(
               title: glance['label'] as String? ?? 'Human Resources',
               icon: dashboardPanelIcon(glance['key'] as String? ?? 'hr'),

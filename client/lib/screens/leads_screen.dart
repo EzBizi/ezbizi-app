@@ -94,6 +94,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
   String? _delayedSince;
 
   int _total = 0;
+
+  /// How many rows the list holds: the first 50, then ten more each time the
+  /// bottom is reached (Jose, 2026-10-01: "i should be able to load more ...
+  /// when scrolling to the bottom by itself"). The refresh asks for the same
+  /// number, so it does not fold the list back to 50 every 20 seconds.
+  static const _firstPage = 50;
+  static const _morePage = 10;
+  int _shown = _firstPage;
+  bool _loadingMore = false;
   String _status = '';
   int _request = 0;
 
@@ -321,13 +330,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     });
 
     final response = await widget.api.get('/leads', {
-      if (_status.isNotEmpty) 'status': _status,
-      if (_unreplied) 'unreplied': '1',
-      if (_unread) 'unread': '1',
-      if (_starred) 'starred': '1',
-      'source': ?_source,
-      'sources': ?_allSources,
-      if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+      ..._filters,
+      'per_page': '$_shown',
     });
 
     if (!mounted || request != _request) return;
@@ -363,6 +367,46 @@ class _LeadsScreenState extends State<LeadsScreen> {
     });
 
     if (response.ok && _toOpen != null) await _openWanted(_toOpen!);
+  }
+
+  /// What the list is narrowed to - the same for the first rows and for more.
+  Map<String, String> get _filters => {
+    if (_status.isNotEmpty) 'status': _status,
+    if (_unreplied) 'unreplied': '1',
+    if (_unread) 'unread': '1',
+    if (_starred) 'starred': '1',
+    'source': ?_source,
+    'sources': ?_allSources,
+    if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+  };
+
+  /// The next ten older leads, when the list is scrolled to its end. Pages
+  /// of ten line up with the first 50 because 50 is a whole number of them.
+  Future<void> _more() async {
+    if (_loadingMore || _shown >= _total) return;
+    final request = _request;
+    setState(() => _loadingMore = true);
+
+    final response = await widget.api.get('/leads', {
+      ..._filters,
+      'per_page': '$_morePage',
+      'page': '${_shown ~/ _morePage + 1}',
+    });
+
+    if (!mounted) return;
+    setState(() {
+      _loadingMore = false;
+      // A filter changed while this was on its way: its rows belong to a
+      // list that is no longer on screen.
+      if (!response.ok || request != _request) return;
+      final known = {for (final l in _leads) l['id']};
+      _leads = [
+        ..._leads,
+        for (final l in (response.data as List? ?? const []).cast<Map<String, dynamic>>())
+          if (!known.contains(l['id'])) l,
+      ];
+      _shown += _morePage;
+    });
   }
 
   /// Put the notification's lead on screen: fetched when it is not in the
@@ -1430,14 +1474,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required void Function(Map<String, dynamic> lead) onTap,
   }) {
     return ListView.separated(
+      key: const ValueKey('leads-list'),
       itemCount: _leads.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
+        // Near the end: fetch the next ten before the bottom is reached.
+        if (index >= _leads.length - 5 && _leads.length < _total) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _more());
+        }
+
         if (index == _leads.length) {
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              '$_total ${_total == 1 ? 'lead' : 'leads'}',
+              _loadingMore
+                  ? 'Loading more…'
+                  : '${_leads.length < _total ? '${_leads.length} of ' : ''}'
+                        '$_total ${_total == 1 ? 'lead' : 'leads'}',
+              key: const ValueKey('leads-count'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

@@ -46,8 +46,21 @@ final class MergeValue
         public readonly ?string $html = null,
     ) {}
 
+    /**
+     * An employer's "doesn't apply" on a term, A1 Tools' N/A (Jose,
+     * 2026-10-01: "some sections can be entirely voided so they don't appear
+     * in the contract"). MergeTags drops every paragraph naming the term and
+     * every section it opens.
+     */
+    public const NOT_APPLICABLE = 'N/A';
+
     public function isBlank(): bool
     {
         return $this->value === null || $this->value === '';
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->value === self::NOT_APPLICABLE;
     }
 }

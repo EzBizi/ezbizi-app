@@ -247,6 +247,7 @@ class ActionRunner
                 'booked' => 'Booked',
                 'archived' => 'Archived',
                 'not_a_lead' => 'Not a real enquiry',
+                'completed' => 'Completed',
             ],
         ],
         Vehicle::class => [

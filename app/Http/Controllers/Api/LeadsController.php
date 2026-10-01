@@ -346,7 +346,9 @@ class LeadsController extends Controller
             });
         }
 
-        $leads = $query->paginate(min((int) $request->query('per_page', 50), 200));
+        // Up to 500: the list grows ten at a time as it is scrolled, and its
+        // refresh asks for every row it holds (Jose, 2026-10-01).
+        $leads = $query->paginate(min((int) $request->query('per_page', 50), 500));
 
         // Which of these numbers already belong to a customer - one query for
         // the page (8 ms on production's 7,869 customers), so a known caller
