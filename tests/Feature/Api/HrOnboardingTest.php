@@ -625,6 +625,72 @@ class HrOnboardingTest extends TestCase
         $this->assertNull($this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
     }
 
+    /**
+     * The employer may mark one of the employee's questions as not applying,
+     * a uniform photo for a call-center hire (Jose, 2026-10-01), and take it
+     * back. The employee may not void their own.
+     */
+    public function test_the_employer_can_void_an_employee_question_and_the_employee_cannot(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'uniform_photo', 'label' => 'Photo in uniform', 'type' => 'file', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'bank_name', 'label' => 'Bank name', 'type' => 'text', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+
+        $this->assertTrue($this->fieldIn($this->form($alpha['admin'], $id), 'uniform_photo')['voidable']);
+        $this->assertFalse($this->fieldIn($this->form($employee, $id), 'uniform_photo')['voidable']);
+
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['bank_name' => 'N/A']])
+            ->assertStatus(422)->assertJsonValidationErrors('answers.bank_name');
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['uniform_photo' => 'N/A']])->assertOk();
+        $this->assertArrayNotHasKey('uniform_photo', $this->form($alpha['admin'], $id)['missing']);
+
+        // Taken back: asked again.
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['uniform_photo' => '']])->assertOk();
+        $this->assertArrayHasKey('uniform_photo', $this->form($alpha['admin'], $id)['missing']);
+
+        // Voiding is all the employer may do to the employee's answer.
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['bank_name' => 'Chase']])
+            ->assertStatus(422);
+    }
+
+    /**
+     * The W-4 is filled in and signed in the app, not uploaded (Jose,
+     * 2026-10-01: "check how a1tools did it"): the signed form becomes the
+     * tax_form answer, and only the new hire can sign it.
+     */
+    public function test_the_new_hire_fills_and_signs_the_w4_in_the_app(): void
+    {
+        $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'tax_form', 'label' => 'W-4 or W-9, signed', 'type' => 'file', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $url = "/api/v1/hr/onboardings/{$id}/tax-form";
+        $body = ['kind' => 'w4', 'values' => ['ssn' => '123-45-6789', 'filing_status' => 'single'], 'drawing' => $png];
+
+        // The employer cannot sign the new hire's tax form.
+        $this->as($alpha['admin'])->postJson($url, $body)->assertStatus(422);
+
+        // A look before signing, which stores nothing.
+        $preview = $this->as($employee)->post($url.'?preview=1', ['kind' => 'w4', 'values' => []]);
+        $preview->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertNull($this->rawAnswer($alpha, $id, 'tax_form'));
+
+        // Signing needs the drawing.
+        $this->as($employee)->postJson($url, ['kind' => 'w4', 'values' => []])
+            ->assertStatus(422)->assertJsonValidationErrors('drawing');
+
+        $this->as($employee)->postJson($url, $body)->assertOk();
+
+        $file = $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($this->rawAnswer($alpha, $id, 'tax_form')));
+        $this->assertSame('W-4.pdf', $file->original_name);
+        $this->assertSame('application/pdf', $file->mime);
+        $this->assertArrayNotHasKey('tax_form', $this->form($employee, $id)['missing']);
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

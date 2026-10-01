@@ -24,6 +24,7 @@ use App\Support\Contracts\FieldDefinition;
 use App\Support\Hr\CannotActOnInvitation;
 use App\Support\Hr\InvitationActions;
 use App\Support\Hr\OnboardingToRecord;
+use App\Support\Hr\TaxForms;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\FilledBy;
 use App\Support\Contracts\PdfRenderer;
@@ -656,6 +657,126 @@ class HrOnboardingsController extends Controller
             'X-Copy-Fingerprint'      => $copyHash,
             'X-Copy-Algorithm'        => DocumentFingerprint::ALGORITHM,
         ]);
+    }
+
+    /**
+     * POST /api/v1/hr/onboardings/{onboarding}/tax-form: the W-4 or W-9,
+     * filled in and signed in the app (Jose, 2026-10-01: "it should be signed
+     * within the app as well, check how a1tools did it").
+     *
+     * The new hire answers the form's own questions and draws their signature;
+     * their name and address come from their profile, the employer's block
+     * from the contract. The signed form is stored as the `tax_form` answer.
+     * With `preview=1` it comes back as a PDF and nothing is stored.
+     */
+    public function taxForm(Request $request, Onboarding $onboarding): JsonResponse|HttpResponse
+    {
+        $this->authorize('update', $onboarding);
+        $this->assertNotCancelled($onboarding);
+
+        $actor = $request->user();
+        $parties = $this->partiesFor($actor, $onboarding);
+        $field = collect($onboarding->fields())->firstWhere('key', 'tax_form');
+
+        abort_if($field === null, Response::HTTP_NOT_FOUND, 'This contract does not ask for a tax form.');
+        if ($onboarding->isFrozen() || ! in_array(FilledBy::EMPLOYEE, $parties, true) || $onboarding->user === null) {
+            throw ValidationException::withMessages(['tax_form' =>
+                'Only the new hire fills in and signs their own tax form, before the paperwork is signed.']);
+        }
+
+        $input = $request->validate([
+            'kind' => ['required', Rule::in(TaxForms::KINDS)],
+            'values' => ['present', 'array'],
+            'values.*' => ['nullable'],
+            'drawing' => ['nullable', 'string', 'max:600000'],
+        ]);
+        $preview = $request->boolean('preview');
+        $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
+        if (! $preview && $drawing === null) {
+            throw ValidationException::withMessages(['drawing' => 'Draw your signature to sign the form.']);
+        }
+
+        $user = $onboarding->user;
+        $answers = $onboarding->answers()->get()->keyBy('field_key');
+        $answer = fn (string $key) => trim((string) ($answers->get($key)?->value ?? ''));
+        $given = fn (string $key) => is_scalar($input['values'][$key] ?? null) ? mb_substr(trim((string) $input['values'][$key]), 0, 120) : '';
+        $parts = $user->addressParts();
+        $street = trim(implode(' ', array_filter([$parts['address_line1'], $parts['address_line2']])));
+        $cityLine = trim(implode(', ', array_filter([$parts['city'], trim(($parts['state'] ?? '').' '.($parts['postal_code'] ?? ''))])));
+        $employer = trim($onboarding->organization->name."\n".$answer('employer_address'));
+        $ssn = $given('ssn') !== '' ? $given('ssn') : $answer('ssn');
+        $zone = (string) ($this->tenantTimezone($onboarding) ?: config('app.timezone'));
+        $hired = $answer('date_of_hire');
+
+        $values = $input['kind'] === TaxForms::W4
+            ? [
+                'first_name' => trim($user->first_name.' '.mb_substr((string) $user->middle_name, 0, 1)),
+                'last_name' => (string) $user->last_name,
+                'ssn' => $ssn,
+                'address' => $street,
+                'city_state_zip' => $cityLine,
+                'filing_status' => in_array($given('filing_status'), ['single', 'married', 'head'], true) ? $given('filing_status') : '',
+                'multiple_jobs' => filter_var($input['values']['multiple_jobs'] ?? false, FILTER_VALIDATE_BOOL),
+                'children_amount' => $given('children_amount'),
+                'other_dependents_amount' => $given('other_dependents_amount'),
+                'credits_total' => $given('credits_total'),
+                'other_income' => $given('other_income'),
+                'deductions' => $given('deductions'),
+                'extra_withholding' => $given('extra_withholding'),
+                'exempt' => filter_var($input['values']['exempt'] ?? false, FILTER_VALIDATE_BOOL),
+                'employer' => $employer,
+                'first_date' => $hired === '' ? '' : \Illuminate\Support\Carbon::parse($hired)->format('m/d/Y'),
+            ]
+            : [
+                'name' => (string) $user->name,
+                'business_name' => $given('business_name'),
+                'classification' => $given('classification'),
+                'llc_code' => $given('llc_code'),
+                'other_classification' => $given('other_classification'),
+                'exempt_payee_code' => $given('exempt_payee_code'),
+                'fatca_code' => $given('fatca_code'),
+                'foreign_partners' => filter_var($input['values']['foreign_partners'] ?? false, FILTER_VALIDATE_BOOL),
+                'address' => $street,
+                'city_state_zip' => $cityLine,
+                'requester' => $employer,
+                'account_numbers' => $given('account_numbers'),
+            ] + $this->taxIdBoxes($given('ein') !== '' ? $given('ein') : $answer('ein'), $ssn);
+
+        $pdf = TaxForms::render($input['kind'], $values, $drawing, now($zone)->format('m/d/Y'));
+
+        if ($preview) {
+            return response($pdf, Response::HTTP_OK, [
+                'Content-Type' => PdfRenderer::MIME,
+                'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, 'tax-form.pdf'),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
+
+        $label = $input['kind'] === TaxForms::W4 ? 'W-4' : 'W-9';
+        DB::transaction(function () use ($onboarding, $actor, $parties, $pdf, $label, $input) {
+            $file = $this->documents->storeFile($onboarding, $actor, $pdf, "{$label}.pdf", PdfRenderer::MIME);
+            $this->form->save($onboarding, $actor, $parties, ['tax_form' => $file->getKey()]);
+            $this->audit->log('onboarding.tax_form_signed', $onboarding, metadata: ['form' => $input['kind']]);
+        });
+
+        return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
+    }
+
+    /** The W-9's number boxes: the EIN when there is one, otherwise the SSN. */
+    private function taxIdBoxes(string $ein, string $ssn): array
+    {
+        $e = preg_replace('/\D/', '', $ein) ?? '';
+        $n = preg_replace('/\D/', '', $ssn) ?? '';
+
+        return strlen($e) === 9
+            ? ['ein_1' => substr($e, 0, 2), 'ein_2' => substr($e, 2)]
+            : ['ssn_1' => substr($n, 0, 3), 'ssn_2' => substr($n, 3, 2), 'ssn_3' => substr($n, 5)];
+    }
+
+    private function tenantTimezone(Onboarding $onboarding): ?string
+    {
+        return app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $onboarding->organization);
     }
 
     /**
