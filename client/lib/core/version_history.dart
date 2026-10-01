@@ -17,17 +17,12 @@ class VersionHistory {
       version: '0.0.0342',
       date: '1 Oct 2026',
       items: [
+        'Onboarding: the home address is filled in its parts, related terms can be marked as not applying together, and the contract can be viewed as the PDF it will print as.',
         'Windows: before updating, the app closes any update installer left running from an earlier try, so one stuck update can no longer block every later one.',
         'Onboarding: contracts are laid out like the A1 Tools agreements, and both sides sign with a hand-drawn signature that appears on the PDF.',
         'Leads: bookings made through Google have their own tab and stay out of All.',
         'A website chat\'s ZIP code shows on the lead in Leads, ready for the availability check.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0341',
-      date: '1 Oct 2026',
-      items: [
-        'Onboarding: the home address is filled in its parts, related terms can be marked as not applying together, and the contract can be viewed as the PDF it will print as.',
+        'Web Management: every colour setting has a colour picker; typing a colour code still works.',
       ],
     ),
     VersionRelease(
