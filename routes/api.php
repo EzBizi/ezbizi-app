@@ -1201,6 +1201,7 @@ Route::prefix('v1')
         // Scheduling › Overbooking (Jose, 2026-09-29).
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
+            Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
 
         Route::middleware('permission:scheduling.schedule.view')->group(function () {
