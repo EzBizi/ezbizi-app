@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0344',
+      date: '1 Oct 2026',
+      items: [
+        'Uploading a file from an iPhone browser works; picking a photo did nothing before.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0343',
       date: '1 Oct 2026',
       items: [
