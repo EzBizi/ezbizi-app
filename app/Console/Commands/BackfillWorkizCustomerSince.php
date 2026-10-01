@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\DB;
  * The dashboard counts new customers by this column (b4606536), so without it
  * the ~10,500 rows the projection made read as new on the day they were made.
  *
+ * It is the earliest booking EzBizi HOLDS, a floor rather than a certainty
+ * (Customers): later than the truth for any job the mirror never got. The
+ * backfill read every branch back to 2023-01-01, before A-1's first Workiz
+ * client (June 2023), so for A-1 that is a job Workiz itself no longer has.
+ * Hence `basis: earliest_mirrored_booking` on the audit row.
+ *
  * Only rows where it is still NULL: what the A1 import wrote, or a person set,
  * is never overwritten, and a second run finds nothing. `booked_at` is
  * Workiz's CreatedDate as the account wrote it, its own wall clock, so its
@@ -57,6 +63,7 @@ class BackfillWorkizCustomerSince extends Command
             if (! $dryRun && $count > 0) {
                 $tenant->run($organization, fn () => $audit->log('customer.since_backfilled', metadata: [
                     'source' => 'workiz',
+                    'basis' => 'earliest_mirrored_booking',
                     'customers' => $count,
                 ]));
             }

@@ -83,6 +83,7 @@ class WorkizCustomerSinceTest extends TestCase
 
         $audit = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'customer.since_backfilled')->sole());
         $this->assertSame(2, $audit->metadata['customers']);
+        $this->assertSame('earliest_mirrored_booking', $audit->metadata['basis'], 'a floor, and the row says so');
 
         // Twice is once: the second run finds nothing left to fill.
         $this->artisan('ezbizi:workiz-customer-since')->assertSuccessful()->expectsOutputToContain('0 customers got');
