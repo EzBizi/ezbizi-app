@@ -324,10 +324,15 @@ class RoleSummary {
     required this.mayEdit,
     required this.mayDelete,
     this.lockedReason,
+    this.invitableRoles,
   });
 
   final String id;
   final String name;
+
+  /// The roles its holders may offer when they invite somebody, or null for
+  /// "any role reaching no further than their own" (Jose, 2026-10-01).
+  final List<String>? invitableRoles;
 
   /// How many people hold it. Deleting a role that somebody is using is the
   /// mistake worth showing a number to prevent.
@@ -362,6 +367,9 @@ class RoleSummary {
 
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
+    invitableRoles: (json['invitable_roles'] as List<dynamic>?)
+        ?.whereType<String>()
+        .toList(),
     name: json['name'] as String? ?? '',
     userCount: (json['user_count'] as num?)?.toInt() ?? 0,
     permissions: ((json['permissions'] as List<dynamic>?) ?? const [])

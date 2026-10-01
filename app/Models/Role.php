@@ -54,6 +54,9 @@ class Role extends Model
         return [
             'is_system'        => 'boolean',
             'is_administrator' => 'boolean',
+            // The roles this role's holders may offer, or null for the rule
+            // by reach (PermissionCatalogue::mayAssignRole).
+            'invitable_role_ids' => 'array',
         ];
     }
 

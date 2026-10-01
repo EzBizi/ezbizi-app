@@ -95,6 +95,10 @@ class RolesController extends Controller
                 'is_administrator' => $role->isAdministrator(),
                 'user_count'       => $role->users_count,
 
+                // Which roles its holders may offer when they invite, or null
+                // for "any role reaching no further than theirs".
+                'invitable_roles'  => $role->invitable_role_ids,
+
                 // Administrator holds everything implicitly and owns no rows, so
                 // reporting its stored (empty) set would draw an editor with
                 // nothing ticked for the role that can do the most. It reports
@@ -294,6 +298,27 @@ class RolesController extends Controller
                 }
             }
 
+            if (array_key_exists('invitable_roles', $input)) {
+                $wanted = $input['invitable_roles'] === null ? null : array_values(array_unique($input['invitable_roles']));
+
+                foreach (Role::query()->whereKey($wanted ?? [])->get() as $offered) {
+                    if (! $this->catalogue->mayListAsInvitable($actor, $offered)) {
+                        throw ValidationException::withMessages(['invitable_roles' => sprintf(
+                            'You cannot let this role offer %s, because %s reaches further than your own '
+                            .'role does.', $offered->name, $offered->name,
+                        )]);
+                    }
+                }
+
+                $before = $role->invitable_role_ids;
+                $role->forceFill(['invitable_role_ids' => $wanted])->save();
+
+                if ($before !== $wanted) {
+                    $this->audit->log('role.invitable_roles_changed', $role,
+                        changes: ['before' => $before, 'after' => $wanted]);
+                }
+            }
+
             if (array_key_exists('phone_numbers', $input)) {
                 $this->phoneNumbers->assertGrantable($actor, $input['phone_numbers']);
 
@@ -446,6 +471,12 @@ class RolesController extends Controller
             'inspections.*' => ['string', 'max:64'],
             'phone_numbers'   => ['sometimes', 'array'],
             'phone_numbers.*' => ['string', 'max:64'],
+
+            // Which roles this role's holders may offer when they invite;
+            // null puts it back on the rule by reach.
+            'invitable_roles'   => ['sometimes', 'nullable', 'array'],
+            'invitable_roles.*' => ['uuid', Rule::exists('roles', 'id')
+                ->where('organization_id', $request->user()->organization_id)],
         ]);
     }
 
@@ -459,6 +490,7 @@ class RolesController extends Controller
             'inboxes'          => $this->inboxes->heldBy($role),
             'inspections'      => $this->inspections->heldBy($role),
             'phone_numbers'    => $this->phoneNumbers->heldBy($role),
+            'invitable_roles'  => $role->invitable_role_ids,
         ];
     }
 }
