@@ -759,27 +759,54 @@ class _LeadThreadState extends State<LeadThread> {
         if (_templates.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final t in _templates)
-                  ActionChip(
-                    key: ValueKey('reply-template-${t['name']}'),
-                    avatar: const Icon(Icons.bolt_outlined, size: 16),
-                    label: Text('${t['name']}'),
-                    tooltip: '${t['text']}',
-                    onPressed: _sending
-                        ? null
-                        : () => _compose.value = TextEditingValue(
-                            text: '${t['text']}',
-                            selection: TextSelection.collapsed(
-                              offset: '${t['text']}'.length,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final chips = [
+                  for (final t in _templates)
+                    ActionChip(
+                      key: ValueKey('reply-template-${t['name']}'),
+                      avatar: const Icon(Icons.bolt_outlined, size: 16),
+                      label: Text('${t['name']}'),
+                      tooltip: '${t['text']}',
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onPressed: _sending
+                          ? null
+                          : () => _compose.value = TextEditingValue(
+                              text: '${t['text']}',
+                              selection: TextSelection.collapsed(
+                                offset: '${t['text']}'.length,
+                              ),
                             ),
-                          ),
-                  ),
-              ],
+                    ),
+                ];
+
+                // A phone keeps them to one line that scrolls sideways: as
+                // rows they took a quarter of the screen from the thread
+                // (Jose, 2026-10-01, the same complaint as the header).
+                if (box.maxWidth < 600) {
+                  return SingleChildScrollView(
+                    key: const ValueKey('reply-templates'),
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (i, chip) in chips.indexed) ...[
+                          if (i > 0) const SizedBox(width: 6),
+                          chip,
+                        ],
+                      ],
+                    ),
+                  );
+                }
+
+                return Wrap(
+                  key: const ValueKey('reply-templates'),
+                  alignment: WrapAlignment.end,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: chips,
+                );
+              },
             ),
           ),
         Row(
