@@ -578,6 +578,38 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertContains(['2026-10-06', 'area', 'Dallas', 1, 0, 1, true], $rows);
     }
 
+    /**
+     * The warning as a row in Reports' library (Jose, 2026-10-01). Rule names
+     * are Automations' data: a reader without automations.view learns only
+     * that one goes out — `sent_by` null, and no rule name anywhere in the body.
+     */
+    public function test_the_overbooking_warning_is_listed_as_a_report(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => \App\Models\Automation::create([
+            'organization_id' => $tenant['org']->id,
+            'name' => 'Morning overbooking mail',
+            'trigger_key' => 'scheduling.overbooking_found',
+            'is_active' => true,
+        ]));
+
+        $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/reports')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 'overbooking')
+            ->assertJsonPath('data.0.sent_automatically', true)
+            ->assertJsonPath('data.0.sent_by.0.name', 'Morning overbooking mail');
+
+        $reader = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view', 'scheduling.overbooking.view']);
+        $body = $this->signedInAs($reader)->getJson('/api/v1/scheduling/reports')
+            ->assertOk()
+            ->assertJsonPath('data.0.sent_automatically', true)
+            ->assertJsonPath('data.0.sent_by', null);
+        $this->assertStringNotContainsString('Morning overbooking mail', $body->getContent());
+
+        $caller = $this->userWithRole($tenant, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
+        $this->signedInAs($caller)->getJson('/api/v1/scheduling/reports')->assertForbidden();
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {

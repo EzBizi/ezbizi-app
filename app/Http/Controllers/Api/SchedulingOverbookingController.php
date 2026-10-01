@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\SchedulingWarnOverbooking;
+use App\Models\Automation;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
@@ -62,5 +64,40 @@ class SchedulingOverbookingController extends Controller
                 'fully_booked' => $check->fullyBooked($areas, $tomorrow, self::FULL_DAYS),
             ],
         ]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/reports — the Overbooking warning as a row in
+     * Reports' library (Jose, 2026-10-01: "it's not showing up on the reports
+     * tab, it should show there"). Scheduling builds the row, Reports draws it.
+     *
+     * Its senders are the rules on `scheduling.overbooking_found`, in the shape
+     * of ReportSenders' rows. Rule names are Automations' data: without
+     * automations.view `sent_by` is null and only `sent_automatically` says
+     * whether one goes out.
+     */
+    public function reports(Request $request): JsonResponse
+    {
+        $rules = Automation::query()
+            ->where('trigger_key', SchedulingWarnOverbooking::TRIGGER)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Automation $rule) => [
+                'id' => $rule->id,
+                'name' => $rule->name,
+                'schedule' => $rule->schedule,
+                'next_run_at' => $rule->next_run_at?->toIso8601String(),
+                'is_active' => (bool) $rule->is_active,
+                'disabled_at' => $rule->disabled_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['data' => [[
+            'id' => 'overbooking',
+            'name' => 'Overbooking warning',
+            'description' => 'Service areas overbooked or fully booked in the next '.self::FULL_DAYS.' days',
+            'covers' => 'Every service area',
+            'sent_automatically' => $rules->contains(fn (array $r) => $r['is_active'] && $r['disabled_at'] === null),
+            'sent_by' => $request->user()->hasPermission('automations.view') ? $rules->all() : null,
+        ]]]);
     }
 }
