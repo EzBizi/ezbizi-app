@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/inventory/stock_join.dart';
 import 'package:ezbizi_client/screens/inventory_screen.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
@@ -88,7 +89,8 @@ void main() {
 
     expect(find.text('6 mil liner'), findsOneWidget);
     expect(find.textContaining('Main shop'), findsOneWidget);
-    expect(find.text('Low'), findsWidgets);
+    // UI queue 43: judged by the item's total, in the design's words.
+    expect(find.text('Below reorder'), findsWidgets);
   });
 
   testWidgets('Receive posts and Stock qty updates', (tester) async {
@@ -725,6 +727,118 @@ void main() {
     expect(posted!['location_id'], 'loc-1');
     expect((posted!['lines'] as List).first['qty'], '2');
     expect((posted!['lines'] as List).first['sale_line_id'], 'sol-1');
+  });
+
+  test('a table of values reads by its thousands', () {
+    expect(inventoryMoney(505700), r'$5,057.00');
+    expect(inventoryMoney(100000000), r'$1,000,000.00');
+    expect(inventoryMoney(7), r'$0.07');
+    expect(inventoryMoney(-1234), r'-$12.34');
+  });
+
+  // ── UI queue 43 (Jose's 1 and 4): one row per item, places inside ──
+
+  testWidgets('Stock is one row per item, its places inside it', (tester) async {
+    await _pumpScreen(
+      tester,
+      stock: [
+        _balanceOf('4.000'),
+        {
+          ..._balanceOf('6.000'),
+          'id': 'bal-2',
+          'location': {'id': 'loc-2', 'name': 'Cage', 'kind': 'cage', 'status': 'active'},
+        },
+      ],
+    );
+
+    // The item's total across both places, once.
+    final row = find.byKey(const Key('stock-item-item-1'));
+    expect(row, findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text('10 each')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.textContaining('2 places')), findsOneWidget);
+    expect(find.byKey(const Key('stock-place-item-1-loc-2')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('stock-unfold-item-1')));
+    await tester.pumpAndSettle();
+    final cage = find.byKey(const Key('stock-place-item-1-loc-2'));
+    expect(cage, findsOneWidget);
+
+    // Transfer on a place's own line opens the docked pane, not a dialog.
+    await tester.tap(find.descendant(of: cage, matching: find.text('Transfer')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('inventory-pane')), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('the tiles filter Stock, and judge an item by its total', (tester) async {
+    await _pumpScreen(
+      tester,
+      stock: [
+        _balanceOf('4.000'),
+        {
+          ..._balanceOf('0.000'),
+          'id': 'bal-2',
+          'item': {..._item, 'id': 'item-2', 'name': 'Crown sealant', 'reorder_at': null},
+        },
+        {
+          ..._balanceOf('40.000'),
+          'id': 'bal-3',
+          'item': {..._item, 'id': 'item-3', 'name': 'Firebrick'},
+        },
+      ],
+    );
+
+    expect(find.byKey(const Key('stock-item-item-3')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('stock-tile-low')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('stock-item-item-1')), findsOneWidget);
+    expect(find.byKey(const Key('stock-item-item-2')), findsNothing);
+    expect(find.byKey(const Key('stock-item-item-3')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('stock-tile-out')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('stock-item-item-2')), findsOneWidget);
+    expect(find.byKey(const Key('stock-item-item-1')), findsNothing);
+  });
+
+  testWidgets('Items, Orders and Locations are tables with their totals', (tester) async {
+    await _pumpScreen(
+      tester,
+      stock: [_balanceOf('4.000')],
+      orders: [_openPo],
+      locations: [_shop],
+    );
+
+    await tester.tap(find.text('Items'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('item-row-item-1')),
+        matching: find.text('4 each'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('order-row-po-po-1')),
+        matching: find.text('0/10'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Locations'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('location-row-loc-1')),
+        matching: find.text('1 item'),
+      ),
+      findsOneWidget,
+    );
   });
 }
 

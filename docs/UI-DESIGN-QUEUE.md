@@ -2976,7 +2976,7 @@ schedule panel, written as HR's canonical text; `salary_period`/`raise_period` p
 column; narrower, Form | Contract take turns. Sign waits for unsaved answers ("Save your answers first."),
 "Still to answer" lists only the signer's side, and the stored bytes moved behind "Show the exact text".
 
-### 43 · Inventory · Stock, Items, Orders and Locations — **Jose: "looking good, do all ur recommendations" — 1 and 4** — building (`docs/previews/inventory-layouts.html`)
+### 43 · Inventory · Stock, Items, Orders and Locations — **Jose: "looking good, do all ur recommendations" — 1 and 4** — **BUILT** (client join of stock, items and orders; the grouped server read and History wait on Inventory) (`docs/previews/inventory-layouts.html`)
 
 Jose, 2026-10-01, with a screenshot of Stock: *"same for the whole inventory tab and sub tabs, this is pretty
 pathethic atm"*. Today Stock is one two-line card per item per place, with no totals, columns or money, and its

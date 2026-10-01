@@ -9,6 +9,7 @@ import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
 import 'add_item_pane.dart';
 import 'item_pane.dart';
+import 'stock_join.dart';
 
 /// Items chip: the catalogue for this view.
 class ItemList extends StatefulWidget {
@@ -44,6 +45,9 @@ class _ItemListState extends State<ItemList> {
   String? _selectedId;
   Map<String, dynamic>? _open;
 
+  /// On hand per item, for the table's column (UI queue 43).
+  Map<String, double> _onHand = const {};
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +72,12 @@ class _ItemListState extends State<ItemList> {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
+
+    if (page == 1) {
+      inventoryOnHand(widget.api).then((onHand) {
+        if (mounted) setState(() => _onHand = onHand);
+      });
+    }
 
     setState(() {
       _loading = page == 1 && _items.isEmpty;
@@ -204,24 +214,124 @@ class _ItemListState extends State<ItemList> {
                         : 'Nothing matches those filters.',
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: _items.length + (_page < _lastPage ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    if (i == _items.length) {
-                      return LoadMore(
-                        shown: _items.length,
-                        total: _total,
-                        busy: _fetching,
-                        error: _pageError,
-                        onMore: () => _load(page: _page + 1),
-                      );
-                    }
-                    return _row(context, _items[i]);
-                  },
+              : LayoutBuilder(
+                  builder: (context, box) => box.maxWidth >= 760 && !_hasPane
+                      ? _table(context)
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount:
+                              _items.length + (_page < _lastPage ? 1 : 0),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, i) {
+                            if (i == _items.length) return _more();
+                            return _row(context, _items[i]);
+                          },
+                        ),
                 ),
         ),
+      ],
+    );
+  }
+
+  Widget _more() => LoadMore(
+    shown: _items.length,
+    total: _total,
+    busy: _fetching,
+    error: _pageError,
+    onMore: () => _load(page: _page + 1),
+  );
+
+  /// One line per item with its columns (UI queue 43, option 1).
+  Widget _table(BuildContext context) {
+    final theme = Theme.of(context);
+    final money = widget.session.me!.can('inventory.financials');
+    Widget right(String text, {TextStyle? style}) =>
+        Text(text, textAlign: TextAlign.right, style: style);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        inventoryTableRow(context, [
+          (5, inventoryHeading(context, 'Item')),
+          (2, inventoryHeading(context, 'SKU')),
+          if (money)
+            (2, inventoryHeading(context, 'Last cost', align: TextAlign.right)),
+          (2, inventoryHeading(context, 'Reorder at', align: TextAlign.right)),
+          (2, inventoryHeading(context, 'On hand', align: TextAlign.right)),
+          (2, const SizedBox.shrink()),
+        ]),
+        for (final item in _items)
+          inventoryTableRow(
+            context,
+            key: Key('item-row-${item['id']}'),
+            selected: item['id'] == _selectedId,
+            onTap: () => setState(() {
+              _adding = false;
+              _selectedId = item['id'] as String?;
+              _open = item;
+            }),
+            [
+              (
+                5,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item['name'] as String? ?? 'Item',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    Text(
+                      [
+                        item['number'],
+                        inventoryUnitLabel(item['unit'] as String?),
+                      ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              (2, Text('${item['sku'] ?? '—'}', overflow: TextOverflow.ellipsis)),
+              if (money)
+                (
+                  2,
+                  right(
+                    item['last_cost_minor'] is num
+                        ? inventoryMoney((item['last_cost_minor'] as num).toInt())
+                        : '—',
+                  ),
+                ),
+              (
+                2,
+                right(
+                  item['reorder_at'] == null
+                      ? '—'
+                      : inventoryQty(item['reorder_at']),
+                ),
+              ),
+              (
+                2,
+                right(
+                  _onHand.containsKey(item['id'])
+                      ? '${inventoryQty(_onHand[item['id']])} '
+                            '${inventoryUnitLabel(item['unit'] as String?)}'
+                      : '0',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              (
+                2,
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: item['status'] == 'discontinued'
+                      ? const Tag('Discontinued', warn: true)
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        if (_page < _lastPage) _more(),
       ],
     );
   }
