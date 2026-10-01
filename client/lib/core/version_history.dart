@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0343',
+      date: '1 Oct 2026',
+      items: [
+        'Leads: Send now lines up with the reply box, and a new emoji button beside it opens a tray of emoji. On a phone the status buttons no longer break words in half.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0342',
       date: '1 Oct 2026',
       items: [
