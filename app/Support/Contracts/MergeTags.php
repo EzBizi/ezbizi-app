@@ -656,7 +656,7 @@ final class MergeTags
     public static function render(string $body, array $values): string
     {
         $escaped = self::e($body);
-        $cut     = self::expandSections($escaped, $values);
+        $cut     = self::dropVoided(self::expandSections($escaped, $values), $values);
         $html    = BodyMarkup::html($cut);
 
         $merged = preg_replace_callback(
@@ -794,10 +794,67 @@ final class MergeTags
     }
 
     /**
+     * Remove every paragraph (text between blank lines) that names a term
+     * marked as not applying, as A1 Tools dropped a term's line.
+     *
+     * @param  array<string, MergeValue>  $values
+     */
+    private static function dropVoided(string $body, array $values): string
+    {
+        $voided = array_keys(array_filter($values, fn (MergeValue $v) => $v->isVoided()));
+        if ($voided === []) {
+            return $body;
+        }
+
+        $names = '/\{\{[ \t]*(?:'.implode('|', array_map(fn ($k) => preg_quote($k, '/'), $voided)).')[ \t]*\}\}/';
+        $parts = preg_split('/(\R[ \t]*\R)/', $body, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            throw self::pcreFailed('cleared of terms that do not apply');
+        }
+
+        $paragraphs = [];
+        for ($i = 0; $i < count($parts); $i += 2) {
+            $paragraphs[] = $parts[$i];
+        }
+        $dropped = array_map(fn (string $p) => preg_match($names, $p) === 1, $paragraphs);
+
+        // A heading whose whole clause went goes with it: "(e) Scheduled Pay
+        // Increases" on its own line above the one paragraph naming the raise.
+        // A heading is one short line with no tag that does not end a sentence.
+        $isHeading = fn (string $p) => ! str_contains($p, '{{') && preg_match('/\R/', trim($p)) === 0
+            && mb_strlen(trim($p)) <= 80 && preg_match('/[.:;,]$/', trim($p)) === 0;
+        foreach ($paragraphs as $i => $p) {
+            if ($dropped[$i] || ! $isHeading($p)) {
+                continue;
+            }
+            $under = 0;
+            $all = true;
+            for ($j = $i + 1; $j < count($paragraphs) && ! $isHeading($paragraphs[$j]); $j++) {
+                $under++;
+                $all = $all && $dropped[$j];
+            }
+            $dropped[$i] = $under > 0 && $all;
+        }
+
+        $kept = [];
+        foreach ($paragraphs as $i => $p) {
+            if (! $dropped[$i]) {
+                $kept[] = $p;
+            }
+        }
+
+        return implode("\n\n", $kept);
+    }
+
+    /**
      * @param  array<string, MergeValue>  $values
      */
     private static function sectionKeeps(string $key, array $values): bool
     {
+        if (isset($values[$key]) && $values[$key]->isVoided()) {
+            return false;
+        }
+
         if (isset($values[$key]) && ! $values[$key]->isBlank()) {
             return true;
         }
