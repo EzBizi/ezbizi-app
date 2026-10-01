@@ -132,7 +132,7 @@
             "label": "Leads",
             "parent": null,
             "tabs": [
-                "LS Call and LS Text",
+                "LS Call, LS Text and LS Booking",
                 "Thumbtack",
                 "Chat",
                 "Forms",
