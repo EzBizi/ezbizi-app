@@ -433,10 +433,6 @@ class LeadsController extends Controller
             'google_status' => $lead->source_status === null ? null : ucfirst(strtolower(str_replace('_', ' ', $lead->source_status))),
         ];
 
-        // The ZIP the enquirer typed into a website chat, when no message
-        // named one: the words they wrote still win (Leads, 2026-10-01).
-        $data['details']['zip'] ??= $lead->postal_code;
-
         // The address as Google knows it, with its ZIP - Rodrigo's USPS
         // check, done with Google (AddressCheck). Null when unknown.
         $checked = $data['details']['address'] !== null
