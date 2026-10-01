@@ -59,15 +59,40 @@ final class CustomersGlance extends DescribedGlance
                 );
             }
 
-            $mine = Customer::query()
+            /*
+             * "New" means when somebody BECAME a customer, which is
+             * `customer_since` where an import knew it and `created_at` only
+             * where it did not. Counting created_at alone read the A1 Tools
+             * import as 36,067 new customers in one week -- every row made the
+             * day it was imported, whatever year the client actually started.
+             * The same defect HR's Joined had, fixed the same way (c2e55267).
+             *
+             * Two reads, because the two dates are different kinds of thing:
+             * customer_since is a calendar day with no clock, compared as a
+             * day in the view's own zone; created_at is a UTC instant, compared
+             * against the UTC bounds above. Neither can be expressed as the
+             * other without inventing an hour.
+             */
+            $since = Customer::query()
                 ->whereIn('owning_franchise_id', $reachable)
+                ->whereNotNull('customer_since')
+                ->whereBetween('customer_since', [
+                    $period->startsOn->toDateString(),
+                    $period->endsOn->toDateString(),
+                ])
+                ->pluck('customer_since')
+                // A day has no hour; it lands at the start of that day.
+                ->map(fn ($day) => Carbon::parse($day->toDateString(), $period->timezone)->startOfDay());
+
+            $made = Customer::query()
+                ->whereIn('owning_franchise_id', $reachable)
+                ->whereNull('customer_since')
                 ->where('created_at', '>=', $from)
                 ->where('created_at', '<=', $to)
-                ->get(['id', 'created_at']);
+                ->pluck('created_at');
 
             $counts = $this->emptyBuckets($period);
-            foreach ($mine as $customer) {
-                $at = $customer->created_at;
+            foreach ($since->concat($made) as $at) {
                 if (! $at instanceof Carbon) {
                     continue;
                 }

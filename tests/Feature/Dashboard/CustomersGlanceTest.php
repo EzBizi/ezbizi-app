@@ -208,6 +208,44 @@ class CustomersGlanceTest extends TestCase
         $this->assertSame(1, $sum);
     }
 
+    public function test_an_imported_customer_counts_on_the_day_they_became_one(): void
+    {
+        // The import wrote this row today, but the client started in 2019.
+        // "New this week" has to say 0 for them -- the dashboard read 36,067
+        // new customers in one week before this, all of them the A1 import.
+        //
+        // TWO of them, deliberately. With one, the old created_at-only count
+        // and the right count both came to 2 -- it trades the imported row in
+        // for the started-this-week one -- and this test passed against the
+        // very bug it names. Measured: it did, before the second was added.
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        foreach (['Imported', 'Imported too'] as $name) {
+            $imported = $this->customer($this->alpha['franchise'], $name);
+            $this->inTenant(fn () => Customer::query()->whereKey($imported->id)
+                ->update(['customer_since' => '2019-05-02']));
+        }
+
+        // And the reverse, so a fix that simply ignored created_at cannot pass:
+        // made today with no customer_since is genuinely new this week.
+        $this->customer($this->alpha['franchise'], 'Typed today');
+
+        // And one that BECAME a customer this week but was imported earlier.
+        Carbon::setTestNow(Carbon::parse('2026-06-01 12:00:00', 'America/New_York'));
+        $recent = $this->customer($this->alpha['franchise'], 'Started this week');
+        $this->inTenant(fn () => Customer::query()->whereKey($recent->id)
+            ->update(['customer_since' => '2026-08-24']));
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('week_starts_on', $this->alpha['org'], 'sunday'));
+
+        $payload = app(CustomersGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
+        )->toArray();
+
+        $this->assertContains('2 new this week.', $payload['data']['sentences']);
+    }
+
     public function test_changing_period_changes_the_series(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
