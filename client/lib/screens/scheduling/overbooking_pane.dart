@@ -10,10 +10,19 @@ import '../../widgets/async_body.dart';
 /// next seven days. The rules are the server's (App\Support\Scheduling\
 /// Overbooking); the same list is what the morning warning email reports.
 class OverbookingPane extends StatefulWidget {
-  const OverbookingPane({super.key, required this.api, required this.visible});
+  const OverbookingPane({
+    super.key,
+    required this.api,
+    required this.visible,
+    this.embedded = false,
+  });
 
   final ApiClient api;
   final bool visible;
+
+  /// Drawn inside another panel (Reports' Overbooking warning): the morning
+  /// email's seven days only, with no heading, spans or scroll of its own.
+  final bool embedded;
 
   @override
   State<OverbookingPane> createState() => _OverbookingPaneState();
@@ -40,6 +49,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
   @override
   void initState() {
     super.initState();
+    if (widget.embedded) _days = 7;
     _load();
   }
 
@@ -109,159 +119,162 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       (byDate[r['date'] as String] ??= []).add(r);
     }
 
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.embedded) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text('Overbooking', style: theme.textTheme.titleMedium),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(Icons.refresh),
+                onPressed: _load,
+              ),
+            ],
+          ),
+          Text(
+            'Days booked past what an area or a franchise takes, and '
+            'areas with no spot left in the next 7 days. A warning '
+            'email goes out each morning when there are any.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 14),
+        ],
+        // Two tiles, one size (Jose: "you always make that mistake").
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _stat(
+                  theme,
+                  key: 'overbooked',
+                  count: over.length,
+                  label: over.length == 1
+                      ? 'overbooked day'
+                      : 'overbooked days',
+                  tone: over.isEmpty ? Tone.ok : Tone.bad,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _stat(
+                  theme,
+                  key: 'full',
+                  count: full.length,
+                  label: full.length == 1
+                      ? 'area fully booked (7 days)'
+                      : 'areas fully booked (7 days)',
+                  tone: full.isEmpty ? Tone.ok : Tone.caution,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!widget.embedded) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Overbooked in the next',
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+              for (final n in _spans)
+                ChoiceChip(
+                  label: Text('$n days'),
+                  selected: _date == null && _days == n,
+                  onSelected: (_) {
+                    setState(() {
+                      _days = n;
+                      _date = null;
+                    });
+                    _load();
+                  },
+                ),
+              _date == null
+                  ? ActionChip(
+                      key: const Key('overbooking-pick-date'),
+                      avatar: const Icon(Icons.event, size: 18),
+                      label: const Text('Pick a date'),
+                      onPressed: _pickDate,
+                    )
+                  : InputChip(
+                      key: const Key('overbooking-pick-date'),
+                      avatar: const Icon(Icons.event, size: 18),
+                      label: Text(_day(_date!)),
+                      selected: true,
+                      onPressed: _pickDate,
+                      deleteButtonTooltipMessage: 'Clear the date',
+                      onDeleted: () {
+                        setState(() => _date = null);
+                        _load();
+                      },
+                    ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 10),
+        if (over.isEmpty)
+          _allClear(
+            theme,
+            _date != null
+                ? 'Nothing is overbooked on ${_day(_date!)}.'
+                : 'No overbooked days from today through the next '
+                      '$_days days.',
+          )
+        else
+          for (final e in byDate.entries) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Text(
+                _day(e.key).toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: muted,
+                ),
+              ),
+            ),
+            for (final r in e.value) _overRow(theme, r),
+          ],
+        const SizedBox(height: 24),
+        Text(
+          'Fully booked in the next 7 days',
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 6),
+        if (full.isEmpty)
+          _allClear(
+            theme,
+            'Every area that works in the next 7 days still has a '
+            'spot.',
+          )
+        else
+          for (final r in full) _fullRow(theme, r),
+      ],
+    );
+
     return AsyncBody(
       loading: _loading,
       error: _error,
       onRetry: _load,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Overbooking',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Refresh',
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _load,
-                      ),
-                    ],
+      child: widget.embedded
+          ? body
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: body,
                   ),
-                  Text(
-                    'Days booked past what an area or a franchise takes, and '
-                    'areas with no spot left in the next 7 days. A warning '
-                    'email goes out each morning when there are any.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                  ),
-                  const SizedBox(height: 14),
-                  // Two tiles, one size (Jose: "you always make that mistake").
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _stat(
-                            theme,
-                            key: 'overbooked',
-                            count: over.length,
-                            label: over.length == 1
-                                ? 'overbooked day'
-                                : 'overbooked days',
-                            tone: over.isEmpty ? Tone.ok : Tone.bad,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _stat(
-                            theme,
-                            key: 'full',
-                            count: full.length,
-                            label: full.length == 1
-                                ? 'area fully booked (7 days)'
-                                : 'areas fully booked (7 days)',
-                            tone: full.isEmpty ? Tone.ok : Tone.caution,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Overbooked in the next',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: muted,
-                        ),
-                      ),
-                      for (final n in _spans)
-                        ChoiceChip(
-                          label: Text('$n days'),
-                          selected: _date == null && _days == n,
-                          onSelected: (_) {
-                            setState(() {
-                              _days = n;
-                              _date = null;
-                            });
-                            _load();
-                          },
-                        ),
-                      _date == null
-                          ? ActionChip(
-                              key: const Key('overbooking-pick-date'),
-                              avatar: const Icon(Icons.event, size: 18),
-                              label: const Text('Pick a date'),
-                              onPressed: _pickDate,
-                            )
-                          : InputChip(
-                              key: const Key('overbooking-pick-date'),
-                              avatar: const Icon(Icons.event, size: 18),
-                              label: Text(_day(_date!)),
-                              selected: true,
-                              onPressed: _pickDate,
-                              deleteButtonTooltipMessage: 'Clear the date',
-                              onDeleted: () {
-                                setState(() => _date = null);
-                                _load();
-                              },
-                            ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (over.isEmpty)
-                    _allClear(
-                      theme,
-                      _date != null
-                          ? 'Nothing is overbooked on ${_day(_date!)}.'
-                          : 'No overbooked days from today through the next '
-                                '$_days days.',
-                    )
-                  else
-                    for (final e in byDate.entries) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10, bottom: 4),
-                        child: Text(
-                          _day(e.key).toUpperCase(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            letterSpacing: 0.8,
-                            color: muted,
-                          ),
-                        ),
-                      ),
-                      for (final r in e.value) _overRow(theme, r),
-                    ],
-                  const SizedBox(height: 24),
-                  Text(
-                    'Fully booked in the next 7 days',
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  if (full.isEmpty)
-                    _allClear(
-                      theme,
-                      'Every area that works in the next 7 days still has a '
-                      'spot.',
-                    )
-                  else
-                    for (final r in full) _fullRow(theme, r),
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 

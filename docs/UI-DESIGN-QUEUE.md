@@ -3201,6 +3201,14 @@ editor shared as `editWorkHoursReport` and the covers line as `workHoursReportCo
 and the step's covers line in `automation_builder.dart`. Reports' `root_label` (`3af98941`) names what a
 Builder report counts. The schedule in words is `core/schedule_words.dart`.
 
+**A third kind, 2026-10-01** (Jose: the daily "Overbooking warning" belongs in Reports). Asked by Reports
+whether it opens Scheduling › Overbooking or a panel: a panel, because option 1 is Jose's pick over option
+2's link to the module's tab. `screens/reports/overbooking_report_panel.dart` docks like the Work Hours one
+(covers, Sent by, the next 7 days) and draws `OverbookingPane(embedded: true)`: the same endpoint and rules
+the morning email uses (`SchedulingWarnOverbooking::DAYS`), so the panel and the tab cannot disagree. The
+section and Sent-by blocks are shared as `reportPanelSection` / `reportSenders`. Reports owns the row, the
+chip and the dock branch; Scheduling serves `GET /scheduling/reports`.
+
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
 From the Jobs session, 2026-09-29: Jose approved estimates as EzBizi records in Jobs (child module
