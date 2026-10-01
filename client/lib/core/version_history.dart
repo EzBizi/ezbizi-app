@@ -20,8 +20,8 @@ class VersionHistory {
         'Website live chat: visitors see who is answering (name and photo), each reply\'s sender, and \'is typing…\'; they can send a photo; the chat opens at one size; the greeting arrives in seconds. In Leads, a live chat shows when the visitor is typing.',
         'Leads: mark a conversation Completed when the customer needs nothing more; the red warning clears, and it reopens if they write again.',
         'Human Resources dashboard: people brought over from A1 Tools no longer count as joining this week.',
-        'AI Assistance: topics on the left, the answer in the middle with where it came from, and nearby branches on the right with Call, Map and Copy. On a phone each is its own page.',
-        'Training, Learn: Continue where you left off comes first, what is assigned to you sits beside it with due dates, and the library pairs each guide with its test.',
+        'AI Assistance: topics down the left, the answer in the middle, and branches found by Ask on the right as cards with Call and Map; on a phone each step is its own page.',
+        'Training: Learn opens on where you left off, with Assigned to you beside it, and the library shows each guide on one card with the test that follows it.',
       ],
     ),
     VersionRelease(
