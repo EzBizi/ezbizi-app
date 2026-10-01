@@ -19,6 +19,10 @@ class VersionHistory {
       items: [
         'Scheduling › Availability: a zip search with a typo (too few or too many digits) now says it isn\'t a zip code, instead of searching the wrong zip or saying no area covers it. Zip+4 works.',
         'Roles & Permissions: each role can be given the roles its holders may invite.',
+        'Human Resources, Records: the people list can be filtered by company or franchise.',
+        'Scheduling: a Locations tab lists every branch, finds the closest ones to an address (the branch that serves the ZIP first, with miles), and shows who to call.',
+        'Scheduling, Settings, Locations: without permission to edit scheduling, a location\'s notes can be read but not changed.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0346, which reached the web first.',
       ],
     ),
     VersionRelease(
