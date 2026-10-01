@@ -1156,6 +1156,18 @@ class SettingRegistry
                 allowedScopes: $orgOnly,
                 help: 'How much each Extend adds to the scheduled end. There is no limit on how many times.',
             ),
+            // Work Hours › Dashboard (Jose, 2026-10-01): how late a first
+            // clock-in may be and still count as on time, and how early a
+            // clock-out may be and not count as leaving early.
+            new SettingDefinition(
+                key: 'time_clock.grace_minutes',
+                label: 'Grace period, minutes',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 5,
+                options: [0, 1, 2, 3, 5, 10, 15],
+                allowedScopes: $orgOnly,
+                help: 'On the Dashboard, a clock-in this many minutes after the start still counts as on time, and a clock-out this many minutes before the end is not leaving early.',
+            ),
             /*
              * The backstop, and it exists because the schedule was not one.
              *

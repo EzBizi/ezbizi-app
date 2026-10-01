@@ -6,6 +6,7 @@ use App\Models\TimeClockDay;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\TimeClock\TimeClock;
+use App\Support\TimeClock\TimeClockStats;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -85,6 +86,28 @@ class TimeClockController extends Controller
         }
 
         return response()->json(['data' => $week]);
+    }
+
+    /**
+     * Work Hours › Dashboard: on time, late, missed and averages per person
+     * over `from`..`to` (org days, inclusive; default this week).
+     */
+    public function stats(Request $request, TimeClockStats $stats): JsonResponse
+    {
+        $this->authorize('viewAny', TimeClockShift::class);
+
+        if (! $this->timeClock->organizationEnabled($request->user()->organization)) {
+            abort(409, 'Clock in is switched off for this organization.');
+        }
+
+        $from = $request->query('from');
+        $to = $request->query('to');
+
+        return response()->json(['data' => $stats->for(
+            $request->user(),
+            is_string($from) ? $from : null,
+            is_string($to) ? $to : null,
+        )]);
     }
 
     public function clockIn(Request $request): JsonResponse

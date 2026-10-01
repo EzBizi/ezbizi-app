@@ -1469,6 +1469,11 @@ Route::prefix('v1')
          * These two are the pane that shows everybody's week.
          */
         Route::middleware('permission:work_hours.general.view')->group(function () {
+            // Work Hours › Dashboard's numbers (2026-10-01). Under General
+            // until the Dashboard tab's screen is built; it then moves to
+            // `work_hours.dashboard.view`.
+            Route::get('hr/time-clock/stats', [TimeClockController::class, 'stats']);
+
             // Clock in–out chip on Human Resources. `?on=` is a calendar date in
             // the current view timezone (design §9).
             Route::get('hr/time-clock', [TimeClockController::class, 'index']);
