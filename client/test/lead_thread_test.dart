@@ -194,6 +194,39 @@ void main() {
     expect(_typingPosts, isEmpty);
   });
 
+  /// Toula, 2026-10-01: "images should open in it not out of the page".
+  testWidgets('a photo opens in the thread, and the browser is only offered', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      conversations: [
+        {
+          'id': 'c-photo',
+          'channel': 'LIVECHAT',
+          'from': 'CONSUMER',
+          'occurred_at': '2026-10-01T10:00:00Z',
+          'duration_ms': null,
+          'text': 'Here is the crack',
+          'attachments': <String>['https://app.ezbizi.com/api/v1/web/form/files/a.jpg'],
+          'has_recording': false,
+        },
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('attachment-outside-1')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('attachment-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attachment-outside-1')), findsOneWidget,
+        reason: 'opened in place, with the browser as an option');
+
+    await tester.tap(find.byKey(const ValueKey('attachment-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attachment-outside-1')), findsNothing);
+  });
+
   testWidgets('a message copies in one press', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {

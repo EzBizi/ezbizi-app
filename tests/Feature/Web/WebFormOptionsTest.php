@@ -102,6 +102,18 @@ class WebFormOptionsTest extends TestCase
         $this->assertSame('Angi | https://angi.com/x | https://x.test/a.png', $p['social_links']['default']['custom']);
     }
 
+    /** Toula, 2026-10-01: each chat widget's own Send, Start and focus colours. */
+    public function test_a_chat_keeps_its_own_button_and_focus_colours(): void
+    {
+        $chat = WidgetDefaults::resolve(['chat' => [
+            'send_bg' => '#123456', 'start_bg' => '#ABCDEF', 'focus_color' => 'red; }',
+        ]])['chat'];
+
+        $this->assertSame('#123456', $chat['send_bg']);
+        $this->assertSame('#abcdef', strtolower($chat['start_bg']));
+        $this->assertSame('', $chat['focus_color'], 'not a colour, so the accent');
+    }
+
     /** @return array{0: WebSite, 1: array} */
     private function siteWithForm(array $form = []): array
     {

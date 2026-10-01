@@ -1078,7 +1078,7 @@ $toula['widgets']['chat'] += [
     'online_text' => 'Here now', 'bubble_icon' => 'phone', 'bubble_size' => 60, 'offset_x' => 30,
     'offset_y' => 40, 'animation' => 'fade', 'delay' => 5, 'devices' => 'mobile', 'hide_on' => "/careers
 /jobs/*",
-    'bubble_bg' => '#ff0000', 'header_bg' => '#00ff00', 'shadow' => false, 'analytics' => true,
+    'bubble_bg' => '#ff0000', 'header_bg' => '#00ff00', 'send_bg' => '#111222', 'start_bg' => '#333444', 'focus_color' => '#555666', 'shadow' => false, 'analytics' => true,
 ];
 $GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($toula)];
 ezbizi_fetch();
@@ -1090,6 +1090,9 @@ check('and an online dot', str_contains($c, 'Here now'), true);
 check('where it was put', str_contains($c, 'right:30px;bottom:40px'), true);
 check('hidden until the delay', str_contains($c, 'display:none') && str_contains($c, 'delay=5'), true);
 check('the bubble colour', str_contains($c, 'background:#ff0000'), true);
+check('its own Send button colour', str_contains($c, 'background:#111222;color:'), true);
+check('its own Start button colour', str_contains($c, 'margin:0;background:#333444;'), true);
+check('its own focus border', str_contains($c, 'outline:2px solid #555666;'), true);
 check('and size', str_contains($c, 'height:60px'), true);
 check('no shadow when asked', str_contains($c, 'box-shadow:0 10px 28px'), false);
 check('phones only', str_contains($c, '@media (min-width:768px)'), true);

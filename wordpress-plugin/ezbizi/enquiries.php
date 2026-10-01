@@ -836,6 +836,10 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
     $head_color = $hex('header_color', $on_accent);
     $you_bg = $hex('visitor_bg', $accent);
     $them_bg = $hex('business_bg', '#ffffff');
+    // Toula, 2026-10-01: this widget's own Send, Start and focus colours.
+    $send_bg = $hex('send_bg', $accent);
+    $start_bg = $hex('start_bg', $accent);
+    $focus = $hex('focus_color', $accent);
     $shadow = (! isset($config['shadow']) || ! empty($config['shadow']));
     $size = max(44, min(96, (int) ezbizi_widget_text($config, 'bubble_size', '56')));
     $devices = ezbizi_widget_text($config, 'devices', 'all');
@@ -917,8 +921,8 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
         . $s . ' .ezbizi-chat-pre .ezbizi-consent label{font-weight:400;display:flex;gap:8px;align-items:flex-start}'
         . $s . ' .ezbizi-chat-pre .ezbizi-consent-box{display:inline;width:auto;margin:2px 0 0;padding:0;flex:0 0 auto}'
         . $s . ' .ezbizi-chat-pre input:focus,' . $s . ' .ezbizi-chat-pre textarea:focus,'
-        . $s . ' .ezbizi-chat-text:focus{outline:2px solid ' . $accent . ';outline-offset:0;border-color:' . $accent . '}'
-        . $s . ' .ezbizi-chat-start{display:block;width:100%;margin:0;background:' . $accent . ';'
+        . $s . ' .ezbizi-chat-text:focus{outline:2px solid ' . $focus . ';outline-offset:0;border-color:' . $focus . '}'
+        . $s . ' .ezbizi-chat-start{display:block;width:100%;margin:0;background:' . $start_bg . ';'
         . 'color:' . $on_accent . ';border:0;border-radius:10px;padding:12px 14px;'
         . 'font:inherit;font-weight:800;line-height:1.2;cursor:pointer;text-transform:none;min-height:0}'
         . $s . ' .ezbizi-chat-error{margin:10px 0 0;font-size:13px;color:#b3261e}'
@@ -945,7 +949,7 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
         . $s . ' .ezbizi-chat-text{border-radius:999px;margin:0;padding:10px 14px}'
         . $s . ' .ezbizi-chat-attach{flex:0 0 auto;display:inline-flex;color:#7d756c;cursor:pointer;margin:0;padding:4px}'
         . $s . ' .ezbizi-chat-send{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;'
-        . 'background:' . $accent . ';color:' . $on_accent . ';border:0;border-radius:50%;padding:0;margin:0;cursor:pointer;min-height:0;box-shadow:none}'
+        . 'background:' . $send_bg . ';color:' . $on_accent . ';border:0;border-radius:50%;padding:0;margin:0;cursor:pointer;min-height:0;box-shadow:none}'
         . $s . ' .ezbizi-chat-powered{flex:0 0 auto;display:block;text-align:center;font-size:11px;color:#9a9187;background:#fff;'
         . 'padding:0 0 8px;text-decoration:none;letter-spacing:.01em}'
         . $s . ' .ezbizi-chat-powered b{color:#5f5850;font-weight:800}'

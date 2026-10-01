@@ -866,6 +866,13 @@ class _WidgetEditorState extends State<_WidgetEditor> {
               (v) => _set('chat', 'visitor_bg', v)),
           _colourBox('Business message colour', chat['business_bg'],
               (v) => _set('chat', 'business_bg', v)),
+          // Toula, 2026-10-01: each widget's own buttons and focus border.
+          _colourBox('Send button colour', chat['send_bg'],
+              (v) => _set('chat', 'send_bg', v), hint: 'empty uses the accent'),
+          _colourBox('Start chat button colour', chat['start_bg'],
+              (v) => _set('chat', 'start_bg', v), hint: 'empty uses the accent'),
+          _colourBox('Border of the box being typed in', chat['focus_color'],
+              (v) => _set('chat', 'focus_color', v), hint: 'empty uses the accent'),
           _flag(theme, 'Shadow', chat['shadow'] != false,
               (on) => _set('chat', 'shadow', on)),
           _flag(theme, 'Report opens and starts to analytics',
@@ -1439,7 +1446,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                             width: double.infinity,
                             child: _mockButton(
                               _line(chat['start']),
-                              accent,
+                              _colour(chat['start_bg']) ?? accent,
                               onAccent,
                               radius,
                             ),

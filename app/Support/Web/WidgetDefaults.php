@@ -144,6 +144,11 @@ final class WidgetDefaults
             'header_color' => '',
             'visitor_bg' => '',
             'business_bg' => '',
+            // Toula, 2026-10-01: the Send and Start buttons and the border of
+            // the box being typed in, each this widget's own; empty is the accent.
+            'send_bg' => '',
+            'start_bg' => '',
+            'focus_color' => '',
             'shadow' => true,
             'analytics' => false,
             /*
@@ -384,6 +389,9 @@ final class WidgetDefaults
                 'header_color' => self::colour($chat['header_color'] ?? '', ''),
                 'visitor_bg' => self::colour($chat['visitor_bg'] ?? '', ''),
                 'business_bg' => self::colour($chat['business_bg'] ?? '', ''),
+                'send_bg' => self::colour($chat['send_bg'] ?? '', ''),
+                'start_bg' => self::colour($chat['start_bg'] ?? '', ''),
+                'focus_color' => self::colour($chat['focus_color'] ?? '', ''),
                 'shadow' => self::flag($chat['shadow'] ?? true, true),
                 'analytics' => self::flag($chat['analytics'] ?? false, false),
                 'start' => self::text($chat['start'] ?? '', 40),

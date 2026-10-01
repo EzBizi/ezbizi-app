@@ -1779,26 +1779,72 @@ class _LeadThreadState extends State<LeadThread> {
   /// A photo the enquirer sent. Google hosts it; a thumbnail when it loads
   /// and a plain link when it does not, because whether that host answers
   /// without a token is not something to assume on their behalf.
-  Widget _attachment(ThemeData theme, String url, int n) => InkWell(
-    onTap: () =>
-        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-    borderRadius: BorderRadius.circular(6),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => ColoredBox(
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Center(child: Text('$n', style: theme.textTheme.labelSmall)),
+  /// The photos opened in place, by address.
+  final Set<String> _openImages = {};
+
+  /// A photo the customer sent. It opens IN the thread, larger, and closes
+  /// the same way (Toula, 2026-10-01: "images should open in it not out of
+  /// the page in ezbizi app"); a file that is not a picture, or a picture the
+  /// app cannot draw, still opens outside, which is the only way to see it.
+  Widget _attachment(ThemeData theme, String url, int n) {
+    final open = _openImages.contains(url);
+    void outside() => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
+    return Stack(
+      children: [
+        InkWell(
+          key: ValueKey('attachment-$n'),
+          onTap: () => setState(() => open ? _openImages.remove(url) : _openImages.add(url)),
+          borderRadius: BorderRadius.circular(6),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: ConstrainedBox(
+              constraints: open
+                  ? const BoxConstraints(maxWidth: 320, maxHeight: 420)
+                  : const BoxConstraints.tightFor(width: 44, height: 44),
+              child: Image.network(
+                url,
+                fit: open ? BoxFit.contain : BoxFit.cover,
+                // Not drawable here (a PDF, a host that refuses): opened, it
+                // offers the browser beside it, as every opened file does.
+                errorBuilder: (_, _, _) => SizedBox(
+                  width: open ? 88 : 44,
+                  height: 44,
+                  child: ColoredBox(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: Align(
+                      alignment: open ? Alignment.centerLeft : Alignment.center,
+                      child: Padding(
+                        padding: EdgeInsets.only(left: open ? 10 : 0),
+                        child: Text('$n', style: theme.textTheme.labelSmall),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-      ),
-    ),
-  );
+        if (open)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Material(
+              color: theme.colorScheme.surface.withValues(alpha: 0.85),
+              shape: const CircleBorder(),
+              child: IconButton(
+                key: ValueKey('attachment-outside-$n'),
+                tooltip: 'Open in the browser',
+                visualDensity: VisualDensity.compact,
+                iconSize: 16,
+                icon: const Icon(Icons.open_in_new),
+                onPressed: outside,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   /// A call: its length and who placed it, and the same play bar Voicemail
   /// and Records use, with pause, scrub and how far through you are. Jose,
