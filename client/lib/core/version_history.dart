@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0342',
+      date: '1 Oct 2026',
+      items: [
+        'Windows: before updating, the app closes any update installer left running from an earlier try, so one stuck update can no longer block every later one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0341',
       date: '1 Oct 2026',
       items: [
