@@ -610,6 +610,26 @@ class SchedulingAvailabilityTest extends TestCase
         $this->signedInAs($caller)->getJson('/api/v1/scheduling/reports')->assertForbidden();
     }
 
+    /**
+     * Jovanni, 2026-10-01: "pls improve the zip code validation". A number
+     * that is not a zip is refused in words, never cut to five digits and
+     * searched; zip+4 finds the same area as its five digits.
+     */
+    public function test_a_number_that_is_not_a_zip_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['123', '752011', '75201-12'] as $typo) {
+            $this->signedInAs($tenant['admin'])
+                ->getJson('/api/v1/scheduling/availability?zip='.urlencode($typo))
+                ->assertStatus(422)
+                ->assertJsonPath('errors.zip.0', \App\Http\Controllers\Api\SchedulingAvailabilityController::NOT_A_ZIP);
+        }
+
+        $this->assertSame('Dallas', $this->first($tenant, 'zip='.urlencode('75201-1234'))['area_name']);
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {
