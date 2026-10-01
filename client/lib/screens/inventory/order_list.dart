@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
 import 'add_issue_pane.dart';
@@ -11,6 +13,7 @@ import 'add_purchase_order_pane.dart';
 import 'add_sale_pane.dart';
 import 'issue_pane.dart';
 import 'item_pane.dart';
+import 'stock_join.dart';
 import 'purchase_order_pane.dart';
 import 'sale_pane.dart';
 
@@ -292,13 +295,152 @@ class _OrderListState extends State<OrderList> {
         Expanded(
           child: rows.isEmpty
               ? const Center(child: Text('There are no orders or sales.'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: rows.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) => _row(context, rows[i]),
+              : LayoutBuilder(
+                  builder: (context, box) => box.maxWidth >= 760 && !_hasPane
+                      ? _table(context, rows)
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount: rows.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, i) => _row(context, rows[i]),
+                        ),
                 ),
         ),
+      ],
+    );
+  }
+
+  void _tap(({String kind, Map<String, dynamic> row}) entry) => setState(() {
+    _kind = entry.kind;
+    _addingPo = false;
+    _addingIssue = false;
+    _addingSale = false;
+    _selectedId = entry.row['id'] as String?;
+    _open = entry.row;
+  });
+
+  /// Orders, sales and issues as one table (UI queue 43, option 1): number,
+  /// who it is for, status, how far along, and its total.
+  Widget _table(
+    BuildContext context,
+    List<({String kind, Map<String, dynamic> row})> rows,
+  ) {
+    final money = widget.session.me!.can('inventory.financials');
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        inventoryTableRow(context, [
+          (2, inventoryHeading(context, 'Number')),
+          (4, inventoryHeading(context, 'For')),
+          (3, inventoryHeading(context, 'Status')),
+          (2, inventoryHeading(context, 'Progress')),
+          if (money)
+            (2, inventoryHeading(context, 'Total', align: TextAlign.right)),
+        ]),
+        for (final entry in rows) _tableRow(context, entry, money),
+      ],
+    );
+  }
+
+  double _sum(Map<String, dynamic> row, String key) => inventoryMaps(
+    row['lines'],
+  ).fold(0.0, (t, l) => t + (inventoryQtyNumber(l[key]) ?? 0));
+
+  /// Cents for the whole order, or null when a line has no price.
+  int? _total(Map<String, dynamic> row, String price) {
+    var cents = 0.0;
+    for (final line in inventoryMaps(row['lines'])) {
+      final each = line[price];
+      if (each is! num) return null;
+      cents += each * (inventoryQtyNumber(line['qty_ordered']) ?? 0);
+    }
+    return cents.round();
+  }
+
+  Widget _tableRow(
+    BuildContext context,
+    ({String kind, Map<String, dynamic> row}) entry,
+    bool money,
+  ) {
+    final theme = Theme.of(context);
+    final row = entry.row;
+    final status = row['status'] as String? ?? '';
+
+    final String forWho;
+    final Widget pill;
+    final String progress;
+    final int? cents;
+
+    switch (entry.kind) {
+      case 'issue':
+        final job = inventoryMap(row['job'])?['number'];
+        final from = inventoryMap(row['location'])?['name'];
+        forWho = [
+          if (job != null) 'Job $job',
+          if (from != null) 'from $from',
+        ].join(' · ');
+        pill = const StatusPill('Issue');
+        progress = '${row['issued_on'] ?? '—'}';
+        cents = null;
+      case 'sale':
+        final who =
+            inventoryMap(row['customer'])?['name'] ?? row['note'] ?? 'Counter';
+        forWho = '$who · sale';
+        pill = Wrap(
+          spacing: 4,
+          children: [
+            StatusPill(
+              inventorySaleStatusLabel(status),
+              tone: status == 'cancelled' ? Tone.bad : Tone.info,
+            ),
+            if (row['payment_status'] == 'unpaid')
+              const StatusPill('Unpaid', tone: Tone.caution),
+          ],
+        );
+        progress =
+            '${inventoryQty(_sum(row, 'qty_fulfilled'))}/'
+            '${inventoryQty(_sum(row, 'qty_ordered'))} fulfilled';
+        cents = _total(row, 'unit_price_minor');
+      default:
+        forWho = '${inventoryMap(row['vendor'])?['name'] ?? ''}';
+        final part =
+            status == 'open' && _sum(row, 'qty_received') > 0 &&
+            _hasRemaining(row);
+        pill = StatusPill(
+          part ? 'Part received' : inventoryPoStatusLabel(status),
+          tone: switch (status) {
+            'open' => Tone.info,
+            'received' => Tone.ok,
+            'cancelled' => Tone.bad,
+            _ => Tone.neutral,
+          },
+        );
+        progress = status == 'draft'
+            ? 'not sent yet'
+            : '${inventoryQty(_sum(row, 'qty_received'))}/'
+                  '${inventoryQty(_sum(row, 'qty_ordered'))}';
+        cents = _total(row, 'unit_cost_minor');
+    }
+
+    return inventoryTableRow(
+      context,
+      key: Key('order-row-${entry.kind}-${row['id']}'),
+      selected: row['id'] == _selectedId && _kind == entry.kind,
+      onTap: () => _tap(entry),
+      [
+        (2, Text('${row['number'] ?? ''}', style: theme.textTheme.titleSmall)),
+        (4, Text(forWho, overflow: TextOverflow.ellipsis)),
+        (3, Align(alignment: Alignment.centerLeft, child: pill)),
+        (2, Text(progress, style: theme.textTheme.bodySmall)),
+        if (money)
+          (
+            2,
+            Text(
+              cents == null ? '—' : inventoryMoney(cents),
+              textAlign: TextAlign.right,
+            ),
+          ),
       ],
     );
   }

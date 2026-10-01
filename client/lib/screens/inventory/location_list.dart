@@ -9,6 +9,7 @@ import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
 import 'add_location_pane.dart';
 import 'item_pane.dart';
+import 'stock_join.dart';
 import 'location_pane.dart';
 
 /// Locations chip: the places stock is kept.
@@ -45,6 +46,9 @@ class _LocationListState extends State<LocationList> {
   String? _selectedId;
   Map<String, dynamic>? _open;
 
+  /// What each place holds and is worth, for the table (UI queue 43).
+  StockJoin? _join;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +73,12 @@ class _LocationListState extends State<LocationList> {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
+
+    if (page == 1) {
+      loadStockJoin(widget.api, withOrders: false).then((loaded) {
+        if (mounted && loaded.$1 != null) setState(() => _join = loaded.$1);
+      });
+    }
 
     setState(() {
       _loading = page == 1 && _locations.isEmpty;
@@ -205,24 +215,139 @@ class _LocationListState extends State<LocationList> {
                         : 'Nothing matches those filters.',
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: _locations.length + (_page < _lastPage ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    if (i == _locations.length) {
-                      return LoadMore(
-                        shown: _locations.length,
-                        total: _total,
-                        busy: _fetching,
-                        error: _pageError,
-                        onMore: () => _load(page: _page + 1),
-                      );
-                    }
-                    return _row(context, _locations[i]);
-                  },
+              : LayoutBuilder(
+                  builder: (context, box) => box.maxWidth >= 760 && !_hasPane
+                      ? _table(context)
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount:
+                              _locations.length + (_page < _lastPage ? 1 : 0),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, i) {
+                            if (i == _locations.length) return _more();
+                            return _row(context, _locations[i]);
+                          },
+                        ),
                 ),
         ),
+      ],
+    );
+  }
+
+  Widget _more() => LoadMore(
+    shown: _locations.length,
+    total: _total,
+    busy: _fetching,
+    error: _pageError,
+    onMore: () => _load(page: _page + 1),
+  );
+
+  /// One line per place: its kind, how many items it holds and what they
+  /// are worth at last cost (UI queue 43, option 1).
+  Widget _table(BuildContext context) {
+    final theme = Theme.of(context);
+    final money = widget.session.me!.can('inventory.financials');
+    final join = _join;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        inventoryTableRow(context, [
+          (4, inventoryHeading(context, 'Place')),
+          (2, inventoryHeading(context, 'Kind')),
+          (2, inventoryHeading(context, 'Holds', align: TextAlign.right)),
+          if (money)
+            (2, inventoryHeading(context, 'Value', align: TextAlign.right)),
+          (2, const SizedBox.shrink()),
+        ]),
+        for (final location in _locations)
+          () {
+            final id = location['id'] as String?;
+            final rows = [
+              for (final row in join?.byLocation[id] ?? const [])
+                if ((join?.qty(row) ?? 0) > 0) row,
+            ];
+            var cents = 0.0;
+            var priced = false;
+            for (final row in rows) {
+              final item = join?.items
+                  .where((i) => i['id'] == inventoryMap(row['item'])?['id'])
+                  .firstOrNull;
+              final cost = item == null ? null : join?.costMinor(item);
+              if (cost == null) continue;
+              priced = true;
+              cents += cost * join!.qty(row);
+            }
+            final status = location['status'] as String? ?? '';
+            final vehicle = inventoryMap(location['vehicle']);
+
+            return inventoryTableRow(
+              context,
+              key: Key('location-row-$id'),
+              selected: id != null && id == _selectedId,
+              onTap: () => setState(() {
+                _adding = false;
+                _selectedId = id;
+                _open = location;
+              }),
+              [
+                (
+                  4,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        location['name'] as String? ?? 'Location',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      Text(
+                        [
+                          vehicle?['label'],
+                          inventoryOwnerLabel(
+                            location,
+                            widget.session.me!.organization.name,
+                          ),
+                        ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                (2, Text(inventoryKindLabel(location['kind'] as String?))),
+                (
+                  2,
+                  Text(
+                    join == null
+                        ? ''
+                        : rows.length == 1
+                        ? '1 item'
+                        : '${rows.length} items',
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                if (money)
+                  (
+                    2,
+                    Text(
+                      priced ? inventoryMoney(cents.round()) : '—',
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                (
+                  2,
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: status == 'closed'
+                        ? const Tag('Closed', warn: true)
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            );
+          }(),
+        if (_page < _lastPage) _more(),
       ],
     );
   }

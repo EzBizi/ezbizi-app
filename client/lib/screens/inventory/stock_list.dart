@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
-import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
-import '../../widgets/tag.dart';
+import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 import '../inventory_screen.dart';
+import 'add_purchase_order_pane.dart';
 import 'add_transfer_pane.dart';
 import 'item_pane.dart';
+import 'stock_join.dart';
 
-/// Stock chip: balance rows (item at a location).
+/// Stock (UI queue 43, Jose's 1 and 4): four tiles that filter, then one row
+/// per item with its total, reorder point, what is on order and its value;
+/// open a row for each place, with Transfer and Count on the place's line.
+/// Transfer, Count and a purchase order open in the docked pane.
 class StockList extends StatefulWidget {
   const StockList({
     super.key,
@@ -30,16 +36,19 @@ class StockList extends StatefulWidget {
 class _StockListState extends State<StockList> {
   bool _loading = true;
   String? _error;
-  List<Map<String, dynamic>> _rows = [];
-  int _total = 0;
-  int _page = 1;
-  int _lastPage = 1;
-  String? _pageError;
-  bool _fetching = false;
+  StockJoin? _join;
   int _request = 0;
-  bool _low = false;
+
+  /// The tile picked: low, out, ordered; null is every item.
+  String? _tile;
+  final _search = TextEditingController();
+  String? _place;
+  final Set<String> _unfolded = {};
+
   bool _transferring = false;
-  String? _selectedId;
+  String? _transferFrom;
+  String? _transferItem;
+  bool _ordering = false;
   Map<String, dynamic>? _open;
 
   @override
@@ -54,62 +63,56 @@ class _StockListState extends State<StockList> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  bool get _hasPane => _transferring || _open != null;
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
-  Future<void> _load({int page = 1}) async {
-    if (page > 1 && _fetching) return;
+  bool get _hasPane => _transferring || _ordering || _open != null;
 
+  bool _may(String permission) =>
+      widget.session.me?.permissions.contains(permission) ?? false;
+
+  Future<void> _load() async {
     final request = ++_request;
-
     setState(() {
-      _loading = page == 1 && _rows.isEmpty;
-      _fetching = true;
+      _loading = _join == null;
       _error = null;
-      _pageError = null;
     });
 
-    final response = await widget.api.get('/inventory/stock', {
-      'page': '$page',
-      if (_low) 'low': '1',
-    });
+    final (join, error) = await loadStockJoin(
+      widget.api,
+      withOrders: _may('inventory.orders.view'),
+    );
 
     if (!mounted || request != _request) return;
-
     setState(() {
       _loading = false;
-      _fetching = false;
-
-      if (!response.ok) {
-        if (page == 1) {
-          _error = response.message;
-        } else {
-          _pageError = response.message;
-        }
-        return;
-      }
-
-      final rows = inventoryRows(response.data);
-      _rows = page == 1 ? rows : [..._rows, ...rows];
-      _total = inventoryTotal(response.body, _rows.length);
-      _lastPage = inventoryLastPage(response.body);
-      _page = page;
+      _error = error;
+      if (join != null) _join = join;
     });
   }
 
   void _clearPane() => setState(() {
     _transferring = false;
-    _selectedId = null;
+    _ordering = false;
     _open = null;
   });
 
-  void _select(Map<String, dynamic> row) {
-    final item = inventoryMap(row['item']);
-    setState(() {
-      _transferring = false;
-      _selectedId = item?['id'] as String?;
-      _open = row;
-    });
-  }
+  void _openItem(Map<String, dynamic> item) => setState(() {
+    _transferring = false;
+    _ordering = false;
+    _open = item;
+  });
+
+  void _transfer({String? from, String? item}) => setState(() {
+    _open = null;
+    _ordering = false;
+    _transferring = true;
+    _transferFrom = from;
+    _transferItem = item;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +122,7 @@ class _StockListState extends State<StockList> {
         ? me.nowhereToAct('transfer stock')
         : null;
     final refused = canEdit ? nowhere : null;
+    final join = _join;
 
     return InventorySplitScaffold(
       hasPane: _hasPane,
@@ -126,110 +130,280 @@ class _StockListState extends State<StockList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        note: (_loading || _error != null)
-            ? 'On-hand at each place.'
-            : _rows.length < _total
-            ? 'Showing ${_rows.length} of $_total.'
-            : _total == 1
-            ? '1 balance in this view.'
-            : '$_total in this view.',
-        action: canEdit
-            ? Refused(
+        note: join == null
+            ? 'What you hold, where it is, and what it is worth.'
+            : '${_count(join.items.length, 'item')} in '
+                  '${_count(join.locations.length, 'place')}.',
+        action: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (me.can('inventory.create') && _may('inventory.orders.view'))
+              OutlinedButton.icon(
+                onPressed: () => setState(() {
+                  _open = null;
+                  _transferring = false;
+                  _ordering = true;
+                }),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Purchase order'),
+              ),
+            if (canEdit)
+              Refused(
                 reason: refused,
                 child: FilledButton.icon(
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _transferring = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
+                  onPressed: refused == null ? () => _transfer() : null,
                   icon: const Icon(Icons.swap_horiz, size: 18),
                   label: const Text('Transfer'),
                 ),
-              )
-            : null,
+              ),
+          ],
+        ),
       ),
-      list: _list(),
+      list: join == null ? const SizedBox.shrink() : _list(context, join),
       pane: ({required showBack}) => _pane(showBack: showBack),
     );
   }
 
-  Widget _list() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: FilterChip(
-              label: const Text('Low'),
-              selected: _low,
-              onSelected: (_) {
-                setState(() => _low = !_low);
-                _load();
-              },
-            ),
-          ),
-        ),
-        Expanded(
-          child: _rows.isEmpty
-              ? const Center(child: Text('There is no stock.'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: _rows.length + (_page < _lastPage ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    if (i == _rows.length) {
-                      return LoadMore(
-                        shown: _rows.length,
-                        total: _total,
-                        busy: _fetching,
-                        error: _pageError,
-                        onMore: () => _load(page: _page + 1),
-                      );
-                    }
-                    return _row(context, _rows[i]);
-                  },
+  // ── the list ─────────────────────────────────────────────────────
+
+  Widget _list(BuildContext context, StockJoin join) {
+    final theme = Theme.of(context);
+    final money = _may('inventory.financials');
+    final query = _search.text.trim().toLowerCase();
+
+    final items = [
+      for (final item in join.items)
+        if (_passes(join, item, query)) item,
+    ];
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // A table needs room; beside an open pane, or on a phone, each item
+        // is one line with its total.
+        final table = box.maxWidth >= 760 && !_hasPane;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          children: [
+            if (!_hasPane) ...[
+              _tiles(context, join, money, twoByTwo: box.maxWidth < 760),
+              const SizedBox(height: 12),
+            ],
+            _toolbar(context, join, wide: table),
+            const SizedBox(height: 8),
+            if (join.items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('There is no stock.'),
+              )
+            else if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Nothing matches.',
+                  style: theme.textTheme.bodyMedium,
                 ),
-        ),
-      ],
+              )
+            else if (table) ...[
+              _headerRow(context, money),
+              for (final item in items) ..._tableRows(context, join, item, money),
+            ] else
+              for (final item in items) _compactRow(context, join, item),
+          ],
+        );
+      },
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> row) {
-    final item = inventoryMap(row['item']);
-    final location = inventoryMap(row['location']);
-    final id = item?['id'] as String?;
-    final unit = inventoryUnitLabel(item?['unit'] as String?);
-    final qty = inventoryQty(row['qty_on_hand']);
-    final low = inventoryIsLow(item, row['qty_on_hand']);
+  bool _passes(StockJoin join, Map<String, dynamic> item, String query) {
+    final id = item['id'] as String;
+    if (_place != null && join.onHand(id, at: _place) == 0 &&
+        !(join.byItem[id] ?? const []).any(
+          (r) => inventoryMap(r['location'])?['id'] == _place,
+        )) {
+      return false;
+    }
+    if (query.isNotEmpty &&
+        ![item['name'], item['sku'], item['number']].any(
+          (v) => '${v ?? ''}'.toLowerCase().contains(query),
+        )) {
+      return false;
+    }
+    return switch (_tile) {
+      'low' => join.status(item) == 'Below reorder',
+      'out' => join.status(item) == 'Out of stock',
+      'ordered' => join.onOrder(id) > 0,
+      _ => true,
+    };
+  }
 
-    return Card(
-      child: ListTile(
-        selected: id != null && id == _selectedId,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        onTap: () => _select(row),
-        title: Text(
-          item?['name'] as String? ?? 'Item',
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium,
+  Widget _tiles(
+    BuildContext context,
+    StockJoin join,
+    bool money, {
+    required bool twoByTwo,
+  }) {
+    final low = [
+      for (final i in join.items)
+        if (join.status(i) == 'Below reorder') i,
+    ];
+    final covered = low.where((i) {
+      final id = i['id'] as String;
+      final at = inventoryQtyNumber(i['reorder_at']) ?? 0;
+      return join.onHand(id) + join.onOrder(id) > at;
+    }).length;
+    final out = [
+      for (final i in join.items)
+        if (join.status(i) == 'Out of stock') i,
+    ];
+    final ordered = [
+      for (final i in join.items)
+        if (join.onOrder(i['id'] as String) > 0) i,
+    ];
+    final orders = join.orders.where((o) => o['status'] == 'open').length;
+    var valueMinor = 0;
+    var priced = false;
+    for (final i in join.items) {
+      final cost = join.costMinor(i);
+      if (cost == null) continue;
+      priced = true;
+      valueMinor += (cost * join.onHand(i['id'] as String)).round();
+    }
+
+    final tiles = [
+      _tileCard(
+        context,
+        key: null,
+        label: 'All items',
+        value: '${join.items.length}',
+        note: money && priced
+            ? '${inventoryMoney(valueMinor)} at last cost'
+            : 'in ${_count(join.locations.length, 'place')}',
+      ),
+      _tileCard(
+        context,
+        key: 'low',
+        label: 'Below reorder',
+        value: '${low.length}',
+        note: covered == 0 ? 'none covered by an order' : '$covered covered by an order',
+        tone: low.isEmpty ? null : Tone.caution,
+      ),
+      _tileCard(
+        context,
+        key: 'out',
+        label: 'Out of stock',
+        value: '${out.length}',
+        note: out.isEmpty
+            ? 'nothing'
+            : out.length == 1
+            ? '${out.single['name']}'
+            : '${out.first['name']} and ${out.length - 1} more',
+        tone: out.isEmpty ? null : Tone.bad,
+      ),
+      _tileCard(
+        context,
+        key: 'ordered',
+        label: 'On order',
+        value: '${ordered.length}',
+        note: '${ordered.length == 1 ? 'item' : 'items'}, on '
+            '${_count(orders, 'order')}',
+      ),
+    ];
+
+    // Sibling tiles are one size.
+    if (twoByTwo) {
+      return Column(
+        children: [
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tiles[0]),
+                const SizedBox(width: 8),
+                Expanded(child: tiles[1]),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tiles[2]),
+                const SizedBox(width: 8),
+                Expanded(child: tiles[3]),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, tile) in tiles.indexed) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(child: tile),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _tileCard(
+    BuildContext context, {
+    required String? key,
+    required String label,
+    required String value,
+    required String note,
+    Tone? tone,
+  }) {
+    final theme = Theme.of(context);
+    final picked = _tile == key;
+    final ink = tone == null ? null : ToneColours.of(context, tone).ink;
+    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+    return Material(
+      key: Key('stock-tile-${key ?? 'all'}'),
+      color: picked
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: BorderSide(
+          color: picked ? theme.colorScheme.primary : EzBiziTheme.edge(context),
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
+      ),
+      child: InkWell(
+        borderRadius: radius,
+        onTap: () => setState(() => _tile = picked ? null : key),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (low) const Tag('Low', warn: true),
               Text(
-                [
-                  '$qty $unit',
-                  location?['name'],
-                  item?['sku'],
-                ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                label.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+              Text(
+                note,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: theme.textTheme.bodySmall,
               ),
             ],
           ),
@@ -238,16 +412,313 @@ class _StockListState extends State<StockList> {
     );
   }
 
+  Widget _toolbar(BuildContext context, StockJoin join, {required bool wide}) {
+    final search = TextField(
+      key: const Key('stock-search'),
+      controller: _search,
+      decoration: const InputDecoration(
+        hintText: 'Find an item, SKU or number',
+        prefixIcon: Icon(Icons.search, size: 20),
+        isDense: true,
+      ),
+      onChanged: (_) => setState(() {}),
+    );
+    final places = SearchPickerField<String>(
+      key: const Key('stock-place'),
+      value: _place,
+      isDense: true,
+      hint: 'All places',
+      allowClear: true,
+      options: [
+        for (final l in join.locations.values)
+          SearchOption(
+            value: l['id'] as String,
+            label: '${l['name']}',
+            detail: inventoryKindLabel(l['kind'] as String?),
+          ),
+      ],
+      onChanged: (value) => setState(() => _place = value),
+    );
+
+    if (!wide) {
+      return Column(
+        children: [search, const SizedBox(height: 8), places],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(flex: 3, child: search),
+        const SizedBox(width: 10),
+        Expanded(flex: 2, child: places),
+      ],
+    );
+  }
+
+  // ── the table ────────────────────────────────────────────────────
+
+  static const _flex = [5, 2, 2, 2, 3, 2];
+
+  Widget _cells(List<Widget> cells, {bool money = true}) => Row(
+    children: [
+      for (var i = 0; i < cells.length; i++)
+        if (money || i < 5) Expanded(flex: _flex[i], child: cells[i]),
+    ],
+  );
+
+  Widget _headerRow(BuildContext context, bool money) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      letterSpacing: 0.8,
+      fontWeight: FontWeight.w700,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+    Text h(String t, {TextAlign? align}) =>
+        Text(t.toUpperCase(), style: style, textAlign: align);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(44, 10, 12, 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      child: _cells([
+        h('Item'),
+        h('Status'),
+        h('On hand', align: TextAlign.right),
+        h('Reorder at', align: TextAlign.right),
+        Padding(padding: const EdgeInsets.only(left: 16), child: h('On order')),
+        h('Value', align: TextAlign.right),
+      ], money: money),
+    );
+  }
+
+  List<Widget> _tableRows(
+    BuildContext context,
+    StockJoin join,
+    Map<String, dynamic> item,
+    bool money,
+  ) {
+    final theme = Theme.of(context);
+    final id = item['id'] as String;
+    final unit = inventoryUnitLabel(item['unit'] as String?);
+    final rows = join.byItem[id] ?? const [];
+    final open = _unfolded.contains(id);
+    final cost = join.costMinor(item);
+    final onHand = join.onHand(id, at: _place);
+    final status = join.status(item);
+    final orders = join.orderNumbers(id);
+    final coming = join.onOrder(id);
+    final draft = join.inDraft(id);
+
+    final where = rows.isEmpty
+        ? 'held nowhere'
+        : rows.length == 1
+        ? '${inventoryMap(rows.single['location'])?['name'] ?? ''}'
+        : '${rows.length} places';
+
+    return [
+      Container(
+        key: Key('stock-item-$id'),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 40,
+              child: rows.isEmpty
+                  ? null
+                  : IconButton(
+                      key: Key('stock-unfold-$id'),
+                      tooltip: open ? 'Hide the places' : 'Show the places',
+                      icon: Icon(
+                        open ? Icons.expand_more : Icons.chevron_right,
+                        size: 20,
+                      ),
+                      onPressed: () => setState(() {
+                        if (!_unfolded.remove(id)) _unfolded.add(id);
+                      }),
+                    ),
+            ),
+            Expanded(
+              child: InkWell(
+                onTap: () => _openItem(item),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 10, 12, 10),
+                  child: _cells([
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item['name'] as String? ?? 'Item',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        Text(
+                          [
+                            item['sku'],
+                            where,
+                          ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: StatusPill(status, tone: _tone(status)),
+                    ),
+                    Text(
+                      '${inventoryQty(onHand)} $unit',
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    Text(
+                      item['reorder_at'] == null
+                          ? '—'
+                          : inventoryQty(item['reorder_at']),
+                      textAlign: TextAlign.right,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: Text(
+                        coming > 0
+                            ? '${inventoryQty(coming)} · ${orders.join(', ')}'
+                            : draft > 0
+                            ? '${inventoryQty(draft)} in a draft'
+                            : '—',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    Text(
+                      cost == null
+                          ? '—'
+                          : inventoryMoney((cost * onHand).round()),
+                      textAlign: TextAlign.right,
+                    ),
+                  ], money: money),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (open)
+        for (final row in rows) _placeRow(context, join, item, row, money),
+    ];
+  }
+
+  Widget _placeRow(
+    BuildContext context,
+    StockJoin join,
+    Map<String, dynamic> item,
+    Map<String, dynamic> row,
+    bool money,
+  ) {
+    final theme = Theme.of(context);
+    final location = inventoryMap(row['location']) ?? const {};
+    final cost = join.costMinor(item);
+    final qty = join.qty(row);
+    final canEdit = widget.session.me!.can('inventory.edit');
+
+    return Container(
+      key: Key('stock-place-${item['id']}-${location['id']}'),
+      color: theme.colorScheme.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(56, 6, 12, 6),
+      child: _cells([
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '${location['name'] ?? ''}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              TextSpan(
+                text: '  ${inventoryKindLabel(location['kind'] as String?)}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        Wrap(
+          spacing: 2,
+          children: [
+            if (canEdit)
+              TextButton(
+                onPressed: () => _transfer(
+                  from: location['id'] as String?,
+                  item: item['id'] as String?,
+                ),
+                child: const Text('Transfer'),
+              ),
+            if (canEdit)
+              TextButton(
+                onPressed: () => _openItem(item),
+                child: const Text('Count'),
+              ),
+          ],
+        ),
+        Text(inventoryQty(qty), textAlign: TextAlign.right),
+        const SizedBox.shrink(),
+        const SizedBox.shrink(),
+        Text(
+          cost == null ? '' : inventoryMoney((cost * qty).round()),
+          textAlign: TextAlign.right,
+          style: theme.textTheme.bodySmall,
+        ),
+      ], money: money),
+    );
+  }
+
+  /// A phone, or the list beside an open pane: one line per item.
+  Widget _compactRow(
+    BuildContext context,
+    StockJoin join,
+    Map<String, dynamic> item,
+  ) {
+    final theme = Theme.of(context);
+    final id = item['id'] as String;
+    final unit = inventoryUnitLabel(item['unit'] as String?);
+    final status = join.status(item);
+    final places = (join.byItem[id] ?? const []).length;
+
+    return Card(
+      key: Key('stock-item-$id'),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        selected: _open?['id'] == id,
+        onTap: () => _openItem(item),
+        title: Text(
+          item['name'] as String? ?? 'Item',
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall,
+        ),
+        subtitle: Text(
+          [
+            '${inventoryQty(join.onHand(id, at: _place))} $unit',
+            places == 0 ? 'held nowhere' : _count(places, 'place'),
+          ].join(' · '),
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: _hasPane ? null : StatusPill(status, tone: _tone(status)),
+      ),
+    );
+  }
+
+  Tone _tone(String status) => switch (status) {
+    'Out of stock' => Tone.bad,
+    'Below reorder' => Tone.caution,
+    _ => Tone.ok,
+  };
+
+  // ── the pane ─────────────────────────────────────────────────────
+
   Widget _pane({required bool showBack}) {
-    if (_transferring) {
-      final seed = inventoryMap(_open?['location']);
-      final item = inventoryMap(_open?['item']);
-      return AddTransferPane(
+    if (_ordering) {
+      return AddPurchaseOrderPane(
         api: widget.api,
         session: widget.session,
         showBack: showBack,
-        fromLocationId: seed?['id'] as String?,
-        itemId: item?['id'] as String?,
         onCancel: _clearPane,
         onSaved: (_) {
           _clearPane();
@@ -256,8 +727,22 @@ class _StockListState extends State<StockList> {
       );
     }
 
-    final row = _open;
-    final item = inventoryMap(row?['item']);
+    if (_transferring) {
+      return AddTransferPane(
+        api: widget.api,
+        session: widget.session,
+        showBack: showBack,
+        fromLocationId: _transferFrom,
+        itemId: _transferItem,
+        onCancel: _clearPane,
+        onSaved: (_) {
+          _clearPane();
+          _load();
+        },
+      );
+    }
+
+    final item = _open;
     final id = item?['id'] as String?;
     if (id == null) return const SizedBox.shrink();
 
@@ -266,9 +751,13 @@ class _StockListState extends State<StockList> {
       session: widget.session,
       itemId: id,
       seed: item,
-      seedBalance: row,
       showBack: showBack,
-      onBack: _clearPane,
+      onBack: () {
+        _clearPane();
+        _load();
+      },
     );
   }
 }
+
+String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
