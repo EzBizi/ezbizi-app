@@ -74,7 +74,10 @@ Future<PickedFile?> pickText() {
 void _openAttached(web.HTMLInputElement input, Future<Object?> done) {
   input.style.display = 'none';
   web.document.body?.append(input);
-  done.whenComplete(input.remove);
+  // A closure, not `input.remove`: dart2js refuses a tear-off of a JS
+  // interop member ("Tear-offs of external extension type interop member
+  // 'remove' are disallowed"), and only the web build says so. Analyze passes.
+  done.whenComplete(() => input.remove());
   input.click();
 }
 
