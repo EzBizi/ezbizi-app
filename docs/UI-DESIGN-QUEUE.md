@@ -2961,6 +2961,20 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 45 · Dashboard · the main dashboard and its boxes — **out for decision** (`docs/previews/dashboard-layouts.html`)
+
+Jose, 2026-10-01, with a screenshot: *"i also feel like the dashboard and it's widgets are a bit stale and may need
+some improvements, i also want the default to be Day ( as in today ) instead of Week"* (Day built, `b3e69240`).
+Today: two columns of equal cards, big donuts (Inspection and Fleet are one solid ring), numbers buried in grey
+sentences, empty modules as large as busy ones. Desktop **1** six "today" tiles, cards with figures and 14-day
+bars for what moves during the day, a "Needs you" list, compact boxes for the rest (recommended); **2** a to-do
+list first with the button that fixes each, modules as table rows; **3** each box Large / Small / Compact. Phone
+**4** (recommended)-**6**. The Dashboard module's rules hold in every option: no money in any box or tile (Jose,
+2026-09-29), an empty box is muted sentences, a failed box says so, 0–4 sentences all render, snapshot boxes
+ignore the period. Needs from the server: each glance's numbers as `figures` and its warnings as `attention`
+rows, plus 14-day trends; send the pick to the Dashboard module (`local_0417a3f0…`) before building. Found while
+drawing: Customers' "new this week" counts `created_at`, so the A1 import reads as new (told Customers).
+
 ### 44 · HR · the onboarding form: formats, pickers, and the contract beside it — **Jose's own shape (relayed by HR, urgent), built directly** — **BUILT**
 
 Jose, 2026-10-01, via HR: *"we can't just let them put anything anywhere. contracts have format… number based

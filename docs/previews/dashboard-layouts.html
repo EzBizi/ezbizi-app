@@ -1,0 +1,864 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard · today first</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light): ground, ink, muted, primary #00708F and its
+   container, the ToneColours pairs for every pill, controlRadius 10 for every control and card.
+   Navy is the brand gradient (#071018 / #0A2233 / #06384E) with the wordmark cyan #00B4D8.
+   Chart marks are the first three of DashboardChart's light palette (blue, orange, aqua); its
+   violet is never used, and neither is Tone.review. Meter states are EzBiziTheme.clockIn green,
+   meterWarning amber and the scheme's error red. Past days in a trend are the same hue at 45%,
+   today solid. Every business, person, place, address and number here is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --navy0:#071018;--navy:#0A2233;--navy2:#06384E;--cyan:#00B4D8;
+ --c1:#2A78D6;--c2:#EB6834;--c3:#1BAF7A;--mok:#0B8F5B;--mwarn:#B37400;--merr:#BA1A1A;
+ --trk:#e3e9ec;--tail:#c5d0d6}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1060px}
+h2{font-size:17px;margin:48px 0 4px;display:flex;align-items:center;gap:10px}
+h2.plain{margin-top:22px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1100px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:3px}
+.srv{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1100px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.srv b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px;color:var(--ink)}
+svg{display:block}
+.sp{flex:1}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted);white-space:nowrap} .b{font-weight:700}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:12px 18px 2px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.dash{padding:10px 16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+/* controls */
+.prow{display:flex;align-items:center;gap:8px;min-width:0;flex:0 0 auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chips.nw{flex-wrap:nowrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu)}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:28px;padding:0 11px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent;background:transparent}
+.btn.s{height:26px;padding:0 9px;font-size:11.5px}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.ib.sq{width:26px;height:26px;border:1px solid var(--line);background:var(--paper);font-size:13px}
+.lk{color:var(--pri);font-weight:700;font-size:11.5px;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+/* figure tiles: siblings are one fixed size */
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;height:80px;display:flex;flex-direction:column;justify-content:space-between;position:relative;min-width:0}
+.tile .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:12px}
+.tile .v{font-size:24px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px;white-space:nowrap}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--warn)}
+.tile .d{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .go{position:absolute;right:10px;top:6px;color:#9aa9b1;font-size:14px}
+/* module cards */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start;min-width:0}
+.cards.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.cards.c4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.mc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;height:148px;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.mc.lg{height:238px}
+.mc.smc{height:140px}
+.mch{display:flex;align-items:center;gap:8px;height:22px;flex:0 0 auto;min-width:0}
+.ico{width:22px;height:22px;border-radius:6px;background:var(--pric);color:var(--prid);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto;line-height:1}
+.mch b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.go{color:#9aa9b1;font-size:15px;flex:0 0 auto}
+.mch .go{margin-left:auto}
+.figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px;flex:0 0 auto}
+.figs.f2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.figs.f4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.figs.f5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.fg{min-width:0}
+.fg .v{font-size:20px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fg .v small{font-size:11px;font-weight:600;color:var(--muted);margin-left:4px}
+.fg .v.cau{color:var(--warn)} .fg .v.bad{color:var(--bad)}
+.fg .l{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viz{margin-top:auto;flex:0 0 auto;min-width:0}
+.sv{width:100%;height:30px}
+.dl{display:grid;font-size:9.5px;color:#7b8790;text-align:center;margin-top:2px;line-height:1.2}
+.dl .x{color:var(--merr);font-weight:800}
+.cpt{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;display:flex;align-items:center;gap:9px;flex:0 0 auto;min-width:0}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:0}
+.meter{height:8px;border-radius:4px;background:var(--trk);overflow:hidden;display:flex;min-width:0}
+.meter i{display:block;height:100%}
+.ibx{display:grid;grid-template-columns:minmax(0,1fr) 64px 20px;gap:8px;align-items:center;height:19px;font-size:11px}
+.ibx .pill{grid-column:span 2;justify-self:end}
+.prow2{display:grid;grid-template-columns:160px minmax(0,1fr) 62px;gap:10px;align-items:center;height:27px;font-size:11.5px;border-top:1px solid var(--line2)}
+.att{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:var(--r);padding:2px 9px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;min-width:0}
+.att.cau{background:var(--warnc);color:var(--warn)} .att.bad{background:var(--badc);color:var(--bad)}
+.att span{overflow:hidden;text-overflow:ellipsis}
+/* lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;min-width:0;display:flex;flex-direction:column}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex:0 0 auto;min-width:0}
+.bh b{font-size:13px;white-space:nowrap}
+.nr{display:grid;grid-template-columns:90px minmax(0,1fr) 10px;gap:8px;align-items:center;min-height:40px;border-top:1px solid var(--line2);padding:2px 0}
+.bh + .nr{border-top:0}
+.nr .pill{justify-self:start}
+.w{min-width:0;line-height:1.28}
+.w b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:#9aa9b1;flex:0 0 auto}
+.more{font-size:11.5px;font-weight:700;color:var(--pri);padding:6px 0 4px;border-top:1px solid var(--line2)}
+.clear{display:flex;gap:7px;font-size:11px;color:var(--muted);border-top:1px solid var(--line2);padding-top:7px;margin-top:auto;line-height:1.35}
+.clear .ck{color:var(--ok);font-weight:800}
+.glbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:4px 0 -3px 2px;flex:0 0 auto}
+.lines{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;flex:0 0 auto}
+.lc{min-height:52px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 10px 9px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.lc.row{flex-direction:row;align-items:center;gap:9px;height:46px;min-height:0;padding:0 10px}
+.lc .w{flex:1}
+.lch{display:flex;align-items:center;gap:8px;min-width:0;height:22px;flex:0 0 auto;margin-bottom:1px}
+.lch b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.lch .go{margin-left:auto}
+.lch .pill{margin-left:auto}
+.lch .pill ~ .go{margin-left:6px}
+/* every sentence a box sends, in full; a statement or a box that could not load is muted */
+.ss{font-size:11px;color:var(--neu);line-height:1.4}
+.ss.mut{color:#76838c}
+.w span.wrap{white-space:normal;line-height:1.35}
+.w span.mut,.mt .mtv span.mut{color:#76838c}
+/* option 1 */
+.b1{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:10px;align-items:stretch}
+/* option 2 */
+.b2{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:10px;align-items:stretch}
+.td{display:grid;grid-template-columns:92px minmax(0,1fr) 112px;gap:10px;align-items:center;min-height:46px;border-top:1px solid var(--line2);padding:3px 0}
+.bh + .td{border-top:0}
+.td .pill{justify-self:start}
+.td .w b{font-size:12.5px}
+.td .btn{justify-self:end;width:112px}
+.col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.col>.box:last-child{flex:1}
+.tiles.mini6 .tile{height:62px;padding:6px 10px}
+.tiles.mini6 .tile .v{font-size:19px}
+.trow{display:grid;grid-template-columns:76px minmax(0,1fr) 30px;gap:8px;align-items:center;height:30px;font-size:11.5px}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:12px;padding:5px 12px;min-height:34px;border-bottom:1px solid var(--line2);font-size:12px}
+.tr:last-child{border-bottom:0}
+.tr.hd{min-height:28px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr .mn{display:flex;align-items:center;gap:8px;min-width:0}
+.tr .mn .ico{width:20px;height:20px;font-size:11px}
+.tr .mn b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .span{grid-column:2 / 5;color:var(--neu);line-height:1.4}
+.tr .span.mut{color:#76838c}
+.tr .q{color:var(--muted)}
+.tr .pill{justify-self:start}
+.tsv{width:100%;height:20px}
+/* option 3 */
+.split{display:grid;grid-template-columns:minmax(0,1fr) 196px;gap:14px;margin-top:auto;align-items:end;min-height:0}
+.wl{min-width:0;border-left:1px solid var(--line2);padding-left:12px}
+.wr{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:6px;align-items:baseline;height:30px;border-top:1px solid var(--line2);font-size:11.5px;line-height:1.2;padding-top:3px}
+.wr:first-of-type{border-top:0}
+.wr b{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wr em{font-style:normal;font-weight:800;color:var(--warn);font-variant-numeric:tabular-nums;font-size:11px}
+.wr span{grid-column:1 / 3;font-size:10px;color:var(--muted)}
+/* small windows under option 1 */
+.grid2{display:grid;grid-template-columns:repeat(2,594px);gap:16px 12px;margin-top:16px}
+.grid2>div{display:flex;flex-direction:column}
+.grid2 .mini{flex:1}
+.ml{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.mini{width:594px;background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(6,8,8,.06)}
+.mini .dash{padding:12px 12px 14px}
+.mini .chip{height:26px;padding:0 9px;font-size:11.5px}
+.mini .tile{height:66px;padding:6px 10px}
+.mini .tile .v{font-size:20px}
+.arr .body{opacity:.45}
+.kinds{display:flex;gap:5px;margin-top:6px;flex:0 0 auto}
+.kinds .chip{height:24px;padding:0 8px;font-size:11px}
+.mv{display:flex;gap:4px;margin-left:auto;flex:0 0 auto}
+.grip{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:15px;cursor:grab}
+.lc .mv{margin-left:0}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .st{height:30px;flex:0 0 auto;background:var(--paper)}
+.ptop{display:flex;align-items:center;gap:10px;padding:2px 12px 9px;font-size:16px;font-weight:800;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);min-width:0}
+.ptop .ham{font-size:17px;color:var(--neu);font-weight:400}
+.ptop .org{margin-left:auto;font:600 10.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);white-space:nowrap}
+.pbody{flex:1;min-height:0;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.pbody>*{flex-shrink:0}
+.phn .chips{gap:4px}
+.phn .chip{height:28px;padding:0 8px;font-size:11.5px}
+.phn .tile{height:60px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px}
+.phn .tile .v{font-size:19px}
+.phn .tile .go{top:auto;bottom:5px;right:8px}
+.phn .tile .k{padding-right:0;letter-spacing:.03em}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.card.pad{padding:9px 12px}
+.ch{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;min-width:0}
+.ch b{font-size:13px}
+.prr{display:flex;align-items:center;gap:9px;padding:0 12px;min-height:46px;border-top:1px solid var(--line2);min-width:0}
+.ch + .prr{border-top:0}
+.prr .w{flex:1}
+.prr .w b{font-size:12.5px}
+.prr .fig{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.prr .fig small{font-size:10px;font-weight:700;color:var(--muted);margin-left:3px}
+.prr .fig.cau{color:var(--warn)} .prr .fig.bad{color:var(--bad)}
+.prr .ico{width:24px;height:24px}
+.prr .pill.pst{width:84px;justify-content:center}
+.bk{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.bk .t{font-size:15px;font-weight:800}
+.seg{display:flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden;flex:0 0 auto;background:var(--paper)}
+.seg span{flex:1 1 0;text-align:center;font-size:12px;font-weight:700;padding:7px 0;color:var(--neu);white-space:nowrap}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.seg span+span{border-left:1px solid #93aab3}
+.hero{background:linear-gradient(135deg,var(--navy0),var(--navy) 55%,var(--navy2));color:#fff;border-radius:var(--r);padding:11px 14px 12px}
+.hero .hk{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#9fc3d1;display:flex}
+.hero .hv{font-size:34px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.hero .hv small{font-size:12px;font-weight:600;color:#9fc3d1;margin-left:6px}
+.hero .meter{background:rgba(255,255,255,.16);height:10px;border-radius:5px;margin-top:6px}
+.hero .hl{display:flex;gap:12px;font-size:11px;color:#d7e6ec;margin-top:6px;white-space:nowrap}
+.hero .hf{font-size:11.5px;font-weight:700;color:var(--cyan);margin-top:7px}
+.mtiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.mt{height:62px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:6px 9px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;position:relative}
+.mt .mtk{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;min-width:0}
+.mt .mtk .ico{width:18px;height:18px;font-size:10px;border-radius:5px}
+.mt .mtk span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt .mtv{display:flex;align-items:baseline;gap:5px;white-space:nowrap;min-width:0}
+.mt .mtv b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.mt .mtv b.cau{color:var(--warn)} .mt .mtv b.bad{color:var(--bad)} .mt .mtv b.q{color:var(--muted);font-size:15px}
+.mt .mtv span{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.mt .go{position:absolute;right:7px;top:4px;font-size:13px}
+.banner{display:flex;align-items:center;gap:8px;border-radius:var(--r);padding:8px 12px;font-size:12px;font-weight:700;background:var(--warnc);color:var(--warn)}
+.acc .xp{background:#fafcfd;border-top:1px solid var(--line2);padding:8px 12px 10px;display:flex;flex-direction:column;gap:7px}
+.acc .prr.open{background:var(--pric)}
+.acc .prr.open .w span{color:var(--prid)}
+.caret{color:#7b8790;font-size:12px;flex:0 0 auto;width:12px;text-align:center}
+.clear2{display:flex;gap:7px;font-size:11px;color:var(--muted);line-height:1.35;padding:10px 4px 0}
+.tight .prr{min-height:42px}
+.clear2 .ck{color:var(--ok);font-weight:800}
+.amv{display:flex;gap:4px;align-items:center;flex:0 0 auto}
+.amv .ib.sq{width:30px;height:30px}
+</style>
+
+<div class="wrap">
+<h1>Dashboard · today first</h1>
+<p class="sub">Jose, 2026-10-01: <i>“i also feel like the dashboard and it's widgets are a bit stale and may need some improvements, i also want the default to be Day ( as in today ) instead of Week”</i></p>
+<p class="cap">Pick one desktop layout (<b>1–3</b>) and one phone layout (<b>4–6</b>), for example “1, 4”. In every one Day comes first and is chosen when you sign in. A figure marked <b>today</b> follows the chips; one marked <b>now</b> ignores them. Every number, row and card opens its module.</p>
+
+<h2 class="plain">What is wrong today</h2>
+<ul class="cap">
+ <li>Every module you can open is one equal card, at least 176 px tall, two to a row, each row as tall as its tallest card: up to 27 cards (22 live, 5 placeholders) in 14 rows, and one sentence takes the room of a chart.</li>
+ <li>The numbers sit inside sentences. The screen draws only rings, bars, lines and sentences; the big-number widget in the card file is used nowhere, nothing reads the server’s <code>snapshot</code> mark, and no card opens its module.</li>
+ <li>The rings say little. Jobs counts every job ever, finished ones included, so the chips never move it; one inspection name is one solid ring; Fleet, Phone, Email, Jobs and Automations send no sentence when nothing is due, so the screen writes “Nothing to show.” under a full chart (your Fleet box).</li>
+ <li>Five boxes say Coming soon (Newsletter, Monitoring, AI Assistance, Customer Experience, Profit &amp; Loss) though all five modules are live.</li>
+ <li><b>“36,067 new this week” is mostly the A1 Tools import:</b> Customers counts the day a row was written, and the importer keeps the real date in <code>customer_since</code>. HR’s Joined had the same fault and was fixed this morning (<code>c2e55267</code>). Jobs’ “coming up” includes the rest of today, and Scheduling still says “not what is booked” though bookings have been counted since Sep 29.</li>
+</ul>
+
+<h2 class="plain">Every option keeps</h2>
+<ul class="cap">
+ <li>One box per module you can open, gated as today by its permission and by the module being on for the business, in your saved order. Nobody can hide one; a module switched on later joins at the end.</li>
+ <li>Rearranging by drag, keyboard and touch, with today’s move buttons and grip, behind one <b>Arrange</b> button so a card is not four controls.</li>
+ <li>One period for the page, Day first and chosen by default. Figures that follow it say <b>today</b> (or this week, this month); snapshots (stock, vehicles, job statuses, who is on the clock) say <b>now</b> or carry no period word, so the chips never seem to move them.</li>
+ <li>Every sentence a box sends, in full, from none to about four. A box with only sentences, a statement or one that could not load, shows them muted with no chart: every option draws Marketing as the statement and Reports as the failure.</li>
+ <li>The chart kinds each module allows, under Arrange; Figures is a new kind and the default.</li>
+ <li>No money anywhere, tiles included (Jose, 2026-09-29): Done today is a count. No dialogs; a number opens its module on the list it counts.</li>
+</ul>
+<p class="srv"><b>Server, for all six: Day.</b> <code>DashboardPeriod</code> gains <code>day</code> (midnight to now, in the view’s time zone) and a phrase that writes “today”; a peer has exactly this uncommitted in the tree as of this drawing, with the default moved from <code>month</code> to <code>day</code>. <b>Two catches.</b> A stored choice beats the default, and yours is stored as Week, so stored periods need resetting once. And <code>bucket()</code> puts a whole day in one bucket, so on Day every line chart there is today (Customers, Leads, Reviews, Marketing, A1Leads GBP) is a single dot; these designs show today beside the 14 days before it instead.</p>
+<p class="srv"><b>Server, for all six: sentences.</b> These designs turn a box’s sentences into figures and to-do rows, which breaks the every-sentence rule as written: each box has to send <code>figures</code> and <code>attention</code> rows instead of, or beside, its sentences. A sentence that is neither (HR’s note on leaving dates, a placeholder’s) is still drawn whole. A box that could not load arrives exactly like a statement (<code>empty</code> and one sentence), so it can only be drawn like one unless the server marks it.</p>
+
+<!-- ═════════════════════════════ 1 ═════════════════════════════ -->
+<h2><span class="n">1</span>Today’s six numbers, what needs you, then each module in figures <span class="rec">Recommended</span></h2>
+<p class="cap">Six numbers for today across the top. A card for each module that changes during the day, with two or three figures and the last 14 days (or the next 7) behind them. On the right, everything that needs somebody, most urgent first, and what was checked and found clear. Underneath, compact boxes for the modules that change slowly and for any box that has only sentences right now: a statement such as Marketing’s, a placeholder, or one that could not load, like Reports here. Each shows every sentence it was sent, and a row of them is as tall as its tallest. <b>Why this one:</b> it answers the morning’s three questions in the order they are asked (how is today going, what needs me, how is each part doing), the same shape as the HR dashboard you chose, and every piece of it comes from one change to the boxes.</p>
+<p class="srv"><b>Server.</b> <b>Sent today, but only inside sentences, rings or bars:</b> jobs today and coming up; leads arrived and not dealt with; calls answered and missed, voicemails waiting; on the clock and hours; customers listed; reviews arrived, unanswered and their average; inspections submitted and in progress; weekly capacity; unread per inbox; and the compact boxes’ counts. <b>New:</b> <code>figures</code> and <code>attention</code> rows from every box, and a flag for the compact ones. Done today (jobs whose <code>earned_at</code> falls today: a count, never an amount, and zero until a business fills in <code>jobs.earned_statuses</code>, which starts empty). After today apart from today. Waiting for a reply and booked, which <code>GET /leads/dashboard</code> already works out and the Leads box does not. Overbooked days and full areas from <code>Overbooking</code>, which the Scheduling box does not read. Jobs booked per day for the next 7, the 14 days behind each today figure, and new customers by <code>customer_since</code>. Jobs in the period too (the Week window draws 229 this week), counted over the whole day or week because booked work lies ahead, where every other period figure runs to now; today the Jobs box ignores the chips, and its status counts stay a snapshot. Saved chart choices beat a new default, as the period does.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div><div class="s">What each part of the business is doing right now.</div></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="tiny">Thursday, Oct 1 · so far</span><span class="sp"></span><span class="btn q">⇅ Arrange</span><span class="ib">↻</span></div>
+   <div class="tiles">
+    <div class="tile"><span class="go">›</span><div class="k">Jobs</div><div class="v">38<small>today</small></div><div class="d">11 done · 18 still to go</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Waiting for a reply</div><div class="v cau">4<small>now</small></div><div class="d">longest 38 min</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">New leads</div><div class="v">19<small>today</small></div><div class="d">6 booked</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">On the clock</div><div class="v">31<small>now</small></div><div class="d">of 79 active</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Calls</div><div class="v">52<small>today</small></div><div class="d">46 answered · 6 missed</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">New customers</div><div class="v">9<small>today</small></div><div class="d">12,486 listed</div></div>
+   </div>
+   <div class="b1">
+    <div class="cards">
+     <div class="mc"><div class="mch"><span class="ico">▣</span><b>Jobs</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">38<small>today</small></div><div class="l">scheduled</div></div><div class="fg"><div class="v">11<small>today</small></div><div class="l">done</div></div><div class="fg"><div class="v">486</div><div class="l">after today</div></div></div>
+      <div class="viz"><svg id="o1jobs" class="sv"></svg><div class="dl" style="grid-template-columns:repeat(7,1fr)"><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span></div></div>
+      <div class="cpt">Booked, next 7 days · 214 jobs</div></div>
+     <div class="mc"><div class="mch"><span class="ico">⌕</span><b>Leads</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">19<small>today</small></div><div class="l">arrived</div></div><div class="fg"><div class="v cau">4<small>now</small></div><div class="l">need a reply</div></div><div class="fg"><div class="v">6<small>today</small></div><div class="l">booked</div></div></div>
+      <div class="viz"><svg id="o1leads" class="sv"></svg></div>
+      <div class="cpt">Arrived, last 14 days · today so far on the right</div></div>
+     <div class="mc"><div class="mch"><span class="ico">☏</span><b>Phone</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">52<small>today</small></div><div class="l">calls</div></div><div class="fg"><div class="v">6<small>today</small></div><div class="l">missed</div></div><div class="fg"><div class="v cau">3<small>now</small></div><div class="l">voicemails</div></div></div>
+      <div class="viz"><svg id="o1phone" class="sv"></svg></div>
+      <div class="cpt"><span><i class="dot" style="background:var(--c1)"></i>Answered</span><span><i class="dot" style="background:var(--c2)"></i>Missed</span><span>last 14 days</span></div></div>
+     <div class="mc"><div class="mch"><span class="ico">◷</span><b>Work Hours</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">31<small>now</small></div><div class="l">on the clock</div></div><div class="fg"><div class="v">48<small>now</small></div><div class="l">not clocked in</div></div><div class="fg"><div class="v">128<small>h</small></div><div class="l">clocked today</div></div></div>
+      <div class="viz"><svg id="o1hours" class="sv"></svg></div>
+      <div class="cpt">Hours clocked, last 14 days · of 79 active</div></div>
+     <div class="mc"><div class="mch"><span class="ico">◎</span><b>Customers</b><span class="go">›</span></div>
+      <div class="figs f2"><div class="fg"><div class="v">9<small>today</small></div><div class="l">new</div></div><div class="fg"><div class="v">12,486<small>now</small></div><div class="l">listed</div></div></div>
+      <div class="viz"><svg id="o1cust" class="sv"></svg></div>
+      <div class="cpt">New, last 14 days</div></div>
+     <div class="mc"><div class="mch"><span class="ico">▦</span><b>Scheduling</b><span class="go">›</span></div>
+      <div class="figs f2"><div class="fg"><div class="v cau">2<small>days</small></div><div class="l">over, next 30 days</div></div><div class="fg"><div class="v">1<small>area</small></div><div class="l">full, next 7 days</div></div></div>
+      <div class="viz"><svg id="o1sched" class="sv"></svg><div class="dl" style="grid-template-columns:repeat(7,1fr)"><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span class="x">Tue</span><span>Wed</span><span>Thu</span></div></div>
+      <div class="cpt"><span><i class="dot" style="background:var(--c1)"></i>Booked</span><span><i class="dot" style="background:var(--trk)"></i>What the day takes</span><span>next 7 days</span></div></div>
+     <div class="mc"><div class="mch"><span class="ico">✓</span><b>Inspection</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">6<small>today</small></div><div class="l">submitted</div></div><div class="fg"><div class="v">4<small>now</small></div><div class="l">in progress</div></div><div class="fg"><div class="v">212</div><div class="l">archived</div></div></div>
+      <div class="viz"><svg id="o1insp" class="sv"></svg></div>
+      <div class="cpt">Submitted, last 14 days</div></div>
+     <div class="mc"><div class="mch"><span class="ico">★</span><b>Reviews</b><span class="go">›</span></div>
+      <div class="figs"><div class="fg"><div class="v">3<small>today</small></div><div class="l">arrived</div></div><div class="fg"><div class="v">4.8<small>★</small></div><div class="l">across 1,204</div></div><div class="fg"><div class="v">0<small>now</small></div><div class="l">unanswered</div></div></div>
+      <div class="viz"><svg id="o1rev" class="sv"></svg></div>
+      <div class="cpt">Arrived, last 14 days</div></div>
+     <div class="mc"><div class="mch"><span class="ico">@</span><b>Email</b><span class="go">›</span></div>
+      <div class="figs f2"><div class="fg"><div class="v">30<small>now</small></div><div class="l">unread</div></div><div class="fg"><div class="v bad">1<small>now</small></div><div class="l">inbox disconnected</div></div></div>
+      <div class="viz">
+       <div class="ibx"><span class="ell">Office</span><span class="meter"><i style="width:100%;background:var(--c1)"></i></span><b class="num">23</b></div>
+       <div class="ibx"><span class="ell">Garage Doors jobs</span><span class="meter"><i style="width:30%;background:var(--c1)"></i></span><b class="num">7</b></div>
+       <div class="ibx"><span class="ell">Service</span><span class="pill p-bad">Disconnected</span></div>
+      </div></div>
+    </div>
+    <div class="box">
+     <div class="bh"><b>Needs you</b><span class="pill p-warn">12</span><span class="sp"></span><span class="tiny">most urgent first</span></div>
+     <div class="nr"><span class="pill p-bad">Disconnected</span><div class="w"><b>service@harborchimney.test</b><span>Email · no mail is arriving from it</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-bad">Stopped</span><div class="w"><b>“Ask for a review after a job” is off</b><span>Automations · it stopped itself on Sep 30</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-bad">Out of stock</span><div class="w"><b>2 items are out of stock</b><span>Inventory · 6 more below reorder</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-bad">Lapsed</span><div class="w"><b>Kevin Brooks’s driver’s licence</b><span>Human Resources · lapsed on Sep 22</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-warn">4 waiting</span><div class="w"><b>4 leads waiting for a reply</b><span>Leads · longest 38 min, from Thumbtack</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-warn">Overbooked</span><div class="w"><b>Tue, Oct 6: Stamford is 3 over</b><span>Scheduling · Fri, Oct 9 is over by 1 too</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-warn">3 voicemails</span><div class="w"><b>3 voicemails waiting</b><span>Phone · the oldest came in at 9:12 AM</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-warn">To sign</span><div class="w"><b>Dana Whitfield’s agreement</b><span>Human Resources · since Sep 29</span></div><span class="chev">›</span></div>
+     <div class="nr"><span class="pill p-warn">Service due</span><div class="w"><b>Van 12 and Van 3</b><span>Fleet Management · within 30 days</span></div><span class="chev">›</span></div>
+     <div class="more">3 more: 2 invitations stalled, 3 retakes due, 1 Field alert ›</div>
+     <div class="clear"><span class="ck">✓</span><span>Checked and clear in this view: every review answered, all 3 websites connected, all 4 Google listings showing.</span></div>
+    </div>
+   </div>
+   <div class="glbl">The rest, compact, every sentence in full</div>
+   <div class="lines">
+    <div class="lc"><div class="lch"><span class="ico">▤</span><b>Inventory</b><span class="pill p-bad">2 out</span><span class="go">›</span></div><div class="ss">146 items · 9 locations · 3 open purchase orders</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◨</span><b>Fleet Management</b><span class="pill p-warn">2 due</span><span class="go">›</span></div><div class="ss">22 of 24 active · 2 in the shop</div></div>
+    <div class="lc"><div class="lch"><span class="ico">ϟ</span><b>Automations</b><span class="pill p-bad">1 off</span><span class="go">›</span></div><div class="ss">97 of the last 100 runs worked</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◔</span><b>Training</b><span class="go">›</span></div><div class="ss">3 people are due to retake a test.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">➤</span><b>Field</b><span class="pill p-info">1 alert</span><span class="go">›</span></div><div class="ss">9 of 12 tracked people are reporting now.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◇</span><b>Services</b><span class="go">›</span></div><div class="ss">58 services listed.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◍</span><b>Web Management</b><span class="go">›</span></div><div class="ss">All 3 websites connected.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">⌂</span><b>Business Profile</b><span class="go">›</span></div><div class="ss">All 4 listings showing.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▧</span><b>Reports</b><span class="go">›</span></div><div class="ss mut">This panel could not load right now.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">✦</span><b>Marketing</b><span class="go">›</span></div><div class="ss mut">Nothing posted or scheduled in this view.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◉</span><b>AI Assistance</b><span class="go">›</span></div><div class="ss mut">Answers for your team, on WhatsApp and in the app.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◡</span><b>Customer Experience</b><span class="go">›</span></div><div class="ss mut">Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▥</span><b>Newsletter</b><span class="go">›</span></div><div class="ss mut">Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▭</span><b>Monitoring</b><span class="go">›</span></div><div class="ss mut">Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◑</span><b>Human Resources</b><span class="pill p-warn">1 to sign</span><span class="go">›</span></div><div class="ss">82 on the books · 3 onboarding · 2 invitations stalled · nobody joined or left today</div><div class="ss">Leaving dates start from when this record-keeping began. People who were already inactive before then have no leaving date.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◫</span><b>Profit &amp; Loss</b><span class="go">›</span></div><div class="ss mut">Profit and loss is read from the Airtable base a business has connected, week by week, when you open the Profit &amp; Loss tab under Reports. It is not summarised here: the figures are not stored, and a week where the sheet does not add up is worth seeing beside the categories rather than behind a total.</div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">1 · with Week chosen</div>
+  <div class="mini"><div class="dash">
+   <div class="prow"><div class="chips"><span class="chip">Day</span><span class="chip on">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="tiny">Sun, Sep 27 to today</span><span class="sp"></span><span class="ib">↻</span></div>
+   <div class="tiles t3">
+    <div class="tile"><span class="go">›</span><div class="k">Jobs</div><div class="v">229<small>this week</small></div><div class="d">144 done · 76 still to go</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Waiting for a reply</div><div class="v cau">4<small>now</small></div><div class="d">longest 38 min</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">New leads</div><div class="v">105<small>this week</small></div><div class="d">31 booked</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">On the clock</div><div class="v">31<small>now</small></div><div class="d">of 79 active</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">Calls</div><div class="v">298<small>this week</small></div><div class="d">277 answered · 21 missed</div></div>
+    <div class="tile"><span class="go">›</span><div class="k">New customers</div><div class="v">54<small>this week</small></div><div class="d">12,486 listed</div></div>
+   </div>
+   <div class="mc"><div class="mch"><span class="ico">⌕</span><b>Leads</b><span class="go">›</span></div>
+    <div class="figs"><div class="fg"><div class="v">105<small>this week</small></div><div class="l">arrived</div></div><div class="fg"><div class="v cau">4<small>now</small></div><div class="l">need a reply</div></div><div class="fg"><div class="v">31<small>this week</small></div><div class="l">booked</div></div></div>
+    <div class="viz"><svg id="m1leads" class="sv"></svg></div>
+    <div class="cpt">Arrived, last 12 weeks · this week so far on the right</div></div>
+   <div class="tiny" style="white-space:normal">Today becomes this week and the trends become weeks. Waiting for a reply and On the clock are now, and the listed customers carry no period word, so none of them moves.</div>
+  </div></div></div>
+ <div><div class="ml">1 · with Arrange on</div>
+  <div class="mini"><div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><span class="tiny">Drag ⠿, or use ↑ ↓</span><span class="btn f">Done</span></div>
+   <div class="cards c2">
+    <div class="mc arr"><div class="mch"><span class="ico">▣</span><b>Jobs</b><span class="mv"><span class="ib sq" style="color:#b5c0c6">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="kinds"><span class="chip on">Figures</span><span class="chip">Pie</span><span class="chip">Bar</span><span class="chip">Text</span></div>
+     <div class="body figs"><div class="fg"><div class="v">38<small>today</small></div><div class="l">scheduled</div></div><div class="fg"><div class="v">11<small>today</small></div><div class="l">done</div></div><div class="fg"><div class="v">486</div><div class="l">after today</div></div></div></div>
+    <div class="mc arr"><div class="mch"><span class="ico">⌕</span><b>Leads</b><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="kinds"><span class="chip on">Figures</span><span class="chip">Line</span><span class="chip">Bar</span><span class="chip">Text</span></div>
+     <div class="body figs"><div class="fg"><div class="v">19<small>today</small></div><div class="l">arrived</div></div><div class="fg"><div class="v cau">4<small>now</small></div><div class="l">need a reply</div></div><div class="fg"><div class="v">6<small>today</small></div><div class="l">booked</div></div></div></div>
+   </div>
+   <div class="lines" style="grid-template-columns:repeat(2,minmax(0,1fr))" data-arrange>
+    <div class="lc row"><span class="ico">◑</span><div class="w"><b>Human Resources</b><span>82 on the books</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    <div class="lc row"><span class="ico">▤</span><div class="w"><b>Inventory</b><span>146 items</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    <div class="lc row"><span class="ico">◨</span><div class="w"><b>Fleet Management</b><span>22 of 24 active</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    <div class="lc row"><span class="ico">ϟ</span><div class="w"><b>Automations</b><span>97 of the last 100 worked</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    <div class="lc row"><span class="ico">◔</span><div class="w"><b>Training</b><span>3 due to retake</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    <div class="lc row"><span class="ico">➤</span><div class="w"><b>Field</b><span>9 of 12 reporting</span></div><span class="mv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+   </div>
+   <div class="tiny" style="white-space:normal">The move buttons and grip every card carries today, shown only while arranging. The chart kinds are the ones that box allows; Figures is new.</div>
+  </div></div></div>
+</div>
+
+<!-- ═════════════════════════════ 2 ═════════════════════════════ -->
+<h2><span class="n">2</span>What needs you first, with the button that fixes it, and every module as a row</h2>
+<p class="cap">A to-do list instead of a report. Each line says what is wrong, where and since when, and carries the button that goes to fix it. Today’s six numbers sit beside it with the week ahead and the last 14 days. Underneath, every module is one row of a table: what it holds now, what happened today, its last 14 days, and whether it needs you. A box with only sentences spans the row with all of them, so Marketing (a statement) and Reports (it could not load) read in full, muted.</p>
+<p class="srv"><b>Server:</b> the same as 1. Every button goes somewhere that exists (the lead in Leads, the voicemail in Phone, Email’s settings, the rule, the onboarding form, a new purchase order), so nothing new writes. The table takes each box’s first now figure and first today figure.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div><div class="s">What each part of the business is doing right now.</div></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="tiny">Thursday, Oct 1 · so far</span><span class="sp"></span><span class="btn q">⇅ Arrange</span><span class="ib">↻</span></div>
+   <div class="b2">
+    <div class="box">
+     <div class="bh"><b>Needs you today</b><span class="pill p-warn">12</span><span class="sp"></span><span class="tiny">most urgent first</span></div>
+     <div class="td"><span class="pill p-bad">Disconnected</span><div class="w"><b>service@harborchimney.test is disconnected.</b><span>Email · no mail arrives from it until somebody reconnects it</span></div><span class="btn f">Reconnect</span></div>
+     <div class="td"><span class="pill p-bad">Stopped</span><div class="w"><b>“Ask for a review after a job” stopped itself and is still off.</b><span>Automations · since Sep 30</span></div><span class="btn">Open the rule</span></div>
+     <div class="td"><span class="pill p-bad">Out of stock</span><div class="w"><b>Crown sealant and 6 in caps are out of stock.</b><span>Inventory · 6 more items below reorder</span></div><span class="btn">Order</span></div>
+     <div class="td"><span class="pill p-bad">Lapsed</span><div class="w"><b>Kevin Brooks’s driver’s licence lapsed on Sep 22.</b><span>Human Resources · from his Technician agreement</span></div><span class="btn">Open record</span></div>
+     <div class="td"><span class="pill p-warn">4 waiting</span><div class="w"><b>4 leads are waiting for a reply.</b><span>Leads · longest 38 min: Nora Pell, Thumbtack</span></div><span class="btn f">Reply</span></div>
+     <div class="td"><span class="pill p-warn">Overbooked</span><div class="w"><b>Tuesday, Oct 6 is booked 3 past what Stamford takes.</b><span>Scheduling · Friday, Oct 9 is over by 1 at Harbor Garage Doors</span></div><span class="btn">Open the day</span></div>
+     <div class="td"><span class="pill p-warn">3 voicemails</span><div class="w"><b>3 voicemails are waiting.</b><span>Phone · the oldest came in at 9:12 AM</span></div><span class="btn">Listen</span></div>
+     <div class="td"><span class="pill p-warn">To sign</span><div class="w"><b>Dana Whitfield’s Technician agreement waits on your signature.</b><span>Human Resources · she signed her half on Sep 29</span></div><span class="btn">Sign</span></div>
+     <div class="td"><span class="pill p-warn">Stalled</span><div class="w"><b>2 invitations have stalled.</b><span>Human Resources · 1 expired, 1 never opened</span></div><span class="btn">Open</span></div>
+     <div class="td"><span class="pill p-warn">Service due</span><div class="w"><b>Van 12 and Van 3 are due for service.</b><span>Fleet Management · within 30 days or 500 miles</span></div><span class="btn">Open</span></div>
+     <div class="more">2 more: 3 people due to retake a test, 1 Field alert ›</div>
+     <div class="clear"><span class="ck">✓</span><span>Checked and clear in this view: every review answered, all 3 websites connected, all 4 Google listings showing.</span></div>
+    </div>
+    <div class="col">
+     <div class="box"><div class="bh"><b>Today so far</b><span class="sp"></span><span class="tiny">Thu, Oct 1</span></div>
+      <div class="tiles t2 mini6">
+       <div class="tile"><span class="go">›</span><div class="k">Jobs</div><div class="v">38<small>today</small></div><div class="d">11 done · 18 to go</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">Waiting for a reply</div><div class="v cau">4<small>now</small></div><div class="d">longest 38 min</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">New leads</div><div class="v">19<small>today</small></div><div class="d">6 booked</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">On the clock</div><div class="v">31<small>now</small></div><div class="d">of 79 active</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">Calls</div><div class="v">52<small>today</small></div><div class="d">6 missed</div></div>
+       <div class="tile"><span class="go">›</span><div class="k">New customers</div><div class="v">9<small>today</small></div><div class="d">12,486 listed</div></div>
+      </div></div>
+     <div class="box"><div class="bh"><b>Booked, next 7 days</b><span class="sp"></span><span class="tiny">against what each day takes</span></div>
+      <svg id="o2ahead" class="sv" style="height:62px"></svg>
+      <div class="dl" style="grid-template-columns:repeat(7,1fr)"><span>Fri 41</span><span>Sat 12</span><span>Sun</span><span>Mon 44</span><span class="x">Tue 47</span><span>Wed 39</span><span>Thu 31</span></div>
+      <div class="cpt"><span><i class="dot" style="background:var(--c1)"></i>Booked</span><span><i class="dot" style="background:var(--trk)"></i>What the day takes</span><span><i class="dot" style="background:var(--merr)"></i>Over</span></div></div>
+     <div class="box"><div class="bh"><b>Last 14 days</b><span class="sp"></span><span class="tiny">today so far on the right</span></div>
+      <div class="trow"><span>New leads</span><svg id="o2leads" class="sv" style="height:24px"></svg><b class="num">19</b></div>
+      <div class="trow"><span>Calls</span><svg id="o2calls" class="sv" style="height:24px"></svg><b class="num">52</b></div>
+      <div class="trow"><span>Jobs done</span><svg id="o2done" class="sv" style="height:24px"></svg><b class="num">11</b></div></div>
+    </div>
+   </div>
+   <div class="glbl">Every module · your order</div>
+   <div class="tbl" style="--g:200px minmax(0,1fr) minmax(0,1.15fr) 130px 108px 10px">
+    <div class="tr hd"><span>Module</span><span>Now</span><span>Today</span><span>Last 14 days</span><span>Needs you</span><span></span></div>
+    <div class="tr"><span class="mn"><span class="ico">◑</span><b>Human Resources</b></span><span>82 on the books</span><span>0 joined · 0 left</span><span class="q">—</span><span class="pill p-bad">Lapsed +2</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◷</span><b>Work Hours</b></span><span>31 on the clock</span><span>128 h clocked</span><svg id="t-wh" class="tsv"></svg><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◎</span><b>Customers</b></span><span>12,486 listed</span><span>9 new</span><svg id="t-cu" class="tsv"></svg><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▣</span><b>Jobs</b></span><span>9 in progress</span><span>38 scheduled · 11 done</span><svg id="t-jo" class="tsv"></svg><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▦</span><b>Scheduling</b></span><span>284 jobs a week set up</span><span class="q">—</span><span class="q">—</span><span class="pill p-warn">2 overbooked</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">✓</span><b>Inspection</b></span><span>4 in progress</span><span>6 submitted</span><svg id="t-in" class="tsv"></svg><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">✦</span><b>Marketing</b></span><span class="span mut">Nothing posted or scheduled in this view.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◍</span><b>Web Management</b></span><span class="span">All 3 websites connected.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">☏</span><b>Phone</b></span><span>3 voicemails waiting</span><span>52 calls · 6 missed</span><svg id="t-ph" class="tsv"></svg><span class="pill p-warn">3 voicemails</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◨</span><b>Fleet Management</b></span><span>22 of 24 active</span><span class="q">—</span><span class="q">—</span><span class="pill p-warn">2 due</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▤</span><b>Inventory</b></span><span>146 items · 6 low</span><span class="q">—</span><span class="q">—</span><span class="pill p-bad">2 out</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◇</span><b>Services</b></span><span class="span">58 services listed.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">⌕</span><b>Leads</b></span><span>27 not dealt with</span><span>19 arrived · 6 booked</span><svg id="t-le" class="tsv"></svg><span class="pill p-warn">4 waiting</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◡</span><b>Customer Experience</b></span><span class="span mut">Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">★</span><b>Reviews</b></span><span>4.8 ★ across 1,204</span><span>3 arrived</span><svg id="t-re" class="tsv"></svg><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">⌂</span><b>Business Profile</b></span><span class="span">All 4 listings showing.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">@</span><b>Email</b></span><span>30 unread</span><span class="q">—</span><span class="q">—</span><span class="pill p-bad">1 disconnected</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◔</span><b>Training</b></span><span>3 due to retake a test</span><span class="q">—</span><span class="q">—</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">ϟ</span><b>Automations</b></span><span>97 of the last 100 runs worked</span><span class="q">—</span><span class="q">—</span><span class="pill p-bad">1 off</span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▭</span><b>Monitoring</b></span><span class="span mut">Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▥</span><b>Newsletter</b></span><span class="span mut">Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">▧</span><b>Reports</b></span><span class="span mut">This panel could not load right now.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◉</span><b>AI Assistance</b></span><span class="span mut">Answers for your team, on WhatsApp and in the app.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">◫</span><b>Profit &amp; Loss</b></span><span class="span mut">Profit and loss is read from the Airtable base a business has connected, week by week, when you open the Profit &amp; Loss tab under Reports. It is not summarised here: the figures are not stored, and a week where the sheet does not add up is worth seeing beside the categories rather than behind a total.</span><span></span><span class="chev">›</span></div>
+    <div class="tr"><span class="mn"><span class="ico">➤</span><b>Field</b></span><span>9 of 12 reporting now</span><span class="q">—</span><span class="q">—</span><span></span><span class="chev">›</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 3 ═════════════════════════════ -->
+<h2><span class="n">3</span>Size follows importance: large, small or compact, and you choose</h2>
+<p class="cap">Under Arrange each box is Large, Small or Compact. Large boxes draw today hour by hour; small ones show two numbers and their last 14 days; anything waiting is written at the foot of its own box, so there is no separate list. Drawn as an owner might set it, with Jobs, Leads, Phone and Work Hours large. Boxes of one size share a row, so a row is always equal cards, and a compact box shows every sentence it was sent: Marketing is a statement and Reports could not load.</p>
+<p class="srv"><b>Server:</b> 1’s figures and attention rows (here drawn inside each box), plus three things. Day by the hour for the large boxes: jobs by start time split done, in progress and to go, leads by arrival, calls answered and missed, which is an hourly arm in <code>bucket()</code> for <code>day</code>. Who is on the clock per place, for Work Hours (the box sends two counts; the Work Hours screen has the rest). And a size per box in the saved layout: <code>storedEntry</code> keeps only the key and the chart kind today, so the save has to accept and keep a size.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div><div class="s">What each part of the business is doing right now.</div></div>
+  <div class="dash">
+   <div class="prow"><div class="chips"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="tiny">Thursday, Oct 1 · so far</span><span class="sp"></span><span class="btn q">⇅ Arrange</span><span class="ib">↻</span></div>
+   <div class="cards c2">
+    <div class="mc lg"><div class="mch"><span class="ico">▣</span><b>Jobs</b><span class="go">›</span></div>
+     <div class="figs f5"><div class="fg"><div class="v">38<small>today</small></div><div class="l">scheduled</div></div><div class="fg"><div class="v">11<small>today</small></div><div class="l">done</div></div><div class="fg"><div class="v">9<small>now</small></div><div class="l">in progress</div></div><div class="fg"><div class="v">18</div><div class="l">still to go</div></div><div class="fg"><div class="v">486</div><div class="l">after today</div></div></div>
+     <div class="viz"><svg id="o3jobs" class="sv"></svg><div class="dl" style="grid-template-columns:repeat(12,1fr)"><span>7a</span><span>8a</span><span>9a</span><span>10a</span><span>11a</span><span>12p</span><span>1p</span><span>2p</span><span>3p</span><span>4p</span><span>5p</span><span>6p</span></div></div>
+     <div class="cpt"><span><i class="dot" style="background:var(--c3)"></i>Done</span><span><i class="dot" style="background:var(--c1)"></i>In progress</span><span><i class="dot" style="background:var(--tail)"></i>To go</span><span class="sp"></span><span>by start time · the dashed line is now</span></div></div>
+    <div class="mc lg"><div class="mch"><span class="ico">⌕</span><b>Leads</b><span class="go">›</span></div>
+     <div class="figs f4"><div class="fg"><div class="v">19<small>today</small></div><div class="l">arrived</div></div><div class="fg"><div class="v cau">4<small>now</small></div><div class="l">need a reply</div></div><div class="fg"><div class="v">6<small>today</small></div><div class="l">booked</div></div><div class="fg"><div class="v">27<small>now</small></div><div class="l">not dealt with</div></div></div>
+     <div class="split">
+      <div><svg id="o3leads" class="sv"></svg><div class="dl" style="grid-template-columns:repeat(12,1fr)"><span>&lt;7a</span><span>7a</span><span>8a</span><span>9a</span><span>10a</span><span>11a</span><span>12p</span><span>1p</span><span>2p</span><span>3p</span><span>4p</span><span>5p</span></div><div class="cpt">Arrived by the hour · the dashed line is now</div></div>
+      <div class="wl"><div class="glbl" style="margin:0 0 2px">Waiting longest</div>
+       <div class="wr"><b>Nora Pell</b><em>38 min</em><span>Thumbtack</span></div>
+       <div class="wr"><b>Glen Ashby</b><em>22 min</em><span>Website chat</span></div>
+       <div class="wr"><b>Rita Okafor</b><em>14 min</em><span>Google Local Services</span></div>
+       <div class="wr"><b>Tom Varga</b><em>11 min</em><span>Thumbtack</span></div>
+      </div>
+     </div></div>
+    <div class="mc lg"><div class="mch"><span class="ico">☏</span><b>Phone</b><span class="go">›</span></div>
+     <div class="figs f4"><div class="fg"><div class="v">52<small>today</small></div><div class="l">calls</div></div><div class="fg"><div class="v">46<small>today</small></div><div class="l">answered</div></div><div class="fg"><div class="v">6<small>today</small></div><div class="l">missed</div></div><div class="fg"><div class="v cau">3<small>now</small></div><div class="l">voicemails</div></div></div>
+     <div class="viz"><svg id="o3phone" class="sv"></svg><div class="dl" style="grid-template-columns:repeat(12,1fr)"><span>&lt;7a</span><span>7a</span><span>8a</span><span>9a</span><span>10a</span><span>11a</span><span>12p</span><span>1p</span><span>2p</span><span>3p</span><span>4p</span><span>5p</span></div></div>
+     <div class="cpt"><span><i class="dot" style="background:var(--c1)"></i>Answered</span><span><i class="dot" style="background:var(--c2)"></i>Missed</span><span class="sp"></span><span>by the hour</span></div>
+     <div class="att cau"><span>3 voicemails waiting, the oldest from 9:12 AM</span></div></div>
+    <div class="mc lg"><div class="mch"><span class="ico">◷</span><b>Work Hours</b><span class="go">›</span></div>
+     <div class="figs"><div class="fg"><div class="v">31<small>now</small></div><div class="l">on the clock</div></div><div class="fg"><div class="v">48<small>now</small></div><div class="l">not clocked in</div></div><div class="fg"><div class="v">128<small>h</small></div><div class="l">clocked today</div></div></div>
+     <div class="viz"><div class="glbl" style="margin:0 0 3px">On the clock now, by where people work</div>
+      <div class="prow2"><span class="ell">Harbor Chimney</span><span class="meter"><i style="width:38.9%;background:var(--c3)"></i></span><span class="num tiny">14 of 36</span></div>
+      <div class="prow2"><span class="ell">Harbor Chimney · Stamford</span><span class="meter"><i style="width:54.5%;background:var(--c3)"></i></span><span class="num tiny">6 of 11</span></div>
+      <div class="prow2"><span class="ell">Harbor Garage Doors</span><span class="meter"><i style="width:37.5%;background:var(--c3)"></i></span><span class="num tiny">9 of 24</span></div>
+      <div class="prow2"><span class="ell">All of Harbor Group</span><span class="meter"><i style="width:25%;background:var(--c3)"></i></span><span class="num tiny">2 of 8</span></div>
+     </div>
+     <div class="cpt">Of 79 active people in this view</div></div>
+   </div>
+   <div class="cards c4">
+    <div class="mc smc"><div class="mch"><span class="ico">◎</span><b>Customers</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">9<small>today</small></div><div class="l">new</div></div><div class="fg"><div class="v">12,486<small>now</small></div><div class="l">listed</div></div></div>
+     <div class="viz"><svg id="o3cust" class="sv" style="height:26px"></svg></div><div class="cpt">New, last 14 days</div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">★</span><b>Reviews</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">3<small>today</small></div><div class="l">arrived</div></div><div class="fg"><div class="v">4.8<small>★</small></div><div class="l">across 1,204</div></div></div>
+     <div class="viz"><svg id="o3rev" class="sv" style="height:26px"></svg></div><div class="cpt">Every review in this view answered</div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">✓</span><b>Inspection</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">6<small>today</small></div><div class="l">submitted</div></div><div class="fg"><div class="v">4<small>now</small></div><div class="l">in progress</div></div></div>
+     <div class="viz"><svg id="o3insp" class="sv" style="height:26px"></svg></div><div class="cpt">Submitted, last 14 days</div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">▦</span><b>Scheduling</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v cau">2<small>days</small></div><div class="l">over, next 30 days</div></div><div class="fg"><div class="v">284</div><div class="l">jobs a week set up</div></div></div>
+     <div class="viz"><svg id="o3sched" class="sv" style="height:22px"></svg></div>
+     <div class="att cau"><span>Tue, Oct 6: Stamford is 3 over</span></div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">◑</span><b>Human Resources</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">82<small>now</small></div><div class="l">on the books</div></div><div class="fg"><div class="v">3<small>now</small></div><div class="l">onboarding</div></div></div>
+     <div class="att bad" style="margin-top:auto"><span>Kevin Brooks’s licence lapsed</span></div>
+     <div class="att cau"><span>1 to sign · 2 invitations stalled</span></div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">▤</span><b>Inventory</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v bad">2<small>now</small></div><div class="l">out of stock</div></div><div class="fg"><div class="v cau">6<small>now</small></div><div class="l">below reorder</div></div></div>
+     <div class="viz"><div class="meter"><i style="width:94.5%;background:var(--mok)"></i><i style="width:4.1%;background:var(--mwarn)"></i><i style="width:1.4%;background:var(--merr)"></i></div></div>
+     <div class="cpt"><span><i class="dot" style="background:var(--mok)"></i>In stock 138</span><span><i class="dot" style="background:var(--mwarn)"></i>Low 6</span><span><i class="dot" style="background:var(--merr)"></i>Out 2</span></div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">◨</span><b>Fleet Management</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">22<small>now</small></div><div class="l">of 24 active</div></div><div class="fg"><div class="v cau">2</div><div class="l">due for service</div></div></div>
+     <div class="viz"><div class="meter"><i style="width:91.7%;background:var(--mok)"></i><i style="width:8.3%;background:var(--mwarn)"></i></div></div>
+     <div class="att cau"><span>Van 12 and Van 3, within 30 days</span></div></div>
+    <div class="mc smc"><div class="mch"><span class="ico">@</span><b>Email</b><span class="go">›</span></div>
+     <div class="figs f2"><div class="fg"><div class="v">30<small>now</small></div><div class="l">unread</div></div><div class="fg"><div class="v bad">1<small>now</small></div><div class="l">disconnected</div></div></div>
+     <div class="att bad" style="margin-top:auto"><span>service@harborchimney.test is disconnected</span></div></div>
+   </div>
+   <div class="glbl">Compact, every sentence in full</div>
+   <div class="lines">
+    <div class="lc"><div class="lch"><span class="ico">ϟ</span><b>Automations</b><span class="pill p-bad">1 off</span><span class="go">›</span></div><div class="ss">97 of the last 100 runs worked</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◔</span><b>Training</b><span class="go">›</span></div><div class="ss">3 people are due to retake a test.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">➤</span><b>Field</b><span class="pill p-info">1 alert</span><span class="go">›</span></div><div class="ss">9 of 12 tracked people are reporting now.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◇</span><b>Services</b><span class="go">›</span></div><div class="ss">58 services listed.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◍</span><b>Web Management</b><span class="go">›</span></div><div class="ss">All 3 websites connected.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">⌂</span><b>Business Profile</b><span class="go">›</span></div><div class="ss">All 4 listings showing.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▧</span><b>Reports</b><span class="go">›</span></div><div class="ss mut">This panel could not load right now.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">✦</span><b>Marketing</b><span class="go">›</span></div><div class="ss mut">Nothing posted or scheduled in this view.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◉</span><b>AI Assistance</b><span class="go">›</span></div><div class="ss mut">Answers for your team, on WhatsApp and in the app.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◡</span><b>Customer Experience</b><span class="go">›</span></div><div class="ss mut">Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▥</span><b>Newsletter</b><span class="go">›</span></div><div class="ss mut">Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">▭</span><b>Monitoring</b><span class="go">›</span></div><div class="ss mut">Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.</div></div>
+    <div class="lc"><div class="lch"><span class="ico">◫</span><b>Profit &amp; Loss</b><span class="go">›</span></div><div class="ss mut">Profit and loss is read from the Airtable base a business has connected, week by week, when you open the Profit &amp; Loss tab under Reports. It is not summarised here: the figures are not stored, and a week where the sheet does not add up is worth seeing beside the categories rather than behind a total.</div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ PHONES ═════════════════════════════ -->
+<h2><span class="n">4</span>On a phone: today, what needs you, then the modules <span class="rec">Recommended</span></h2>
+<p class="cap">Today’s six numbers two by two, the three most urgent things, then one row per module with its headline number. Tapping Needs you opens the whole list in place, with ← back; tapping any row or number opens its module. A box with only sentences shows them in full under its name: Marketing is a statement, Reports could not load. <b>Why this one:</b> the same figures and list as 1, in the order a phone is read, and the list sits under the thumb.</p>
+<p class="srv"><b>Server:</b> the same as 1. The full list is the same <code>attention</code> rows, opened in place.</p>
+<div class="phones">
+ <div><div class="pl">4 · first thing</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="pbody">
+    <div class="prow"><div class="chips nw"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="tiles t2">
+     <div class="tile"><span class="go">›</span><div class="k">Jobs</div><div class="v">38<small>today</small></div><div class="d">11 done · 18 to go</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Waiting for a reply</div><div class="v cau">4<small>now</small></div><div class="d">longest 38 min</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">New leads</div><div class="v">19<small>today</small></div><div class="d">6 booked</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">On the clock</div><div class="v">31<small>now</small></div><div class="d">of 79 active</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Calls</div><div class="v">52<small>today</small></div><div class="d">6 missed</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">New customers</div><div class="v">9<small>today</small></div><div class="d">12,486 listed</div></div>
+    </div>
+    <div class="card">
+     <div class="ch"><b>Needs you</b><span class="pill p-warn">12</span><span class="sp"></span><span class="lk">See all ›</span></div>
+     <div class="prr"><span class="pill p-bad pst">Disconnected</span><div class="w"><b>service@harborchimney.test</b><span>Email</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-bad pst">Stopped</span><div class="w"><b>“Ask for a review after a job”</b><span>Automations</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">4 waiting</span><div class="w"><b>Leads waiting for a reply</b><span>Leads · longest 38 min</span></div><span class="chev">›</span></div>
+    </div>
+    <div class="card">
+     <div class="ch"><b>Modules</b><span class="sp"></span><span class="tiny">your order</span></div>
+     <div class="prr"><span class="ico">◑</span><div class="w"><b>Human Resources</b><span>3 onboarding · 1 to sign</span></div><span class="fig">82<small>now</small></span><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">✦</span><div class="w"><b>Marketing</b><span class="wrap mut">Nothing posted or scheduled in this view.</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">▧</span><div class="w"><b>Reports</b><span class="wrap mut">This panel could not load right now.</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">◷</span><div class="w"><b>Work Hours</b><span>128 h clocked today</span></div><span class="fig">31<small>now</small></span><span class="chev">›</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="pl">4 · after tapping Needs you</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="bk"><span class="ar">←</span><span class="t">Needs you</span><span class="pill p-warn">12</span><span class="sp"></span><span class="tiny">most urgent first</span></div>
+   <div class="pbody tight" style="gap:0;padding-top:8px">
+    <div class="card">
+     <div class="prr" style="border-top:0"><span class="pill p-bad pst">Disconnected</span><div class="w"><b>service@harborchimney.test</b><span>Email · no mail arrives</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-bad pst">Stopped</span><div class="w"><b>“Ask for a review after a job”</b><span>Automations · since Sep 30</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-bad pst">Out of stock</span><div class="w"><b>2 items</b><span>Inventory · 6 more low</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-bad pst">Lapsed</span><div class="w"><b>Kevin Brooks’s licence</b><span>Human Resources · Sep 22</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">4 waiting</span><div class="w"><b>Leads waiting for a reply</b><span>Leads · longest 38 min</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">Overbooked</span><div class="w"><b>Tue, Oct 6 · Stamford 3 over</b><span>Scheduling · and Fri, Oct 9</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">3 voicemails</span><div class="w"><b>Voicemails waiting</b><span>Phone · oldest 9:12 AM</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">To sign</span><div class="w"><b>Dana Whitfield’s agreement</b><span>Human Resources</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">Stalled</span><div class="w"><b>2 invitations</b><span>Human Resources · 1 expired</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-warn pst">Service due</span><div class="w"><b>Van 12 and Van 3</b><span>Fleet Management · 30 days</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-info pst">Retake</span><div class="w"><b>3 due to retake a test</b><span>Training</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="pill p-info pst">Alert</span><div class="w"><b>1 Field alert waiting</b><span>Field · 10:58 AM</span></div><span class="chev">›</span></div>
+    </div>
+    <div class="clear2"><span class="ck">✓</span><span>Checked and clear in this view: every review answered, all 3 websites connected, all 4 Google listings showing.</span></div>
+   </div>
+  </div></div>
+</div>
+
+<h2><span class="n">5</span>On a phone: three views, Today, Needs you and All</h2>
+<p class="cap">One switch at the top. Today leads with the jobs as a bar of done, in progress and to go, then four numbers, the week ahead and the last 14 days. Needs you is 4’s list. All is every module with a number as an equal tile, coloured when it needs you, and every box with only sentences as a row with all of them: Marketing is a statement, Reports could not load.</p>
+<p class="srv"><b>Server:</b> the same as 1, plus done, in progress and to go for today’s jobs, for the top card.</p>
+<div class="phones">
+ <div><div class="pl">5 · Today</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="pbody">
+    <div class="seg"><span class="on">Today</span><span>Needs you · 12</span><span>All · 25</span></div>
+    <div class="prow"><div class="chips nw"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="hero">
+     <div class="hk">Jobs<span class="sp"></span>›</div>
+     <div class="hv">38<small>scheduled today</small></div>
+     <div class="meter"><i style="width:28.9%;background:var(--c3)"></i><i style="width:23.7%;background:var(--cyan)"></i></div>
+     <div class="hl"><span><i class="dot" style="background:var(--c3)"></i>11 done</span><span><i class="dot" style="background:var(--cyan)"></i>9 in progress</span><span><i class="dot" style="background:rgba(255,255,255,.35)"></i>18 to go</span></div>
+     <div class="hf">486 more booked after today ›</div>
+    </div>
+    <div class="tiles t2">
+     <div class="tile"><span class="go">›</span><div class="k">Waiting for a reply</div><div class="v cau">4<small>now</small></div><div class="d">longest 38 min</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">New leads</div><div class="v">19<small>today</small></div><div class="d">6 booked</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">On the clock</div><div class="v">31<small>now</small></div><div class="d">of 79 active</div></div>
+     <div class="tile"><span class="go">›</span><div class="k">Calls</div><div class="v">52<small>today</small></div><div class="d">6 missed</div></div>
+    </div>
+    <div class="card pad"><div class="bh"><b style="font-size:12.5px">Booked, next 7 days</b><span class="sp"></span><span class="pill p-warn">Tue over</span></div>
+     <svg id="p5ahead" class="sv" style="height:56px"></svg>
+     <div class="dl" style="grid-template-columns:repeat(7,1fr)"><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span class="x">Tue</span><span>Wed</span><span>Thu</span></div>
+     <div class="cpt"><span><i class="dot" style="background:var(--c1)"></i>Booked</span><span><i class="dot" style="background:var(--trk)"></i>What it takes</span></div></div>
+    <div class="card pad"><div class="bh"><b style="font-size:12.5px">Last 14 days</b><span class="sp"></span><span class="tiny">today on the right</span></div>
+     <div class="trow"><span>New leads</span><svg id="p5leads" class="sv" style="height:22px"></svg><b class="num">19</b></div>
+     <div class="trow"><span>Calls</span><svg id="p5calls" class="sv" style="height:22px"></svg><b class="num">52</b></div></div>
+   </div>
+  </div></div>
+ <div><div class="pl">5 · All</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="pbody">
+    <div class="seg"><span>Today</span><span>Needs you · 12</span><span class="on">All · 25</span></div>
+    <div class="prow"><div class="chips nw"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="mtiles">
+     <div class="mt"><div class="mtk"><span class="ico">◑</span><span>Human Resources</span></div><div class="mtv"><b class="">82</b><span>on the books</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">◷</span><span>Work Hours</span></div><div class="mtv"><b class="">31</b><span>on the clock</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">◎</span><span>Customers</span></div><div class="mtv"><b class="">9</b><span>new today</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">▣</span><span>Jobs</span></div><div class="mtv"><b class="">38</b><span>today · 11 done</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">▦</span><span>Scheduling</span></div><div class="mtv"><b class="cau">2</b><span>days overbooked</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">✓</span><span>Inspection</span></div><div class="mtv"><b class="">6</b><span>submitted today</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">☏</span><span>Phone</span></div><div class="mtv"><b class="">52</b><span>calls today</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">◨</span><span>Fleet Management</span></div><div class="mtv"><b class="cau">2</b><span>due for service</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">▤</span><span>Inventory</span></div><div class="mtv"><b class="bad">2</b><span>out of stock</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">⌕</span><span>Leads</span></div><div class="mtv"><b class="cau">4</b><span>waiting for a reply</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">★</span><span>Reviews</span></div><div class="mtv"><b class="">3</b><span>arrived today</span></div></div>
+     <div class="mt"><div class="mtk"><span class="ico">@</span><span>Email</span></div><div class="mtv"><b class="bad">1</b><span>inbox disconnected</span></div></div>
+    </div>
+    <div class="card">
+     <div class="prr" style="border-top:0"><span class="ico">✦</span><div class="w"><b>Marketing</b><span class="wrap mut">Nothing posted or scheduled in this view.</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">▧</span><div class="w"><b>Reports</b><span class="wrap mut">This panel could not load right now.</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">◍</span><div class="w"><b>Web Management</b><span class="wrap">All 3 websites connected.</span></div><span class="chev">›</span></div>
+     <div class="prr"><span class="ico">⌂</span><div class="w"><b>Business Profile</b><span class="wrap">All 4 listings showing.</span></div><span class="chev">›</span></div>
+    </div>
+   </div>
+  </div></div>
+</div>
+
+<h2><span class="n">6</span>On a phone: one row per module, opened in place</h2>
+<p class="cap">Module first. One row per module with its headline number; a row opens where it is to show the rest of its figures, its trend and a button into the module, and closes again. A banner at the top counts what needs you and opens 4’s list. A box with only sentences has no number and shows them in full: Marketing is a statement, Reports could not load. Arrange is the same rows with ↑ ↓ and the grip.</p>
+<p class="srv"><b>Server:</b> the same as 1. Arrange saves the order the way the move buttons do today.</p>
+<div class="phones">
+ <div><div class="pl">6 · Jobs opened</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="pbody">
+    <div class="prow"><div class="chips nw"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div><span class="sp"></span><span class="ib">↻</span></div>
+    <div class="banner"><span>12 things need you · 4 of them urgent</span><span class="sp"></span><span>›</span></div>
+    <div class="card acc">
+     <div class="prr" style="border-top:0"><span class="ico">◑</span><div class="w"><b>Human Resources</b><span>3 onboarding · 1 to sign</span></div><span class="fig">82<small>now</small></span><span class="caret">▾</span></div>
+     <div class="prr"><span class="ico">◷</span><div class="w"><b>Work Hours</b><span>of 79 active · 128 h today</span></div><span class="fig">31<small>now</small></span><span class="caret">▾</span></div>
+     <div class="prr"><span class="ico">◎</span><div class="w"><b>Customers</b><span>12,486 listed</span></div><span class="fig">9<small>today</small></span><span class="caret">▾</span></div>
+     <div class="prr open"><span class="ico">▣</span><div class="w"><b>Jobs</b><span>scheduled today</span></div><span class="fig">38<small>today</small></span><span class="caret">▴</span></div>
+     <div class="xp">
+      <div class="figs"><div class="fg"><div class="v">11<small>today</small></div><div class="l">done</div></div><div class="fg"><div class="v">9<small>now</small></div><div class="l">in progress</div></div><div class="fg"><div class="v">18</div><div class="l">still to go</div></div></div>
+      <div><svg id="p6jobs" class="sv" style="height:34px"></svg><div class="dl" style="grid-template-columns:repeat(7,1fr)"><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span></div><div class="cpt">Booked, next 7 days · 486 after today</div></div>
+      <span class="btn" style="align-self:flex-start">Open Jobs ›</span>
+     </div>
+     <div class="prr"><span class="ico">▦</span><div class="w"><b>Scheduling</b><span>Tue, Oct 6 · Stamford 3 over</span></div><span class="fig cau">2<small>over</small></span><span class="caret">▾</span></div>
+     <div class="prr"><span class="ico">✦</span><div class="w"><b>Marketing</b><span class="wrap mut">Nothing posted or scheduled in this view.</span></div><span class="caret">▾</span></div>
+     <div class="prr"><span class="ico">▧</span><div class="w"><b>Reports</b><span class="wrap mut">This panel could not load right now.</span></div><span class="caret">▾</span></div>
+     <div class="prr"><span class="ico">☏</span><div class="w"><b>Phone</b><span>6 missed · 3 voicemails</span></div><span class="fig">52<small>today</small></span><span class="caret">▾</span></div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="pl">6 · Arrange</div>
+  <div class="phn"><div class="st"></div>
+   <div class="ptop"><span class="ham">☰</span>Dashboard<span class="org">Harbor Group ▾</span></div>
+   <div class="bk"><span class="t">Arrange</span><span class="sp"></span><span class="btn f s">Done</span></div>
+   <div class="pbody">
+    <div class="tiny" style="white-space:normal">Hold ⠿ and drag, or use the arrows. The order is yours and follows you to every device.</div>
+    <div class="card">
+     <div class="prr" style="border-top:0"><span class="ico">◑</span><div class="w"><b>Human Resources</b></div><span class="amv"><span class="ib sq" style="color:#b5c0c6">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">◷</span><div class="w"><b>Work Hours</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">◎</span><div class="w"><b>Customers</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr" style="background:var(--pric)"><span class="ico">▣</span><div class="w"><b>Jobs</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">▦</span><div class="w"><b>Scheduling</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">✓</span><div class="w"><b>Inspection</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">✦</span><div class="w"><b>Marketing</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">◍</span><div class="w"><b>Web Management</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">☏</span><div class="w"><b>Phone</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">◨</span><div class="w"><b>Fleet Management</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">▤</span><div class="w"><b>Inventory</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+     <div class="prr"><span class="ico">⌕</span><div class="w"><b>Leads</b></div><span class="amv"><span class="ib sq">↑</span><span class="ib sq">↓</span><span class="grip">⠿</span></span></div>
+    </div>
+   </div>
+  </div></div>
+</div>
+
+<h2 class="plain">Recommendation</h2>
+<p class="cap"><b>1 and 4.</b> One change to every box (numbers and to-dos sent as data instead of sentences) feeds both, and they read the way the HR dashboard you chose reads. 3’s large and small boxes can come later as a size under Arrange, and 2’s buttons can be added to 1’s list without changing its shape.</p>
+<p class="cap" style="margin-top:28px">Businesses, people, places, addresses and numbers are invented. The real screen reads the period in the view’s time zone, and only for the places in the current view.</p>
+</div>
+
+<script>
+// Invented data. Marks in DashboardChart's light palette; meters in the theme's state colours.
+const C1 = '#2A78D6', C2 = '#EB6834', C3 = '#1BAF7A', ERR = '#BA1A1A', TRK = '#e3e9ec', TAIL = '#c5d0d6';
+
+// One slot per value, drawn into a stretched viewBox (no text inside, so nothing distorts).
+// A value may be a list, stacked bottom first. `emph` is the one bar drawn solid (today);
+// the rest are the same hue at 45%. `track` draws what each day takes behind its bar, and
+// `over` marks the days booked past it. `now` is a dashed line, in slots.
+function bars(id, vals, { h = 30, colors = [C1], emph = null, track = null, over = null, now = null } = {}) {
+  const el = document.getElementById(id); if (!el) return;
+  const n = vals.length, slot = 10, bw = 6.4, top = 2, base = h - 1;
+  const tot = v => Array.isArray(v) ? v.reduce((a, b) => a + b, 0) : v;
+  const max = Math.max(1, ...vals.map(tot), ...(track || []));
+  let s = '';
+  vals.forEach((v, i) => {
+    const x = i * slot + (slot - bw) / 2;
+    if (track && track[i] > 0) {
+      const th = track[i] / max * (base - top);
+      s += `<rect x="${x - .9}" y="${base - th}" width="${bw + 1.8}" height="${th}" fill="${TRK}"/>`;
+    }
+    let y = base;
+    (Array.isArray(v) ? v : [v]).forEach((p, j) => {
+      const bh = p / max * (base - top); if (bh <= 0) return;
+      y -= bh;
+      const fill = over && over[i] ? ERR : colors[j % colors.length];
+      const op = emph === null || emph === i ? 1 : .45;
+      s += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="${fill}" fill-opacity="${op}"/>`;
+    });
+    if (tot(v) === 0 && !(track && track[i] > 0)) s += `<rect x="${x}" y="${base - 1.2}" width="${bw}" height="1.2" fill="${TAIL}"/>`;
+  });
+  s += `<line x1="0" y1="${base + .5}" x2="${n * slot}" y2="${base + .5}" stroke="#cfd8dc" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  if (now !== null) s += `<line x1="${now * slot}" y1="0" x2="${now * slot}" y2="${base}" stroke="#33404a" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`;
+  el.setAttribute('viewBox', `0 0 ${n * slot} ${h}`);
+  el.setAttribute('preserveAspectRatio', 'none');
+  el.style.height = h + 'px';
+  el.innerHTML = s;
+}
+
+// The last 14 days, Fri Sep 18 to today (Thu Oct 1, so far); weekends are quiet.
+const LEADS = [24, 11, 7, 26, 28, 23, 25, 22, 10, 6, 27, 29, 24, 19];
+const CALLS = [71, 30, 12, 78, 80, 74, 69, 66, 28, 10, 82, 79, 75, 52];
+const MISSED = [5, 3, 2, 6, 4, 5, 4, 6, 2, 1, 7, 5, 4, 6];
+const CALLS2 = CALLS.map((c, i) => [c - MISSED[i], MISSED[i]]);
+const CUST = [14, 6, 2, 15, 17, 12, 13, 11, 5, 1, 16, 18, 12, 9];
+const INSP = [11, 3, 0, 12, 13, 10, 9, 10, 2, 0, 12, 14, 11, 6];
+const REV = [3, 2, 1, 4, 5, 2, 3, 2, 1, 0, 4, 3, 2, 3];
+const HOURS = [598, 96, 12, 604, 611, 590, 602, 588, 90, 10, 610, 606, 597, 128];
+const DONE = [44, 10, 0, 46, 45, 41, 43, 40, 12, 0, 47, 44, 42, 11];
+// Fri Oct 2 to Thu Oct 8: jobs booked, and what the areas take that day. Tuesday is over.
+const BOOKED = [41, 12, 0, 44, 47, 39, 31];   // 214
+const TAKES = [52, 32, 0, 52, 44, 52, 52];    // 284 a week, closed Sunday
+const OVER = BOOKED.map((b, i) => b > TAKES[i]);
+
+bars('o1jobs', BOOKED);
+bars('o1leads', LEADS, { emph: 13 });
+bars('o1phone', CALLS2, { emph: 13, colors: [C1, C2] });
+bars('o1hours', HOURS, { emph: 13 });
+bars('o1cust', CUST, { emph: 13 });
+bars('o1sched', BOOKED, { track: TAKES, over: OVER });
+bars('o1insp', INSP, { emph: 13 });
+bars('o1rev', REV, { emph: 13 });
+bars('m1leads', [118, 124, 109, 131, 127, 122, 135, 129, 126, 133, 128, 105], { emph: 11 });
+
+bars('o2ahead', BOOKED, { h: 62, track: TAKES, over: OVER });
+bars('o2leads', LEADS, { h: 24, emph: 13 });
+bars('o2calls', CALLS2, { h: 24, emph: 13, colors: [C1, C2] });
+bars('o2done', DONE, { h: 24, emph: 13 });
+bars('t-wh', HOURS, { h: 20, emph: 13 });
+bars('t-cu', CUST, { h: 20, emph: 13 });
+bars('t-jo', DONE, { h: 20, emph: 13 });
+bars('t-in', INSP, { h: 20, emph: 13 });
+bars('t-ph', CALLS2, { h: 20, emph: 13, colors: [C1, C2] });
+bars('t-le', LEADS, { h: 20, emph: 13 });
+bars('t-re', REV, { h: 20, emph: 13 });
+
+// Today by the hour, 7 AM to 6 PM: [done, in progress, to go] by start time; 11:40 AM is now.
+bars('o3jobs', [[2, 0, 0], [5, 1, 0], [3, 3, 1], [1, 3, 2], [0, 2, 3], [0, 0, 4], [0, 0, 3], [0, 0, 3], [0, 0, 1], [0, 0, 1], [0, 0, 0], [0, 0, 0]],
+  { h: 96, colors: [C3, C1, TAIL], now: 4 + 40 / 60 });
+// Leads and calls by the hour, the first slot is before 7 AM.
+bars('o3leads', [2, 3, 5, 4, 3, 2, 0, 0, 0, 0, 0, 0], { h: 84, now: 5 + 40 / 60 });
+bars('o3phone', [[0, 0], [4, 1], [11, 2], [13, 1], [12, 1], [6, 1], 0, 0, 0, 0, 0, 0], { h: 84, colors: [C1, C2], now: 5 + 40 / 60 });
+bars('o3cust', CUST, { h: 26, emph: 13 });
+bars('o3rev', REV, { h: 26, emph: 13 });
+bars('o3insp', INSP, { h: 26, emph: 13 });
+bars('o3sched', BOOKED, { h: 22, track: TAKES, over: OVER });
+
+bars('p5ahead', BOOKED, { h: 56, track: TAKES, over: OVER });
+bars('p5leads', LEADS, { h: 22, emph: 13 });
+bars('p5calls', CALLS2, { h: 22, emph: 13, colors: [C1, C2] });
+bars('p6jobs', BOOKED, { h: 34 });
+</script>
