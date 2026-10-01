@@ -87,14 +87,42 @@ final class OnboardingToRecord
             }
         }
 
-        if ($user->work_schedule === null
-            && ($days = self::schedule($a['work_days'] ?? '', $a['work_hours'] ?? '')) !== null) {
-            $zone = (string) $this->settings->get('timezone', ViewScope::forUser($user)->settingsScope());
-            $user->forceFill(['work_schedule' => ['timezone' => $zone, 'days' => $days]])->save();
+        if ($user->work_schedule === null && $this->writeSchedule($user, $a)) {
             $written[] = 'work_schedule';
         }
 
         return array_values(array_unique($written));
+    }
+
+    /**
+     * The contract's work days and hours into the person's schedule, the
+     * moment they are answered (Jose, 2026-10-01: "that gets already saved to
+     * their profile and hr"). True when it could be read and was written.
+     */
+    public function saveSchedule(Onboarding $onboarding): bool
+    {
+        $user = $onboarding->user;
+        if ($user === null) {
+            return false;
+        }
+
+        $a = $onboarding->answers()->whereIn('field_key', ['work_days', 'work_hours'])->get()
+            ->mapWithKeys(fn ($answer) => [$answer->field_key => trim((string) $answer->value)])->all();
+
+        return $this->writeSchedule($user, $a);
+    }
+
+    private function writeSchedule(User $user, array $a): bool
+    {
+        $days = self::schedule($a['work_days'] ?? '', $a['work_hours'] ?? '');
+        if ($days === null) {
+            return false;
+        }
+
+        $zone = (string) $this->settings->get('timezone', ViewScope::forUser($user)->settingsScope());
+        $user->forceFill(['work_schedule' => ['timezone' => $zone, 'days' => $days]])->save();
+
+        return true;
     }
 
     /** @return array{basis: string, amount: string, period: string}|null */
@@ -144,6 +172,30 @@ final class OnboardingToRecord
      */
     public static function schedule(string $daysText, string $hoursText): ?array
     {
+        // The picker's form names the days inside the hours, one group per
+        // "; " (UI/UX, 2026-10-01): "Monday to Friday 2:00 PM to 8:00 PM;
+        // Sunday 8:00 AM to 8:00 PM". Each group is read on its own.
+        if (preg_match('/\b(mon|tue|wed|thu|fri|sat|sun)/i', $hoursText)) {
+            $week = array_fill_keys(self::DAYS, null);
+            foreach (array_filter(array_map('trim', explode(';', $hoursText))) as $group) {
+                if (! preg_match('/^(\D+?)\s*(\d.*)$/', $group, $g)
+                    || ($one = self::schedule($g[1], $g[2])) === null) {
+                    return null;
+                }
+                foreach ($one as $day => $window) {
+                    if ($window !== null) {
+                        $week[$day] = $window;
+                    }
+                }
+            }
+
+            try {
+                return WorkSchedule::validate($week);
+            } catch (ValidationException) {
+                return null;
+            }
+        }
+
         preg_match_all('/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?/i', $daysText, $m, PREG_OFFSET_CAPTURE);
         $found = array_map(fn ($hit) => self::day($hit[0]), $m[1]);
         if ($found === []) {

@@ -476,6 +476,25 @@ class HrOnboardingTest extends TestCase
         $this->assertNull($mine($employee), 'A finished form stayed on their screen.');
     }
 
+    /** The schedule picker's answer reaches the person's schedule as it is saved. */
+    public function test_answering_the_work_hours_saves_the_persons_schedule(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'work_days', 'label' => 'Work days', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'work_hours', 'label' => 'Work hours', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'work_days' => 'Monday to Friday, Sunday',
+            'work_hours' => 'Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM',
+        ]])->assertOk();
+
+        $days = $employee->fresh()->work_schedule['days'];
+        $this->assertEquals(['start' => '14:00', 'end' => '20:00'], $days['monday']);
+        $this->assertEquals(['start' => '08:00', 'end' => '20:00'], $days['sunday']);
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

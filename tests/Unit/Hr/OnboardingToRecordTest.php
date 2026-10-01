@@ -34,6 +34,20 @@ class OnboardingToRecordTest extends TestCase
         $this->assertNull($list['tuesday'], 'A listed set is not a range.');
     }
 
+    /** The schedule picker's text: the days inside the hours, one group per "; ". */
+    public function test_the_pickers_day_by_day_text_becomes_the_week(): void
+    {
+        $week = OnboardingToRecord::schedule(
+            'Monday to Friday, Sunday',
+            'Monday to Friday 2:00 PM to 8:00 PM; Sunday 8:00 AM to 8:00 PM',
+        );
+
+        $this->assertSame(['start' => '14:00', 'end' => '20:00'], $week['wednesday']);
+        $this->assertSame(['start' => '08:00', 'end' => '20:00'], $week['sunday']);
+        $this->assertNull($week['saturday']);
+        $this->assertNull(OnboardingToRecord::schedule('', 'Monday to Friday whenever; Sunday 8 to 8'));
+    }
+
     public function test_what_cannot_be_read_for_certain_is_left_empty(): void
     {
         $this->assertNull(OnboardingToRecord::schedule('As needed', '8:00 AM - 5:00 PM'));
