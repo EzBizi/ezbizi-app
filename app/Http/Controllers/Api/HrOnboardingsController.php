@@ -10,6 +10,7 @@ use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\OnboardingDocument;
 use App\Models\User;
+use App\Notifications\PaperworkReadyToFinish;
 use App\Services\Hr\OnboardingDocuments;
 use App\Services\Hr\OnboardingForm;
 use App\Support\Access\ScopeReach;
@@ -24,6 +25,7 @@ use App\Support\Hr\CannotActOnInvitation;
 use App\Support\Hr\InvitationActions;
 use App\Support\Hr\OnboardingToRecord;
 use App\Support\Contracts\FieldType;
+use App\Support\Contracts\FilledBy;
 use App\Support\Contracts\PdfRenderer;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Privacy\SensitiveValues;
@@ -340,6 +342,23 @@ class HrOnboardingsController extends Controller
 
         $parties = $this->partiesFor($actor, $onboarding);
 
+        // The employer signs first and the rest is the employee's (Jose,
+        // 2026-10-01). From that signature the employer's answers are what
+        // was signed, so only the employee's own questions still move.
+        if ($this->employerSigned($onboarding)) {
+            $locked = array_keys(array_filter(
+                $this->ownerByKey($onboarding),
+                fn (string $owner) => $owner !== FilledBy::EMPLOYEE,
+            ));
+            $touched = array_intersect(array_keys((array) $request->input('answers')), $locked);
+            if ($touched !== []) {
+                throw ValidationException::withMessages(['answers' =>
+                    'The employer has signed, so the employer\'s answers are fixed: they are what '
+                    .'was signed. Only the employee\'s own questions can still be answered.',
+                ]);
+            }
+        }
+
         $changed = DB::transaction(function () use ($onboarding, $actor, $parties, $request) {
             $changed = $this->form->save($onboarding, $actor, $parties, (array) $request->input('answers'));
 
@@ -368,6 +387,26 @@ class HrOnboardingsController extends Controller
             'data'    => $this->detail($onboarding->fresh(), $actor),
             'changed' => $changed,
         ]);
+    }
+
+    /**
+     * POST /api/v1/hr/onboardings/{onboarding}/preview — the contract as it
+     * would read with the unsaved answers in `answers`, for the page that shows
+     * it beside the form as somebody types (Jose, 2026-10-01). Writes nothing
+     * and stores nothing; saved sensitive answers stay masked.
+     */
+    public function preview(Request $request, Onboarding $onboarding): JsonResponse
+    {
+        $this->authorize('view', $onboarding);
+
+        $draft = $request->validate(['answers' => ['present', 'array']])['answers'];
+        $content = $this->documents->preview($onboarding, $draft);
+
+        return response()->json(['data' => [
+            'content' => $content,
+            'mime' => DocumentRenderer::MIME,
+            'content_hash' => DocumentFingerprint::of($content),
+        ]]);
     }
 
     /**
@@ -400,9 +439,14 @@ class HrOnboardingsController extends Controller
 
         $revision = $request->query('revision');
 
-        $document = $revision === null
-            ? $onboarding->currentDocument()
-            : $onboarding->documents()->where('revision', (int) $revision)->first();
+        // Not frozen means somebody still has to sign the form as it stands
+        // (the employee, after the employer pre-signed), so that is what is
+        // shown, rather than the employer's earlier document.
+        $document = match (true) {
+            $revision !== null => $onboarding->documents()->where('revision', (int) $revision)->first(),
+            $onboarding->isFrozen() => $onboarding->currentDocument(),
+            default => null,
+        };
 
         if ($document === null) {
             if ($revision !== null) {
@@ -692,10 +736,17 @@ class HrOnboardingsController extends Controller
             ]);
         }
 
-        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request) {
-            $document = $onboarding->isFrozen()
-                ? $onboarding->currentDocument()
-                : $this->freezeAndRender($onboarding, $actor);
+        // The employer signs their side first, before the employee has
+        // answered theirs: the document is stored as it stands and the form
+        // stays open for the employee, who signs the finished one.
+        $presign = $field->filledBy === FilledBy::EMPLOYER && ! $onboarding->isFrozen();
+
+        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign) {
+            $document = match (true) {
+                $onboarding->isFrozen() => $onboarding->currentDocument(),
+                $presign => $this->renderForEmployer($onboarding, $actor),
+                default => $this->freezeAndRender($onboarding, $actor),
+            };
 
             abort_if($document === null, Response::HTTP_CONFLICT);
 
@@ -765,6 +816,8 @@ class HrOnboardingsController extends Controller
 
             return $signature;
         });
+
+        $this->tellTheOtherSide($onboarding->fresh(), $actor, $field->filledBy);
 
         return response()->json([
             'data'      => $this->detail($onboarding->fresh(), $actor),
@@ -1021,7 +1074,14 @@ class HrOnboardingsController extends Controller
             )]);
         }
 
-        $document = $this->documents->store($onboarding, $actor, OnboardingDocument::ORIGINAL);
+        // The employer may have signed an earlier, unfinished document. When
+        // nothing has changed since, both sign that one; otherwise the
+        // finished form is the next revision.
+        $earlier = $onboarding->currentDocument();
+        $document = $earlier !== null
+            && hash_equals((string) $earlier->content_hash, DocumentFingerprint::of($this->documents->render($onboarding)))
+            ? $earlier
+            : $this->documents->store($onboarding, $actor, ($earlier?->revision ?? OnboardingDocument::ORIGINAL - 1) + 1);
 
         $onboarding->forceFill([
             'status'       => Onboarding::SUBMITTED,
@@ -1237,6 +1297,85 @@ class HrOnboardingsController extends Controller
             $actor,
             Gate::forUser($actor)->allows('actAsEmployer', $onboarding),
         );
+    }
+
+    /**
+     * The employer's signature on the form as it stands: every question the
+     * employer owns answered, the employee's still open. Stored as the
+     * document the employer signed; the employee later signs the finished
+     * one, stored as the next revision.
+     */
+    private function renderForEmployer(Onboarding $onboarding, User $actor): OnboardingDocument
+    {
+        $owners = $this->ownerByKey($onboarding);
+        $missing = array_filter(
+            $this->form->missing($onboarding),
+            fn (string $label, string $key) => ($owners[$key] ?? FilledBy::EMPLOYEE) !== FilledBy::EMPLOYEE,
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        if ($missing !== []) {
+            throw ValidationException::withMessages(['answers' => sprintf(
+                'Your side cannot be signed yet — %s: %s.',
+                count($missing) === 1 ? 'one of your questions is unanswered' : 'some of your questions are unanswered',
+                implode(', ', array_values($missing)),
+            )]);
+        }
+
+        return $onboarding->currentDocument()
+            ?? $this->documents->store($onboarding, $actor, OnboardingDocument::ORIGINAL);
+    }
+
+    /**
+     * Whose turn it is now, told to them. The employer signing first emails
+     * the employee their half; the employee signing while the employer has not
+     * tells whoever started it, in the app. After the commit, so a mail never
+     * goes out about a signature that rolled back; a failed send never costs
+     * the signature.
+     */
+    private function tellTheOtherSide(Onboarding $onboarding, User $actor, string $signed): void
+    {
+        if ($onboarding->status === Onboarding::COMPLETED) {
+            return;
+        }
+
+        try {
+            if ($signed === FilledBy::EMPLOYER && ($employee = $onboarding->user) !== null) {
+                $employee->notify(new PaperworkReadyToFinish(
+                    (string) $onboarding->organization?->name,
+                    (string) $onboarding->contractVersion?->contract?->name,
+                    $actor->name,
+                ));
+            } elseif ($signed === FilledBy::EMPLOYEE && ($starter = $onboarding->startedBy) !== null
+                && $starter->is_active && $starter->getKey() !== $actor->getKey()) {
+                $this->notifications->dispatch(
+                    title: 'Paperwork ready for your signature',
+                    body: sprintf('%s has finished and signed their part. Yours is the last signature.', $actor->name),
+                    subject: $onboarding,
+                    onlyTo: $starter,
+                    source: 'hr',
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /** @return array<string, string> field key => who fills it */
+    private function ownerByKey(Onboarding $onboarding): array
+    {
+        $owners = [];
+        foreach ($onboarding->fields() as $field) {
+            $owners[$field->key] = $field->filledBy;
+        }
+
+        return $owners;
+    }
+
+    private function employerSigned(Onboarding $onboarding): bool
+    {
+        return $onboarding->takenSignatures()
+            ->contains(fn (ContractSignature $s) => $s->signer_party === FilledBy::EMPLOYER);
     }
 
     private function signatureField(Onboarding $onboarding, string $key): FieldDefinition

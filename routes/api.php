@@ -1673,6 +1673,7 @@ Route::prefix('v1')
         // this and changed our mind" remains answerable.
         Route::delete('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'destroy']);
         Route::post('hr/onboardings/{onboarding}/sign', [HrOnboardingsController::class, 'sign']);
+        Route::post('hr/onboardings/{onboarding}/preview', [HrOnboardingsController::class, 'preview']);
         Route::post('hr/onboardings/{onboarding}/amendments', [HrOnboardingsController::class, 'amend']);
         // The rendered document and its fingerprint — a preview before anything
         // is signed, the stored bytes afterwards. The FILE is downloaded through

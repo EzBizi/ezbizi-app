@@ -4,12 +4,14 @@ namespace App\Services\Hr;
 
 use App\Models\Attachment;
 use App\Models\Onboarding;
+use App\Models\OnboardingAnswer;
 use App\Models\OnboardingDocument;
 use App\Models\User;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\PdfRenderer;
 use App\Support\Files\FileStore;
+use App\Support\Privacy\SensitiveValues;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -82,6 +84,40 @@ class OnboardingDocuments
             $this->form->identity($onboarding),
             $onboarding->answers()->get(),
         );
+    }
+
+    /**
+     * The document as it would read with somebody's unsaved typing in it, for
+     * the contract shown beside the form (Jose, 2026-10-01). Writes nothing.
+     *
+     * A saved sensitive answer is masked unless the caller is typing over it:
+     * this is the form, not a reveal, so it must not show more than the form.
+     *
+     * @param  array<string, mixed>  $draft  field key => unsaved value
+     */
+    public function preview(Onboarding $onboarding, array $draft): string
+    {
+        $answers = $onboarding->answers()->get()->keyBy('field_key');
+
+        foreach ($onboarding->fields() as $field) {
+            $key = $field->key;
+            if (array_key_exists($key, $draft) && is_scalar($draft[$key])) {
+                $answer = $answers->get($key) ?? new OnboardingAnswer(['field_key' => $key]);
+                $answer->value = (string) $draft[$key];
+                $answers->put($key, $answer);
+            } elseif ($field->sensitive && $answers->has($key)) {
+                $answers->get($key)->value = SensitiveValues::MASK;
+            }
+        }
+
+        $identity = $this->form->identity($onboarding);
+        foreach ($identity as $key => $value) {
+            if (array_key_exists($key, $draft) && is_scalar($draft[$key])) {
+                $identity[$key] = (string) $draft[$key];
+            }
+        }
+
+        return $this->renderer->render($onboarding, $identity, $answers->values());
     }
 
     /**
