@@ -22,6 +22,7 @@ class VersionHistory {
         'Dashboard boxes with a chart no longer also say \'Nothing to show.\' underneath it.',
         'Dashboard: New customers counts the day someone became a customer, so the A1 Tools import no longer reads as tens of thousands of new customers this week.',
         'Inventory: Stock, Items and Locations read their totals from the server, so what a role may not see reads as unknown rather than zero.',
+        'Work Hours: editing opens a side panel, and on a phone a person opens inside the tab.',
       ],
     ),
     VersionRelease(
