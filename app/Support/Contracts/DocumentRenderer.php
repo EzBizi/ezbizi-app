@@ -204,7 +204,8 @@ final class DocumentRenderer
      *         and the caller decides what "the person" means.
      * @param  Collection<int, OnboardingAnswer>  $answers
      */
-    public function render(Onboarding $onboarding, array $identity, Collection $answers): string
+    /** @param  list<string>  $highlight  keys marked for the live preview only */
+    public function render(Onboarding $onboarding, array $identity, Collection $answers, array $highlight = []): string
     {
         $version      = $onboarding->contractVersion;
         $contract     = $version->contract;
@@ -241,6 +242,7 @@ final class DocumentRenderer
                     date: $onboarding->started_at?->toDateString() ?? '',
                 ),
             ),
+            highlight: $highlight,
         );
     }
 
@@ -313,6 +315,7 @@ final class DocumentRenderer
         ?string $body,
         ?string $coverPng,
         array $values,
+        array $highlight = [],
     ): string {
         $out = [];
         $out[] = '<!doctype html>';
@@ -394,7 +397,7 @@ final class DocumentRenderer
             // before it does anything else and puts the result in element
             // content only — this is that one place.
             $out[] = '<section class="agreement">';
-            $out[] = MergeTags::render($body, $values);
+            $out[] = MergeTags::render($body, $values, $highlight);
             $out[] = '</section>';
         }
 

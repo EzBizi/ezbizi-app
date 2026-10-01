@@ -95,7 +95,7 @@ class OnboardingDocuments
      *
      * @param  array<string, mixed>  $draft  field key => unsaved value
      */
-    public function preview(Onboarding $onboarding, array $draft): string
+    public function preview(Onboarding $onboarding, array $draft, array $highlight = []): string
     {
         $answers = $onboarding->answers()->get()->keyBy('field_key');
 
@@ -117,7 +117,16 @@ class OnboardingDocuments
             }
         }
 
-        return $this->renderer->render($onboarding, $identity, $answers->values());
+        return $this->renderer->render($onboarding, $identity, $answers->values(), $highlight);
+    }
+
+    /** The same draft as preview(), as the PDF it would print as. */
+    public function previewPdf(Onboarding $onboarding, array $draft): string
+    {
+        return $this->pdf->draft(
+            $this->preview($onboarding, $draft),
+            (string) $onboarding->contractVersion?->contract?->name,
+        );
     }
 
     /**

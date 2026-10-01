@@ -114,11 +114,11 @@ final class FieldLibrary
             'lunch_break' => self::field(
                 'lunch_break', 'Lunch break', FieldType::TEXT, FilledBy::EMPLOYER,
             ),
-            'county' => self::field(
-                'county', 'County for disputes', FieldType::TEXT, FilledBy::EMPLOYER,
-            ),
             'state' => self::field(
                 'state', 'Governing state', FieldType::TEXT, FilledBy::EMPLOYER,
+            ),
+            'county' => self::field(
+                'county', 'County for disputes', FieldType::TEXT, FilledBy::EMPLOYER,
             ),
             'employer_signature' => self::field(
                 'employer_signature', $employer, FieldType::SIGNATURE, FilledBy::EMPLOYER,

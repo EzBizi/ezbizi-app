@@ -228,6 +228,30 @@ final class PdfRenderer
      * What stays here is what is genuinely this class's: the paper size, which
      * is resolved from the CONTRACT setting below.
      */
+    /**
+     * The PDF of a form still being filled in: the "final result" view beside
+     * the form (Jose, 2026-10-01). Same converter and paper as a signed copy,
+     * stamped as a draft on every page so it can never pass for one.
+     */
+    public function draft(string $html, string $contractName): string
+    {
+        $dompdf = new Dompdf($this->options());
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        $canvas = $dompdf->getCanvas();
+        $canvas->page_text(
+            x: 34.0,
+            y: $canvas->get_height() - 30.0,
+            text: sprintf('DRAFT, nothing is signed yet | %s | page {PAGE_NUM} of {PAGE_COUNT}', $this->label($contractName)),
+            font: $dompdf->getFontMetrics()->getFont('helvetica', 'normal'),
+            size: 7.0,
+            color: [0.46, 0.46, 0.46],
+        );
+
+        return (string) $dompdf->output();
+    }
+
     private function options(): Options
     {
         return HardenedPdf::options($this->paper());

@@ -653,7 +653,7 @@ final class MergeTags
      *
      * @param  array<string, MergeValue>  $values  what each key resolves to
      */
-    public static function render(string $body, array $values): string
+    public static function render(string $body, array $values, array $highlight = []): string
     {
         $escaped = self::e($body);
         $cut     = self::dropVoided(self::expandSections($escaped, $values), $values);
@@ -664,13 +664,18 @@ final class MergeTags
             // a leftover `{{#` would mean expandSections failed, and writing
             // it back is better than inventing a term.
             self::SCAN,
-            function (array $m) use ($values) {
+            function (array $m) use ($values, $highlight) {
                 $open  = $m['open'] ?? '';
                 $close = $m['close'] ?? '';
                 $value = $m['value'] ?? '';
 
                 if ($value !== '') {
-                    return self::resolveOne($value, $values);
+                    // Marked for the live preview only, so somebody typing can
+                    // see where their answer lands (Jose, 2026-10-01). Nothing
+                    // stored or signed is ever rendered with a highlight.
+                    return in_array($value, $highlight, true)
+                        ? '<mark data-key="'.self::e($value).'">'.self::resolveOne($value, $values).'</mark>'
+                        : self::resolveOne($value, $values);
                 }
 
                 return $m[0];

@@ -533,6 +533,54 @@ class HrOnboardingTest extends TestCase
         $this->assertFalse($this->fieldIn($form, 'employee_sign')['voidable'] ?? false);
     }
 
+    /**
+     * Jose's second pass on the form (2026-10-01): the home address in parts,
+     * related terms voided together, the typed answer marked in the contract,
+     * and the PDF it will print as.
+     */
+    public function test_address_parts_void_groups_highlights_and_the_draft_pdf(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'job_title', 'label' => 'Job title', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'raise_amount', 'label' => 'Raise', 'type' => 'number', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'raise_period', 'label' => 'Raise every', 'type' => 'text', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
+            ->where('id', Onboarding::findOrFail($id)->contract_version_id)
+            ->update(['body' => "Job Title: {{job_title}}\n\nLives at {{address}}."]));
+
+        // The address in parts, written to the profile and composed.
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'address_line1' => '41 Elm St', 'city' => 'Stamford', 'state' => 'CT', 'postal_code' => '06901',
+        ]])->assertOk();
+        $this->assertSame('41 Elm St, Stamford, CT 06901', $employee->fresh()->address);
+        $address = collect($this->form($employee, $id)['fields'] ?? $this->form($employee, $id)['questions'] ?? [])
+            ->firstWhere('key', 'address');
+        $this->assertSame('Stamford', $address['parts']['city'] ?? null);
+
+        // The raise terms stand or fall together; a lone term is its own group.
+        $form = $this->form($alpha['admin'], $id);
+        $this->assertSame('raise', $this->fieldIn($form, 'raise_amount')['void_group']);
+        $this->assertSame('raise', $this->fieldIn($form, 'raise_period')['void_group']);
+        $this->assertSame('job_title', $this->fieldIn($form, 'job_title')['void_group']);
+
+        // The answer being typed is marked in the live contract, and only there.
+        $content = $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/preview", [
+            'answers' => ['job_title' => 'Dispatcher Master 5000'], 'highlight' => ['job_title'],
+        ])->assertOk()->json('data.content');
+        $this->assertStringContainsString('<mark data-key="job_title">Dispatcher Master 5000</mark>', $content);
+        $this->assertStringNotContainsString('<mark', $this->as($alpha['admin'])
+            ->getJson("/api/v1/hr/onboardings/{$id}/document")->json('data.content'));
+
+        // The PDF view of the same draft.
+        $pdf = $this->as($alpha['admin'])->post("/api/v1/hr/onboardings/{$id}/preview?format=pdf", [
+            'answers' => ['job_title' => 'Dispatcher Master 5000'],
+        ]);
+        $pdf->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

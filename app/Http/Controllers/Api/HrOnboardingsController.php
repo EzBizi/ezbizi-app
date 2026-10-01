@@ -399,12 +399,35 @@ class HrOnboardingsController extends Controller
      * it beside the form as somebody types (Jose, 2026-10-01). Writes nothing
      * and stores nothing; saved sensitive answers stay masked.
      */
-    public function preview(Request $request, Onboarding $onboarding): JsonResponse
+    public function preview(Request $request, Onboarding $onboarding): JsonResponse|HttpResponse
     {
         $this->authorize('view', $onboarding);
 
-        $draft = $request->validate(['answers' => ['present', 'array']])['answers'];
-        $content = $this->documents->preview($onboarding, $draft);
+        $input = $request->validate([
+            'answers' => ['present', 'array'],
+            // Keys whose values are marked, so somebody typing sees where
+            // their answer lands (Jose, 2026-10-01). Preview only.
+            'highlight' => ['sometimes', 'array'],
+            'highlight.*' => ['string', 'max:64'],
+        ]);
+        $draft = $input['answers'];
+
+        // ?format=pdf: the "final result" view, the PDF it would print as.
+        if ($request->query('format') === 'pdf') {
+            $pdf = $this->documents->previewPdf($onboarding, $draft);
+
+            return response($pdf, Response::HTTP_OK, [
+                'Content-Type' => PdfRenderer::MIME,
+                'Content-Length' => (string) strlen($pdf),
+                'Content-Disposition' => HeaderUtils::makeDisposition(
+                    HeaderUtils::DISPOSITION_ATTACHMENT, 'draft-contract.pdf', 'draft-contract.pdf',
+                ),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
+
+        $content = $this->documents->preview($onboarding, $draft, $input['highlight'] ?? []);
 
         return response()->json(['data' => [
             'content' => $content,
