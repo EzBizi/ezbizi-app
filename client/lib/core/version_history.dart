@@ -28,6 +28,8 @@ class VersionHistory {
         'Inventory no longer shows a zero for something your role is not allowed to see: on-hand without the Stock tab, and orders without the Orders tab.',
         'Work Hours: totals line up at the right.',
         'Clock In: clocking back in within 2 minutes continues the same shift instead of adding a row.',
+        'Human Resources dashboard: six figures across the top (on the books, joined, left, onboarding, stalled invitations, certifications), joined and left over the last 12 months, where people work, who is on the clock or away right now, and named lists of who is waiting on someone and whose certifications are lapsing.',
+        'Leads on a phone: the reply templates sit on one line that scrolls sideways instead of filling the screen.',
       ],
     ),
     VersionRelease(
