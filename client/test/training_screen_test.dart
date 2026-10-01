@@ -26,7 +26,7 @@ void main() {
       final library = tester.getTopLeft(find.text('Library'));
 
       expect(assigned.dy, lessThan(library.dy));
-      expect(find.text('Ladder Safety'), findsOneWidget);
+      expect(_inside('learn-assigned', find.text('Ladder Safety')), findsOneWidget);
     },
   );
 
@@ -147,8 +147,10 @@ void main() {
       size: const Size(375, 900),
     );
 
-    final ladder = tester.getTopLeft(find.text('Ladder Safety'));
-    final carbon = tester.getTopLeft(find.text('Carbon Monoxide Awareness'));
+    final ladder = tester.getTopLeft(_inside('learn-library', find.text('Ladder Safety')));
+    final carbon = tester.getTopLeft(
+      _inside('learn-library', find.text('Carbon Monoxide Awareness')),
+    );
 
     // Single column: the second card sits strictly below the first, never
     // beside it — and nothing overflowed getting there.
@@ -180,7 +182,7 @@ void main() {
       ],
     );
 
-    expect(find.text('Due for retaking'), findsOneWidget);
+    expect(_inside('learn-assigned', find.text('Due for retaking')), findsOneWidget);
     expect(find.textContaining('Was due'), findsNothing);
   });
 
@@ -194,12 +196,11 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Was due'), findsOneWidget);
+    expect(_inside('learn-assigned', find.textContaining('Was due')), findsOneWidget);
     expect(find.textContaining('Due '), findsNothing);
 
-    final container = tester.widget<Container>(
-      find.ancestor(of: find.text('Ladder Safety'), matching: find.byType(Container)).first,
-    );
+    // The library card carries it too, in the error tint.
+    final container = tester.widget<Container>(find.byKey(const Key('pair-g-1')));
     final decoration = container.decoration! as BoxDecoration;
     final border = decoration.border! as Border;
 
@@ -220,7 +221,7 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Due '), findsOneWidget);
+    expect(_inside('learn-assigned', find.textContaining('Due ')), findsOneWidget);
     expect(find.textContaining('Was due'), findsNothing);
   });
 
@@ -260,10 +261,10 @@ void main() {
     );
 
     expect(find.text('3 of 8'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(_inside('learn-library', find.byType(LinearProgressIndicator)), findsOneWidget);
   });
 
-  testWidgets('a finished library guide says Done and the date, not a fraction', (
+  testWidgets('a finished library guide says Completed and the date, not a fraction', (
     tester,
   ) async {
     await _pumpScreen(
@@ -279,14 +280,14 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Done '), findsOneWidget);
+    expect(find.textContaining('Completed '), findsOneWidget);
     expect(find.text('8 of 8'), findsNothing);
   });
 
   testWidgets('an untouched library guide says Not started', (tester) async {
     await _pumpScreen(tester, library: [_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8)]);
 
-    expect(find.text('Not started'), findsOneWidget);
+    expect(_inside('guide-g-1', find.text('Not started')), findsOneWidget);
   });
 
   testWidgets('one learner never sees a different card carry no progress at all when it has some', (
@@ -305,10 +306,11 @@ void main() {
     );
 
     expect(find.text('2 of 4'), findsOneWidget);
-    expect(find.text('Not started'), findsOneWidget);
+    expect(_inside('guide-g-untouched', find.text('Not started')), findsOneWidget);
+    expect(_inside('guide-g-touched', find.text('Not started')), findsNothing);
   });
 
-  testWidgets('a library test states its last outcome as Passed or Failed with a date', (
+  testWidgets('a library test states its last outcome as Passed or Not passed', (
     tester,
   ) async {
     await _pumpScreen(
@@ -329,8 +331,8 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Passed '), findsOneWidget);
-    expect(find.textContaining('Failed '), findsOneWidget);
+    expect(_inside('test-t-pass', find.text('Passed')), findsOneWidget);
+    expect(_inside('test-t-fail', find.text('Not passed')), findsOneWidget);
   });
 
   testWidgets('a never-taken test says Not started, and draws no progress bar', (
@@ -341,14 +343,14 @@ void main() {
       library: [_test(id: 't-1', title: 'Reading a Flue Liner Report')],
     );
 
-    expect(find.text('Not started'), findsOneWidget);
+    expect(_inside('test-t-1', find.text('Not started')), findsOneWidget);
     // A test has no "screens seen" to draw a fraction of — the bar is
     // guide-only, never invented for a test (this class's own docblock).
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
   testWidgets(
-    'a guide paired with a test in the payload notes "test at the end"; a standalone test says "Test only"',
+    'a guide and the test that follows it share one card; a test with no guide says so',
     (tester) async {
       await _pumpScreen(
         tester,
@@ -359,15 +361,136 @@ void main() {
         ],
       );
 
-      expect(find.textContaining('8 screens · test at the end'), findsOneWidget);
-      expect(find.textContaining('Test only · 10 questions'), findsOneWidget);
-      // The gated test's own card states its count plain — the pairing is
-      // already said once, on the guide's own card.
-      expect(find.text('5 questions'), findsOneWidget);
-      expect(find.textContaining('Test only · 5'), findsNothing);
+      // UI queue 41: the pair reads as two steps of one thing.
+      expect(_inside('pair-g-1', find.text('Ladder Safety Check')), findsOneWidget);
+      expect(_inside('pair-g-1', find.text('Guide · 8 topics')), findsOneWidget);
+      expect(
+        _inside('pair-g-1', find.text('Test · 5 questions · pass at 60%')),
+        findsOneWidget,
+      );
+      expect(
+        _inside('pair-t-2', find.text('No guide comes before this test')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Each guide with the test that follows it · 1 guide, 2 tests'),
+        findsOneWidget,
+      );
     },
   );
+  // ── UI queue 41 (Jose's 1 and 4): continue first, then guide + test ──
+
+  testWidgets('where you left off comes first: the next topic by name, how far, '
+      'and its test', (tester) async {
+    await _pumpScreen(
+      tester,
+      library: [
+        {
+          ..._guide(id: 'g-1', title: 'Technician Training Guide', screenCount: 4, lastScreen: 1),
+          'screens': [
+            {'chapter': 'Basics', 'title': 'Safety first'},
+            {'chapter': 'Basics', 'title': 'Tools'},
+            {
+              'chapter': 'The smoke chamber',
+              'title': 'Parging the smoke chamber',
+              'blocks': [
+                {'type': 'video', 'url': 'https://video.example/1'},
+              ],
+            },
+            {'chapter': 'The smoke chamber', 'title': 'Cleaning up'},
+          ],
+        },
+        _test(id: 't-1', title: 'Technician Training', guideId: 'g-1', questionCount: 60),
+      ],
+    );
+
+    final card = find.byKey(const Key('learn-continue'));
+    expect(
+      find.descendant(of: card, matching: find.text('Next: Parging the smoke chamber · topic 3')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('2 of 4 topics · chapter 2 of 2')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(
+          'Its test, Technician Training · 60 questions · pass at 60% · open now',
+        ),
+      ),
+      findsOneWidget,
+    );
+    // The guide's card counts its chapters and videos from the same topics.
+    expect(
+      _inside('pair-g-1', find.text('Guide · 2 chapters · 4 topics · 1 video')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('nothing half-read says so instead of an empty card', (tester) async {
+    await _pumpScreen(tester, library: [_guide(id: 'g-1', title: 'Ladder Safety')]);
+
+    expect(
+      _inside('learn-continue', find.textContaining('Nothing half-read')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the status chips and the search narrow the library, never the '
+      'assigned box', (tester) async {
+    await _pumpScreen(
+      tester,
+      assigned: [_assign(_guide(id: 'g-a', title: 'Ladder Safety'))],
+      library: [
+        _guide(id: 'g-done', title: 'Dispatcher Guide', completedAt: '2026-08-12T10:00:00Z'),
+        _test(id: 't-gas', title: 'Gas Appliance Safety', lastPassed: false, lastTakenAt: '2026-09-01T10:00:00Z'),
+      ],
+    );
+
+    expect(find.byKey(const Key('pair-g-done')), findsOneWidget);
+    expect(find.byKey(const Key('pair-t-gas')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('learn-chip-Done')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pair-g-done')), findsOneWidget);
+    expect(find.byKey(const Key('pair-t-gas')), findsNothing);
+    expect(find.byKey(const Key('pair-g-a')), findsNothing);
+    // Assigned to you is never filtered away.
+    expect(_inside('learn-assigned', find.text('Ladder Safety')), findsOneWidget);
+
+    await tester.tap(find.text('All'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('learn-search')), 'gas');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pair-t-gas')), findsOneWidget);
+    expect(find.byKey(const Key('pair-g-done')), findsNothing);
+  });
+
+  testWidgets('an assigned row says what to do: Start, Continue or Retake', (tester) async {
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _assign(_guide(id: 'g-1', title: 'Ladder Safety')),
+        _assign(_guide(id: 'g-2', title: 'Van Load-Out', lastScreen: 0), assignmentId: 'ta-2'),
+        _lapsed(_test(id: 't-1', title: 'Carbon Monoxide Awareness')),
+      ],
+    );
+
+    for (final verb in ['Start', 'Continue', 'Retake']) {
+      expect(
+        _inside('learn-assigned', find.widgetWithText(OutlinedButton, verb)),
+        findsOneWidget,
+      );
+    }
+  });
+
 }
+
+/// A finder held to one keyed region: the assigned box, the library, a card.
+Finder _inside(String key, Finder finder) =>
+    find.descendant(of: find.byKey(Key(key)), matching: finder);
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 
