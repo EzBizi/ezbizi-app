@@ -2961,6 +2961,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **out for decision** (`docs/previews/scheduling-locations-layouts.html`)
+
+Jovanni Martin (A1-Group), suggestion 0080, via Scheduling: *"Add a general information tab that displays company
+addresses with a feature that shows the closest location to the inputed address similar to the a-1 site as well as
+contact info for newbie dispatchers"*; Jose: *"Implement"*. In Scheduling, beside Availability, because the answer is
+a branch whose availability is one tab away. Desktop **1** the lookup first (closest large, two runners-up), then
+every branch by state beside the picked one with its note for new dispatchers (recommended); **2** a map of pins with
+the lookup over it; **3** one table that gains a Miles column and sorts by it. Phone **4** lookup first (recommended),
+**5** the directory one branch at a time, **6** the new-dispatcher note first. Data: the branches are already
+`web_locations` (address, phone, email, map link, coordinates); Photon geocodes the typed address for free, and the
+address lookup already gets coordinates and drops them; service areas say who serves a ZIP. New: `GET
+/scheduling/locations`, `GET /scheduling/locations/nearest?q=` (straight-line miles plus the area serving the ZIP),
+and a per-company "For new dispatchers" note edited in Scheduling › Settings. No drive time in any option: it needs
+a paid routing service. Option 2 also needs map tiles, and OpenStreetMap's public tiles only allow light use.
+
 ### 48 · HR · the onboarding form, second pass — **Jose's own shape (relayed by HR), built directly** — **BUILT** (`2b0814cc`, `917551d9`, `94e92cf5`, and the saved-signature commit)
 
 Jose, 2026-10-01, via HR: *"buttons next to the field with like a tick or x… voiding Scheduled increase interval
