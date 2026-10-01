@@ -466,6 +466,34 @@ void main() {
     expect(find.byKey(const ValueKey('overdue-lead-2')), findsNothing);
   });
 
+  // Jose, 2026-10-01: the sign alone "is not enough" - the row turns redder
+  // the longer the customer waits (and pulses, off here: pumpAndSettle).
+  testWidgets('a waiting row reddens with the wait', (tester) async {
+    OverdueGlow.pulse = false;
+    addTearDown(() => OverdueGlow.pulse = true);
+    String ago(int m) => DateTime.now().subtract(Duration(minutes: m)).toUtc().toIso8601String();
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-0', 'Open one'),
+        {..._lead('lead-1', 'Long'), 'reply_overdue': true, 'last_contact_at': ago(55)},
+        {..._lead('lead-2', 'Short'), 'reply_overdue': true, 'last_contact_at': ago(12)},
+      ],
+      connections: const [],
+    );
+
+    double redness(String id) {
+      final box = tester.widget<DecoratedBox>(find.descendant(
+        of: find.byKey(ValueKey('overdue-glow-$id')),
+        matching: find.byType(DecoratedBox),
+      ).first);
+      return (box.decoration as BoxDecoration).color!.a;
+    }
+
+    expect(redness('lead-1'), greaterThan(redness('lead-2')));
+    expect(redness('lead-2'), greaterThan(0));
+  });
+
   // Jose, 2026-09-28: a number already in Customers is shown as the customer.
   testWidgets('a lead from a known customer is named and badged as one', (
     tester,

@@ -1508,7 +1508,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
+      child: OverdueGlow(
+        key: ValueKey('overdue-glow-$id'),
+        // Not under the selected fill: the open lead is being answered.
+        since: lead['reply_overdue'] == true && !selected
+            ? DateTime.tryParse('${lead['last_contact_at'] ?? ''}')
+            : null,
+        child: Container(
         // Approved colour layout 3 (c31b50ad): a primaryContainer fill,
         // unmistakable at a glance where a 3px rule is not. No leading-edge
         // accent bar anywhere, on Jose's ruling of 2026-09-08.
@@ -1757,6 +1763,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -1856,6 +1863,82 @@ class _Badge extends StatelessWidget {
           color: call ? scheme.onPrimaryContainer : scheme.onSecondaryContainer,
         ),
       ),
+    );
+  }
+}
+
+/// A customer left waiting: the row turns redder the longer they wait and
+/// pulses (Jose, 2026-10-01: the warning sign alone "is not enough"). From a
+/// faint wash at 10 minutes to its strongest at an hour. Still, not pulsing,
+/// where the platform asks for less motion.
+class OverdueGlow extends StatefulWidget {
+  const OverdueGlow({super.key, required this.since, required this.child});
+
+  /// When the customer last wrote; null when nobody is waiting.
+  final DateTime? since;
+  final Widget child;
+
+  /// Off in widget tests, whose pumpAndSettle never settles on a pulse.
+  static bool pulse = true;
+
+  @override
+  State<OverdueGlow> createState() => _OverdueGlowState();
+}
+
+class _OverdueGlowState extends State<OverdueGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _beat = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(OverdueGlow old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    final moving = widget.since != null &&
+        OverdueGlow.pulse &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (moving && !_beat.isAnimating) {
+      _beat.repeat(reverse: true);
+    } else if (!moving && _beat.isAnimating) {
+      _beat.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _beat.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final since = widget.since;
+    if (since == null) return widget.child;
+
+    final minutes = DateTime.now().difference(since).inMinutes.clamp(10, 60);
+    final base = 0.06 + (minutes - 10) / 50 * 0.14; // 0.06 at 10 min, 0.20 at an hour
+    final red = Theme.of(context).colorScheme.error;
+
+    return AnimatedBuilder(
+      animation: _beat,
+      builder: (context, child) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: red.withValues(alpha: base + 0.08 * _beat.value),
+        ),
+        child: child,
+      ),
+      child: widget.child,
     );
   }
 }
