@@ -155,10 +155,30 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
     // Digits are a zip; anything else is most likely an area name somebody
     // typed without waiting for the suggestion.
-    await _run(
-      RegExp(r'^[\d\s-]+$').hasMatch(q) ? {'zip': q} : {'area_name': q},
-    );
+    if (!RegExp(r'^[\d\s-]+$').hasMatch(q)) {
+      await _run({'area_name': q});
+      return;
+    }
+
+    // Said here, before asking (Jovanni, 2026-10-01: "improve the zip code
+    // validation"). The server refuses the same, in the same words.
+    if (!_zipLengths.contains(q.replaceAll(RegExp(r'\D'), '').length)) {
+      setState(() {
+        _error = _notAZip;
+        _areas = null;
+      });
+      return;
+    }
+
+    await _run({'zip': q});
   }
+
+  /// 5 digits, zip+4, or a New England zip that lost its leading zero.
+  static const _zipLengths = {4, 5, 9};
+
+  static const _notAZip =
+      'That is not a zip code. A zip code is 5 digits, like 06810, or zip+4, '
+      'like 06810-1234.';
 
   /// [_all] is "All areas" (Jose, 2026-09-28): every area in view.
   static const _all = '*';
