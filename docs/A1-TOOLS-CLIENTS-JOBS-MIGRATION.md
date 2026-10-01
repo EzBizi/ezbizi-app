@@ -346,7 +346,13 @@ The deploy desk ran it on release 54e37fec (0.0.0313), 18:30:46 to 18:37:10 UTC.
 - Merged on 0.0.0318, 22:40 UTC, by `ezbizi:workiz-merge-twins "2026-09-29 18:44:00" "2026-09-29 21:17:30"` (133d3cb0).
   - The rule: same phone, name and postal code, in any franchise, with a tie-break toward the twin's own branch. Skipped: placeholder addresses, twins a person has touched, and twins anything else names.
   - Result: 615 merged (216 in the same franchise, 399 in another) into 579 kept customers. 695 jobs and 615 Workiz keys moved. The twins were soft-deleted.
-  - Left alone: 79 at a different address, and 2 that match several customers (for Customers to decide).
+  - Left alone: 79 at a different address, and 2 that match several customers.
+    **Closed 2026-10-01:** Jose ruled to keep the 2 ("keep them its fine"),
+    relayed by Customers. Eve Sarfaty is staff and Shoval Ohayon is the
+    owner. Both Eve twins (`01a0eec3-b9f1…`, `01a0eec3-ba08…`), the "Test ."
+    records and every row booked under either name stay as they are. Any
+    future bulk merge keeps the postal-code guard and the 800 SE 4th Ave
+    exclusion: these names sit on unrelated households.
   - Manifest: `workiz-twins/merged-20260929-224045.jsonl`. Dump: `before-workiz-twin-merge-20260929T224000Z`. Audit row: `customer.twins_merged`.
 
 **Staging deleted.** `/var/lib/a1-clients-export` is gone. The manifests and dumps named above are kept.
