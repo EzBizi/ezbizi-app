@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
 use App\Http\Controllers\Api\InventoryLocationsController;
+use App\Http\Controllers\Api\InventoryMovementsController;
 use App\Http\Controllers\Api\InventoryPurchaseOrdersController;
 use App\Http\Controllers\Api\InventorySalesController;
 use App\Http\Controllers\Api\InventoryStockController;
@@ -1011,6 +1012,9 @@ Route::prefix('v1')
             Route::get('inventory/stock', [InventoryStockController::class, 'index']);
             // One row per item, grouped server-side (UI queue 43).
             Route::get('inventory/stock/items', [InventoryStockController::class, 'items']);
+            // An item's History. Quantities, so the Stock tab's gate, though it
+            // hangs off an item: an Items-only role does not see movements.
+            Route::get('inventory/items/{item}/movements', [InventoryMovementsController::class, 'index']);
         });
 
         /*
