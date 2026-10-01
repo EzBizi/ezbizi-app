@@ -83,7 +83,7 @@ class FilesTest extends TestCase
         $pulled = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
             ->assertOk()
-            ->json('data.requests');
+            ->json('requests');
 
         $this->assertCount(1, $pulled);
         $this->assertSame('list', $pulled[0]['op']);
@@ -194,14 +194,14 @@ class FilesTest extends TestCase
 
         $first = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
-            ->assertOk()->json('data.requests');
+            ->assertOk()->json('requests');
         $this->assertCount(1, $first);
 
         // A retried or duplicated poll must not run the same operation twice.
         $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
             ->assertOk()
-            ->assertJson(['data' => ['requests' => []]]);
+            ->assertJson(['requests' => []]);
     }
 
     // ── §2.2 audit: one row per path opened, listing vs download distinguished ──
@@ -298,7 +298,7 @@ class FilesTest extends TestCase
         $this->signedInAs($theirs)
             ->getJson('/api/v1/monitoring/file-requests?device_key=dk-distant')
             ->assertOk()
-            ->assertJson(['data' => ['requests' => []]]);
+            ->assertJson(['requests' => []]);
     }
 
     // ── the SECURITY exemption holds at every door ───────────────────

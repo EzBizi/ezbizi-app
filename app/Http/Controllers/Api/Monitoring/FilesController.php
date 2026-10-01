@@ -230,7 +230,11 @@ class FilesController extends Controller
         $requests = Cache::get($key, []);
         Cache::forget($key);
 
-        return ['data' => ['requests' => $requests]];
+        // Bare top-level, matching input-pending / live-wanted: an agent reading
+        // two monitoring poll endpoints meets one shape, not a wrapped one here
+        // and an unwrapped one there. The manager-facing request/result keep the
+        // {data:...} resource envelope the viewer side uses.
+        return ['requests' => $requests];
     }
 
     /**
