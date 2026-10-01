@@ -76,6 +76,7 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
 
     protected $fillable = [
         'organization_id', 'invitation_id', 'user_id', 'contract_version_id',
+        'company_id',
         'status', 'started_at', 'submitted_at', 'completed_at', 'cancelled_at',
         'started_by_user_id',
     ];
@@ -167,6 +168,35 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
     public function invitation(): BelongsTo
     {
         return $this->belongsTo(Invitation::class);
+    }
+
+    /** The company it is under, or null for the organization (2026-10-01). */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * Who the contract names as the employer: the company it is under, or the
+     * organization (Ana's Suggestion, 2026-10-01).
+     *
+     * @return array{name: string, address: string}
+     */
+    public function employer(): array
+    {
+        $company = $this->company;
+        if ($company === null) {
+            return ['name' => (string) $this->organization->name, 'address' => (string) ($this->organization->address ?? '')];
+        }
+
+        $region = trim(($company->state ?? '').' '.($company->postal_code ?? ''));
+
+        return [
+            'name' => (string) $company->name,
+            'address' => implode(', ', array_filter([
+                $company->address_line1, $company->address_line2, $company->city, $region,
+            ], fn ($part) => trim((string) $part) !== '')),
+        ];
     }
 
     /** The employee. Null until the invitation is accepted. */

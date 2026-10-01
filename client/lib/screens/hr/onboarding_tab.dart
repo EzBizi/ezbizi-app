@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
+import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -506,6 +507,14 @@ class _StartPanelState extends State<_StartPanel> {
   String? _invitationId;
   String? _contractId;
 
+  /// Under the organization or a company: the employer the contract names,
+  /// where it is filed, where the person is assigned (Ana's Suggestion; Jose,
+  /// 2026-10-01). Empty leaves it where the invitation places them.
+  String _under = '';
+
+  /// The organization and the companies this person may place somebody in.
+  List<ScopeOption> _places = const [];
+
   bool _busy = false;
   String? _error;
 
@@ -519,6 +528,7 @@ class _StartPanelState extends State<_StartPanel> {
     final answers = await Future.wait([
       widget.api.get('/hr/invitations'),
       widget.api.get('/hr/contracts'),
+      widget.api.get('/hr/people/scope-options'),
     ]);
 
     if (!mounted) return;
@@ -535,6 +545,16 @@ class _StartPanelState extends State<_StartPanel> {
 
       _invitations = _rows(answers[0]);
       _contracts = _rows(answers[1]);
+      _places = answers[2].ok && answers[2].data is Map
+          ? [
+              for (final place in AssignmentOptions.fromJson(
+                Map<String, dynamic>.from(answers[2].data as Map),
+              ).scopes)
+                if (place.isActive &&
+                    (place.type == 'organization' || place.type == 'company'))
+                  place,
+            ]
+          : const [];
 
       // One choice is not a choice.
       if (_contracts.length == 1) {
@@ -579,6 +599,10 @@ class _StartPanelState extends State<_StartPanel> {
     final response = await widget.api.post('/hr/onboardings', {
       'invitation_id': _invitationId,
       'contract_id': _contractId,
+      if (_under.isNotEmpty)
+        'company_id': _under.startsWith('company:')
+            ? _under.substring('company:'.length)
+            : null,
     });
 
     if (!mounted) return;
@@ -678,6 +702,30 @@ class _StartPanelState extends State<_StartPanel> {
                 'There are no contracts yet. A contract is what an onboarding '
                 'asks, so one has to exist before anybody can be taken on — '
                 'the Contracts tab is where they are made.',
+              ),
+            ],
+            if (_places.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              SearchPickerField<String>(
+                key: const ValueKey('onboarding-under'),
+                value: _under,
+                label: 'Under',
+                border: const OutlineInputBorder(),
+                helperText:
+                    'The employer the contract names. The paperwork is filed '
+                    'there, and they are assigned there.',
+                helperMaxLines: 3,
+                options: [
+                  const SearchOption(
+                    value: '',
+                    label: 'Where their invitation places them',
+                  ),
+                  for (final place in _places)
+                    SearchOption(value: place.value, label: place.pathLabel),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _under = v ?? ''),
               ),
             ],
             if (_error != null) ...[

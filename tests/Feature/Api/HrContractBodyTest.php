@@ -83,7 +83,9 @@ class HrContractBodyTest extends TestCase
 
         // The field, the two core values, and all four facts.
         $this->assertStringContainsString('at a rate of 18.50 per hour', $html);
-        $this->assertStringContainsString('between Alpha and Marta Ruiz', $html);
+        // The employer is the company the onboarding is under, here the
+        // franchise's company the invitation placed them in (2026-10-01).
+        $this->assertStringContainsString('between Alpha Co and Marta Ruiz', $html);
         $this->assertStringContainsString('under Driver version 1', $html);
         $this->assertStringContainsString('made on '.now()->toDateString().' between', $html);
 

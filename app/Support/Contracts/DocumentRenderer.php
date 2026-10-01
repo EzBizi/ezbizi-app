@@ -210,7 +210,8 @@ final class DocumentRenderer
         $version      = $onboarding->contractVersion;
         $contract     = $version->contract;
         $fields       = $version->fieldSet();
-        $organization = (string) $onboarding->organization->name;
+        $employer     = $onboarding->employer();
+        $organization = $employer['name'];
         $name         = (string) $contract->name;
 
         return $this->document(
@@ -226,7 +227,7 @@ final class DocumentRenderer
                 $this->answerValues($fields, $identity, $answers),
                 ContractFacts::values(
                     organizationName:    $organization,
-                    organizationAddress: (string) ($onboarding->organization->address ?? ''),
+                    organizationAddress: $employer['address'],
                     contractName:        $name,
                     version:             (int) $version->version,
                     /*

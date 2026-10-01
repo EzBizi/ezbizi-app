@@ -192,6 +192,7 @@ class InvitationActions
         Invitation $invitation,
         Contract $contract,
         ?User $startedBy = null,
+        ?string $companyId = null,
     ): Onboarding {
         $this->assertCanCarryOnboarding($invitation);
 
@@ -241,6 +242,12 @@ class InvitationActions
                 // it before the person has an account.
                 'user_id' => $invitation->accepted_user_id,
                 'contract_version_id' => $version->getKey(),
+                // The company it is under: the one chosen, else the one the
+                // invitation places them in (a franchise's company), else the
+                // organization.
+                'company_id' => $companyId ?? $invitation->assigned_company_id
+                    ?? ($invitation->assigned_franchise_id === null ? null
+                        : \App\Models\Franchise::query()->whereKey($invitation->assigned_franchise_id)->value('company_id')),
                 'status' => Onboarding::IN_PROGRESS,
                 'started_at' => now(),
                 'started_by_user_id' => $startedBy?->getKey(),
