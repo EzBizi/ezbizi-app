@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0346',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: the new hire fills in and signs the W-4 or W-9 inside the app.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0345',
       date: '1 Oct 2026',
       items: [
