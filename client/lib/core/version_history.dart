@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0336',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: the employer signs their part first, and the new hire is emailed a link to finish theirs.',
+        'Leads: phone numbers from Thumbtack and website forms look like Google\'s.',
+        'iPhone and Mac: also brings everything listed under 0.0.0335, which reached Windows, Android and the web first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0335',
       date: '1 Oct 2026',
       items: [
