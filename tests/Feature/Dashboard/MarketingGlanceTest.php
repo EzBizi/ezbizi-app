@@ -33,6 +33,10 @@ class MarketingGlanceTest extends TestCase
     {
         parent::setUp();
 
+        // Mid-month: the fixtures say "yesterday", and on the 1st yesterday
+        // is last month, so four tests went red on 2026-10-01 alone.
+        $this->travelTo(now()->setDate(2026, 9, 15)->setTime(12, 0));
+
         $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
 
         $r = app(ProvisionOrganization::class)(
