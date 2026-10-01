@@ -18,7 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Website live chat: visitors see who is answering (name and photo), each reply\'s sender, and \'is typing…\'; they can send a photo; the chat opens at one size; the greeting arrives in seconds. In Leads, a live chat shows when the visitor is typing.',
-        'Leads: a Completed status for when nobody owes the customer an answer. It clears the overdue mark and the Unreplied list, and a new message from the customer reopens the lead as New.',
+        'Leads: mark a conversation Completed when the customer needs nothing more; the red warning clears, and it reopens if they write again.',
         'Human Resources dashboard: people brought over from A1 Tools no longer count as joining this week.',
         'AI Assistance: topics on the left, the answer in the middle with where it came from, and nearby branches on the right with Call, Map and Copy. On a phone each is its own page.',
         'Training, Learn: Continue where you left off comes first, what is assigned to you sits beside it with due dates, and the library pairs each guide with its test.',
