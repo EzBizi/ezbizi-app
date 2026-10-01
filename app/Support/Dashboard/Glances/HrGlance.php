@@ -80,19 +80,13 @@ final class HrGlance extends DescribedGlance
             $inFlight = $this->onboardingsInFlight->resolve($user, []);
             $stalled = $this->invitationsStalled->resolve($user, []);
             $starters = $this->startersAndLeavers->resolve($user, [
-                // ->utc(), because startsOn is a wall clock in the VIEW timezone
-                // and `created_at` is UTC. A Carbon binds as its own local
-                // string with no conversion, so a UTC-5 organization compared
-                // UTC timestamps against Eastern strings and the bound sat five
-                // hours EARLY — pulling in starters from about 19:00 the
-                // previous evening. Seven sibling glances already convert;
-                // JobsGlance:107 carries the rule. This one did not.
-                //
-                // Note the direction: this is a lower bound only, so it
-                // OVER-COUNTS. CallReport's version of the same defect was a
-                // two-sided whereBetween binding late and DROPPING evening
-                // calls. A test written for one will not catch the other.
-                'since' => $period->startsOn->copy()->utc(),
+                // In the VIEW timezone, not UTC. Joined and Left are DATES now
+                // (the first `started` event, a `left` event), recorded in the
+                // organization's own days, so the bound is the period's first
+                // local day. A UTC bound would name the previous day for every
+                // organization east of UTC. (Until 2026-10-01 Joined read
+                // `users.created_at`, which is UTC, and ->utc() was right.)
+                'since' => $period->startsOn->copy(),
             ]);
             // Forward window of its own — not the dashboard period.
             $certifications = $this->expiringCertifications->resolve($user, []);

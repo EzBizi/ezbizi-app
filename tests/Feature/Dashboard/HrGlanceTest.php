@@ -399,6 +399,9 @@ class HrGlanceTest extends TestCase
         // it is inside the window, which is the bug.
         $before = $period->startsOn->copy()->utc()->subHours(2);
 
+        // Joined is the first `started` DATE since 2026-10-01, in the
+        // organization's days: the Sunday before this week is not this week,
+        // whatever its account row's timestamp says.
         $this->inTenant(function () use ($before) {
             $person = User::create([
                 'organization_id' => $this->alpha['org']->id,
@@ -413,9 +416,12 @@ class HrGlanceTest extends TestCase
                 'assigned_franchise_id' => $this->alpha['franchise']->id,
             ]);
 
-            // created_at is not fillable, so set it explicitly or the row is
-            // stamped now() and the test asserts nothing.
             $person->forceFill(['created_at' => $before])->save();
+
+            \App\Models\EmploymentEvent::create([
+                'organization_id' => $this->alpha['org']->id, 'user_id' => $person->id,
+                'kind' => \App\Models\EmploymentEvent::STARTED, 'occurred_on' => '2026-08-30',
+            ]);
         });
 
         // Through the GLANCE, which is where the conversion lives. Calling the
