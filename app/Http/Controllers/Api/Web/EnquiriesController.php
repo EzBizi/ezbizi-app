@@ -8,6 +8,8 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
+use App\Models\User;
+use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Http\JsonResponse;
@@ -125,7 +127,7 @@ class EnquiriesController extends Controller
                 'chat' => $chat->getKey(),
                 // Said once. It is hashed on our side and cannot be re-read.
                 'token' => $token,
-                'messages' => $this->messagesFor($chat),
+                ...$this->threadFor($chat),
             ], Response::HTTP_CREATED)->withHeaders($this->browserHeaders());
         });
     }
@@ -140,16 +142,27 @@ class EnquiriesController extends Controller
         }
 
         $input = $request->validate([
-            'message' => ['required', 'string', 'max:4000'],
+            'message' => ['required_without:photo', 'nullable', 'string', 'max:4000'],
+            // A photo, as A1's chat took: the chimney, the crack, the door.
+            'photo' => ['sometimes', 'file', 'max:10240', 'mimes:jpg,jpeg,png,webp,gif,heic,heif'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $found->organization);
 
-        return $this->tenant->run($organization, function () use ($found, $input): JsonResponse {
-            $this->enquiries->say($found, $input['message'], LeadConversation::FROM_CONSUMER);
+        return $this->tenant->run($organization, function () use ($found, $input, $request): JsonResponse {
+            $attachments = [];
+
+            if ($request->hasFile('photo')) {
+                $file = $request->file('photo');
+                $name = Str::uuid()->toString().'.'.strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                $file->storeAs('web-form', $name, 'local');
+                $attachments[] = URL::signedRoute('web.form.file', ['name' => $name]);
+            }
+
+            $this->enquiries->say($found, (string) ($input['message'] ?? ''), LeadConversation::FROM_CONSUMER, attachments: $attachments);
 
             return response()->json([
-                'messages' => $this->messagesFor($found),
+                ...$this->threadFor($found),
             ])->withHeaders($this->browserHeaders());
         });
     }
@@ -169,7 +182,7 @@ class EnquiriesController extends Controller
             $found->forceFill(['last_seen_at' => now()])->save();
 
             return response()->json([
-                'messages' => $this->messagesFor($found),
+                ...$this->threadFor($found),
             ])->withHeaders($this->browserHeaders());
         });
     }
@@ -245,6 +258,29 @@ class EnquiriesController extends Controller
             return response()->json(['received' => true], Response::HTTP_CREATED)
                 ->withHeaders($this->browserHeaders());
         });
+    }
+
+    /** POST /api/v1/web/chat/{chat}/typing — the visitor is typing; Leads shows it for a few seconds. */
+    public function typing(Request $request, string $chat): JsonResponse
+    {
+        $found = $this->chatForToken($request, $chat);
+
+        if ($found instanceof JsonResponse) {
+            return $found;
+        }
+
+        ChatPeople::visitorTyping((string) $found->lead_id);
+
+        return response()->json(['ok' => true])->withHeaders($this->browserHeaders());
+    }
+
+    /** GET /api/v1/web/chat/avatar/{user} — a dispatcher's photo, by the signed link a chat was given. */
+    public function avatar(string $user): StreamedResponse
+    {
+        $subject = $this->tenant->runWithoutTenant(fn () => User::query()->find($user));
+        abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
+
+        return app(\App\Support\Files\FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
     }
 
     /** GET /api/v1/web/form/challenge — the puzzle a CAPTCHA'd form solves first. */
@@ -380,17 +416,45 @@ class EnquiriesController extends Controller
          * at 0ca6739b; my own attempt used created_at, which carries the same
          * second precision and therefore tied in exactly the same place.
          */
+        $senders = ChatPeople::senders($chat->lead);
+
         return LeadConversation::query()
             ->where('lead_id', $chat->lead_id)
             ->orderBy('occurred_at')
             ->orderBy('id')
-            ->get(['participant', 'text', 'occurred_at'])
+            ->get(['id', 'participant', 'text', 'occurred_at', 'attachments', 'is_automatic'])
             ->map(fn (LeadConversation $row) => [
                 'from' => $row->participant === LeadConversation::FROM_CONSUMER ? 'you' : 'them',
                 'text' => $row->text,
                 'at' => $row->occurred_at?->toIso8601String(),
+                // Who answered: a first name and a face, or null for the company itself (a greeting).
+                'by' => isset($senders[$row->id]) ? ChatPeople::person($senders[$row->id]) : null,
+                'attachments' => $row->attachments ?? [],
             ])
             ->all();
+    }
+
+    /**
+     * What the widget needs beside the messages: the person answering (the
+     * latest who replied), and whoever is typing right now.
+     *
+     * @return array<string, mixed>
+     */
+    private function threadFor(WebChat $chat): array
+    {
+        $messages = $this->messagesFor($chat);
+        $agent = null;
+
+        foreach (array_reverse($messages) as $m) {
+            if ($m['by'] !== null) {
+                $agent = $m['by'];
+                break;
+            }
+        }
+
+        $typing = ChatPeople::typingAgent((string) $chat->lead_id);
+
+        return ['messages' => $messages, 'agent' => $agent, 'typing' => $typing ? ChatPeople::person($typing) : null];
     }
 
     /**

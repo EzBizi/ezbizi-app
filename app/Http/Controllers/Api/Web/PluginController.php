@@ -156,7 +156,7 @@ class PluginController extends Controller
                  * editing a page or updating a plugin.
                  */
                 // With the rules a per-widget override is checked by.
-                'widgets' => [...WebWidget::publishedFor($site), 'schema' => WidgetPresets::schema()],
+                'widgets' => [...self::withChatPeople(WebWidget::publishedFor($site), $site), 'schema' => WidgetPresets::schema()],
                 // The lists the team, branches and store-locator widgets draw.
                 'team' => SiteLists::team($site),
                 'locations' => SiteLists::locations($site),
@@ -295,4 +295,20 @@ class PluginController extends Controller
         return $payload;
     }
 
+    /**
+     * The chat's faces and company name, for the plugin only.
+     *
+     * They travel with the settings it reads every five minutes rather than
+     * being asked for on every visitor's page view, and never on the public
+     * endpoint, where a scraped key must not name the business.
+     */
+    private static function withChatPeople(array $published, WebSite $site): array
+    {
+        if (isset($published['chat'])) {
+            $published['chat']['team'] = \App\Support\Web\ChatPeople::team($site);
+            $published['chat']['company'] = (string) ($site->company?->name ?? '');
+        }
+
+        return $published;
+    }
 }

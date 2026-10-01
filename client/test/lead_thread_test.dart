@@ -140,6 +140,40 @@ void main() {
   });
 
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
+  /// Jose, 2026-10-01: the website visitor sees "Lenin is typing…", and the
+  /// dispatcher sees the visitor typing. Only on a live website chat.
+  testWidgets('a website chat shows the visitor typing and says when we type', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      source: 'website_chat',
+      visitorTyping: true,
+    );
+
+    expect(find.text('Marcus is typing…'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'On my way');
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'On my way!');
+    await tester.pump();
+    expect(_typingPosts, ['/api/v1/leads/lead-1/typing'],
+        reason: 'one signal, not one per keystroke');
+  });
+
+  testWidgets('a text lead never says it is typing', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hello');
+    await tester.pump();
+    expect(_typingPosts, isEmpty);
+  });
+
   testWidgets('a message copies in one press', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -678,6 +712,7 @@ void main() {
 }
 
 final _sent = <String>[];
+final _typingPosts = <String>[];
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -698,8 +733,11 @@ Future<void> _pump(
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
   Size size = const Size(600, 900),
   Map<String, dynamic>? company,
+  String? source,
+  bool visitorTyping = false,
 }) async {
   _sent.clear();
+  _typingPosts.clear();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -745,6 +783,11 @@ Future<void> _pump(
         );
       }
 
+      if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
+        _typingPosts.add(request.url.path);
+        return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      }
+
       if (request.url.path.endsWith('/recording')) {
         await recordingGate.future;
         return http.Response.bytes(
@@ -765,6 +808,7 @@ Future<void> _pump(
               'customer': customer,
               'details': details,
               'viewers': viewers,
+              'visitor_typing': visitorTyping,
               'reply_templates': templates,
               'conversations': conversations ?? [
                 {
@@ -830,6 +874,7 @@ Future<void> _pump(
             'status': 'new',
             'franchise': const {'id': 'f-1', 'name': 'Connecticut'},
             'company': ?company,
+            'source': ?source,
           },
           onStatusChanged: (_) async {},
           onRead: onRead,
@@ -990,7 +1035,7 @@ void _autoRefreshTests() {
             lead: const {
               'id': 'lead-1',
               'contact_name': 'Marcus Bell',
-              'source': 'website_chat',
+              'source': 'local_services', // a live website chat re-reads every 3s
               'status': 'new',
             },
             onStatusChanged: (_) async {},
@@ -1099,7 +1144,7 @@ void _autoRefreshTests() {
             lead: const {
               'id': 'lead-1',
               'contact_name': 'Marcus Bell',
-              'source': 'website_chat',
+              'source': 'local_services',
               'status': 'new',
             },
             onStatusChanged: (_) async {},
