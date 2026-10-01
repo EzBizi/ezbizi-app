@@ -64,6 +64,107 @@ void main() {
     expect(find.byType(SidePanel), findsOneWidget);
   });
 
+  // ── the layout Jose picked (UI queue 40: 1 and 4) ─────────────────
+
+  testWidgets('topics on the left open an answer in the middle, with where '
+      'it came from, its footnote and the rest of its section', (tester) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    // Two answers: the section unfolds rather than opening one.
+    await tester.tap(find.byKey(const Key('topic-About Harbor')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('assistant-answer')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('answer-e-3')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('From the Library · About Harbor › Who we are'),
+      findsOneWidget,
+    );
+    expect(find.text('We sweep every chimney.'), findsOneWidget);
+    expect(find.text('Our own words.'), findsOneWidget);
+
+    // The rest of the section, one tap away.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Our warranty'));
+    await tester.pumpAndSettle();
+    expect(find.text('Two years.'), findsOneWidget);
+    expect(find.text('Edit in Library'), findsNothing);
+  });
+
+  testWidgets('a branch is a card with Call and Map, under the question '
+      'asked today', (tester) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    await tester.enterText(find.byType(TextField), 'chi');
+    await tester.tap(find.widgetWithText(FilledButton, 'Ask'));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('branch-A1 Chimney - CHI'));
+    expect(
+      find.descendant(of: card, matching: find.text('Serves Chicago, Illinois')),
+      findsOneWidget,
+    );
+    for (final action in ['Call', 'Map', 'Copy']) {
+      expect(
+        find.descendant(of: card, matching: find.text(action)),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.text('1 answer for “chi”, opened. 1 branch matched.'),
+      findsOneWidget,
+    );
+
+    // Asked today: tapping it asks again.
+    expect(find.byKey(const Key('asked-chi')), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '');
+    await tester.tap(find.byKey(const Key('asked-chi')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'chi',
+    );
+  });
+
+  testWidgets("Edit in Library opens the Library's own panel", (tester) async {
+    await _pump(
+      tester,
+      grants: ['ai_assistance.ai.view', 'ai_assistance.manage'],
+    );
+
+    await tester.tap(find.byKey(const Key('topic-NFPA 211')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit in Library'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SidePanel), findsOneWidget);
+  });
+
+  testWidgets('on a phone each step is a page with a way back', (tester) async {
+    await _pump(
+      tester,
+      grants: ['ai_assistance.ai.view'],
+      size: const Size(390, 900),
+    );
+
+    expect(find.text('2 topics · Who we are, Our warranty…'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('topic-About Harbor')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('topic-NFPA 211')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('answer-e-4')));
+    await tester.pumpAndSettle();
+    expect(find.text('Two years.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('topic-NFPA 211')), findsOneWidget);
+  });
+
   test('WhatsApp markers go, a link keeps its underscores', () {
     expect(plainAnswer('*Bold* text'), 'Bold text');
     expect(plainAnswer('_A footer line._'), 'A footer line.');
@@ -74,8 +175,12 @@ void main() {
   });
 }
 
-Future<void> _pump(WidgetTester tester, {required List<String> grants}) async {
-  tester.view.physicalSize = const Size(1200, 1400);
+Future<void> _pump(
+  WidgetTester tester, {
+  required List<String> grants,
+  Size size = const Size(1200, 1400),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -100,6 +205,23 @@ Future<void> _pump(WidgetTester tester, {required List<String> grants}) async {
                   },
                 ],
               },
+              {
+                'section': 'About Harbor',
+                'entries': [
+                  {
+                    'id': 'e-3',
+                    'title': 'Who we are',
+                    'description': 'Since 1984',
+                    'body': 'We sweep *every* chimney.\n_Our own words._',
+                  },
+                  {
+                    'id': 'e-4',
+                    'title': 'Our warranty',
+                    'description': null,
+                    'body': 'Two years.',
+                  },
+                ],
+              },
             ],
           },
         });
@@ -116,7 +238,13 @@ Future<void> _pump(WidgetTester tester, {required List<String> grants}) async {
               },
             ],
             'locations': [
-              {'company_name': 'A1 Chimney - CHI', 'phone': '(312) 555-0100'},
+              {
+                'company_name': 'A1 Chimney - CHI',
+                'phone': '(312) 555-0100',
+                'address': '1 Lake St, Chicago, IL 60601',
+                'service_area': 'Chicago, Illinois',
+                'maps_url': 'https://maps.example/chi',
+              },
             ],
           },
         });
@@ -131,6 +259,18 @@ Future<void> _pump(WidgetTester tester, {required List<String> grants}) async {
               'description': null,
               'body': 'Acorn first.',
               'audience': 'staff',
+              'position': 0,
+              'company_id': null,
+              'franchise_id': null,
+            },
+            // The AI tab's Flue sizing, as the Library lists it.
+            {
+              'id': 'e-1',
+              'section': 'NFPA 211',
+              'title': 'Flue sizing',
+              'description': 'Against the opening',
+              'body': '*Flue sizing for a fireplace*',
+              'audience': 'public',
               'position': 0,
               'company_id': null,
               'franchise_id': null,
