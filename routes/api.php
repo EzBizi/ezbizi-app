@@ -1521,6 +1521,8 @@ Route::prefix('v1')
             // Force clock out, and the day's tag / extra hours / note (2026-09-24).
             Route::post('hr/time-clock/shifts/{shift}/clock-out', [TimeClockController::class, 'forceClockOut']);
             Route::put('hr/time-clock/people/{user}/days/{date}', [TimeClockController::class, 'recordDay']);
+            // Add shift: a day somebody worked and never punched (2026-10-01).
+            Route::post('hr/time-clock/people/{user}/shifts', [TimeClockController::class, 'addShift']);
             Route::get('hr/time-clock/corrections', [TimeClockCorrectionsController::class, 'index']);
             Route::post('hr/time-clock/corrections/{correction}/approve', [TimeClockCorrectionsController::class, 'approve']);
             Route::post('hr/time-clock/corrections/{correction}/deny', [TimeClockCorrectionsController::class, 'deny']);

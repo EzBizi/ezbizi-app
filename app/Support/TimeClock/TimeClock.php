@@ -344,11 +344,12 @@ final class TimeClock
      * somebody is clocked out" on it would text a technician who went home
      * yesterday. The audit entry below is the trail.
      */
-    public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out): void
+    public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out, bool $requested = false): void
     {
         $this->assertReaches($actor, $shift->user);
+        $own = $actor->is($shift->user);
 
-        DB::transaction(function () use ($shift, $in, $out) {
+        DB::transaction(function () use ($shift, $in, $out, $requested, $own) {
             $shift = TimeClockShift::query()->whereKey($shift->getKey())->lockForUpdate()->firstOrFail();
 
             // Null means UNCHANGED in both arguments. The controller refuses
@@ -399,10 +400,20 @@ final class TimeClock
             $shift->clocked_out_at = $out;
 
             // Only when the end actually moved. Nudging a start must not
-            // rewrite the row's account of who ended it.
+            // rewrite the row's account of who ended it. Your own end is
+            // yours: as if you had clocked out then.
             if ($out !== null && $before['clocked_out_at'] !== $this->instant($out)) {
-                $shift->ended_by = TimeClockShift::ENDED_BY_CORRECTION;
+                $shift->ended_by = $own ? TimeClockShift::ENDED_BY_PERSON : TimeClockShift::ENDED_BY_CORRECTION;
             }
+
+            // The mark on the row (Jose, 2026-10-01): "Shift corrected" for an
+            // approved request, "Edited" for HR's own edit, and nothing when
+            // you edit your own hours.
+            $shift->edit_source = match (true) {
+                $requested => TimeClockShift::EDITED_BY_REQUEST,
+                $own => $shift->edit_source,
+                default => TimeClockShift::EDITED_BY_HR,
+            };
 
             $shift->save();
 
@@ -454,6 +465,73 @@ final class TimeClock
     public function viewTimezone(User $actor): string
     {
         return (string) $this->settings->get('timezone', ViewScope::forUser($actor)->settingsScope());
+    }
+
+    /**
+     * Add a shift nobody punched (Jose, 2026-10-01: "im also missing the
+     * button to add shift"; Anisa worked the Tuesday of the A1 Tools
+     * switch-over and has no row for it).
+     *
+     * Always closed: an open one would be a claim that somebody is working
+     * right now, made from a date picker. The same refusals as correct() —
+     * not in the future, end after start, no overlap — and stamped as a
+     * correction, so the row says HR wrote it rather than a clock.
+     */
+    public function addShift(User $actor, User $person, Carbon $in, Carbon $out, bool $requested = false): TimeClockShift
+    {
+        $this->assertReaches($actor, $person);
+        $own = $actor->is($person);
+
+        return DB::transaction(function () use ($person, $in, $out, $requested, $own) {
+            if ($out->gt(now())) {
+                throw ValidationException::withMessages([
+                    'clocked_in_at' => 'A shift cannot be in the future.',
+                ]);
+            }
+
+            if ($out->lte($in)) {
+                throw ValidationException::withMessages([
+                    'clocked_out_at' => 'Clock out must be after clock in.',
+                ]);
+            }
+
+            $clash = TimeClockShift::query()
+                ->where('user_id', $person->getKey())
+                ->where('clocked_in_at', '<', $out)
+                ->where(fn ($q) => $q->whereNull('clocked_out_at')->orWhere('clocked_out_at', '>', $in))
+                ->lockForUpdate()
+                ->exists();
+
+            if ($clash) {
+                throw ValidationException::withMessages([
+                    'clocked_in_at' => 'These times overlap another shift for the same person.',
+                ]);
+            }
+
+            $shift = TimeClockShift::query()->create([
+                'organization_id' => $person->organization_id,
+                'user_id' => $person->getKey(),
+                'clocked_in_at' => $in,
+                'clocked_out_at' => $out,
+                'ended_by' => $own ? TimeClockShift::ENDED_BY_PERSON : TimeClockShift::ENDED_BY_CORRECTION,
+                'edit_source' => match (true) {
+                    $requested => TimeClockShift::EDITED_BY_REQUEST,
+                    $own => null,
+                    default => TimeClockShift::EDITED_BY_HR,
+                },
+                'outside_schedule' => false,
+                'extensions' => 0,
+            ]);
+
+            $this->audit->log('time_clock.added', $shift, changes: [
+                'after' => [
+                    'clocked_in_at' => $this->instant($shift->clocked_in_at),
+                    'clocked_out_at' => $this->instant($shift->clocked_out_at),
+                ],
+            ]);
+
+            return $shift;
+        });
     }
 
     /**
@@ -1087,6 +1165,8 @@ final class TimeClock
                 : $shift->clocked_out_at->getTimestamp() - $shift->clocked_in_at->getTimestamp(),
             'open' => $open,
             'ended_by' => $shift->ended_by,
+            // `hr` (Edited), `request` (Shift corrected) or null.
+            'edited' => $shift->edit_source,
             'outside_schedule' => (bool) $shift->outside_schedule,
             'extensions' => (int) $shift->extensions,
         ];

@@ -171,8 +171,61 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
           ),
         );
       },
-      day: (_, _, _, _, _) async {},
+      day: (context, personId, date, _, action) async {
+        if (action != 'request_day') return;
+        final body = await _editTimes(
+          context,
+          _blankShift(personId, date),
+          request: true,
+          adding: true,
+        );
+        if (body == null || !context.mounted) return;
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        // No shift_id: approving it adds the shift.
+        final response = await widget.api.post('/time-clock/corrections', body);
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text(
+              response.ok
+                  ? UiStrings.t('time_clock.request_sent')
+                  : response.reason,
+            ),
+          ),
+        );
+      },
       schedule: (_, _) async {},
+    );
+  }
+
+  /// A day with nothing clocked, as a shift to fill in: the person's own
+  /// hours for that weekday when they have them, 9 to 5 when not.
+  _Shift _blankShift(String personId, String date) {
+    final person = _week?.people.where((p) => p.id == personId).firstOrNull;
+    const names = [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ];
+    final day = DateTime.tryParse(date);
+    final hours = day == null ? null : person?.schedule[names[day.weekday - 1]];
+    final start = hours is Map ? '${hours['start'] ?? '09:00'}' : '09:00';
+    final end = hours is Map ? '${hours['end'] ?? '17:00'}' : '17:00';
+
+    return _Shift(
+      date: date,
+      clockedIn: '',
+      clockedOut: '',
+      clockedInLocal: '$date $start',
+      clockedOutLocal: '$date $end',
+      durationSeconds: 0,
+      open: false,
+      outsideSchedule: false,
+      endedBy: '',
+      extensions: 0,
     );
   }
 
@@ -241,6 +294,18 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
       await _load(on: _on);
     },
     day: (context, personId, date, record, action) async {
+      if (action == 'add') {
+        final times = await _editTimes(
+          context,
+          _blankShift(personId, date),
+          adding: true,
+        );
+        if (times == null || !context.mounted) return;
+        final added = '/hr/time-clock/people/$personId/shifts';
+        await _apply(context, widget.api.post('$added$_onSuffix', times));
+
+        return;
+      }
       final body = await switch (action) {
         'tag' => _chooseTag(context, record?.tag),
         'extra' => _chooseExtra(context, record?.extraMinutes ?? 0),
@@ -988,28 +1053,46 @@ class _DayCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (actions?.manage == true)
+                // Your own day, without manage: ask for its hours (a day you
+                // worked and never clocked, 2026-10-01).
+                if (actions != null &&
+                    (actions!.manage || personId == actions!.meId))
                   _MenuButton(
                     tooltip: UiStrings.t('time_clock.day_actions'),
                     items: [
-                      (
-                        'tag',
-                        UiStrings.t('time_clock.action.tag'),
-                        Icons.sell_outlined,
-                        false,
-                      ),
-                      (
-                        'extra',
-                        UiStrings.t('time_clock.action.extra'),
-                        Icons.more_time,
-                        false,
-                      ),
-                      (
-                        'note',
-                        UiStrings.t('time_clock.action.note'),
-                        Icons.sticky_note_2_outlined,
-                        false,
-                      ),
+                      if (!actions!.manage)
+                        (
+                          'request_day',
+                          UiStrings.t('time_clock.action.request_day'),
+                          Icons.edit_calendar_outlined,
+                          false,
+                        ),
+                      if (actions!.manage) ...[
+                        (
+                          'add',
+                          UiStrings.t('time_clock.action.add_shift'),
+                          Icons.add,
+                          false,
+                        ),
+                        (
+                          'tag',
+                          UiStrings.t('time_clock.action.tag'),
+                          Icons.sell_outlined,
+                          false,
+                        ),
+                        (
+                          'extra',
+                          UiStrings.t('time_clock.action.extra'),
+                          Icons.more_time,
+                          false,
+                        ),
+                        (
+                          'note',
+                          UiStrings.t('time_clock.action.note'),
+                          Icons.sticky_note_2_outlined,
+                          false,
+                        ),
+                      ],
                     ],
                     onChosen: (action) =>
                         actions!.day(context, personId, date, record, action),
@@ -1153,15 +1236,17 @@ class _ShiftRow extends StatelessWidget {
                 ],
                 // Who set the end, when it was not the person: a correction rewrote
                 // it, or somebody in HR pressed Clock out now.
-                if (shift.endedBy == 'correction' ||
-                    shift.endedBy == 'manager') ...[
+                // Jose, 2026-10-01: "Shift corrected" for what was asked
+                // for, "Edited" only for HR's changes nobody asked for;
+                // nothing on your own edits (the server leaves it null).
+                if (shift.edited != null || shift.endedBy == 'manager') ...[
                   const SizedBox(width: 8),
                   _Chip(
-                    text: UiStrings.t(
-                      shift.endedBy == 'correction'
-                          ? 'time_clock.edited'
-                          : 'time_clock.ended_by_hr',
-                    ),
+                    text: UiStrings.t(switch (shift.edited) {
+                      'request' => 'time_clock.corrected',
+                      'hr' => 'time_clock.edited',
+                      _ => 'time_clock.ended_by_hr',
+                    }),
                     colour: StateColour.of(context).caution,
                   ),
                 ],
@@ -1459,9 +1544,14 @@ class _Shift {
     required this.outsideSchedule,
     required this.endedBy,
     required this.extensions,
+    this.edited,
   });
 
   final String id;
+
+  /// `hr`: HR changed it unasked ("Edited"). `request`: an approved
+  /// correction ("Shift corrected"). Null: neither, or your own edit.
+  final String? edited;
 
   /// "Y-m-d H:i" in the organization's zone, for the edit pickers. Sent back
   /// in the same shape, and read in the same zone, so no timezone is touched
@@ -1502,6 +1592,7 @@ class _Shift {
     outsideSchedule: json['outside_schedule'] as bool? ?? false,
     endedBy: '${json['ended_by'] ?? ''}',
     extensions: (json['extensions'] as num?)?.toInt() ?? 0,
+    edited: json['edited'] as String?,
   );
 }
 
@@ -1736,17 +1827,27 @@ Future<Map<String, dynamic>?> _editTimes(
   BuildContext context,
   _Shift shift, {
   bool request = false,
+  bool adding = false,
 }) {
   return showSidePanel<Map<String, dynamic>>(
     context,
-    builder: (context) => _EditTimesDialog(shift: shift, request: request),
+    builder: (context) =>
+        _EditTimesDialog(shift: shift, request: request, adding: adding),
   );
 }
 
 class _EditTimesDialog extends StatefulWidget {
-  const _EditTimesDialog({required this.shift, this.request = false});
+  const _EditTimesDialog({
+    required this.shift,
+    this.request = false,
+    this.adding = false,
+  });
 
   final _Shift shift;
+
+  /// A shift that does not exist yet (Add shift, or asking for a day): both
+  /// times are required, because an added shift is always a finished one.
+  final bool adding;
 
   /// Asking a manager rather than editing: adds "What happened?", which the
   /// server requires, and sends for approval instead of saving.
@@ -1814,13 +1915,17 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
     final labels = MaterialLocalizations.of(context);
     final valid =
         _in != null &&
+        (!widget.adding || _out != null) &&
         (_out == null || _out!.isAfter(_in!)) &&
         (!widget.request || _reason.text.trim().isNotEmpty);
 
     return SidePanel(
-      title: UiStrings.t(
-        widget.request ? 'time_clock.action.request' : 'time_clock.action.edit',
-      ),
+      title: UiStrings.t(switch ((widget.adding, widget.request)) {
+        (true, true) => 'time_clock.action.request_day',
+        (true, false) => 'time_clock.action.add_shift',
+        (false, true) => 'time_clock.action.request',
+        (false, false) => 'time_clock.action.edit',
+      }),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2060,7 +2165,7 @@ class _Requests extends StatelessWidget {
                         ),
                         Text(
                           '${UiStrings.t('time_clock.request_was')}: '
-                          '${_span(r['was_in'], r['was_out'])}',
+                          '${r['shift_id'] == null ? UiStrings.t('time_clock.missing_day') : _span(r['was_in'], r['was_out'])}',
                           style: theme.textTheme.bodySmall,
                         ),
                         Text(

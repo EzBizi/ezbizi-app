@@ -79,6 +79,25 @@ String? stateName(String raw) {
 
 const _payPeriods = ['Hour', 'Week', 'Month', 'Year'];
 
+/// How a drawn signature travels: a PNG as a data URL (HR, c2bc2668).
+const _pngUrl = 'data:image/png;base64,';
+
+/// The contract's stylesheet sizes everything in points, for paper (A1's
+/// look: a 9.5pt body, 18pt title). flutter_html reads a point as a pixel,
+/// which drew 12pt headings smaller than a 15px body; every size is scaled
+/// alike instead, so the body reads at 15 and the headings keep their order.
+String contractOnScreen(String html) {
+  String px(Match size) =>
+      '${(double.parse(size[1]!) * 15 / 9.5).toStringAsFixed(2)}px';
+  final points = RegExp(r'(\d+(?:\.\d+)?)pt\b');
+
+  return html.replaceAllMapped(
+    RegExp(r'(<style[^>]*>)(.*?)(</style>)', dotAll: true),
+    (style) =>
+        '${style[1]}${style[2]!.replaceAllMapped(points, px)}${style[3]}',
+  );
+}
+
 /// AddressFields' boxes, and the parts the server names them by.
 const _addressParts = {
   'line1': 'address_line1',
@@ -462,10 +481,20 @@ class _OnboardingFormState extends State<OnboardingForm> {
         'format': 'pdf',
       });
       if (!mounted || run != _previewRun) return;
+      // A file says it is a PDF in its first bytes. A server from before the
+      // PDF view answers this with the JSON preview, which is not one.
+      final bytes = pdf.bytes;
+      final isPdf = bytes != null &&
+          bytes.length > 4 &&
+          String.fromCharCodes(bytes.take(4)) == '%PDF';
       setState(() {
         _previewing = false;
-        _previewError = pdf.ok ? null : pdf.message;
-        if (pdf.ok && pdf.bytes != null) _pdf = Uint8List.fromList(pdf.bytes!);
+        _previewError = !pdf.ok
+            ? pdf.message
+            : isPdf
+            ? null
+            : 'The PDF view is not available yet.';
+        if (isPdf) _pdf = Uint8List.fromList(bytes);
       });
       return;
     }
@@ -1056,16 +1085,22 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final theme = Theme.of(context);
     final content = _contractHtml;
     final frozen = _paper != null && !_paper!.isPreview;
+    final pdf = _asPdf && !frozen;
+    final note = theme.textTheme.bodyMedium?.copyWith(
+      color: EzBiziTheme.paperMuted,
+    );
 
     return Container(
       key: const Key('onboarding-contract'),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        // The live text is paper in both themes, as the PDF's pages are: its
+        // stylesheet is black ink on white. The PDF brings its own paper.
+        color: pdf ? theme.colorScheme.surface : EzBiziTheme.paper,
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
-      child: _asPdf && !frozen
+      child: pdf
           ? (_pdf == null
                 ? Text(
                     _previewing ? 'Drawing the PDF…' : 'The PDF will show here.',
@@ -1078,22 +1113,19 @@ class _OnboardingFormState extends State<OnboardingForm> {
                   (_previewing
                       ? 'Drawing the contract…'
                       : 'The contract will show here.'),
-              style: theme.textTheme.bodyMedium,
+              style: note,
             )
           // Rendered, as it prints. The exact bytes a signature is over are
           // under "Show the exact text" by the signing step.
           : Html(
-              data: content,
+              data: contractOnScreen(content),
               style: {
+                // The page's own margins are for paper; this box has its own.
                 'body': Style(
                   margin: Margins.zero,
-                  color: theme.colorScheme.onSurface,
+                  padding: HtmlPaddings.zero,
+                  color: EzBiziTheme.paperInk,
                   fontSize: FontSize(15),
-                ),
-                'p': Style(lineHeight: LineHeight.number(1.5)),
-                'mark': Style(
-                  backgroundColor: ToneColours.of(context, Tone.caution).fill,
-                  color: theme.colorScheme.onSurface,
                 ),
               },
             ),
@@ -2179,6 +2211,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       // Rebuilt from scratch when the field changes, so a half-given consent
       // can never be carried from one signature to another.
       key: ValueKey(signature.fieldKey),
+      api: widget.api,
       title: title,
       consentStatement: form.consentStatement,
       intentStatement: form.intentStatement,
@@ -2357,6 +2390,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
 class _SigningStep extends StatefulWidget {
   const _SigningStep({
     super.key,
+    required this.api,
     required this.title,
     required this.consentStatement,
     required this.intentStatement,
@@ -2366,6 +2400,7 @@ class _SigningStep extends StatefulWidget {
     required this.onSign,
   });
 
+  final ApiClient api;
   final String title;
 
   /// Why signing cannot happen yet, whatever is ticked and typed. Null when
@@ -2394,10 +2429,60 @@ class _SigningStepState extends State<_SigningStep> {
 
   bool _consented = false;
 
+  /// The signer's own saved signature (`GET /me/signature`), a PNG data URL,
+  /// and whether the pad is showing it in place of new strokes. A1 Tools had
+  /// the employer draw once and reuse it on every contract.
+  String? _saved;
+  bool _usingSaved = false;
+  bool _savingIt = false;
+  String? _saveNote;
+
   @override
   void initState() {
     super.initState();
     _ink.addListener(_redraw);
+    _loadSaved();
+  }
+
+  /// Quiet when there is none, or when the server has no such endpoint yet:
+  /// the button to use it just does not appear.
+  Future<void> _loadSaved() async {
+    final response = await widget.api.get('/me/signature');
+    final drawing = response.ok && response.data is Map
+        ? (response.data as Map)['drawing']
+        : null;
+    if (!mounted || drawing is! String || !drawing.startsWith(_pngUrl)) {
+      return;
+    }
+    setState(() => _saved = drawing);
+  }
+
+  Future<String?> _drawn() async {
+    final png = await _ink.toPng();
+    return png == null ? null : '$_pngUrl${base64Encode(png)}';
+  }
+
+  Future<void> _saveDrawing() async {
+    final drawing = await _drawn();
+    if (drawing == null || !mounted) return;
+    setState(() {
+      _savingIt = true;
+      _saveNote = null;
+    });
+    final response = await widget.api.put('/me/signature', {
+      'drawing': drawing,
+    });
+    if (!mounted) return;
+    setState(() {
+      _savingIt = false;
+      if (response.ok) _saved = drawing;
+      _saveNote = response.ok ? 'Saved as your signature.' : response.reason;
+    });
+  }
+
+  void _clear() {
+    _ink.clear();
+    setState(() => _usingSaved = false);
   }
 
   void _redraw() => setState(() {});
@@ -2414,15 +2499,12 @@ class _SigningStepState extends State<_SigningStep> {
       widget.blocked == null &&
       _consented &&
       _affirmation.text.trim().isNotEmpty &&
-      !_ink.isEmpty;
+      (_usingSaved || !_ink.isEmpty);
 
   Future<void> _signNow() async {
-    final png = await _ink.toPng();
-    if (png == null || !mounted) return;
-    widget.onSign(
-      _affirmation.text.trim(),
-      'data:image/png;base64,${base64Encode(png)}',
-    );
+    final drawing = _usingSaved ? _saved : await _drawn();
+    if (drawing == null || !mounted) return;
+    widget.onSign(_affirmation.text.trim(), drawing);
   }
 
   @override
@@ -2470,20 +2552,67 @@ class _SigningStepState extends State<_SigningStep> {
           const SizedBox(height: 14),
           Text('Draw your signature', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          SignaturePad(
-            key: const Key('signature-pad'),
-            controller: _ink,
-            enabled: !widget.busy,
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              key: const Key('signature-clear'),
-              onPressed: _ink.isEmpty || widget.busy ? null : _ink.clear,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Clear'),
+          if (_usingSaved)
+            Container(
+              key: const Key('signature-saved'),
+              height: 200,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: EzBiziTheme.paper,
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+                border: Border.all(color: theme.colorScheme.primary, width: 2),
+              ),
+              child: Image.memory(
+                base64Decode(_saved!.substring(_pngUrl.length)),
+                fit: BoxFit.contain,
+              ),
+            )
+          else
+            SignaturePad(
+              key: const Key('signature-pad'),
+              controller: _ink,
+              enabled: !widget.busy,
             ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 4,
+            children: [
+              if (_saved != null && !_usingSaved)
+                TextButton.icon(
+                  key: const Key('signature-use-saved'),
+                  onPressed: widget.busy
+                      ? null
+                      : () {
+                          _ink.clear();
+                          setState(() => _usingSaved = true);
+                        },
+                  icon: const Icon(Icons.history_edu, size: 18),
+                  label: const Text('Use my saved signature'),
+                ),
+              if (!_ink.isEmpty)
+                TextButton.icon(
+                  key: const Key('signature-save'),
+                  onPressed: widget.busy || _savingIt ? null : _saveDrawing,
+                  icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                  label: Text(
+                    _savingIt ? 'Saving…' : 'Save as my signature',
+                  ),
+                ),
+              TextButton.icon(
+                key: const Key('signature-clear'),
+                onPressed: (_ink.isEmpty && !_usingSaved) || widget.busy
+                    ? null
+                    : _clear,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Clear'),
+              ),
+            ],
           ),
+          if (_saveNote != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(_saveNote!, style: theme.textTheme.bodySmall),
+            ),
           if (widget.error != null) ...[
             const SizedBox(height: 14),
             ErrorNote(widget.error!),
