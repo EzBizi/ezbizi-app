@@ -183,6 +183,12 @@ class OnboardingForm
         'raise_amount' => 'raise', 'raise_period' => 'raise',
         'comp_method' => 'commission', 'commission_pct' => 'commission', 'commission_stages' => 'commission',
         'salary_amount' => 'salary', 'salary_period' => 'salary', 'daily_deduction' => 'salary',
+        // The employee's side, voided by the employer.
+        'tax_id_type' => 'tax_id', 'ssn' => 'tax_id', 'ein' => 'tax_id', 'ein_company_name' => 'tax_id',
+        'bank_name' => 'bank', 'bank_account_name' => 'bank', 'bank_account_number' => 'bank', 'bank_routing_number' => 'bank',
+        'drivers_license_front' => 'drivers_license', 'drivers_license_back' => 'drivers_license',
+        'car_front' => 'car', 'car_back' => 'car', 'car_left' => 'car', 'car_right' => 'car',
+        'car_interior' => 'car', 'car_mileage' => 'car',
     ];
 
     public function save(Onboarding $onboarding, User $actor, array $parties, array $values): array
@@ -300,6 +306,29 @@ class OnboardingForm
                 );
 
                 continue;
+            }
+
+            // The employer may mark one of the employee's questions as not
+            // applying, and take that back (Jose, 2026-10-01: "the employer
+            // should also be able to null the employee side stuff too, like
+            // photo in uniform" for a call-center hire). Only that: N/A, or
+            // clearing an N/A. The employee may not void their own.
+            if ($field->filledBy === FilledBy::EMPLOYEE && $field->type !== FieldType::SIGNATURE) {
+                $stored = $onboarding->answers()->where('field_key', $key)->first()?->value;
+                $voiding = $raw === MergeValue::NOT_APPLICABLE
+                    // Cleared arrives as null: empty strings are nulled on the way in.
+                    || (($raw === '' || $raw === null) && $stored === MergeValue::NOT_APPLICABLE);
+
+                if ($voiding && in_array(FilledBy::EMPLOYER, $parties, true)) {
+                    $answers[$key] = $raw === MergeValue::NOT_APPLICABLE ? MergeValue::NOT_APPLICABLE : null;
+
+                    continue;
+                }
+                if ($raw === MergeValue::NOT_APPLICABLE) {
+                    $errors[$at] = sprintf("'%s' is yours to answer. Only the employer can mark it as not applying to you.", $field->label);
+
+                    continue;
+                }
             }
 
             if (! $this->mayWrite($field, $parties)) {
@@ -858,8 +887,12 @@ class OnboardingForm
                 'value' => $answer?->toArray()['value'] ?? null,
                 // May be answered "N/A", which leaves its paragraphs out of
                 // the contract (A1 Tools' "doesn't apply", 2026-10-01).
+                // The employer's own terms, and — for the employer only — the
+                // employee's questions, files included (save()).
                 'voidable' => $voidable = $field->filledBy !== FilledBy::EMPLOYEE
-                    && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true),
+                    ? in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true)
+                    : in_array(FilledBy::EMPLOYER, $parties, true)
+                        && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE, FieldType::FILE], true),
                 // Questions that go together: voiding one voids the group
                 // (Jose: "voiding Scheduled increase interval voids itself and
                 // scheduled increase amount").
