@@ -855,6 +855,10 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final companies = widget.session.me?.companiesInView ?? const [];
+    // Writing one also takes scheduling.edit (Scheduling, 6b7c282f): without
+    // it the notes are read, not offered for editing.
+    final canEdit =
+        widget.session.me?.permissions.contains('scheduling.edit') ?? false;
 
     return AsyncBody(
       loading: _loading,
@@ -870,6 +874,14 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
+          if (!canEdit)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Changing them takes the right to edit Scheduling.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
           if (companies.isEmpty)
             const Text('There is no company in this view.'),
           for (final c in companies) ...[
@@ -878,6 +890,7 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
             TextField(
               key: Key('dispatcher-note-${c.id}'),
               controller: _box(c.id),
+              readOnly: !canEdit,
               minLines: 3,
               maxLines: 8,
               onChanged: (_) => setState(() => _said.remove(c.id)),
@@ -887,22 +900,26 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
               ),
             ),
             const SizedBox(height: 6),
-            Row(
-              children: [
-                FilledButton(
-                  key: Key('dispatcher-note-save-${c.id}'),
-                  onPressed:
-                      _saving != null ||
-                          _box(c.id).text.trim() == (_saved[c.id] ?? '').trim()
-                      ? null
-                      : () => _save(c.id),
-                  child: Text(_saving == c.id ? 'Saving…' : 'Save'),
-                ),
-                const SizedBox(width: 12),
-                if (_said[c.id] case final said?)
-                  Flexible(child: Text(said, style: theme.textTheme.bodySmall)),
-              ],
-            ),
+            if (canEdit)
+              Row(
+                children: [
+                  FilledButton(
+                    key: Key('dispatcher-note-save-${c.id}'),
+                    onPressed:
+                        _saving != null ||
+                            _box(c.id).text.trim() ==
+                                (_saved[c.id] ?? '').trim()
+                        ? null
+                        : () => _save(c.id),
+                    child: Text(_saving == c.id ? 'Saving…' : 'Save'),
+                  ),
+                  const SizedBox(width: 12),
+                  if (_said[c.id] case final said?)
+                    Flexible(
+                      child: Text(said, style: theme.textTheme.bodySmall),
+                    ),
+                ],
+              ),
             const SizedBox(height: 18),
           ],
         ],

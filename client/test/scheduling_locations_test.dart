@@ -98,6 +98,7 @@ void main() {
   testWidgets("Settings keeps each company's note for new dispatchers", (
     tester,
   ) async {
+    const canEdit = true;
     Map<String, dynamic>? put;
     String? putPath;
     final api = ApiClient(
@@ -107,6 +108,10 @@ void main() {
           return _json({
             'data': {
               ..._me,
+              'permissions': [
+                ...(_me['permissions']! as List),
+                if (canEdit) 'scheduling.edit',
+              ],
               'companies': [
                 {'id': 'co-1', 'name': 'Harbor Chimney', 'parent_company_id': null},
               ],
@@ -164,6 +169,64 @@ void main() {
     expect(putPath, endsWith('/scheduling/locations/notes/co-1'));
     expect(put, {'text': 'After 6 PM: (216) 555-0100'});
     expect(find.text('Saved.'), findsOneWidget);
+  });
+
+  // Saving one also takes scheduling.edit (Scheduling, 6b7c282f).
+  testWidgets('without the edit grant the notes are read, not offered', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {
+              ..._me,
+              'companies': [
+                {'id': 'co-1', 'name': 'Harbor Chimney', 'parent_company_id': null},
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/scheduling/locations')) {
+          return _json({
+            'data': _locations,
+            'meta': {
+              'notes': [
+                {'company_id': 'co-1', 'text': 'Office lead: Dana Kim, ext 204'},
+              ],
+            },
+          });
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: DispatcherNotesSettings(
+            api: api,
+            session: session,
+            visible: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final box = tester.widget<TextField>(
+      find.byKey(const Key('dispatcher-note-co-1')),
+    );
+    expect(box.controller!.text, 'Office lead: Dana Kim, ext 204');
+    expect(box.readOnly, isTrue);
+    expect(find.byKey(const Key('dispatcher-note-save-co-1')), findsNothing);
+    expect(
+      find.text('Changing them takes the right to edit Scheduling.'),
+      findsOneWidget,
+    );
   });
 }
 
