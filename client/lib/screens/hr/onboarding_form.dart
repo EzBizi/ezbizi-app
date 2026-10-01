@@ -585,6 +585,17 @@ class _OnboardingFormState extends State<OnboardingForm> {
   }
 
   /// Answered "doesn't apply", saved or not.
+  /// Whether this viewer may mark [question] as not applying now: their own
+  /// term while they may still write it, or, for the employer, one of the
+  /// employee's questions while the form is still open (HR 4c43b180, Jose:
+  /// "the employer should also be able to null the employee side stuff too,
+  /// like photo in uniform"). A finished record has nothing writable.
+  bool _mayVoid(OnboardingQuestion question) =>
+      question.voidable &&
+      (question.writable ||
+          (question.field.filledBy == filledByEmployee &&
+              (_form?.anyWritable ?? false)));
+
   bool _voided(OnboardingQuestion question) =>
       question.voidable && _answerOf(question.key).trim() == notApplicable;
 
@@ -593,7 +604,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// preview; off clears the answer back to empty.
   void _setVoided(OnboardingQuestion question, bool voided) {
     for (final q in _form!.questions) {
-      if (!q.voidable || !q.writable || q.group != question.group) continue;
+      if (!_mayVoid(q) || q.group != question.group) continue;
       _box(q).clear();
       _addresses[q.key]?.values.forEach((box) => box.clear());
       _answer(q.key, voided ? notApplicable : '');
@@ -604,7 +615,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// tick or x ... clicking the tick re enables it"). The chosen one is
   /// filled; ✗ voids the term and the terms grouped with it.
   Widget _applies(OnboardingQuestion question, bool voided) {
-    final enabled = question.writable && !_saving;
+    final enabled = _mayVoid(question) && !_saving;
     // The chosen side stays lit and does nothing; the other one changes it.
     Widget button(bool on, IconData icon, String tip, String key, bool to) {
       final keyed = Key('$key:${question.key}');
@@ -1340,7 +1351,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
                 ),
               ),
               // At the box's right edge, level on every row.
-              if (question.voidable && (question.writable || voided))
+              if (question.voidable && (_mayVoid(question) || voided))
                 _applies(question, voided),
             ],
           ),
@@ -1985,9 +1996,13 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final theme = Theme.of(context);
     final enabled = question.writable && !_saving && _uploading == null;
     final pending = _pending[question.key];
-    final hasFile = (pending != null && pending.isNotEmpty) || question.answered;
+    final voided = _voided(question);
+    final hasFile =
+        !voided &&
+        ((pending != null && pending.isNotEmpty) || question.answered);
 
     return Column(
+      key: answerKey(question.key),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -2012,7 +2027,11 @@ class _OnboardingFormState extends State<OnboardingForm> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                hasFile ? 'A file is attached.' : 'Nothing uploaded yet.',
+                voided
+                    ? "Doesn't apply."
+                    : hasFile
+                    ? 'A file is attached.'
+                    : 'Nothing uploaded yet.',
                 style: theme.textTheme.bodySmall,
               ),
             ),

@@ -973,6 +973,53 @@ void main() {
     expect(_frozen(tester, 'raise_period'), isFalse);
   });
 
+  // Jose, 2026-10-01: "the employer should also be able to null the employee
+  // side stuff too, like ... photo in uniform". HR 4c43b180 sends the
+  // employee's questions voidable, not writable, in the employer's view.
+  testWidgets('the employer marks an employee question as not applying, '
+      'files and their group included', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _employerVoidsForm, onSave: (body) => saved = body),
+    );
+
+    expect(_frozen(tester, 'drivers_license_back'), isFalse);
+    await _tap(tester, find.byKey(const Key('void:drivers_license_front')));
+    expect(_frozen(tester, 'drivers_license_front'), isTrue);
+    expect(_frozen(tester, 'drivers_license_back'), isTrue);
+    expect(_frozen(tester, 'uniform_photo'), isFalse);
+    expect(find.text("Doesn't apply."), findsNWidgets(2));
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'drivers_license_front': 'N/A',
+        'drivers_license_back': 'N/A',
+      },
+    });
+  });
+
+  testWidgets('a finished record offers nothing to mark as not applying', (
+    tester,
+  ) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._employerVoidsForm,
+          'fields': [
+            for (final f in _employerVoidsForm['fields'] as List)
+              {...(f as Map<String, Object?>), 'writable': false},
+          ],
+        },
+      ),
+    );
+
+    expect(find.byKey(const Key('void:uniform_photo')), findsNothing);
+    expect(find.byKey(const Key('void:drivers_license_front')), findsNothing);
+  });
+
   testWidgets('the state comes before the county, whatever the contract says', (
     tester,
   ) async {
@@ -2106,6 +2153,38 @@ final _addressForm = {
       },
     },
     _field('state', 'Governing state', 'text', filledBy: 'employer', writable: false, value: 'FL'),
+  ],
+  'missing': <String, String>{},
+};
+
+/// The employer's view of an employee's files: theirs to void, not to
+/// upload, beside one term of the employer's own.
+final _employerVoidsForm = {
+  ..._asEmployer,
+  'vocabulary': {
+    ..._catalogue,
+    'field_types': [
+      ...(_catalogue['field_types']! as List),
+      {'key': 'file', 'label': 'A file'},
+    ],
+  },
+  'fields': [
+    _field('hourly_wage', 'Hourly wage', 'number', filledBy: 'employer', writable: true, value: '22.50'),
+    {
+      ..._field('uniform_photo', 'Photo in uniform', 'file', filledBy: 'employee', writable: false),
+      'voidable': true,
+      'void_group': 'uniform_photo',
+    },
+    {
+      ..._field('drivers_license_front', "Driver's licence, front", 'file', filledBy: 'employee', writable: false, value: 'att-1'),
+      'voidable': true,
+      'void_group': 'drivers_license',
+    },
+    {
+      ..._field('drivers_license_back', "Driver's licence, back", 'file', filledBy: 'employee', writable: false),
+      'voidable': true,
+      'void_group': 'drivers_license',
+    },
   ],
   'missing': <String, String>{},
 };
