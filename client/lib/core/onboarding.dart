@@ -372,6 +372,8 @@ class OnboardingQuestion {
     required this.setByParty,
     required this.setAt,
     this.voidable = false,
+    this.voidGroup,
+    this.parts,
   });
 
   /// The tenant's field definition, in exactly the shape the Contracts tab
@@ -448,6 +450,18 @@ class OnboardingQuestion {
   /// Answered "doesn't apply".
   bool get voided => voidable && value.trim() == notApplicable;
 
+  /// Questions sharing a group void and come back together (HR: the raise's
+  /// amount and interval; the commission's three; the salary's three). Null
+  /// is a group of one.
+  final String? voidGroup;
+
+  String get group => voidGroup ?? key;
+
+  /// The home address in its parts (`address_line1`, `address_line2`,
+  /// `city`, `state`, `postal_code`, `country`), when the server sends them.
+  /// Null for every other question.
+  final Map<String, String>? parts;
+
   String get key => field.key;
 
   bool get answered => value.trim().isNotEmpty;
@@ -471,6 +485,13 @@ class OnboardingQuestion {
       setByParty: setBy?['party'] as String?,
       setAt: json['set_at'] as String?,
       voidable: json['voidable'] == true,
+      voidGroup: json['void_group'] as String?,
+      parts: switch (json['parts']) {
+        final Map<dynamic, dynamic> parts => {
+          for (final part in parts.entries) '${part.key}': '${part.value ?? ''}',
+        },
+        _ => null,
+      },
     );
   }
 }

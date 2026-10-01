@@ -35,6 +35,13 @@ class EzBiziTheme {
   static const fieldInkDark = Color(0xFF111111);
   static const fieldInkLight = Color(0xFFFFFFFF);
 
+  /// Paper and the ink on it, the same in both modes: a signature pad and a
+  /// PDF's pages are drawn on white whatever the app's theme is. The contract
+  /// document's own values (contract_document_page.dart).
+  static const paper = Color(0xFFFFFFFF);
+  static const paperInk = Color(0xFF111111);
+  static const paperMuted = Color(0xFF555555);
+
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 

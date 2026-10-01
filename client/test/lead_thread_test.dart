@@ -30,6 +30,26 @@ void main() {
   /// see the message window". The details fold behind one control, the
   /// source is one line with the number, the viewing note is one line, and
   /// the conversation keeps the screen.
+  // "Archiv-e": once Completed made the moves four, a phone's one line beside
+  // Book broke the longer words in half.
+  testWidgets('on a phone no status word breaks across lines', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(360, 780),
+    );
+
+    final line = tester.getRect(find.byKey(const ValueKey('status-lead'))).height;
+    for (final key in ['status-archive', 'status-not-a-lead', 'status-completed']) {
+      expect(
+        tester.getRect(find.byKey(ValueKey(key))).height,
+        lessThanOrEqualTo(line),
+        reason: key,
+      );
+    }
+  });
+
   testWidgets('on a phone the details fold away and the header stays short', (
     tester,
   ) async {
@@ -349,6 +369,66 @@ void main() {
       isEmpty,
       reason: 'the box clears once Google has taken it',
     );
+  });
+
+  // Jose, 2026-10-01: "the send button should probably be either centered or
+  // the same size as the field".
+  testWidgets('Send and the emoji button are as tall as the reply box, and '
+      'level with it', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    final box = tester.getRect(find.byKey(const ValueKey('reply-box')));
+    for (final key in ['reply-send', 'reply-emoji']) {
+      final button = tester.getRect(find.byKey(ValueKey(key)));
+      expect(button.height, box.height, reason: key);
+      expect(button.bottom, box.bottom, reason: key);
+    }
+    // To the left of Send.
+    expect(
+      tester.getRect(find.byKey(const ValueKey('reply-emoji'))).right,
+      lessThan(tester.getRect(find.byKey(const ValueKey('reply-send'))).left),
+    );
+    // A desktop, where Jose saw it: there Material does not pad a button to a
+    // 48 tap target, so a short Send shows.
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  // Jose, 2026-10-01: "a button for an emoji picker on the left of send".
+  testWidgets('the emoji tray puts each one where the cursor is, and closes '
+      'once the reply is sent', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+    final field = find.byKey(const ValueKey('reply-box'));
+    TextEditingController box() =>
+        tester.widget<TextField>(field).controller!;
+
+    expect(find.byKey(const ValueKey('reply-emoji-tray')), findsNothing);
+    await tester.enterText(field, 'See you Saturday');
+    await tester.tap(find.byKey(const ValueKey('reply-emoji')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-emoji-tray')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reply-emoji-👍')));
+    await tester.pump();
+    expect(box().text, 'See you Saturday👍');
+
+    // At the start, where the cursor was put; the tray stays for the next.
+    box().selection = const TextSelection.collapsed(offset: 0);
+    await tester.tap(find.byKey(const ValueKey('reply-emoji-😊')));
+    await tester.pump();
+    expect(box().text, '😊See you Saturday👍');
+    expect(box().selection.baseOffset, '😊'.length);
+
+    await tester.tap(find.byKey(const ValueKey('reply-send')));
+    await tester.pumpAndSettle();
+    expect(_sent.last, '😊See you Saturday👍');
+    expect(find.byKey(const ValueKey('reply-emoji-tray')), findsNothing);
   });
 
   /// A draft, never a send: Suggest fills the box, the person presses Send.

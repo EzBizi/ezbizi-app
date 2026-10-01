@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/contracts.dart';
@@ -8,6 +10,7 @@ import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_form.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
+import 'package:ezbizi_client/widgets/pdf_view_io.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
@@ -280,9 +283,13 @@ void main() {
 
     expect(_signButton(tester).onPressed, isNull);
     expect(
-      find.textContaining('Agree to sign electronically, and type your name'),
+      find.textContaining(
+        'Agree to sign electronically, type your name and draw your signature',
+      ),
       findsOneWidget,
     );
+    // Nothing saved, so nothing to reuse.
+    expect(find.byKey(const Key('signature-use-saved')), findsNothing);
 
     // Consent alone is not a signature.
     await _tap(tester, find.byType(CheckboxListTile));
@@ -299,19 +306,112 @@ void main() {
     );
 
     await _tap(tester, find.byType(CheckboxListTile));
+
+    // And consent and a name are not yet a signature drawn by hand (Jose,
+    // 2026-10-01: "as in A1 Tools").
+    expect(_signButton(tester).onPressed, isNull);
+    expect(find.text('Draw your signature above to sign.'), findsOneWidget);
+
+    await _draw(tester);
     expect(_signButton(tester).onPressed, isNotNull);
 
-    await _tap(tester, find.widgetWithText(FilledButton, 'Sign'));
+    // Clear takes it back to an empty pad.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    expect(_signButton(tester).onPressed, isNull);
+
+    await _draw(tester);
+    await _pressSign(tester);
 
     // The fingerprint of the document this screen displayed goes back with the
     // act. The server refuses without it, and a hash computed here rather than
     // received would be evidence of nothing.
+    final drawing = signed!.remove('drawing') as String;
     expect(signed, {
       'field_key': 'employee_signature',
       'consent': true,
       'affirmation': 'Bea Okafor',
       'document_hash': _hash,
     });
+
+    // The drawing, as a PNG: the file's own first bytes say so.
+    expect(drawing, startsWith('data:image/png;base64,'));
+    final png = base64Decode(drawing.substring('data:image/png;base64,'.length));
+    expect(png.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+
+    // With the stroke on it: some pixel is not transparent.
+    final inked = await tester.runAsync(() async {
+      final image = await decodeImageFromList(png);
+      final rgba = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final pixels = rgba!.buffer.asUint8List();
+      for (var alpha = 3; alpha < pixels.length; alpha += 4) {
+        if (pixels[alpha] != 0) return true;
+      }
+      return false;
+    });
+    expect(inked, isTrue);
+  });
+
+  // A1 Tools: the employer drew once and reused it on every contract.
+  testWidgets('a saved signature can stand in for drawing, and a new drawing '
+      'can be saved as one', (tester) async {
+    Map<String, dynamic>? signed;
+    final saves = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        savedSignature: 'data:image/png;base64,${base64Encode(_png)}',
+        onSign: (body) => signed = body,
+        onSaveSignature: saves.add,
+      ),
+    );
+    await _tap(tester, find.byType(CheckboxListTile));
+    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    expect(_signButton(tester).onPressed, isNull);
+
+    // The stored one takes the pad's place, and is enough to sign with.
+    await _tap(tester, find.byKey(const Key('signature-use-saved')));
+    expect(find.byKey(const Key('signature-pad')), findsNothing);
+    final shown = tester.widget<Image>(
+      find.descendant(
+        of: find.byKey(const Key('signature-saved')),
+        matching: find.byType(Image),
+      ),
+    );
+    expect((shown.image as MemoryImage).bytes, _png);
+    expect(_signButton(tester).onPressed, isNotNull);
+
+    // Clear goes back to drawing; a new drawing is saved over it.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    expect(_signButton(tester).onPressed, isNull);
+    await _draw(tester);
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('signature-save')));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    final fresh = saves.single['drawing'] as String;
+    expect(fresh, startsWith('data:image/png;base64,'));
+    expect(fresh, isNot('data:image/png;base64,${base64Encode(_png)}'));
+    expect(find.text('Saved as your signature.'), findsOneWidget);
+
+    // Using the saved one now uses the new one, and Sign sends exactly it.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    await _tap(tester, find.byKey(const Key('signature-use-saved')));
+    await _pressSign(tester);
+    expect(signed!['drawing'], fresh);
+  });
+
+  // HR's A1-style stylesheet sizes in points, and flutter_html reads a point
+  // as a pixel: 12pt headings came out smaller than the 15px body.
+  test('the contract is drawn at screen size, its headings above its body', () {
+    final html = contractOnScreen(
+      '<style>body{font-size:9.5pt}h2{font-size:12pt;margin:10pt 0 4pt}</style>'
+      '<p>A notice in 12pt type stays as written.</p>',
+    );
+    expect(html, contains('body{font-size:15.00px}'));
+    expect(html, contains('h2{font-size:18.95px;margin:15.79px 0 6.32px}'));
+    expect(html, contains('<p>A notice in 12pt type stays as written.</p>'));
   });
 
   testWidgets('a signature that is not yours is shown and not offered', (
@@ -792,6 +892,7 @@ void main() {
 
     await _tap(tester, find.byType(CheckboxListTile));
     await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    await _draw(tester);
     expect(_signButton(tester).onPressed, isNotNull);
 
     await _type(tester, 'shirt_size_note', 'A jacket');
@@ -820,35 +921,220 @@ void main() {
   // HR 0c0884af, Jose: "some sections can be entirely voided. so they don't
   // appear in the contract. like the scheduled increase".
   testWidgets("a term that doesn't apply saves N/A, greys its box and loads "
-      'back switched on', (tester) async {
+      'back marked so', (tester) async {
     Map<String, dynamic>? saved;
     await _pumpForm(
       tester,
       _handler(form: _voidForm, onSave: (body) => saved = body),
     );
 
-    // Stored "N/A": the switch is on, the box is empty, and a number box does
-    // not call it "not a number".
-    final period = tester.widget<Switch>(find.byKey(const Key('void:raise_period')));
-    expect(period.value, isTrue);
-    // The interval is a picker (Hour/Week/Month/Year): nothing chosen.
+    // Stored "N/A": greyed and still, the interval picker showing nothing.
+    expect(_frozen(tester, 'raise_period'), isTrue);
     expect(_dropdown(tester, 'raise_period').value, isNull);
 
-    final amount = tester.widget<Switch>(find.byKey(const Key('void:raise_amount')));
-    expect(amount.value, isFalse);
+    // ✗ voids the amount, and a number box does not call it "not a number".
+    expect(_frozen(tester, 'raise_amount'), isFalse);
     await _tap(tester, find.byKey(const Key('void:raise_amount')));
+    expect(_frozen(tester, 'raise_amount'), isTrue);
     expect(_box(tester, 'raise_amount').controller!.text, isEmpty);
     expect(find.text('Not a number: digits and one decimal point only.'), findsNothing);
 
-    // Off again clears it.
-    await _tap(tester, find.byKey(const Key('void:raise_period')));
+    // ✓ brings the interval back, empty.
+    await _tap(tester, find.byKey(const Key('apply:raise_period')));
+    expect(_frozen(tester, 'raise_period'), isFalse);
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
     expect(saved, {
       'answers': {'raise_amount': 'N/A', 'raise_period': ''},
     });
   });
+
+  // Jose: "voiding Scheduled increase interval voids itself and scheduled
+  // increase amount". HR sends the group as `void_group`.
+  testWidgets('voiding one term of a group voids the group, and ✓ brings '
+      'it all back', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _groupForm, onSave: (body) => saved = body),
+    );
+
+    await _tap(tester, find.byKey(const Key('void:raise_period')));
+    expect(_frozen(tester, 'raise_amount'), isTrue);
+    expect(_frozen(tester, 'raise_period'), isTrue);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'raise_amount': 'N/A', 'raise_period': 'N/A'},
+    });
+
+    await _tap(tester, find.byKey(const Key('apply:raise_amount')));
+    expect(_frozen(tester, 'raise_amount'), isFalse);
+    expect(_frozen(tester, 'raise_period'), isFalse);
+  });
+
+  testWidgets('the state comes before the county, whatever the contract says', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _countyFirstForm));
+
+    final state = tester.getTopLeft(find.byKey(answerKey('state')));
+    final county = tester.getTopLeft(find.byKey(answerKey('county')));
+    expect(state.dy, lessThan(county.dy));
+  });
+
+  // Jose: "like in the rest of the app should have separate fields, with full
+  // address being the box where u start typing and it suggests".
+  testWidgets('the home address is answered in its parts, and they go out '
+      'under its own key, apart from the governing state', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(form: _addressForm, onSave: (body) => saved = body),
+    );
+
+    final address = find.byKey(answerKey('address'));
+    Finder box(String label) => find.descendant(
+      of: address,
+      matching: find.widgetWithText(TextField, label),
+    );
+    String text(String label) =>
+        tester.widget<TextField>(box(label)).controller!.text;
+
+    expect(text('Street'), '41 Elm St');
+    expect(text('ST'), 'CT');
+    expect(text('Country'), 'US');
+
+    // The server composes the stored line its own way (no country here), and
+    // a tap that only moves the cursor is not an answer.
+    await _tap(tester, box('Street'));
+    expect(find.text('Everything on this page is saved.'), findsOneWidget);
+
+    await tester.ensureVisible(box('City'));
+    await tester.enterText(box('City'), 'Norwalk');
+    await tester.pumpAndSettle();
+    expect(find.text('1 answer not saved yet.'), findsOneWidget);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'address': {
+          'address_line1': '41 Elm St',
+          'address_line2': '',
+          'city': 'Norwalk',
+          'state': 'CT',
+          'postal_code': '06901',
+          'country': 'US',
+        },
+      },
+    });
+  });
+
+  // Jose: "PDF (Final Result view)".
+  testWidgets('PDF shows the contract as it would print, redrawn as the '
+      'answers change, and Live goes back to the text', (tester) async {
+    final drawn = pdfPages;
+    addTearDown(() => pdfPages = drawn);
+    final rasterized = <String>[];
+    pdfPages = (pdf) {
+      rasterized.add(utf8.decode(pdf));
+      return Stream.fromIterable([_png, _png]);
+    };
+
+    final asked = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform: as typed</p>',
+        onPdf: (body) {
+          asked.add(body);
+          return Uint8List.fromList(utf8.encode('%PDF-1.7 draft ${asked.length}'));
+        },
+      ),
+    );
+
+    Finder view(String label) => find.descendant(
+      of: find.byKey(const Key('contract-view')),
+      matching: find.text(label),
+    );
+
+    expect(find.textContaining('Uniform: as typed'), findsOneWidget);
+    expect(asked, isEmpty);
+
+    await _tap(tester, view('PDF'));
+    expect(asked, hasLength(1));
+    expect(find.byKey(const Key('pdf-page-0')), findsOneWidget);
+    expect(find.byKey(const Key('pdf-page-1')), findsOneWidget);
+    expect(find.textContaining('Uniform: as typed'), findsNothing);
+
+    await _type(tester, 'shirt_size_note', 'A jacket');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(asked, hasLength(2));
+    expect(asked.last['answers'], containsPair('shirt_size_note', 'A jacket'));
+    expect(rasterized, ['%PDF-1.7 draft 1', '%PDF-1.7 draft 2']);
+
+    await _tap(tester, view('Live'));
+    expect(find.byKey(const Key('pdf-page-0')), findsNothing);
+    expect(find.textContaining('Uniform: as typed'), findsOneWidget);
+  });
+
+  testWidgets('a server that answers the PDF with something else is said '
+      'so, not drawn', (tester) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform: as typed</p>',
+        onPdf: (body) => Uint8List.fromList(utf8.encode('{"data":{}}')),
+      ),
+    );
+
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byKey(const Key('contract-view')),
+        matching: find.text('PDF'),
+      ),
+    );
+    expect(find.byKey(const Key('pdf-page-0')), findsNothing);
+    expect(
+      find.textContaining('The PDF view is not available yet.'),
+      findsOneWidget,
+    );
+  });
+
+  // Jose: "Dispatcher Master 5000 should be highlighted on the contract".
+  testWidgets('the preview is asked to mark what changed since the page '
+      'opened', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        onPreview: (answers) => '<p>Uniform</p>',
+        onPreviewBody: bodies.add,
+      ),
+    );
+
+    expect(bodies.first['highlight'], isEmpty);
+
+    await _type(tester, 'shirt_size_note', 'A jacket');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(bodies.last['highlight'], ['shirt_size_note']);
+  });
 }
+
+/// Whether a question's control is held still because it does not apply.
+bool _frozen(WidgetTester tester, String key) => tester
+    .widget<IgnorePointer>(
+      find
+          .ancestor(of: find.byKey(answerKey(key)), matching: find.byType(IgnorePointer))
+          .first,
+    )
+    .ignoring;
 
 TextField _countyBox(WidgetTester tester) => tester.widget<TextField>(
   find.descendant(
@@ -992,6 +1278,33 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// A stroke across the signature pad.
+Future<void> _draw(WidgetTester tester) async {
+  final pad = find.byKey(const Key('signature-pad'));
+  await tester.ensureVisible(pad);
+  await tester.pumpAndSettle();
+  final page = Scrollable.of(tester.element(pad)).position;
+  final at = page.pixels;
+  // Mostly downward, which is the stroke a scrolling page would take. Read
+  // before the next frame: a hint going away below can shorten the page.
+  await tester.drag(pad, const Offset(40, 80));
+  expect(page.pixels, at, reason: 'The stroke scrolled the page.');
+  await tester.pumpAndSettle();
+}
+
+/// Sign, pressed for real: drawing the PNG needs the engine, and a fake
+/// clock never lets that finish.
+Future<void> _pressSign(WidgetTester tester) async {
+  final sign = find.widgetWithText(FilledButton, 'Sign');
+  await tester.ensureVisible(sign);
+  await tester.pumpAndSettle();
+  await tester.runAsync(() async {
+    await tester.tap(sign);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+  });
+  await tester.pumpAndSettle();
+}
+
 /// Type into the box answering a field, or into the one carrying a label.
 Future<void> _type(
   WidgetTester tester,
@@ -1068,6 +1381,12 @@ MockClientHandler _handler({
   /// The contract the preview endpoint draws from the unsaved answers. Null
   /// leaves the preview unanswered, so the pane shows the document.
   String Function(Map<String, dynamic> answers)? onPreview,
+  void Function(Map<String, dynamic> body)? onPreviewBody,
+  /// The draft PDF `POST …/preview?format=pdf` answers with.
+  Uint8List Function(Map<String, dynamic> body)? onPdf,
+  /// The signer's saved signature, `GET /me/signature`; null when none.
+  String? savedSignature,
+  void Function(Map<String, dynamic> body)? onSaveSignature,
   void Function(Map<String, String> query)? onCounties,
 }) {
   final seen = form ?? _asEmployer;
@@ -1078,7 +1397,30 @@ MockClientHandler _handler({
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;
 
+    if (path.endsWith('/me/signature')) {
+      if (request.method == 'PUT') {
+        onSaveSignature?.call(body);
+        return _json({
+          'data': {'drawing': body['drawing']},
+        });
+      }
+      return _json({
+        'data': {'drawing': savedSignature},
+      });
+    }
+
+    if (onPdf != null &&
+        path.endsWith('/hr/onboardings/o-1/preview') &&
+        request.url.queryParameters['format'] == 'pdf') {
+      return http.Response.bytes(
+        onPdf(body),
+        200,
+        headers: {'content-type': 'application/pdf'},
+      );
+    }
+
     if (onPreview != null && path.endsWith('/hr/onboardings/o-1/preview')) {
+      onPreviewBody?.call(body);
       return _json({
         'data': {
           'content': onPreview(
@@ -1720,6 +2062,60 @@ final _voidForm = {
       ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'N/A'),
       'voidable': true,
     },
+  ],
+  'missing': <String, String>{},
+};
+
+/// One white pixel, standing in for a drawn page.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+);
+
+/// The raise's two terms in one void group, both answered.
+final _groupForm = {
+  ..._asEmployer,
+  'fields': [
+    {
+      ..._field('raise_amount', 'Scheduled increase amount', 'number', filledBy: 'employer', writable: true, value: '0'),
+      'voidable': true,
+      'void_group': 'raise',
+    },
+    {
+      ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'Year'),
+      'voidable': true,
+      'void_group': 'raise',
+    },
+  ],
+  'missing': <String, String>{},
+};
+
+/// The employee's half: their home address in its parts, beside the
+/// contract's own governing state.
+final _addressForm = {
+  ..._asEmployee,
+  'fields': [
+    {
+      ..._field('address', 'Home address', 'text', source: 'core', filledBy: 'employee', writable: true, value: '41 Elm St, Stamford, CT 06901'),
+      'parts': {
+        'address_line1': '41 Elm St',
+        'address_line2': null,
+        'city': 'Stamford',
+        'state': 'CT',
+        'postal_code': '06901',
+        'country': 'US',
+      },
+    },
+    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: false, value: 'FL'),
+  ],
+  'missing': <String, String>{},
+};
+
+/// A contract version that asks for the county first.
+final _countyFirstForm = {
+  ..._asEmployer,
+  'fields': [
+    _field('county', 'County for disputes', 'text', filledBy: 'employer', writable: true, value: 'Broward'),
+    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: true, value: 'FL'),
   ],
   'missing': <String, String>{},
 };

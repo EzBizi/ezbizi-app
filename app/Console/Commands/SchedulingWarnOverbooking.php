@@ -26,6 +26,9 @@ class SchedulingWarnOverbooking extends Command
 {
     public const DAYS = 7;
 
+    /** The trigger the warning email's automation listens on. */
+    public const TRIGGER = 'scheduling.overbooking_found';
+
     protected $signature = 'scheduling:warn-overbooking';
 
     protected $description = 'Raise the overbooking trigger for areas overbooked or fully booked in the next 7 days';
@@ -49,7 +52,7 @@ class SchedulingWarnOverbooking extends Command
 
                 // Filed against the organization: the warning is about all of
                 // its areas, and an organization carries its own audience.
-                $events->emit('scheduling.overbooking_found', $organization, ['after' => [
+                $events->emit(self::TRIGGER, $organization, ['after' => [
                     'summary' => self::summary($over, $full),
                     'overbooked_days' => count($over),
                     'fully_booked_areas' => count($full),

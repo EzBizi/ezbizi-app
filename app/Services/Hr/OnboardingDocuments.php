@@ -95,7 +95,7 @@ class OnboardingDocuments
      *
      * @param  array<string, mixed>  $draft  field key => unsaved value
      */
-    public function preview(Onboarding $onboarding, array $draft): string
+    public function preview(Onboarding $onboarding, array $draft, array $highlight = []): string
     {
         $answers = $onboarding->answers()->get()->keyBy('field_key');
 
@@ -111,13 +111,75 @@ class OnboardingDocuments
         }
 
         $identity = $this->form->identity($onboarding);
+        // The address may come in its parts, as the form saves it.
+        if (is_array($draft['address'] ?? null) && $onboarding->user !== null) {
+            $draft['address'] = User::composeAddress(array_replace(
+                $onboarding->user->addressParts(),
+                array_intersect_key($draft['address'], array_flip(User::ADDRESS_PARTS)),
+            ));
+        }
         foreach ($identity as $key => $value) {
             if (array_key_exists($key, $draft) && is_scalar($draft[$key])) {
                 $identity[$key] = (string) $draft[$key];
             }
         }
 
-        return $this->renderer->render($onboarding, $identity, $answers->values());
+        return $this->renderer->render($onboarding, $identity, $answers->values(), $highlight);
+    }
+
+    /**
+     * The signature somebody drew, kept as a PNG on the onboarding for the
+     * signature block of the printed contract (Jose, 2026-10-01).
+     */
+    public function storeDrawing(Onboarding $onboarding, User $actor, string $png): Attachment
+    {
+        $path = $this->files->putContents(
+            $png,
+            $this->files->directoryFor('onboarding-signatures', $onboarding->organization_id),
+            'png',
+        );
+
+        $attachment = new Attachment([
+            'attachable_type' => 'onboardings',
+            'attachable_id' => $onboarding->getKey(),
+            'original_name' => 'signature.png',
+            'mime' => 'image/png',
+            'uploaded_by_user_id' => $actor->getKey(),
+        ]);
+        $attachment->forceFill([
+            'disk' => $this->files->defaultDisk(),
+            'path' => $path,
+            'size_bytes' => strlen($png),
+            'checksum' => hash('sha256', $png),
+        ])->save();
+
+        return $attachment;
+    }
+
+    /**
+     * A drawn signature as sent: a PNG data URL or bare base64. Null when it
+     * is not a PNG of a sensible size.
+     */
+    public static function drawingBytes(?string $sent): ?string
+    {
+        if ($sent === null || trim($sent) === '') {
+            return null;
+        }
+        $data = preg_replace('#^data:image/png;base64,#', '', trim($sent));
+        $png = base64_decode((string) $data, true);
+
+        return is_string($png) && strlen($png) <= 400_000 && str_starts_with($png, "\x89PNG\r\n\x1a\n")
+            ? $png
+            : null;
+    }
+
+    /** The same draft as preview(), as the PDF it would print as. */
+    public function previewPdf(Onboarding $onboarding, array $draft): string
+    {
+        return $this->pdf->draft(
+            $this->preview($onboarding, $draft),
+            (string) $onboarding->contractVersion?->contract?->name,
+        );
     }
 
     /**
@@ -239,7 +301,35 @@ class OnboardingDocuments
             // are one file — see PdfRenderer on why the copy is not dated now().
             // `created_at` is written once and never updated on this model.
             sourceStoredAt: $document->created_at ?? $onboarding->started_at ?? now(),
+            signatures: $this->signatureBlocks($onboarding),
         );
+    }
+
+    /**
+     * What fills each signature block of the printed copy: the drawn
+     * signature, the name they typed, the day in the organization's zone.
+     *
+     * @return array<string, array{name: string, date: string, png: ?string}>
+     */
+    private function signatureBlocks(Onboarding $onboarding): array
+    {
+        $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)
+            ->get('timezone', $onboarding->organization) ?: config('app.timezone'));
+        $blocks = [];
+
+        foreach ($onboarding->takenSignatures() as $signature) {
+            $drawing = $signature->drawing_attachment_id === null ? null
+                : Attachment::query()->whereKey($signature->drawing_attachment_id)->first();
+            $png = $drawing === null ? null : $this->files->contents($drawing->path, $drawing->disk);
+
+            $blocks[$signature->field_key] = [
+                'name' => (string) $signature->affirmation,
+                'date' => $signature->signed_at?->copy()->timezone($zone)->format('F j, Y') ?? '',
+                'png' => $png === null ? null : base64_encode($png),
+            ];
+        }
+
+        return $blocks;
     }
 
     /**

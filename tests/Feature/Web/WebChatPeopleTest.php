@@ -90,6 +90,30 @@ class WebChatPeopleTest extends TestCase
         Queue::assertPushed(DeliverAutomationEvent::class, fn ($job) => $job->eventId === $event->getKey());
     }
 
+    /** Jose, 2026-10-01: the chat asks for phone, email and ZIP, so Leads gets all three. */
+    public function test_a_chat_brings_its_phone_email_and_zip_into_leads(): void
+    {
+        [$site, $t] = $this->site();
+
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Sweep please', 'name' => 'Joseph',
+            'phone' => '(305) 724-2199', 'email' => 'joseph@example.com', 'zip' => '07102'])->assertCreated();
+
+        [$lead, $event] = $this->inTenant($t['org'], fn () => [
+            Lead::query()->firstOrFail(),
+            AutomationEvent::query()->where('event_key', 'lead.received')->firstOrFail(),
+        ]);
+        $this->assertSame('13057242199', $lead->phone_digits);
+        $this->assertSame('joseph@example.com', $lead->email);
+        $this->assertSame('07102', $event->payload['after']['zip']);
+        $this->assertSame('07102', $lead->postal_code);
+
+        // Leads shows it, so the service-area check has a ZIP to read.
+        $this->assertSame('07102', $this->signedInAs($t['admin'])->getJson('/api/v1/leads/'.$lead->getKey())->json('data.details.zip'));
+        auth()->forgetGuards();
+
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi', 'zip' => 'abc'])->assertStatus(422);
+    }
+
     /** @return array{0: WebSite, 1: array} */
     private function site(): array
     {

@@ -178,6 +178,13 @@ class OnboardingForm
      * @param  string[]  $parties  which sides this actor is acting as
      * @return array{answers: string[], identity: string[]} the keys that changed
      */
+    /** Catalog terms that stand or fall together when one is marked "doesn't apply". */
+    public const VOID_GROUPS = [
+        'raise_amount' => 'raise', 'raise_period' => 'raise',
+        'comp_method' => 'commission', 'commission_pct' => 'commission', 'commission_stages' => 'commission',
+        'salary_amount' => 'salary', 'salary_period' => 'salary', 'daily_deduction' => 'salary',
+    ];
+
     public function save(Onboarding $onboarding, User $actor, array $parties, array $values): array
     {
         $fields    = $this->keyedFields($onboarding);
@@ -185,10 +192,33 @@ class OnboardingForm
         $errors    = [];
         $answers   = [];
         $identity  = [];
+        $parts     = [];
 
         foreach ($values as $key => $raw) {
             $key = (string) $key;
             $at  = "answers.{$key}";
+
+            // The home address in its parts, nested under the question as
+            // `address: {address_line1, …}` (Jose, 2026-10-01: "should have
+            // separate fields"). Nested, not flat: a contract asks its own
+            // `state` (the governing state), and a flat `state` part would
+            // collide with it. Same rule as the one-line `address`.
+            if ($key === 'address' && is_array($raw)) {
+                $mayBeWrittenBy = $authority['address']['filled_by'] ?? null;
+                if ($mayBeWrittenBy === null || ! in_array($mayBeWrittenBy, $parties, true)) {
+                    $errors[$at] = $mayBeWrittenBy === null
+                        ? sprintf("'%s' cannot be set here. %s", CommonCore::labelFor('address'), $authority['address']['reason'] ?? '')
+                        : $this->refusalFor(CommonCore::labelFor('address'), $mayBeWrittenBy, $parties);
+
+                    continue;
+                }
+                foreach (array_intersect_key($raw, array_flip(User::ADDRESS_PARTS)) as $part => $value) {
+                    $text = is_scalar($value) ? trim((string) $value) : '';
+                    $parts[$part] = $text === '' ? null : mb_substr($text, 0, 191);
+                }
+
+                continue;
+            }
 
             if (CommonCore::isAsked($key)) {
                 $mayBeWrittenBy = $authority[$key]['filled_by'] ?? null;
@@ -287,6 +317,11 @@ class OnboardingForm
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
+        }
+
+        if ($parts !== [] && $onboarding->user !== null) {
+            $merged = array_replace($onboarding->user->addressParts(), $parts);
+            $identity = array_replace($identity, $merged, ['address' => User::composeAddress($merged)]);
         }
 
         return [
@@ -794,7 +829,11 @@ class OnboardingForm
                 // name" is answered.
                 'set_by' => null,
                 'set_at' => null,
-            ];
+            ] + ($key === 'address' && $onboarding->user !== null
+                // The address in its parts, for the form's address fields;
+                // saving them composes `address` (save()).
+                ? ['parts' => $onboarding->user->addressParts()]
+                : []);
         }
 
         foreach ($onboarding->fields() as $field) {
@@ -819,8 +858,12 @@ class OnboardingForm
                 'value' => $answer?->toArray()['value'] ?? null,
                 // May be answered "N/A", which leaves its paragraphs out of
                 // the contract (A1 Tools' "doesn't apply", 2026-10-01).
-                'voidable' => $field->filledBy !== FilledBy::EMPLOYEE
+                'voidable' => $voidable = $field->filledBy !== FilledBy::EMPLOYEE
                     && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true),
+                // Questions that go together: voiding one voids the group
+                // (Jose: "voiding Scheduled increase interval voids itself and
+                // scheduled increase amount").
+                'void_group' => $voidable ? (self::VOID_GROUPS[$field->key] ?? $field->key) : null,
                 'writable' => $field->type !== FieldType::SIGNATURE
                     && ! $field->retired
                     && ! $onboarding->isFrozen()

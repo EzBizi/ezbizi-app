@@ -2961,6 +2961,26 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 48 · HR · the onboarding form, second pass — **Jose's own shape (relayed by HR), built directly** — **BUILT** (`2b0814cc`, `917551d9`, `94e92cf5`, and the saved-signature commit)
+
+Jose, 2026-10-01, via HR: *"buttons next to the field with like a tick or x… voiding Scheduled increase interval
+voids itself and scheduled increase amount… state should be first… [home address] like in the rest of the app
+should have separate fields… Dispatcher Master 5000 should be highlighted on the contract… PDF (Final Result
+view)"*, then hand-drawn signatures "as in A1 Tools". Built in `onboarding_form.dart`: ✓ / ✗ at each voidable
+row's right edge (✗ voids every question in its `void_group`, ✓ brings them back empty); `state` drawn above
+`county` whatever the version's order; the preview sends `highlight` (keys changed since the page opened) and
+the document's own `<mark>` yellow shows it; the home `address` is AddressFields from the question's `parts`, saved as
+`answers.address = {address_line1, …, country}` — nested, because a flat `state` part is the contract's governing
+`state` (told HR, 05692793); Live | PDF on the contract pane, the PDF from `POST …/preview?format=pdf` through
+`PdfView` (the browser's own viewer on web, `printing` pages elsewhere — Android's WebView cannot show a PDF;
+adding it moved xml 7.0.1→6.6.1 and archive 4.3.0→4.0.9, the newest pdf this SDK resolves); the signing step
+adds A1's pad (`SignaturePad`: white paper, border lit once drawn, Clear, a downstroke draws instead of
+scrolling) and sends `drawing` as a PNG data URL; Sign waits for a drawing; "Use my saved signature" puts the
+signer's own (`GET me/signature`) in the pad's place and "Save as my signature" `PUT`s a new one. With HR's A1
+restyle (9.5pt body, 18pt title, in a `<style>` block) the live text is paper in both themes, like the PDF, and
+its point sizes are scaled alike so the body reads at 15 px: flutter_html reads a point as a pixel, which drew
+12pt headings below a 15 px body.
+
 ### 47 · Work Hours · a Dashboard tab, first — **out for decision** (`docs/previews/work-hours-dashboard-layouts.html`)
 
 Jose, 2026-10-01, via Clock In: *"i'd also like to have a sub tab dashboard which lets me know details, averages,
@@ -3180,6 +3200,14 @@ Hours report in `screens/reports/work_hours_report_panel.dart` (docked at 460, i
 editor shared as `editWorkHoursReport` and the covers line as `workHoursReportCovers` in Work Hours' tab,
 and the step's covers line in `automation_builder.dart`. Reports' `root_label` (`3af98941`) names what a
 Builder report counts. The schedule in words is `core/schedule_words.dart`.
+
+**A third kind, 2026-10-01** (Jose: the daily "Overbooking warning" belongs in Reports). Asked by Reports
+whether it opens Scheduling › Overbooking or a panel: a panel, because option 1 is Jose's pick over option
+2's link to the module's tab. `screens/reports/overbooking_report_panel.dart` docks like the Work Hours one
+(covers, Sent by, the next 7 days) and draws `OverbookingPane(embedded: true)`: the same endpoint and rules
+the morning email uses (`SchedulingWarnOverbooking::DAYS`), so the panel and the tab cannot disagree. The
+section and Sent-by blocks are shared as `reportPanelSection` / `reportSenders`. Reports owns the row, the
+chip and the dock branch; Scheduling serves `GET /scheduling/reports`.
 
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 

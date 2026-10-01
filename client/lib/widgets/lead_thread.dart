@@ -20,6 +20,22 @@ import 'book_lead_panel.dart';
 import 'side_panel.dart';
 import 'status_pill.dart';
 
+/// The reply box's one-line height, which Send, Suggest and the emoji
+/// button share.
+const double _controlHeight = 48;
+
+/// The tray's emoji: the ones a reply to a customer reaches for. Phones have
+/// the full set on their keyboard.
+// ponytail: a fixed set, not a searchable picker; add emoji_picker_flutter if
+// people ask for one that is not here.
+const _emojis = [
+  '😊', '🙂', '😀', '😄', '😁', '😂', '😉', '😍', '🥰', '😎', '🤔', '😅', //
+  '😇', '🙃', '😮', '😢', '😬', '🙄', '👍', '👎', '👌', '🙏', '👏', '🙌', //
+  '👋', '🤝', '💪', '✌️', '🤞', '👉', '✅', '❌', '⚠️', '⭐', '🔥', '🎉', //
+  '💯', '❤️', '📅', '⏰', '🕒', '📞', '💬', '📧', '📍', '🏠', '🔧', '🧹', //
+  '🚚', '📷', '🧾', '🌞', //
+];
+
 /// What was said on one enquiry: every call and message, oldest first.
 ///
 /// Desktop layout 1 draws this beside the list; mobile layout 4 pushes it full
@@ -152,6 +168,10 @@ class _LeadThreadState extends State<LeadThread> {
   final _compose = TextEditingController();
   bool _sending = false;
   String? _sendError;
+
+  /// The emoji tray above the reply box (Jose, 2026-10-01: "a button for an
+  /// emoji picker on the left of send"). Inline, not a popup.
+  bool _emoji = false;
 
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
@@ -303,6 +323,7 @@ class _LeadThreadState extends State<LeadThread> {
         (response.data as Map<String, dynamic>? ?? const {}),
       ];
       _compose.clear();
+      _emoji = false;
     });
 
     // The thread has it; the row on the left does not until this fires.
@@ -372,28 +393,43 @@ class _LeadThreadState extends State<LeadThread> {
       _ => 'new',
     };
 
+    // On a phone's one line beside Book there is not room for four words at
+    // full size: a label shrinks to fit rather than breaking mid-word
+    // ("Archiv-e", 2026-10-01, once Completed made it four).
+    Widget label(String text, String key) {
+      final words = Text(text, key: ValueKey(key), maxLines: 1, softWrap: false);
+      return fill
+          ? FittedBox(fit: BoxFit.scaleDown, child: words)
+          : words;
+    }
+
     final control = SegmentedButton<String>(
       key: const ValueKey('status-moves'),
       showSelectedIcon: false,
-      segments: const [
+      style: fill
+          ? SegmentedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+            )
+          : null,
+      segments: [
         ButtonSegment(
           value: 'archived',
-          label: Text('Archive', key: ValueKey('status-archive')),
+          label: label('Archive', 'status-archive'),
         ),
         ButtonSegment(
           value: 'not_a_lead',
-          label: Text('Not a lead', key: ValueKey('status-not-a-lead')),
+          label: label('Not a lead', 'status-not-a-lead'),
         ),
         ButtonSegment(
           value: 'new',
-          label: Text('Lead', key: ValueKey('status-lead')),
+          label: label('Lead', 'status-lead'),
         ),
         // Nobody owes the customer an answer - "Thank you" was their last
         // word. Clears the red warning (Jose, 2026-10-01); writing again
         // reopens the lead.
         ButtonSegment(
           value: 'completed',
-          label: Text('Completed', key: ValueKey('status-completed')),
+          label: label('Completed', 'status-completed'),
         ),
       ],
       selected: {current},
@@ -809,7 +845,41 @@ class _LeadThreadState extends State<LeadThread> {
               },
             ),
           ),
+        if (_emoji)
+          Container(
+            key: const ValueKey('reply-emoji-tray'),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(maxHeight: 132),
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            ),
+            child: SingleChildScrollView(
+              child: Wrap(
+                children: [
+                  for (final e in _emojis)
+                    InkWell(
+                      key: ValueKey('reply-emoji-$e'),
+                      borderRadius: BorderRadius.circular(
+                        EzBiziTheme.controlRadius,
+                      ),
+                      onTap: _sending ? null : () => _insertEmoji(e),
+                      child: SizedBox.square(
+                        dimension: 40,
+                        child: Center(
+                          child: Text(e, style: const TextStyle(fontSize: 22)),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
         Row(
+          // Bottom-aligned, and every control is a one-line box tall, so
+          // they line up with the box and stay by its last line as it grows
+          // (Jose, 2026-10-01: "the same size as the field").
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
@@ -833,6 +903,11 @@ class _LeadThreadState extends State<LeadThread> {
                   isDense: true,
                   hintText: 'Reply to them',
                   border: OutlineInputBorder(),
+                  // 12 + a 24 line + 12 is the 48 the buttons beside it are.
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
@@ -840,13 +915,37 @@ class _LeadThreadState extends State<LeadThread> {
               const SizedBox(width: 8),
               OutlinedButton(
                 key: const ValueKey('reply-suggest'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, _controlHeight),
+                ),
                 onPressed: _sending || _suggesting ? null : _suggest,
                 child: Text(_suggesting ? 'Drafting…' : 'Suggest'),
               ),
             ],
             const SizedBox(width: 8),
+            Tooltip(
+              message: _emoji ? 'Hide emoji' : 'Emoji',
+              child: OutlinedButton(
+                key: const ValueKey('reply-emoji'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.square(_controlHeight),
+                  padding: EdgeInsets.zero,
+                  backgroundColor: _emoji
+                      ? theme.colorScheme.secondaryContainer
+                      : null,
+                ),
+                onPressed: _sending
+                    ? null
+                    : () => setState(() => _emoji = !_emoji),
+                child: const Icon(Icons.emoji_emotions_outlined, size: 20),
+              ),
+            ),
+            const SizedBox(width: 8),
             FilledButton.icon(
               key: const ValueKey('reply-send'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, _controlHeight),
+              ),
               onPressed: _sending ? null : _send,
               icon: _sending
                   ? const SizedBox(
@@ -862,6 +961,19 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     ),
   );
+
+  /// Puts [emoji] where the cursor is, or over the selection, and leaves
+  /// the tray open for the next one.
+  void _insertEmoji(String emoji) {
+    final value = _compose.value;
+    final at = value.selection.isValid
+        ? value.selection
+        : TextSelection.collapsed(offset: value.text.length);
+    _compose.value = TextEditingValue(
+      text: value.text.replaceRange(at.start, at.end, emoji),
+      selection: TextSelection.collapsed(offset: at.start + emoji.length),
+    );
+  }
 
   /// "Booked · Job 0142 · Thu 17 Sep, 2 PM", with the job one tap away.
   /// This number is already a customer: who, where, and what they have had

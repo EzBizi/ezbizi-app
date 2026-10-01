@@ -416,14 +416,20 @@ void main() {
   });
 
   // Jose, 2026-09-29: All holds every source but LS Call, and each can be
-  // switched on or off.
-  testWidgets('All leaves LS Call out until it is switched on', (tester) async {
+  // switched on or off. 2026-10-01: LS Booking is left out too.
+  testWidgets('All leaves LS Call and LS Booking out until switched on', (tester) async {
     await _pump(tester, leads: [_lead('lead-1', 'A')], connections: const []);
 
     expect(_lastListQuery['sources'], isNot(contains('ls_call')));
+    expect(_lastListQuery['sources'], isNot(contains('ls_booking')));
     expect(_lastListQuery['sources'], contains('ls_text'));
 
     await tester.tap(find.byKey(const ValueKey('all-source-ls_call')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], contains('ls_call'));
+    expect(_lastListQuery['sources'], isNot(contains('ls_booking')));
+
+    await tester.tap(find.byKey(const ValueKey('all-source-ls_booking')));
     await tester.pumpAndSettle();
     expect(_lastListQuery.containsKey('sources'), isFalse, reason: 'everything on: no narrowing');
 
@@ -1747,8 +1753,15 @@ void _conversationRowTests() {
       findsNothing,
       reason: 'BOOKING fell through the channel switch and read as a message',
     );
-    // One tag says both facts since 2026-09-29: Google, and a booking.
-    expect(find.text('LS Booking'), findsOneWidget);
+    // One tag says both facts since 2026-09-29: Google, and a booking. (The
+    // rail's own LS Booking tab, since 2026-10-01, is not the row's tag.)
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('leads-list')),
+        matching: find.text('LS Booking'),
+      ),
+      findsOneWidget,
+    );
   });
 }
 

@@ -168,15 +168,19 @@ class _WorkHoursReportPanelState extends State<WorkHoursReportPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _section(context, 'Who is in it', _who(context)),
-          _section(
+          reportPanelSection(context, 'Who is in it', _who(context)),
+          reportPanelSection(
             context,
             'Goes to',
             Text(
               workHoursReportRecipients(widget.report, people: widget.people),
             ),
           ),
-          _section(context, 'Sent by', _senders(context)),
+          reportPanelSection(
+            context,
+            'Sent by',
+            reportSenders(context, widget.report, widget.session.me!.display),
+          ),
           _hours(context),
           if (_sent != null) ...[
             const SizedBox(height: 12),
@@ -189,28 +193,6 @@ class _WorkHoursReportPanelState extends State<WorkHoursReportPanel> {
             const SizedBox(height: 12),
             ErrorNote(_error!),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _section(BuildContext context, String label, Widget child) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          child,
         ],
       ),
     );
@@ -264,78 +246,6 @@ class _WorkHoursReportPanelState extends State<WorkHoursReportPanel> {
           if (p.isNotEmpty) chip(p, Tone.ok, Icons.add),
         for (final p in left)
           if (p.isNotEmpty) chip(p, Tone.neutral, Icons.remove),
-      ],
-    );
-  }
-
-  /// The rules whose current version sends this report. Their names are
-  /// Automations' to show: without `automations.view` the server says only
-  /// whether one does.
-  Widget _senders(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    final rules = widget.report['sent_by'];
-
-    if (rules is! List) {
-      return Text(
-        widget.report['sent_automatically'] == true
-            ? 'Sent automatically'
-            : 'Not sent by any automation',
-      );
-    }
-    if (rules.isEmpty) return const Text('Not sent by any automation');
-
-    final formats = widget.session.me!.display;
-
-    return Column(
-      children: [
-        for (final rule in rules.whereType<Map>())
-          Container(
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.schedule,
-                  size: 20,
-                  color: ToneColours.of(
-                    context,
-                    senderIsOn(rule) ? Tone.info : Tone.neutral,
-                  ).ink,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${rule['name']}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        [
-                          senderWhen(rule, formats),
-                          if (senderIsOn(rule))
-                            if (DateTime.tryParse('${rule['next_run_at']}')
-                                case final next?)
-                              'next ${formats.formatDate(next.toLocal())}',
-                        ].join(' · '),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: rule['disabled_at'] != null
-                              ? ToneColours.of(context, Tone.bad).ink
-                              : muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }
@@ -444,4 +354,101 @@ String senderWhen(Map<dynamic, dynamic> rule, DisplayFormats formats) {
       scheduleWords(rule['schedule'], formats) ?? 'When its trigger happens';
 
   return rule['is_active'] == true ? when : 'Off · $when';
+}
+
+/// A labelled block of a report panel.
+Widget reportPanelSection(BuildContext context, String label, Widget child) {
+  final theme = Theme.of(context);
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        child,
+      ],
+    ),
+  );
+}
+
+/// The rules whose current version sends this report. Their names are
+/// Automations' to show: without `automations.view` the server says only
+/// whether one does.
+Widget reportSenders(
+  BuildContext context,
+  Map<String, dynamic> report,
+  DisplayFormats formats,
+) {
+  final theme = Theme.of(context);
+  final muted = theme.colorScheme.onSurfaceVariant;
+  final rules = report['sent_by'];
+
+  if (rules is! List) {
+    return Text(
+      report['sent_automatically'] == true
+          ? 'Sent automatically'
+          : 'Not sent by any automation',
+    );
+  }
+  if (rules.isEmpty) return const Text('Not sent by any automation');
+
+  return Column(
+    children: [
+      for (final rule in rules.whereType<Map>())
+        Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.schedule,
+                size: 20,
+                color: ToneColours.of(
+                  context,
+                  senderIsOn(rule) ? Tone.info : Tone.neutral,
+                ).ink,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${rule['name']}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      [
+                        senderWhen(rule, formats),
+                        if (senderIsOn(rule))
+                          if (DateTime.tryParse('${rule['next_run_at']}')
+                              case final next?)
+                            'next ${formats.formatDate(next.toLocal())}',
+                      ].join(' · '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: rule['disabled_at'] != null
+                            ? ToneColours.of(context, Tone.bad).ink
+                            : muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
 }

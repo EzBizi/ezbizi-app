@@ -14,6 +14,44 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0344',
+      date: '1 Oct 2026',
+      items: [
+        'Uploading a file from an iPhone browser works; picking a photo did nothing before.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0343',
+      date: '1 Oct 2026',
+      items: [
+        'Leads: Send now lines up with the reply box, and a new emoji button beside it opens a tray of emoji. On a phone the status buttons no longer break words in half.',
+        'Reports: the Overbooking warning now shows in the Reports list and opens on the next 7 days.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0342, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0342',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: you can save your drawn signature and reuse it on the next contract. The contract preview now reads as the printed page, in light and dark mode.',
+        'Work Hours: Add shift for HR, request hours for a day you didn\'t clock, and approved requests read Shift corrected.',
+        'Human Resources, Records: the people list can be filtered by role.',
+        'Monitoring, General: the ownership table scrolls down, so every row can be reached.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0341',
+      date: '1 Oct 2026',
+      items: [
+        'Onboarding: the home address is filled in its parts, with address search. The contract can be seen as the PDF it will print as, stamped DRAFT. Each side draws their signature by hand when signing.',
+        'Windows: before updating, the app closes any update installer left running from an earlier try, so one stuck update can no longer block every later one.',
+        'Onboarding: ✗ on a term also voids the terms tied to it, the contract preview highlights what changed, and contracts are laid out like the A1 Tools agreements.',
+        'Leads: bookings made through Google have their own tab and stay out of All.',
+        'A website chat\'s ZIP code shows on the lead in Leads, ready for the availability check.',
+        'Web Management: every colour setting has a colour picker; typing a colour code still works.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0340',
       date: '1 Oct 2026',
       items: [
@@ -23,6 +61,10 @@ class VersionHistory {
         'Dashboard: New customers counts the day someone became a customer, so the A1 Tools import no longer reads as tens of thousands of new customers this week.',
         'Inventory: Stock, Items and Locations read their totals from the server, so what a role may not see reads as unknown rather than zero.',
         'Work Hours: editing opens a side panel, and on a phone a person opens inside the tab.',
+        'Website live chat asks for phone, email and ZIP code, so every chat lead in Leads can be called, emailed and placed.',
+        'Onboarding: a term that may not apply has ✓ / ✗ beside it, and the state now comes before the county.',
+        'Inventory: an open item shows its history, with what was received, issued, moved, counted and sold, when, and by whom.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0338 and 0.0.0339, which reached the web first.',
       ],
     ),
     VersionRelease(

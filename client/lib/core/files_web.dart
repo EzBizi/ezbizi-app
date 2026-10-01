@@ -59,9 +59,26 @@ Future<PickedFile?> pickText() {
     if (!completer.isCompleted) completer.complete(null);
   }.toJS;
 
-  input.click();
+  _openAttached(input, completer.future);
 
   return completer.future;
+}
+
+/// Click a file input that is part of the page, and take it out again once the
+/// pick is over.
+///
+/// iPhone Safari loses a detached input: the element is collected while the
+/// photo picker is open and `change` never fires, so the person picks a photo
+/// and nothing happens (Gino's driver licence, 2026-10-01: no upload ever
+/// reached the server). Attached and hidden, it lives until the answer comes.
+void _openAttached(web.HTMLInputElement input, Future<Object?> done) {
+  input.style.display = 'none';
+  web.document.body?.append(input);
+  // A closure, not `input.remove`: dart2js refuses a tear-off of a JS
+  // interop member ("Tear-offs of external extension type interop member
+  // 'remove' are disallowed"), and only the web build says so. Analyze passes.
+  done.whenComplete(() => input.remove());
+  input.click();
 }
 
 /// Drop the query string without reloading.
@@ -122,7 +139,7 @@ Future<PickedBytes?> pickBytes({String accept = ''}) {
     if (!completer.isCompleted) completer.complete(null);
   }.toJS;
 
-  input.click();
+  _openAttached(input, completer.future);
 
   return completer.future;
 }

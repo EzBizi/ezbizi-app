@@ -533,6 +533,98 @@ class HrOnboardingTest extends TestCase
         $this->assertFalse($this->fieldIn($form, 'employee_sign')['voidable'] ?? false);
     }
 
+    /**
+     * Jose's second pass on the form (2026-10-01): the home address in parts,
+     * related terms voided together, the typed answer marked in the contract,
+     * and the PDF it will print as.
+     */
+    public function test_address_parts_void_groups_highlights_and_the_draft_pdf(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'job_title', 'label' => 'Job title', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'raise_amount', 'label' => 'Raise', 'type' => 'number', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'raise_period', 'label' => 'Raise every', 'type' => 'text', 'filled_by' => 'employer', 'required' => false],
+            // The contract's own `state`, beside the home address's state
+            // part: UI/UX caught a flat part key colliding with it.
+            ['key' => 'state', 'label' => 'Governing state', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
+            ->where('id', Onboarding::findOrFail($id)->contract_version_id)
+            ->update(['body' => "Job Title: {{job_title}}\n\nLives at {{address}}."]));
+
+        // The address in parts, written to the profile and composed.
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'address' => ['address_line1' => '41 Elm St', 'city' => 'Stamford', 'state' => 'CT', 'postal_code' => '06901'],
+        ]])->assertOk();
+        $this->assertSame('41 Elm St, Stamford, CT 06901', $employee->fresh()->address);
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['state' => 'Florida']])->assertOk();
+        $this->assertSame('Florida', $this->rawAnswer($alpha, $id, 'state'));
+        $this->assertSame('CT', $employee->fresh()->state, 'The governing state landed on the home address.');
+        $address = collect($this->form($employee, $id)['fields'] ?? $this->form($employee, $id)['questions'] ?? [])
+            ->firstWhere('key', 'address');
+        $this->assertSame('Stamford', $address['parts']['city'] ?? null);
+
+        // The raise terms stand or fall together; a lone term is its own group.
+        $form = $this->form($alpha['admin'], $id);
+        $this->assertSame('raise', $this->fieldIn($form, 'raise_amount')['void_group']);
+        $this->assertSame('raise', $this->fieldIn($form, 'raise_period')['void_group']);
+        $this->assertSame('job_title', $this->fieldIn($form, 'job_title')['void_group']);
+
+        // The answer being typed is marked in the live contract, and only there.
+        $content = $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/preview", [
+            'answers' => ['job_title' => 'Dispatcher Master 5000'], 'highlight' => ['job_title'],
+        ])->assertOk()->json('data.content');
+        $this->assertStringContainsString('<mark data-key="job_title">Dispatcher Master 5000</mark>', $content);
+        $this->assertStringNotContainsString('<mark', $this->as($alpha['admin'])
+            ->getJson("/api/v1/hr/onboardings/{$id}/document")->json('data.content'));
+
+        // The PDF view of the same draft.
+        $pdf = $this->as($alpha['admin'])->post("/api/v1/hr/onboardings/{$id}/preview?format=pdf", [
+            'answers' => ['job_title' => 'Dispatcher Master 5000'],
+        ]);
+        $pdf->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+    }
+
+    /**
+     * A hand-drawn signature, as A1 Tools had (Jose, 2026-10-01): kept with
+     * the signature record, drawn into the printed copy, and reusable as the
+     * signer's own saved signature.
+     */
+    public function test_a_drawn_signature_is_kept_and_a_signer_can_save_one(): void
+    {
+        // A 1x1 PNG.
+        $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+        [$alpha, $employee, $id] = $this->completeForm();
+
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
+            'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => 'not a picture',
+        ])->assertStatus(422)->assertJsonValidationErrors('drawing');
+
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
+            'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => $png,
+        ])->assertCreated();
+
+        $drawing = $this->inTenant($alpha['org'], fn () => Attachment::findOrFail(
+            ContractSignature::where('field_key', 'employer_sign')->sole()->drawing_attachment_id));
+        $this->assertSame('image/png', $drawing->mime);
+
+        // The printed copy is made with the drawing in its signature block.
+        $this->as($alpha['admin'])->get("/api/v1/hr/onboardings/{$id}/document/pdf?revision=1")->assertOk();
+
+        // A signer's own saved signature: theirs, and never in /me.
+        $this->as($alpha['admin'])->putJson('/api/v1/me/signature', ['drawing' => $png])->assertOk();
+        $this->assertSame($png, $this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
+        $this->assertNull($this->as($employee)->getJson('/api/v1/me/signature')->json('data.drawing'));
+        $this->assertStringNotContainsString('iVBORw0KGgo', $this->as($alpha['admin'])->getJson('/api/v1/me')->getContent());
+        $this->as($alpha['admin'])->deleteJson('/api/v1/me/signature')->assertOk();
+        $this->assertNull($this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
+    }
+
     /** The contract beside the form, with what is being typed, and nothing saved. */
     public function test_the_preview_shows_unsaved_answers_and_keeps_a_saved_secret_masked(): void
     {

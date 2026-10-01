@@ -399,12 +399,35 @@ class HrOnboardingsController extends Controller
      * it beside the form as somebody types (Jose, 2026-10-01). Writes nothing
      * and stores nothing; saved sensitive answers stay masked.
      */
-    public function preview(Request $request, Onboarding $onboarding): JsonResponse
+    public function preview(Request $request, Onboarding $onboarding): JsonResponse|HttpResponse
     {
         $this->authorize('view', $onboarding);
 
-        $draft = $request->validate(['answers' => ['present', 'array']])['answers'];
-        $content = $this->documents->preview($onboarding, $draft);
+        $input = $request->validate([
+            'answers' => ['present', 'array'],
+            // Keys whose values are marked, so somebody typing sees where
+            // their answer lands (Jose, 2026-10-01). Preview only.
+            'highlight' => ['sometimes', 'array'],
+            'highlight.*' => ['string', 'max:64'],
+        ]);
+        $draft = $input['answers'];
+
+        // ?format=pdf: the "final result" view, the PDF it would print as.
+        if ($request->query('format') === 'pdf') {
+            $pdf = $this->documents->previewPdf($onboarding, $draft);
+
+            return response($pdf, Response::HTTP_OK, [
+                'Content-Type' => PdfRenderer::MIME,
+                'Content-Length' => (string) strlen($pdf),
+                'Content-Disposition' => HeaderUtils::makeDisposition(
+                    HeaderUtils::DISPOSITION_ATTACHMENT, 'draft-contract.pdf', 'draft-contract.pdf',
+                ),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
+
+        $content = $this->documents->preview($onboarding, $draft, $input['highlight'] ?? []);
 
         return response()->json(['data' => [
             'content' => $content,
@@ -680,6 +703,10 @@ class HrOnboardingsController extends Controller
             // length is DERIVED from the algorithm rather than written as 64, so
             // the day DocumentFingerprint moves this rule moves with it instead
             // of refusing every signature until somebody notices.
+            // The signature they drew (Jose, 2026-10-01: "the actual
+            // signature, like hand drawn signature"), a PNG data URL.
+            'drawing' => ['sometimes', 'nullable', 'string', 'max:600000'],
+
             'document_hash' => ['required', 'string',
                 'size:'.strlen(hash(DocumentFingerprint::ALGORITHM, ''))],
         ], [
@@ -745,7 +772,13 @@ class HrOnboardingsController extends Controller
         // stays open for the employee, who signs the finished one.
         $presign = $field->filledBy === FilledBy::EMPLOYER && ! $onboarding->isFrozen();
 
-        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign) {
+        $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
+        if (($input['drawing'] ?? null) !== null && $drawing === null) {
+            throw ValidationException::withMessages(['drawing' =>
+                'The drawn signature did not arrive as a PNG image under 400 KB. Draw it again and sign.']);
+        }
+
+        $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign, $drawing) {
             $document = match (true) {
                 $onboarding->isFrozen() => $onboarding->currentDocument(),
                 $presign => $this->renderForEmployer($onboarding, $actor),
@@ -782,6 +815,8 @@ class HrOnboardingsController extends Controller
                 'consented_at'      => now(),
                 'intent_statement'  => $ceremony->intent(),
                 'affirmation'       => trim($input['affirmation']),
+                'drawing_attachment_id' => $drawing === null ? null
+                    : $this->documents->storeDrawing($onboarding, $actor, $drawing)->getKey(),
                 'signed_at'         => now(),
             ]);
 

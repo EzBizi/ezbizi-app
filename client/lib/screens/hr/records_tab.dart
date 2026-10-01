@@ -70,6 +70,9 @@ class RecordsTab extends StatefulWidget {
   /// is drawn below it, and keep passing against the wrong one.
   static const sectionsKey = _RecordsTabState.sectionsKey;
 
+  /// The role filter above the list.
+  static const roleFilterKey = Key('hr.records.role');
+
   @override
   State<RecordsTab> createState() => _RecordsTabState();
 }
@@ -98,6 +101,10 @@ class _RecordsTabState extends State<RecordsTab> {
   String _search = '';
   Timer? _searchDelay;
   _Showing _showing = _Showing.everyone;
+
+  /// One role, or every role when null (Jose, 2026-10-01). Asked of the
+  /// server, because the list arrives a page at a time.
+  String? _roleId;
 
   /// What a role may be changed TO, and which of those this person may hand
   /// out. The same answer the invite form uses, from the same endpoint: §4's
@@ -151,6 +158,7 @@ class _RecordsTabState extends State<RecordsTab> {
       widget.api.get('/hr/people', {
         'page': '$page',
         if (_search.isNotEmpty) 'search': _search,
+        'role_id': ?_roleId,
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -364,6 +372,25 @@ class _RecordsTabState extends State<RecordsTab> {
             ],
           ),
         ),
+        if (_options.roles.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SearchPickerField<String>(
+              key: RecordsTab.roleFilterKey,
+              value: _roleId ?? '',
+              label: 'Filter by role',
+              border: const OutlineInputBorder(),
+              options: [
+                const SearchOption(value: '', label: 'All roles'),
+                for (final role in _options.roles)
+                  SearchOption(value: role.id, label: role.name),
+              ],
+              onChanged: (value) {
+                setState(() => _roleId = (value ?? '').isEmpty ? null : value);
+                _load();
+              },
+            ),
+          ),
         const Divider(height: 1),
         Expanded(
           child: AsyncBody(

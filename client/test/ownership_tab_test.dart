@@ -467,6 +467,48 @@ void main() {
     expect(overflows, isEmpty, reason: overflows.join(' | '));
   });
 
+  testWidgets(
+      'the desktop table scrolls vertically when the rows run past the viewport',
+      (tester) async {
+    // Jose, 2026-10-01: "you also cant scroll down on the general tab." The
+    // table sits in a bounded height and a DataTable is as tall as its rows, so
+    // without a vertical scroll the lower rows were clipped and unreachable.
+    // A SHORT viewport with many rows is the only way to reproduce it — a tall
+    // one has nothing below the fold and would pass either way.
+    tester.view.physicalSize = const Size(1600, 320);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final many = [
+      for (var i = 0; i < 25; i++)
+        person(name: 'Person ${i.toString().padLeft(2, '0')}'),
+    ];
+    final api = apiReturning(many);
+    await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
+    await tester.pumpAndSettle();
+
+    // The vertical scroll view the table now sits in (the inner one is
+    // horizontal, for the columns).
+    final vertical = find.byWidgetPredicate(
+      (w) => w is SingleChildScrollView && w.scrollDirection == Axis.vertical,
+    );
+    expect(vertical, findsOneWidget,
+        reason: 'The table must have a vertical scroll to reach lower rows.');
+
+    final position = tester.state<ScrollableState>(
+      find.descendant(of: vertical, matching: find.byType(Scrollable)).first,
+    ).position;
+
+    expect(position.maxScrollExtent, greaterThan(0),
+        reason: '25 rows in a 320px viewport must leave something to scroll to.');
+
+    // And it actually scrolls — a late row is reachable after dragging down.
+    await tester.drag(vertical, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0),
+        reason: 'The table scrolled, so the rows past the fold are reachable.');
+  });
+
   testWidgets('control: a wide screen still gets the table', (tester) async {
     // Without this, the test above passes just as well for a chart that
     // became a list at EVERY width.

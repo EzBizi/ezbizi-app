@@ -552,6 +552,13 @@ void main() {
       'screens/web/seo_helper_pane.dart':
           "draws Google's search result, so its colours are Google's",
 
+      // A colour picker for a CUSTOMER'S website (Jose, 2026-10-01): its
+      // twelve swatches are colours on offer for somebody's site, and they
+      // must stay the same in light and dark. In the theme's colours the
+      // palette would change with EzBizi's look, which is not what is picked.
+      'widgets/colour_field.dart':
+          "a colour picker's swatches are the website's colours on offer, not EzBizi's theme",
+
       // A CATEGORICAL PALETTE IS NOT A BRAND COLOUR, and this ratchet was
       // pointed at the wrong end of the problem here.
       //

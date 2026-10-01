@@ -2324,7 +2324,7 @@ class ModuleServiceProvider extends ServiceProvider
                  * lead of a source the reader cannot see. See visibleSources().
                  */
                 tabs: [
-                    new TabDefinition('local_services', 'LS Call and LS Text'),
+                    new TabDefinition('local_services', 'LS Call, LS Text and LS Booking'),
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),

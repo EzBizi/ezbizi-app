@@ -143,7 +143,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// the time it is listed, so it is not something to act on (Jose,
   /// 2026-09-29: "by default it should have all of them active except for LS
   /// Call as those are not actionable").
-  final Set<String> _allLeftOut = {'ls_call'};
+  /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
+  /// there is nothing to answer.
+  final Set<String> _allLeftOut = {'ls_call', 'ls_booking'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -162,6 +164,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // takes these as a source and narrows Local Services by lead type.
     ('ls_call', 'LS Call'),
     ('ls_text', 'LS Text'),
+    ('ls_booking', 'LS Booking'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
@@ -178,6 +181,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   static const _sourceIcons = <IconData>[
     Icons.call_outlined, // Google Local Services calls
     Icons.sms_outlined, // Google Local Services texts
+    Icons.event_available_outlined, // booked through Google directly
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -1686,7 +1690,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 // absent entirely rather than reading "Replied", because
                                 // "no reply is owed" and "a reply was sent" are different
                                 // things and one must not be dressed as the other.
-                                if (lead['can_reply'] == true) ...[
+                                // Not on a Completed lead: nobody owes them an
+                                // answer, whoever spoke last (Jose, 2026-10-01).
+                                if (lead['can_reply'] == true &&
+                                    lead['status'] != 'completed') ...[
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',
                                     key: ValueKey('reply-badge-$id'),

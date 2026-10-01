@@ -1196,7 +1196,7 @@ void main() {
     // the two boxes this test reads above the top of the pane, where a finder
     // cannot see them.
     await tester.scrollUntilVisible(
-      find.text('Accent colour (#rrggbb)'),
+      find.text('Accent colour'),
       200,
       scrollable: _editor,
     );
@@ -1279,7 +1279,11 @@ void main() {
     // The editable copy, drawn as the visitor will meet it.
     expect(find.textContaining('Quick details first'), findsWidgets);
     expect(find.text('Your name *'), findsOneWidget);
-    expect(find.text('Phone or email *'), findsOneWidget);
+    // Jose, 2026-10-01: phone, ZIP and email, each its own box, for Leads.
+    expect(find.text('Phone *'), findsOneWidget);
+    expect(find.text('ZIP code *'), findsOneWidget);
+    expect(find.text('Email *'), findsOneWidget);
+    expect(find.text('Phone or email *'), findsNothing);
     expect(find.text('How can we help? *'), findsOneWidget);
     expect(find.text('Start chat'), findsWidgets);
 
@@ -1748,7 +1752,7 @@ void main() {
 
     await tester.tap(group);
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextFormField, 'Colour'), '#ff0000');
+    await tester.enterText(find.widgetWithText(TextField, 'Colour'), '#ff0000');
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);

@@ -19,6 +19,8 @@ Future<String?> download(String url, String version) async {
     return 'Automatic update is only available on Windows for now.';
   }
 
+  await _closeLeftoverInstallers();
+
   final File target = File(
     '${Directory.systemTemp.path}${Platform.pathSeparator}'
     'EzBizi-$version-setup.exe',
@@ -92,4 +94,35 @@ Future<String?> download(String url, String version) async {
   }
 
   return null;
+}
+
+/// Close every EzBizi installer still running from an earlier attempt.
+///
+/// Jose, 2026-10-01: one machine had about twenty installers open and was
+/// twenty versions behind. The .iss allows one installer at a time
+/// (SetupMutex), so once one got stuck, each later attempt stopped on the
+/// "Setup is already running" box and stayed there. Each one added to the
+/// pile, and none could finish until he killed them all by hand.
+///
+/// The filter matches the installer's names, `EzBizi-<version>-setup.exe` and
+/// the .tmp it unpacks, and never the app: that is `ezbizi.exe`, with no
+/// hyphen. /T takes each one's children too. Checked on Windows: a dummy
+/// EzBizi-0.0.0001-setup.exe was closed, and the running app and a control
+/// process were left alone.
+///
+/// Before the download, not just before the launch: a stuck installer holds
+/// its own .exe open, so retrying the same version could not even rewrite the
+/// file.
+Future<void> _closeLeftoverInstallers() async {
+  try {
+    await Process.run('taskkill', [
+      '/F',
+      '/T',
+      '/FI',
+      'IMAGENAME eq EzBizi-*',
+    ]).timeout(const Duration(seconds: 10));
+  } catch (_) {
+    // ponytail: best effort. If nothing matches or taskkill is missing, the
+    // install goes ahead exactly as it did before.
+  }
 }

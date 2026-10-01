@@ -326,6 +326,8 @@ final class WebsiteEnquiries
             'phone' => $phone !== '' ? $phone : null,
             'phone_digits' => $phone !== null && $phone !== '' ? Lead::digits($phone) : null,
             'email' => $visitor['email'] ?? null,
+            // Five digits, or ZIP+4, as the chat sends it.
+            'postal_code' => preg_match('/^\d{5}(?:-\d{4})?$/', (string) ($visitor['zip'] ?? '')) === 1 ? $visitor['zip'] : null,
             'marketing_consent_at' => $consented ? now() : null,
             'marketing_consent_text' => $consented ? mb_substr($consentText, 0, 500) : null,
             'summary' => $site->host,
@@ -349,6 +351,8 @@ final class WebsiteEnquiries
                 // A yes/no a rule can test, so "only if they agreed to email"
                 // can be written as a condition as well as enforced by the step.
                 'marketing_consent' => $consented,
+                // The chat's ZIP box, for a rule; null from a form or an older widget.
+                'zip' => $visitor['zip'] ?? null,
                 // For a rule that files it as Not a lead (looksLikeSpam).
                 'looks_like_spam' => $looksLikeSpam,
             ],
