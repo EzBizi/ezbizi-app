@@ -429,6 +429,25 @@ void main() {
     );
   });
 
+  testWidgets('Continue takes the guide read most recently, not the first '
+      'in the list', (tester) async {
+    await _pumpScreen(
+      tester,
+      library: [
+        {
+          ..._guide(id: 'g-old', title: 'Ladder Safety', screenCount: 4, lastScreen: 1),
+          'last_read_at': '2026-09-01T10:00:00Z',
+        },
+        {
+          ..._guide(id: 'g-new', title: 'Van Load-Out', screenCount: 4, lastScreen: 2),
+          'last_read_at': '2026-09-30T10:00:00Z',
+        },
+      ],
+    );
+
+    expect(_inside('learn-continue', find.text('Van Load-Out')), findsOneWidget);
+  });
+
   testWidgets('nothing half-read says so instead of an empty card', (tester) async {
     await _pumpScreen(tester, library: [_guide(id: 'g-1', title: 'Ladder Safety')]);
 

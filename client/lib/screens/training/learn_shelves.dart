@@ -187,17 +187,28 @@ class _LearnShelvesState extends State<LearnShelves> {
       .where((e) => e['type'] == 'guide' && e['id'] == test['guide_id'])
       .firstOrNull;
 
-  /// The guide half-read, assigned ones first. ponytail: list order picks
-  /// between two half-read guides; `last_read_at` from the server would pick
-  /// the most recently opened.
-  Map<String, dynamic>? get _continue => _everything
-      .where(
-        (e) =>
-            e['type'] == 'guide' &&
+  /// The guide half-read most recently: `last_read_at` is when a topic of it
+  /// was last finished (Training b4a2fc7a). Without one, list order decides,
+  /// assigned first.
+  Map<String, dynamic>? get _continue {
+    final open = [
+      for (final e in _everything)
+        if (e['type'] == 'guide' &&
             e['last_screen'] != null &&
-            e['completed_at'] == null,
-      )
-      .firstOrNull;
+            e['completed_at'] == null)
+          e,
+    ];
+    Map<String, dynamic>? best;
+    DateTime? bestAt;
+    for (final e in open) {
+      final at = DateTime.tryParse('${e['last_read_at'] ?? ''}');
+      if (best == null || (at != null && (bestAt == null || at.isAfter(bestAt)))) {
+        best = e;
+        bestAt = at;
+      }
+    }
+    return best;
+  }
 
   void _open(Map<String, dynamic> entry) {
     final type = entry['type'] as String?;
