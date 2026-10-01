@@ -2961,6 +2961,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 46 · Monitoring · browsing an employee's PC files — **out for decision** (`docs/previews/monitoring-files-layouts.html`)
+
+Jose, 2026-10-01, via Monitoring: *"me who has access to monitoring being able to access files on one of my
+employee's computers... ask ui-ux for a good layout for it too."* Poll-driven like Remote Control (each folder
+is a 1–3 s round trip), downloads in two steps, every open audited. Desktop **1** its own Files tab: the person
+rail, a breadcrumb and one list, "Opened by you · recorded" on the path, a downloads tray (recommended); **2** a
+folder tree beside the list; **3** launched from a PC Specs card into a side panel. Phone **4** one job per
+screen (recommended), **5** from PC Specs, **6** shortcuts first. Needs a `files` capability on the agent, `list`
+and `roots` on Remote Control's cache-queue shape, a two-step download, `monitoring.files.view` and
+`.download` grants, and the same Lead Developer exemption Screen Monitoring has (told Monitoring).
+
 ### 45 · Dashboard · the main dashboard and its boxes — **out for decision** (`docs/previews/dashboard-layouts.html`)
 
 Jose, 2026-10-01, with a screenshot: *"i also feel like the dashboard and it's widgets are a bit stale and may need

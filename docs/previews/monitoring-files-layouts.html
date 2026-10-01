@@ -1,0 +1,663 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Monitoring · Files on a device</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light) and its tone pills. --pri is _cyanDeep
+   #00708F (what carries text on white); cyan #00AEEF is a brand accent; the navy band is
+   theme.dart's own header gradient (#071018 → #0A2233 → #06384E). NO purple anywhere.
+   Every person, machine, path, file, size and time here is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --navy:#0a2233;--cyan:#00aeef;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.lede{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:1080px}
+.lede i{color:#1d2a30}
+h2{font-size:17px;margin:52px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1100px}
+.cap b{color:var(--ink)}
+code{font:12px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.ink{color:var(--ink)}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.body{flex:1;min-height:0;display:flex}
+.col{display:flex;flex-direction:column;min-height:0}
+.sp{flex:1}
+.bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,"Segoe UI",sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.dis{color:#93a1a9;border-color:#d3dce0;background:#f4f7f8}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu)}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:32px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.srv{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;display:block}
+.lk{color:var(--pri);font-weight:700;font-size:11.5px;white-space:nowrap}
+/* status bolt — the module's own online/offline mark (Icons.flash_on / flash_off) */
+.bolt{font-size:12px;line-height:1;flex:0 0 auto}
+.bolt.on{color:#16662d} .bolt.off{color:#9aa9b1}
+/* people rail */
+.rail{background:var(--paper);border-right:1px solid var(--line);flex:0 0 auto;display:flex;flex-direction:column;min-height:0}
+.prow2{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line2);min-width:0}
+.prow2.on{background:var(--pric)}
+.prow2 .g{flex:1;min-width:0;line-height:1.25}
+.prow2 .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow2 .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow2.on .g span{color:var(--prid)}
+/* the accountability + breadcrumb band */
+.fbtop{display:flex;align-items:center;gap:10px;flex:0 0 auto;min-width:0;padding:11px 16px 9px}
+.who2{display:flex;align-items:center;gap:8px;min-width:0}
+.who2 b{font-size:13.5px;white-space:nowrap}
+.who2 .m{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.rec-note{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--info);background:var(--infoc);border:1px solid #bfe3f0;border-radius:999px;padding:3px 10px;white-space:nowrap;flex:0 0 auto}
+.crumbs{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;font-size:12.5px;padding:0 16px 10px;flex:0 0 auto}
+.crumb{display:inline-flex;align-items:center;white-space:nowrap;color:var(--pri);font-weight:700}
+.crumb.cur{color:var(--ink);font-weight:800}
+.sep{color:#9aa9b1;font-size:12px;flex:0 0 auto}
+.upbtn{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border:1px solid #93aab3;border-radius:var(--r);color:var(--pri);font-weight:700;font-size:11.5px;background:var(--paper);flex:0 0 auto}
+/* a listing */
+.flist{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.frow{display:grid;grid-template-columns:var(--fg,24px minmax(0,1fr) 92px 128px 108px);align-items:center;gap:10px;padding:0 12px;height:38px;border-bottom:1px solid var(--line2);font-size:12.5px;flex:0 0 auto}
+.frow:last-child{border-bottom:0}
+.frow.hd{height:28px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.frow.dir .ic{color:var(--pri)}
+.frow .ic{font-size:15px;color:#8a97a0;text-align:center}
+.frow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.frow.dir .nm{font-weight:700}
+.frow .act{text-align:right}
+.frow.sel{background:var(--pric)}
+.frow.lock .nm{color:var(--muted)}
+/* the fetching beat */
+.asking{display:flex;align-items:center;gap:9px;background:var(--infoc);color:var(--info);border:1px solid #bfe3f0;border-radius:var(--r);padding:8px 11px;font-size:12px;font-weight:600;flex:0 0 auto}
+.asking .el{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:800;flex:0 0 auto}
+.asking .dot{width:14px;height:14px;border:2px solid #9bcfe0;border-top-color:var(--info);border-radius:50%;flex:0 0 auto}
+.dim{opacity:.4}
+/* downloads tray */
+.tray{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;flex:0 0 auto}
+.tray .th{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.dl{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:9px;align-items:center;height:34px;border-top:1px solid var(--line2);font-size:12px}
+.dl:first-of-type{border-top:0}
+.dl .g{min-width:0}
+.dl .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dl .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* note cards */
+.note{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;font-size:12.5px;background:var(--paper)}
+.note.bad{background:var(--badc);border-color:#f2c9c9;color:var(--bad)}
+.note.cau{background:var(--cauc);border-color:#eddcae;color:var(--cau)}
+.note.neu{color:var(--muted)}
+.note b{font-weight:800}
+.note .sub{color:inherit;opacity:.85;font-size:11.5px;margin-top:3px}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);min-height:0}
+.empty .ei{font-size:30px;opacity:.5}
+/* tree (option 2) */
+.tree{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:auto;flex:1;min-height:0;padding:6px 4px}
+.tn{display:flex;align-items:center;gap:6px;height:28px;padding:0 6px;font-size:12.5px;border-radius:8px;white-space:nowrap;cursor:default}
+.tn .tw{width:12px;color:#8a97a0;text-align:center;flex:0 0 auto}
+.tn .ti{color:var(--pri);flex:0 0 auto}
+.tn.file .ti{color:#8a97a0}
+.tn.on{background:var(--pric);color:var(--prid);font-weight:700}
+.tn.lock{color:var(--muted)}
+.tn .lockic{margin-left:auto;color:var(--bad);font-size:11px}
+.tn .spin{margin-left:auto;width:12px;height:12px;border:2px solid #bcd;border-top-color:var(--pri);border-radius:50%}
+/* docked panel (option 3) */
+.dock{width:384px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.dh{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .ar{font-size:18px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--neu)}
+.dh b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.db{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;padding:11px 12px;overflow:hidden}
+.db>*{flex:0 0 auto}
+/* machine grid (option 3 left) */
+.mcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+.mc{background:var(--paper);border:1px solid var(--edge);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.mc.sel{border-color:var(--pri);border-width:2px;padding:11px}
+.mc .mt{display:flex;align-items:flex-start;gap:8px}
+.mc .mt .g{flex:1;min-width:0;line-height:1.2}
+.mc .mt .g b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc .mt .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{display:grid;grid-template-columns:30px 1fr 42px;gap:7px;align-items:center;font-size:10.5px;color:var(--muted)}
+.meter .bar{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden}
+.meter .bar i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.mc .macts{display:flex;gap:6px;margin-top:2px}
+/* the smaller windows: the states */
+.grid2{display:grid;grid-template-columns:repeat(2,594px);gap:16px 12px;margin-top:16px}
+.ml{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.mini{width:594px;height:366px;background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(6,8,8,.06)}
+.mini .tabs{padding:8px 12px;gap:5px}
+.mini .tab{height:26px;padding:0 9px;font-size:11.5px}
+.mini .fbtop{padding:9px 14px 7px}
+.mini .crumbs{padding:0 14px 8px}
+.mb{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;padding:0 14px 12px;overflow:hidden}
+.mini .btn{height:28px;padding:0 10px;font-size:12px}
+.mini .frow{height:34px}
+/* phones */
+.prow{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn.short{height:470px}
+.phn .st{height:30px;flex:0 0 auto;background:var(--paper)}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.ptop{display:flex;align-items:center;gap:10px;padding:2px 14px 6px;font-size:16px;font-weight:800;flex:0 0 auto;background:var(--paper)}
+.ptop .ham{font-size:17px;color:var(--neu);font-weight:400}
+.ptop .org{font-size:10px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:2px 6px;color:var(--neu);margin-left:auto}
+.phn .tabs{padding:2px 10px 8px;gap:4px;flex-wrap:nowrap;overflow:hidden}
+.phn .tab{height:28px;padding:0 9px;font-size:11.5px}
+.bk{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pbody{flex:1;min-height:0;overflow:hidden;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.pbody>*{flex-shrink:0}
+.pcrumb{display:flex;align-items:center;gap:6px;font-size:12px;min-width:0;overflow:hidden}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
+.lrow{display:flex;align-items:center;gap:11px;padding:0 12px;height:48px;border-bottom:1px solid var(--line2);font-size:13px;min-width:0}
+.lrow:last-child{border-bottom:0}
+.lrow .ic{font-size:17px;flex:0 0 auto;width:20px;text-align:center;color:#8a97a0}
+.lrow.dir .ic{color:var(--pri)}
+.lrow .g{flex:1;min-width:0;line-height:1.25}
+.lrow .g b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.lrow.dir .g b{font-weight:700}
+.lrow .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow .rt{flex:0 0 auto;color:#9aa9b1;font-size:16px}
+.tile2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ftile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;height:78px;display:flex;flex-direction:column;justify-content:space-between}
+.ftile .ti{font-size:20px;color:var(--pri)}
+.ftile b{font-size:13px}
+.ftile span{font-size:10.5px;color:var(--muted)}
+.sticky{flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);background:var(--paper)}
+.sticky .btn{height:42px;flex:1}
+.identity{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.identity b{font-size:13.5px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:4px}
+</style>
+
+<div class="wrap">
+<h1>Monitoring · Browsing a device's files</h1>
+<p class="lede">Jose, 2026-10-01: <i>“me who has access to monitoring being able to access files on one of my employee’s computers… ask ui-ux for a good layout for it too.”</i></p>
+<p class="cap">Pick one desktop layout (<b>1–3</b>) and one phone layout (<b>4–6</b>), for example “1, 4”. Nothing is built yet — Monitoring is scoping the agent side. These are the screen only.</p>
+
+<p class="cap"><b>What exists today</b> in Monitoring: <b>General</b> (the ownership chart), <b>Map</b>, <b>PC Specs</b> (the machine roster), <b>Camera Monitoring</b>, and <b>Desktop Monitoring</b> (live view + remote control). Every pane is person-first, polled, and honest about staleness — a frame or a reading is never shown as more current than it is. Files slots in next to them in the same language.</p>
+
+<p class="cap"><b>Every option keeps four things</b>, because this is a privileged act, not a casual one:</p>
+<ul class="cap" style="margin-top:-2px;padding-left:18px">
+ <li><b>Gated per device</b> by reach <i>and</i> the current view, the same as the rest of Monitoring — the Files tab is only drawn, and the server only answers, for a device you can reach from where you are standing. A new grant, <code>monitoring.files.view</code> (download is its own, <code>monitoring.files.download</code>).</li>
+ <li><b>Accountable, visibly.</b> The person’s name sits on the device, and <span class="rec-note">◎ Opened by you · recorded</span> rides next to the path — every open and every download writes to the audit trail (<code>monitoring.files.opened</code> / <code>.downloaded</code>), exactly as taking control does.</li>
+ <li><b>Honest about the poll.</b> It is not a local file picker: pick a device → ask for a folder → the agent answers on its next beat (~1–3 s). Every navigation has a brief <span class="pill p-info">fetching…</span> beat, shown as the last listing dimmed with the path being asked for and how long it has taken — never a frozen screen pretending to be instant.</li>
+ <li><b>Downloads are two steps.</b> A file is <span class="pill p-info">Requested</span>, the agent uploads it on a later beat, then it is <span class="pill p-ok">Ready · Save</span>. No click ever blocks on a transfer.</li>
+</ul>
+
+<!-- ═════════════════════════════ 1 ═════════════════════════════ -->
+<h2><span class="n">1</span>Its own Files tab — a person rail, a breadcrumb, one list <span class="rec">Recommended</span></h2>
+<p class="cap">Mirrors Desktop Monitoring exactly: pick a person on the left (their device and whether it is on), and the right pane is a breadcrumb over a single list — folders first, then files with their size and when they changed. Folders open in place; files download. The accountability chip sits on the path, where you cannot miss it. <b>Recommended</b> because it reuses the module’s own person-first rail and one honest, scannable list, so Files reads as part of Monitoring rather than a bolted-on explorer.</p>
+<p class="cap"><span class="srv">server</span> A poll-driven directory read: the viewer POSTs <code>list</code> for a device + path, the agent answers on its next beat with entries <code>{name, is_dir, size_bytes, modified_at}</code>; a new native <code>files</code> capability on the agent and a cache queue like Remote Control’s input. Start points (drives, the user’s folders) come back from a <code>roots</code> call. Download = request a path → agent uploads to a short-lived store (like screenshots) → a signed “ready” URL. Offline and last-seen are the device row you already have.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Monitoring</div><div class="s">The office, the machines, and what is on them.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▤</span>General</span><span class="tab"><span class="ic">⌖</span>Map</span><span class="tab"><span class="ic">▣</span>PC Specs</span><span class="tab on"><span class="ic">▦</span>Files</span><span class="tab"><span class="ic">▥</span>Camera Monitoring</span><span class="tab"><span class="ic">▭</span>Desktop Monitoring</span></div>
+  <div class="body">
+   <div class="col rail" style="width:244px">
+    <div style="padding:10px 12px"><div class="srch">⌕ Search people</div></div>
+    <div class="prow2 on"><span class="bolt on">⌁</span><div class="g"><b>Marco Reyes</b><span>Marco’s shop PC · online</span></div></div>
+    <div class="prow2"><span class="bolt on">⌁</span><div class="g"><b>Dana Whitfield</b><span>Front desk PC · online</span></div></div>
+    <div class="prow2"><span class="bolt off">⌁</span><div class="g"><b>Luis Ortega</b><span>Van 3 laptop · 14m ago</span></div></div>
+    <div class="prow2"><span class="bolt on">⌁</span><div class="g"><b>Priya Nair</b><span>Office PC · online</span></div></div>
+    <div class="prow2"><span class="bolt off">⌁</span><div class="g"><b>Toula Georgiou</b><span>Reception PC · 2h ago</span></div></div>
+    <div class="prow2"><span class="bolt on">⌁</span><div class="g"><b>Owen Price</b><span>Workshop PC · online</span></div></div>
+   </div>
+   <div class="col" style="flex:1;min-width:0;background:var(--ground)">
+    <div class="fbtop"><div class="who2"><span class="bolt on">⌁</span><b>Marco Reyes</b><span class="m">· Marco’s shop PC (DESKTOP-4KQ9)</span></div><span class="sp"></span><span class="rec-note">◎ Opened by you · recorded</span></div>
+    <div class="crumbs">
+     <span class="upbtn">↑ Up</span>
+     <span class="crumb">This PC</span><span class="sep">›</span>
+     <span class="crumb">C:</span><span class="sep">›</span>
+     <span class="crumb">Users</span><span class="sep">›</span>
+     <span class="crumb">marco</span><span class="sep">›</span>
+     <span class="crumb cur">Documents</span>
+    </div>
+    <div class="col" style="flex:1;min-height:0;padding:0 16px 14px;gap:10px">
+     <div class="flist" style="flex:1;min-height:0">
+      <div class="frow hd"><span></span><span>Name</span><span class="num">Size</span><span>Modified</span><span class="act">—</span></div>
+      <div class="frow dir"><span class="ic">▸</span><span class="nm">Desktop</span><span class="num muted">—</span><span class="muted">Sep 30, 4:12 PM</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow dir"><span class="ic">▸</span><span class="nm">Estimates</span><span class="num muted">24 items</span><span class="muted">Sep 30, 9:02 AM</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow dir"><span class="ic">▸</span><span class="nm">Site photos</span><span class="num muted">—</span><span class="muted">Sep 28, 1:41 PM</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow dir lock"><span class="ic">▸</span><span class="nm">Old backups <span class="pill p-bad" style="margin-left:4px">Denied</span></span><span class="num muted">—</span><span class="muted">—</span><span class="act muted tiny">no access</span></div>
+      <div class="frow"><span class="ic">▦</span><span class="nm">estimate-10482.pdf</span><span class="num">248 KB</span><span class="muted">Sep 30, 8:55 AM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow"><span class="ic">▦</span><span class="nm">crew-schedule.xlsx</span><span class="num">41 KB</span><span class="muted">Sep 29, 5:20 PM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow"><span class="ic">▦</span><span class="nm">liner-measurements.csv</span><span class="num">12 KB</span><span class="muted">Sep 28, 11:07 AM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow"><span class="ic">▦</span><span class="nm">site-survey.jpg</span><span class="num">3.1 MB</span><span class="muted">Sep 27, 2:14 PM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow"><span class="ic">▦</span><span class="nm">invoice-backup.zip</span><span class="num">86 MB</span><span class="muted">Sep 20, 6:03 PM</span><span class="act"><span class="pill p-info">Requested…</span></span></div>
+     </div>
+     <div class="tray">
+      <div class="th">Downloads</div>
+      <div class="dl"><span class="ic" style="font-size:15px">▦</span><div class="g"><b>liner-measurements.csv</b><span>12 KB · from Documents</span></div><span class="btn s f">Save</span></div>
+      <div class="dl"><span class="ic" style="font-size:15px">▦</span><div class="g"><b>invoice-backup.zip</b><span>86 MB · asking the PC to send it…</span></div><span class="pill p-info">Requested</span></div>
+     </div>
+     <div class="foot">Marco’s shop PC answered 1s ago · folders open here, files download in two steps. Every row you open is recorded.</div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">1 · The fetching beat (opening a folder)</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab">PC Specs</span><span class="tab on">Files</span><span class="tab">Camera</span></div>
+   <div class="fbtop"><div class="who2"><span class="bolt on">⌁</span><b>Marco Reyes</b></div><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="crumbs"><span class="upbtn">↑ Up</span><span class="crumb">C:</span><span class="sep">›</span><span class="crumb">Users</span><span class="sep">›</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Site photos</span></div>
+   <div class="mb">
+    <div class="asking"><span class="dot"></span>Asking Marco’s shop PC for <code>C:\Users\marco\Site photos</code>…<span class="el">2s</span></div>
+    <div class="flist dim" style="flex:1;min-height:0">
+     <div class="frow hd"><span></span><span>Name</span><span class="num">Size</span><span>Modified</span><span class="act"></span></div>
+     <div class="frow dir"><span class="ic">▸</span><span class="nm">Desktop</span><span class="num muted">—</span><span class="muted">Sep 30</span><span class="act"><span class="lk">Open ›</span></span></div>
+     <div class="frow"><span class="ic">▦</span><span class="nm">estimate-10482.pdf</span><span class="num">248 KB</span><span class="muted">Sep 30</span><span class="act"><span class="lk">Download</span></span></div>
+     <div class="frow"><span class="ic">▦</span><span class="nm">crew-schedule.xlsx</span><span class="num">41 KB</span><span class="muted">Sep 29</span><span class="act"><span class="lk">Download</span></span></div>
+    </div>
+    <div class="tiny">The folder you left stays on screen, dimmed, until the new one lands — never a blank or a spinner you can’t read.</div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · A download: Requested → Ready</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab">PC Specs</span><span class="tab on">Files</span><span class="tab">Camera</span></div>
+   <div class="fbtop"><div class="who2"><span class="bolt on">⌁</span><b>Marco Reyes</b><span class="m">· Documents</span></div><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="mb" style="padding-top:8px">
+    <div class="tray">
+     <div class="th">Downloads</div>
+     <div class="dl"><span class="ic" style="font-size:15px">▦</span><div class="g"><b>site-survey.jpg</b><span>3.1 MB · ready to save</span></div><span class="btn s f">Save</span></div>
+     <div class="dl"><span class="ic" style="font-size:15px">▦</span><div class="g"><b>invoice-backup.zip</b><span>86 MB · the PC is sending it…</span></div><span class="pill p-info">Requested</span></div>
+     <div class="dl"><span class="ic" style="font-size:15px">▦</span><div class="g"><b>estimate-10482.pdf</b><span>248 KB · saved a moment ago</span></div><span class="pill p-ok">Saved</span></div>
+    </div>
+    <div class="note neu" style="margin-top:2px"><b>Two steps, always.</b><div class="sub">Request a file and the agent uploads it on a later beat; the button turns to <b>Save</b> when it has landed. A big file does not freeze the screen, and the request itself is recorded.</div></div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · Access denied (a folder you can’t read)</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab">PC Specs</span><span class="tab on">Files</span><span class="tab">Camera</span></div>
+   <div class="fbtop"><div class="who2"><span class="bolt on">⌁</span><b>Marco Reyes</b></div><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="crumbs"><span class="upbtn">↑ Up</span><span class="crumb">C:</span><span class="sep">›</span><span class="crumb">Windows</span><span class="sep">›</span><span class="crumb cur">System32</span></div>
+   <div class="mb">
+    <div class="note bad"><b>Windows refused this folder.</b><div class="sub">The account on Marco’s shop PC does not have permission to read <code>C:\Windows\System32\config</code>. Nothing was opened. ← Back to the last folder you could read.</div></div>
+    <div class="tiny">A refusal from the machine, not from EzBizi — the attempt is still recorded.</div>
+   </div>
+  </div></div>
+ <div><div class="ml">1 · Device offline, and an empty folder</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab">PC Specs</span><span class="tab on">Files</span><span class="tab">Camera</span></div>
+   <div class="fbtop"><div class="who2"><span class="bolt off">⌁</span><b>Luis Ortega</b><span class="m">· Van 3 laptop</span></div><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="mb" style="padding-top:8px">
+    <div class="note cau"><b>Van 3 laptop is offline — last seen 14m ago.</b><div class="sub">Browsing resumes by itself the moment it is back online. The last folder it sent stays below, dimmed, so you can see where you were.</div></div>
+    <div class="flist dim"><div class="frow dir"><span class="ic">▸</span><span class="nm">Downloads</span><span class="num muted">—</span><span class="muted">Sep 30</span><span class="act muted tiny">offline</span></div><div class="frow"><span class="ic">▦</span><span class="nm">route-sheet.pdf</span><span class="num">55 KB</span><span class="muted">Sep 30</span><span class="act muted tiny">offline</span></div></div>
+    <div class="note neu" style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">▢</span><div><b style="color:var(--ink)">An empty folder says so.</b><div class="sub">When a folder has nothing in it, the list reads “This folder is empty” — not a blank pane that looks broken.</div></div></div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ 2 ═════════════════════════════ -->
+<h2><span class="n">2</span>Its own Files tab — a folder tree beside the list</h2>
+<p class="cap">For deep digging. The left is a folder tree you expand node by node; the right shows the chosen folder’s files. The breadcrumb still runs across the top, and the accountability chip still rides the path. More powerful for a known deep path — and more poll beats, because every node you expand is its own request, so a branch opening shows a small spinner on that node.</p>
+<p class="cap"><span class="srv">server</span> The same <code>list</code> call as option 1, once per expanded node rather than once per visited folder — so the tree does more round trips. A node that comes back refused draws a small lock rather than children. Everything else (roots, download two-step, offline) is identical.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Monitoring</div><div class="s">The office, the machines, and what is on them.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▤</span>General</span><span class="tab"><span class="ic">⌖</span>Map</span><span class="tab"><span class="ic">▣</span>PC Specs</span><span class="tab on"><span class="ic">▦</span>Files</span><span class="tab"><span class="ic">▥</span>Camera Monitoring</span><span class="tab"><span class="ic">▭</span>Desktop Monitoring</span></div>
+  <div class="col" style="flex:1;min-height:0">
+   <div class="fbtop"><div class="who2"><span class="bolt on">⌁</span><b>Marco Reyes</b><span class="m">· Marco’s shop PC (DESKTOP-4KQ9) · online</span></div><span class="sp"></span><span class="chip">Switch person ▾</span><span class="rec-note">◎ Opened by you · recorded</span></div>
+   <div class="crumbs"><span class="upbtn">↑ Up</span><span class="crumb">This PC</span><span class="sep">›</span><span class="crumb">C:</span><span class="sep">›</span><span class="crumb">Users</span><span class="sep">›</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Documents</span></div>
+   <div class="body" style="padding:0 16px 14px;gap:14px">
+    <div class="col" style="width:296px;flex:0 0 auto">
+     <div class="tree">
+      <div class="tn"><span class="tw">▾</span><span class="ti">▸</span>This PC</div>
+      <div class="tn" style="padding-left:22px"><span class="tw">▾</span><span class="ti">▸</span>C:</div>
+      <div class="tn" style="padding-left:40px"><span class="tw">▾</span><span class="ti">▸</span>Users</div>
+      <div class="tn" style="padding-left:58px"><span class="tw">▾</span><span class="ti">▸</span>marco</div>
+      <div class="tn on" style="padding-left:76px"><span class="tw">▾</span><span class="ti">▸</span>Documents</div>
+      <div class="tn" style="padding-left:94px"><span class="tw">▸</span><span class="ti">▸</span>Estimates</div>
+      <div class="tn" style="padding-left:94px"><span class="tw"></span><span class="ti">▸</span>Site photos<span class="spin"></span></div>
+      <div class="tn lock" style="padding-left:94px"><span class="tw">▸</span><span class="ti">▸</span>Old backups<span class="lockic">🔒</span></div>
+      <div class="tn" style="padding-left:76px"><span class="tw">▸</span><span class="ti">▸</span>Desktop</div>
+      <div class="tn" style="padding-left:76px"><span class="tw">▸</span><span class="ti">▸</span>Downloads</div>
+      <div class="tn" style="padding-left:40px"><span class="tw">▸</span><span class="ti">▸</span>Program Files</div>
+      <div class="tn" style="padding-left:40px"><span class="tw">▸</span><span class="ti">▸</span>Windows</div>
+      <div class="tn" style="padding-left:22px"><span class="tw">▸</span><span class="ti">▸</span>D:</div>
+     </div>
+    </div>
+    <div class="col" style="flex:1;min-width:0;gap:10px">
+     <div class="flist" style="flex:1;min-height:0">
+      <div class="frow hd" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span></span><span>Name — Documents</span><span class="num">Size</span><span>Modified</span><span class="act">—</span></div>
+      <div class="frow dir" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▸</span><span class="nm">Estimates</span><span class="num muted">24 items</span><span class="muted">Sep 30, 9:02 AM</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow dir" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▸</span><span class="nm">Site photos</span><span class="num muted">—</span><span class="muted">Sep 28, 1:41 PM</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▦</span><span class="nm">estimate-10482.pdf</span><span class="num">248 KB</span><span class="muted">Sep 30, 8:55 AM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▦</span><span class="nm">crew-schedule.xlsx</span><span class="num">41 KB</span><span class="muted">Sep 29, 5:20 PM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▦</span><span class="nm">liner-measurements.csv</span><span class="num">12 KB</span><span class="muted">Sep 28, 11:07 AM</span><span class="act"><span class="lk">Download</span></span></div>
+      <div class="frow" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▦</span><span class="nm">site-survey.jpg</span><span class="num">3.1 MB</span><span class="muted">Sep 27, 2:14 PM</span><span class="act"><span class="pill p-ok">Ready · Save</span></span></div>
+      <div class="frow" style="--fg:24px minmax(0,1fr) 92px 150px 108px"><span class="ic">▦</span><span class="nm">invoice-backup.zip</span><span class="num">86 MB</span><span class="muted">Sep 20, 6:03 PM</span><span class="act"><span class="pill p-info">Requested…</span></span></div>
+     </div>
+     <div class="asking"><span class="dot"></span>Expanding <code>Site photos</code> on Marco’s shop PC…<span class="el">1s</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════════════════════════ 3 ═════════════════════════════ -->
+<h2><span class="n">3</span>Launched from a machine in PC Specs — Files as a docked panel</h2>
+<p class="cap">No new tab. You are already looking at a machine in PC Specs; each card gains a <b>Browse files</b> action, and it opens a docked panel on the right with its own ← back — inside the module area, never a full-screen push or a dialog (containment). Breadcrumb and list live in the panel. Best when file access is a follow-on to “what is this machine doing” rather than its own errand; the trade is a narrower column.</p>
+<p class="cap"><span class="srv">server</span> Identical endpoints to option 1 — the one saving is the picker: the device is already in hand from the roster, so there is no person list to load. The panel is the <code>customer_detail_panel.dart</code> pattern (the house’s one approved side-panel dialect), not a second one.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ▾</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Monitoring</div><div class="s">The office, the machines, and what is on them.</div></div>
+  <div class="tabs"><span class="tab"><span class="ic">▤</span>General</span><span class="tab"><span class="ic">⌖</span>Map</span><span class="tab on"><span class="ic">▣</span>PC Specs</span><span class="tab"><span class="ic">▦</span>Files</span><span class="tab"><span class="ic">▥</span>Camera Monitoring</span><span class="tab"><span class="ic">▭</span>Desktop Monitoring</span></div>
+  <div class="body">
+   <div class="col" style="flex:1;min-width:0;padding:12px 16px">
+    <div class="bar" style="margin-bottom:12px"><div class="srch" style="flex:1">⌕ Search machines, people, active window</div><span class="tiny">6 of 42</span></div>
+    <div class="mcards">
+     <div class="mc sel"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Marco Reyes</b><span>Marco’s shop PC · on Jobs</span></div><span class="pill p-ok">Live</span></div>
+      <div class="meter"><span>CPU</span><span class="bar"><i style="width:38%"></i></span><span class="num">38%</span></div>
+      <div class="meter"><span>RAM</span><span class="bar"><i style="width:61%"></i></span><span class="num">61%</span></div>
+      <div class="meter"><span>Disk</span><span class="bar"><i style="width:72%"></i></span><span class="num">72%</span></div>
+      <div class="macts"><span class="btn s f">▦ Browse files</span><span class="btn s">Open live</span></div></div>
+     <div class="mc"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Dana Whitfield</b><span>Front desk PC · on Leads</span></div><span class="pill p-ok">Live</span></div>
+      <div class="meter"><span>CPU</span><span class="bar"><i style="width:21%"></i></span><span class="num">21%</span></div>
+      <div class="meter"><span>RAM</span><span class="bar"><i style="width:44%"></i></span><span class="num">44%</span></div>
+      <div class="meter"><span>Disk</span><span class="bar"><i style="width:55%"></i></span><span class="num">55%</span></div>
+      <div class="macts"><span class="btn s">▦ Browse files</span></div></div>
+     <div class="mc"><div class="mt"><span class="bolt off" style="margin-top:2px">⌁</span><div class="g"><b>Luis Ortega</b><span>Van 3 laptop</span></div><span class="pill p-neu">14m ago</span></div>
+      <div class="meter"><span>CPU</span><span class="bar"><i style="width:0"></i></span><span class="num">—</span></div>
+      <div class="meter"><span>RAM</span><span class="bar"><i style="width:0"></i></span><span class="num">—</span></div>
+      <div class="meter"><span>Disk</span><span class="bar"><i style="width:48%"></i></span><span class="num">48%</span></div>
+      <div class="macts"><span class="btn s dis">▦ Browse files</span></div></div>
+     <div class="mc"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Priya Nair</b><span>Office PC · on Reports</span></div><span class="pill p-ok">Live</span></div>
+      <div class="meter"><span>CPU</span><span class="bar"><i style="width:17%"></i></span><span class="num">17%</span></div>
+      <div class="meter"><span>RAM</span><span class="bar"><i style="width:39%"></i></span><span class="num">39%</span></div>
+      <div class="meter"><span>Disk</span><span class="bar"><i style="width:63%"></i></span><span class="num">63%</span></div>
+      <div class="macts"><span class="btn s">▦ Browse files</span></div></div>
+    </div>
+   </div>
+   <div class="dock">
+    <div class="dh"><span class="ar">←</span><span class="ic" style="font-size:16px;color:var(--pri)">▦</span><b>Files · Marco’s shop PC</b></div>
+    <div class="db">
+     <div class="who2" style="font-size:12px"><span class="bolt on">⌁</span><b>Marco Reyes</b></div>
+     <span class="rec-note" style="align-self:flex-start">◎ Opened by you · recorded</span>
+     <div class="crumbs" style="padding:0"><span class="upbtn">↑ Up</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Documents</span></div>
+     <div class="flist" style="flex:1;min-height:0">
+      <div class="frow dir" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▸</span><span class="nm">Estimates</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow dir" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▸</span><span class="nm">Site photos</span><span class="act"><span class="lk">Open ›</span></span></div>
+      <div class="frow" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▦</span><span class="nm">estimate-10482.pdf</span><span class="act"><span class="lk">Get</span></span></div>
+      <div class="frow" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▦</span><span class="nm">crew-schedule.xlsx</span><span class="act"><span class="lk">Get</span></span></div>
+      <div class="frow" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▦</span><span class="nm">site-survey.jpg</span><span class="act"><span class="pill p-ok">Save</span></span></div>
+      <div class="frow" style="--fg:22px minmax(0,1fr) 72px"><span class="ic">▦</span><span class="nm">invoice-backup.zip</span><span class="act"><span class="pill p-info">…</span></span></div>
+     </div>
+     <div class="tiny">Each file shows its size and date on its own row’s tooltip; the panel is narrow, so the two-step download lives inline. Marco’s shop PC answered 1s ago.</div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<div class="grid2">
+ <div><div class="ml">3 · Panel — the fetching beat</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab on">PC Specs</span><span class="tab">Files</span><span class="tab">Camera</span></div>
+   <div class="body" style="padding:0">
+    <div class="col" style="flex:1;min-width:0;padding:10px 12px;gap:8px"><div class="srch">⌕ Search machines</div><div class="mc sel" style="padding:9px"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Marco Reyes</b><span>Marco’s shop PC</span></div></div><div class="macts"><span class="btn s f">▦ Browse files</span></div></div><div class="tiny muted">The panel keeps the last folder while it waits →</div></div>
+    <div class="dock" style="width:300px">
+     <div class="dh"><span class="ar">←</span><b>Files · Marco’s shop PC</b></div>
+     <div class="db">
+      <span class="rec-note" style="align-self:flex-start">◎ Recorded</span>
+      <div class="crumbs" style="padding:0"><span class="upbtn">↑ Up</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Site photos</span></div>
+      <div class="asking"><span class="dot"></span>Asking for <code>Site photos</code>…<span class="el">2s</span></div>
+      <div class="flist dim"><div class="frow dir" style="--fg:22px minmax(0,1fr) 54px"><span class="ic">▸</span><span class="nm">Estimates</span><span class="act lk">Open</span></div><div class="frow" style="--fg:22px minmax(0,1fr) 54px"><span class="ic">▦</span><span class="nm">estimate.pdf</span><span class="act lk">Get</span></div></div>
+     </div>
+    </div>
+   </div>
+  </div></div>
+ <div><div class="ml">3 · Panel — offline, denied, empty</div>
+  <div class="mini">
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab on">PC Specs</span><span class="tab">Files</span><span class="tab">Camera</span></div>
+   <div class="mb" style="padding-top:10px;gap:10px">
+    <div class="note cau"><b>Front desk PC went offline — last seen 3m ago.</b><div class="sub">The panel holds the last folder it sent, dimmed; it refreshes when the PC is back.</div></div>
+    <div class="note bad"><b>Windows refused <code>ProgramData\secure</code>.</b><div class="sub">The account on that machine can’t read it. The attempt is recorded.</div></div>
+    <div class="note neu" style="display:flex;gap:8px;align-items:center"><span style="font-size:18px">▢</span><div><b style="color:var(--ink)">This folder is empty.</b><div class="sub">Shown as words, never a blank panel.</div></div></div>
+   </div>
+  </div></div>
+</div>
+
+<!-- ═════════════════════════════ PHONES ═════════════════════════════ -->
+<h2><span class="n">4</span>On a phone: the Files tab, one job per screen <span class="rec">Recommended</span></h2>
+<p class="cap">Pick a person, then their files fill the screen; tapping a folder replaces the screen with that folder and a ← back, which is also exactly how the poll works — every tap is a navigation that already has a beat. The breadcrumb collapses to “… › this folder”. Download is a sheet-free two-step: Request, then Save. <b>Recommended</b> because one-thing-per-screen matches both the phone and the poll, and keeps the recorded chip in view the whole way down.</p>
+<p class="cap"><span class="srv">server</span> The same <code>list</code>, <code>roots</code> and download endpoints as option 1. Nothing phone-specific on the server.</p>
+<div class="prow">
+ <div><div class="ml">4 · Pick a person</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring<span class="org">Harbor Group ▾</span></div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab">PC Specs</span><span class="tab on">Files</span></div>
+   <div class="pbody">
+    <div class="srch">⌕ Search people</div>
+    <div class="card">
+     <div class="lrow"><span class="bolt on" style="font-size:14px">⌁</span><div class="g"><b>Marco Reyes</b><span>Marco’s shop PC · online</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="bolt on" style="font-size:14px">⌁</span><div class="g"><b>Dana Whitfield</b><span>Front desk PC · online</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="bolt off" style="font-size:14px">⌁</span><div class="g"><b>Luis Ortega</b><span>Van 3 laptop · 14m ago</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="bolt on" style="font-size:14px">⌁</span><div class="g"><b>Priya Nair</b><span>Office PC · online</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="bolt off" style="font-size:14px">⌁</span><div class="g"><b>Toula Georgiou</b><span>Reception PC · 2h ago</span></div><span class="rt">›</span></div>
+    </div>
+    <div class="foot">Only people and machines you can reach from here appear. Opening one is recorded.</div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">4 · A folder, with the recorded chip</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div style="min-width:0"><div class="t">Documents</div></div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt on" style="font-size:13px">⌁</span><b style="font-size:12.5px">Marco Reyes</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div style="padding:6px 12px 0"><div class="pcrumb"><span class="crumb">…</span><span class="sep">›</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Documents</span></div></div>
+   <div class="pbody" style="padding-top:8px">
+    <div class="card">
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Estimates</b><span>24 items · Sep 30</span></div><span class="rt">›</span></div>
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Site photos</b><span>Sep 28</span></div><span class="rt">›</span></div>
+     <div class="lrow dir"><span class="ic">🔒</span><div class="g"><b class="muted">Old backups</b><span>no access</span></div><span class="pill p-bad">Denied</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>estimate-10482.pdf</b><span>248 KB · Sep 30</span></div><span class="lk">Get</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>crew-schedule.xlsx</b><span>41 KB · Sep 29</span></div><span class="lk">Get</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>site-survey.jpg</b><span>3.1 MB · Sep 27</span></div><span class="pill p-ok">Save</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>invoice-backup.zip</b><span>86 MB · requested</span></div><span class="pill p-info">…</span></div>
+    </div>
+    <div class="foot">Marco’s shop PC answered 1s ago.</div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">4 · The fetching beat</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Site photos</div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt on" style="font-size:13px">⌁</span><b style="font-size:12.5px">Marco Reyes</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="asking"><span class="dot"></span>Asking Marco’s shop PC for <code>Site photos</code>…<span class="el">2s</span></div>
+    <div class="card dim">
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Estimates</b><span>24 items</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>estimate-10482.pdf</b><span>248 KB</span></div><span class="lk">Get</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>crew-schedule.xlsx</b><span>41 KB</span></div><span class="lk">Get</span></div>
+    </div>
+    <div class="foot">The folder you left stays, dimmed, until the next one lands.</div>
+   </div>
+  </div></div></div>
+</div>
+<div class="prow">
+ <div><div class="ml">4 · Download ready</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Downloads</div></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="card">
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>site-survey.jpg</b><span>3.1 MB · ready to save</span></div><span class="btn s f">Save</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>invoice-backup.zip</b><span>86 MB · the PC is sending it…</span></div><span class="pill p-info">Requested</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>estimate-10482.pdf</b><span>248 KB · saved</span></div><span class="pill p-ok">Saved</span></div>
+    </div>
+    <div class="foot">Two steps, so a big file never freezes the screen. Each request is recorded.</div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">4 · Device offline</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Van 3 laptop</div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt off" style="font-size:13px">⌁</span><b style="font-size:12.5px">Luis Ortega</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="note cau"><b>Offline — last seen 14m ago.</b><div class="sub">Browsing resumes when the laptop is back online.</div></div>
+    <div class="card dim">
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Downloads</b></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>route-sheet.pdf</b><span>55 KB · Sep 30</span></div><span class="tiny">offline</span></div>
+    </div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">4 · Access denied</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">System32</div></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="note bad"><b>Windows refused this folder.</b><div class="sub">The account on Marco’s shop PC can’t read <code>C:\Windows\System32\config</code>. Nothing was opened — the attempt is recorded.</div></div>
+    <span class="btn" style="align-self:flex-start">← Back to the last folder</span>
+   </div>
+  </div></div></div>
+</div>
+
+<h2><span class="n">5</span>On a phone: launched from a machine in PC Specs</h2>
+<p class="cap">The phone twin of option 3. You are on a machine’s card in PC Specs; <b>Browse files</b> opens the file list over the module area with a ← back (containment), not a new tab and not a full-screen route. Everything below is the same drill-in list as option 4 — this option is only about where you start.</p>
+<p class="cap"><span class="srv">server</span> Identical to option 4; the device is already chosen, so no person list loads.</p>
+<div class="prow">
+ <div><div class="ml">5 · A machine card</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="tabs"><span class="tab">General</span><span class="tab">Map</span><span class="tab on">PC Specs</span><span class="tab">Files</span></div>
+   <div class="pbody">
+    <div class="srch">⌕ Search machines, people</div>
+    <div class="mc" style="border-color:var(--pri);border-width:2px"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Marco Reyes</b><span>Marco’s shop PC · on Jobs</span></div><span class="pill p-ok">Live</span></div>
+     <div class="meter"><span>CPU</span><span class="bar"><i style="width:38%"></i></span><span class="num">38%</span></div>
+     <div class="meter"><span>RAM</span><span class="bar"><i style="width:61%"></i></span><span class="num">61%</span></div>
+     <div class="meter"><span>Disk</span><span class="bar"><i style="width:72%"></i></span><span class="num">72%</span></div>
+     <div class="macts"><span class="btn s f">▦ Browse files</span><span class="btn s">Live</span></div></div>
+    <div class="mc"><div class="mt"><span class="bolt on" style="margin-top:2px">⌁</span><div class="g"><b>Dana Whitfield</b><span>Front desk PC · on Leads</span></div><span class="pill p-ok">Live</span></div>
+     <div class="meter"><span>CPU</span><span class="bar"><i style="width:21%"></i></span><span class="num">21%</span></div>
+     <div class="meter"><span>Disk</span><span class="bar"><i style="width:55%"></i></span><span class="num">55%</span></div>
+     <div class="macts"><span class="btn s">▦ Browse files</span></div></div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">5 · Files, over the card (← back)</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><span class="ic" style="font-size:16px;color:var(--pri)">▦</span><div class="t">Marco’s shop PC</div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt on" style="font-size:13px">⌁</span><b style="font-size:12.5px">Marco Reyes</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div style="padding:6px 12px 0"><div class="pcrumb"><span class="upbtn">↑ Up</span><span class="crumb">This PC</span><span class="sep">›</span><span class="crumb cur">C:</span></div></div>
+   <div class="pbody" style="padding-top:8px">
+    <div class="card">
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Users</b><span>Sep 30</span></div><span class="rt">›</span></div>
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Program Files</b><span>Aug 11</span></div><span class="rt">›</span></div>
+     <div class="lrow dir"><span class="ic">🔒</span><div class="g"><b class="muted">Windows</b><span>system folder</span></div><span class="pill p-neu">System</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>pagefile.sys</b><span>8 GB · Oct 1</span></div><span class="lk">Get</span></div>
+    </div>
+    <div class="foot">Started from the machine, so there was no person to pick. Recorded all the same.</div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">5 · An empty folder</div>
+  <div class="phn short"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Downloads</div></div>
+   <div class="pbody" style="padding-top:8px">
+    <div class="pcrumb" style="padding:0 2px 4px"><span class="crumb">…</span><span class="sep">›</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Downloads</span></div>
+    <div class="card" style="flex:1;min-height:0;display:flex"><div class="empty"><div class="ei">▢</div><b style="color:var(--ink);font-size:13px">This folder is empty</b><div class="tiny">Nothing to show on Marco’s shop PC here.</div></div></div>
+   </div>
+  </div></div></div>
+</div>
+
+<h2><span class="n">6</span>On a phone: shortcuts first, then dig</h2>
+<p class="cap">A different phone shape. After the person, the first screen is not root — it is the few places you actually want: Desktop, Documents, Downloads, and the drives, as big tiles, with a search across the whole PC on top. Fewer taps to the common folders; the full breadcrumb only appears once you leave the shortcuts. Good for “grab the file off their Desktop”, less good for a path you don’t know.</p>
+<p class="cap"><span class="srv">server</span> The <code>roots</code> call returns the drives <i>and</i> the signed-in user’s known folders (Desktop/Documents/Downloads) so the tiles are one read. Search is a new <code>find</code> request the agent answers across a folder tree on a later beat — heavier, and the one piece this option needs that the others don’t.</p>
+<div class="prow">
+ <div><div class="ml">6 · Shortcuts</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><span class="ic" style="font-size:16px;color:var(--pri)">▦</span><div class="t">Marco’s shop PC</div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt on" style="font-size:13px">⌁</span><b style="font-size:12.5px">Marco Reyes</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="srch">⌕ Find a file on this PC</div>
+    <div class="tile2">
+     <div class="ftile"><span class="ti">▸</span><b>Desktop</b><span>last change Sep 30</span></div>
+     <div class="ftile"><span class="ti">▸</span><b>Documents</b><span>24 items</span></div>
+     <div class="ftile"><span class="ti">▸</span><b>Downloads</b><span>empty</span></div>
+     <div class="ftile"><span class="ti">▸</span><b>Pictures</b><span>last change Sep 27</span></div>
+    </div>
+    <div class="ml" style="margin:6px 0 0 2px">Drives</div>
+    <div class="card">
+     <div class="lrow dir"><span class="ic">▣</span><div class="g"><b>C:</b><span>Windows · 72% full</span></div><span class="rt">›</span></div>
+     <div class="lrow dir"><span class="ic">▣</span><div class="g"><b>D:</b><span>Data · 31% full</span></div><span class="rt">›</span></div>
+    </div>
+    <div class="foot">Opening any of these is recorded.</div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">6 · Inside a shortcut</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Desktop</div></div>
+   <div style="padding:7px 12px 0;display:flex;align-items:center;gap:8px"><span class="bolt on" style="font-size:13px">⌁</span><b style="font-size:12.5px">Marco Reyes</b><span class="sp"></span><span class="rec-note">◎ Recorded</span></div>
+   <div style="padding:6px 12px 0"><div class="pcrumb"><span class="crumb">…</span><span class="sep">›</span><span class="crumb">marco</span><span class="sep">›</span><span class="crumb cur">Desktop</span></div></div>
+   <div class="pbody" style="padding-top:8px">
+    <div class="card">
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Jobs this week</b><span>6 items · Sep 30</span></div><span class="rt">›</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>liner-measurements.csv</b><span>12 KB · Sep 30</span></div><span class="lk">Get</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>before-after.png</b><span>2.2 MB · Sep 29</span></div><span class="pill p-ok">Save</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>notes.txt</b><span>1 KB · Sep 29</span></div><span class="lk">Get</span></div>
+    </div>
+   </div>
+  </div></div></div>
+ <div><div class="ml">6 · Search across the PC</div>
+  <div class="phn"><div class="st"></div><div class="pb">
+   <div class="ptop"><span class="ham">☰</span>Monitoring</div>
+   <div class="bk"><span class="ar">←</span><div class="t">Search</div></div>
+   <div class="pbody" style="padding-top:10px">
+    <div class="srch" style="color:var(--ink);font-weight:600">⌕ estimate</div>
+    <div class="asking"><span class="dot"></span>Searching Marco’s shop PC…<span class="el">4s</span></div>
+    <div class="card">
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>estimate-10482.pdf</b><span>Documents · 248 KB</span></div><span class="lk">Get</span></div>
+     <div class="lrow"><span class="ic">▦</span><div class="g"><b>estimate-10477.pdf</b><span>Documents\Estimates · 240 KB</span></div><span class="lk">Get</span></div>
+     <div class="lrow dir"><span class="ic">▸</span><div class="g"><b>Old estimates</b><span>Desktop\Jobs this week</span></div><span class="rt">›</span></div>
+    </div>
+    <div class="foot">Search is a heavier ask — it takes a few beats, and it is recorded like any open.</div>
+   </div>
+  </div></div></div>
+</div>
+
+<!-- ═════════════════════════════ RECOMMENDATION ═════════════════════════════ -->
+<h2 style="margin-top:52px">Recommendation</h2>
+<p class="cap" style="max-width:1100px"><b>Desktop 1 and phone 4.</b> Option 1 reuses Desktop Monitoring’s own person rail and keeps the whole act in one honest list, so Files reads as part of Monitoring rather than a borrowed file explorer; the breadcrumb carries the recorded chip where no one can miss it, and the dimmed-last-listing beat is the same honesty the capture tab already keeps. Option 4 is that same list one-job-per-screen, where the drill-in <i>is</i> the poll — every tap already expects a beat — with the recorded chip pinned above every folder. Option 2’s tree is worth keeping in reserve for a future “go straight to a deep path”, but it multiplies poll beats and is the wrong default. Option 3 (launched from PC Specs) is genuinely useful and could ship <i>as well</i> — the Browse-files action on a card costs little and answers “while I’m looking at this machine, show me its files” — but as the <i>only</i> way in it buries the feature inside another tab.</p>
+
+<p class="cap" style="margin-top:14px;max-width:1100px"><b>What the server still owes, shortest list:</b> a native <code>files</code> capability on the Windows agent; a poll-driven <code>list</code> (device + path → entries) and <code>roots</code> (drives + the user’s folders), on the same cache-queue shape as Remote Control’s input; a two-step download (request → short-lived upload store → signed “ready” URL, like screenshots); <code>monitoring.files.view</code> and <code>monitoring.files.download</code> grants, §3-scoped by reach and current view; audit events <code>monitoring.files.opened</code> / <code>.downloaded</code>; and per-folder error slugs from the agent (denied / not-found / offline), worded on the client exactly as the capture tab words its <code>last_error</code>. Option 6 additionally needs a <code>find</code> (search) request.</p>
+
+<p class="cap" style="margin-top:14px">People, machines, paths, files, sizes and times are invented. The real screen reads only devices you can reach from the current view, in the organization’s time zone, and records every open and download.</p>
+</div>
