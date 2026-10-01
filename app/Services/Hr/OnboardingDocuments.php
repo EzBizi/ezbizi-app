@@ -111,6 +111,13 @@ class OnboardingDocuments
         }
 
         $identity = $this->form->identity($onboarding);
+        // The address may come in its parts, as the form saves it.
+        if (is_array($draft['address'] ?? null) && $onboarding->user !== null) {
+            $draft['address'] = User::composeAddress(array_replace(
+                $onboarding->user->addressParts(),
+                array_intersect_key($draft['address'], array_flip(User::ADDRESS_PARTS)),
+            ));
+        }
         foreach ($identity as $key => $value) {
             if (array_key_exists($key, $draft) && is_scalar($draft[$key])) {
                 $identity[$key] = (string) $draft[$key];

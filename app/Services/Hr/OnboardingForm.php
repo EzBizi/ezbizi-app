@@ -198,10 +198,12 @@ class OnboardingForm
             $key = (string) $key;
             $at  = "answers.{$key}";
 
-            // The home address in its parts, as Records and Your account take
-            // it (Jose, 2026-10-01: "should have separate fields"). Same rule
-            // as the one-line `address` it composes.
-            if (in_array($key, User::ADDRESS_PARTS, true)) {
+            // The home address in its parts, nested under the question as
+            // `address: {address_line1, …}` (Jose, 2026-10-01: "should have
+            // separate fields"). Nested, not flat: a contract asks its own
+            // `state` (the governing state), and a flat `state` part would
+            // collide with it. Same rule as the one-line `address`.
+            if ($key === 'address' && is_array($raw)) {
                 $mayBeWrittenBy = $authority['address']['filled_by'] ?? null;
                 if ($mayBeWrittenBy === null || ! in_array($mayBeWrittenBy, $parties, true)) {
                     $errors[$at] = $mayBeWrittenBy === null
@@ -210,8 +212,10 @@ class OnboardingForm
 
                     continue;
                 }
-                $text = is_scalar($raw) ? trim((string) $raw) : '';
-                $parts[$key] = $text === '' ? null : mb_substr($text, 0, 191);
+                foreach (array_intersect_key($raw, array_flip(User::ADDRESS_PARTS)) as $part => $value) {
+                    $text = is_scalar($value) ? trim((string) $value) : '';
+                    $parts[$part] = $text === '' ? null : mb_substr($text, 0, 191);
+                }
 
                 continue;
             }
