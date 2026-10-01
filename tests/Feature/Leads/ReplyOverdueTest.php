@@ -112,6 +112,11 @@ class ReplyOverdueTest extends TestCase
         $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?source=ls_text')->assertOk()->json('data'), 'contact_name'));
         $this->assertCount(2, $this->getJson('/api/v1/leads?source=local_services')->assertOk()->json('data'));
 
+        // A booking made through Google is its own tab, not a text (Jose, 2026-10-01).
+        $this->lead('b', 'BOOKING', '2026-09-28T14:00:00Z');
+        $this->assertSame(['Customer b'], array_column($this->getJson('/api/v1/leads?source=ls_booking')->assertOk()->json('data'), 'contact_name'));
+        $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?source=ls_text')->assertOk()->json('data'), 'contact_name'));
+
         // All, with LS Call left out - the default (Jose, 2026-09-29).
         $this->assertSame(['Customer t'], array_column($this->getJson('/api/v1/leads?sources=ls_text,thumbtack')->assertOk()->json('data'), 'contact_name'));
         $this->assertCount(2, $this->getJson('/api/v1/leads?sources=ls_text,ls_call')->assertOk()->json('data'));
@@ -120,7 +125,7 @@ class ReplyOverdueTest extends TestCase
         // Unread per source for the rail, whatever the list is narrowed to.
         $this->postJson('/api/v1/leads/'.Lead::withoutGlobalScopes()->where('remote_id', 'c')->value('id').'/read')->assertSuccessful();
         $meta = $this->getJson('/api/v1/leads?source=thumbtack')->assertOk()->json('meta.unread_by_source');
-        $this->assertSame(['ls_text' => 1], $meta, 'the read call is not counted, and the thumbtack filter does not narrow it');
+        $this->assertSame(['ls_booking' => 1, 'ls_text' => 1], collect($meta)->sortKeys()->all(), 'the read call is not counted, and the thumbtack filter does not narrow it');
     }
 
     /**
