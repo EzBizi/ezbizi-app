@@ -85,4 +85,19 @@ class DashboardPeriodTest extends TestCase
         $this->assertSame('today', $period->phrase());
         $this->assertSame('this week', DashboardPeriod::for($this->alpha['admin'], 'week')->phrase());
     }
+
+    /** One bucket for a whole day drew every line chart as a single dot. */
+    public function test_a_day_is_charted_by_the_hour_and_a_week_by_the_day(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-26 15:30:00', 'America/New_York')); // Wednesday
+
+        $day = DashboardPeriod::for($this->alpha['admin'], 'day')->emptyBuckets();
+        $this->assertCount(16, $day, 'midnight to 3pm, inclusive');
+        $this->assertSame('2026-08-26T00:00', array_key_first($day));
+        $this->assertSame('2026-08-26T15:00', array_key_last($day));
+
+        $week = DashboardPeriod::for($this->alpha['admin'], 'week')->emptyBuckets();
+        $this->assertSame('2026-08-26', array_key_last($week));
+        $this->assertContainsOnly('int', $week);
+    }
 }

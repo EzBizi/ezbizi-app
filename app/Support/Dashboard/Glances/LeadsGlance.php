@@ -216,15 +216,6 @@ final class LeadsGlance extends DescribedGlance
      */
     private function emptyBuckets(DashboardPeriod $period): array
     {
-        $out    = [];
-        $cursor = $period->startsOn->copy()->startOfDay();
-        $end    = $period->endsOn->copy()->startOfDay();
-
-        while ($cursor->lte($end)) {
-            $out[$period->bucket($cursor)] = 0;
-            $cursor->addDay();
-        }
-
-        return $out;
+        return $period->emptyBuckets();
     }
 }

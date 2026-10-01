@@ -61,17 +61,42 @@ final class DashboardPeriod
     /**
      * Series axis key for a point inside this period.
      *
-     * Day for a week; start-of-week day for a month or quarter; month for a year.
+     * Hour for a day (a date-time, so a chart can place it); day for a week;
+     * start-of-week day for a month or quarter; month for a year.
      */
     public function bucket(Carbon $at): string
     {
         $local = $at->copy()->timezone($this->timezone);
 
         return match ($this->key) {
-            'day', 'week' => $local->toDateString(),
+            'day' => $local->format('Y-m-d\\TH:00'),
+            'week' => $local->toDateString(),
             'month', 'quarter' => $local->copy()->startOfWeek($this->weekStartsAt)->toDateString(),
             'year' => $local->format('Y-m'),
         };
+    }
+
+    /**
+     * Every bucket from the start of this period to now, in order, each at
+     * zero: the axis a series fills, so a quiet hour or day still draws. A day
+     * steps by the hour (one bucket made each line chart a single dot); the
+     * rest step by the day and bucket() folds them into weeks or months.
+     *
+     * @return array<string, int>
+     */
+    public function emptyBuckets(): array
+    {
+        $hourly = $this->key === 'day';
+        $cursor = $hourly ? $this->startsOn->copy()->startOfHour() : $this->startsOn->copy()->startOfDay();
+        $end = $hourly ? $this->endsOn->copy()->startOfHour() : $this->endsOn->copy()->startOfDay();
+
+        $out = [];
+        while ($cursor->lte($end)) {
+            $out[$this->bucket($cursor)] = 0;
+            $hourly ? $cursor->addHour() : $cursor->addDay();
+        }
+
+        return $out;
     }
 
     /**
