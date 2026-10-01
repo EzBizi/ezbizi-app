@@ -1279,7 +1279,11 @@ void main() {
     // The editable copy, drawn as the visitor will meet it.
     expect(find.textContaining('Quick details first'), findsWidgets);
     expect(find.text('Your name *'), findsOneWidget);
-    expect(find.text('Phone or email *'), findsOneWidget);
+    // Jose, 2026-10-01: phone, ZIP and email, each its own box, for Leads.
+    expect(find.text('Phone *'), findsOneWidget);
+    expect(find.text('ZIP code *'), findsOneWidget);
+    expect(find.text('Email *'), findsOneWidget);
+    expect(find.text('Phone or email *'), findsNothing);
     expect(find.text('How can we help? *'), findsOneWidget);
     expect(find.text('Start chat'), findsWidgets);
 

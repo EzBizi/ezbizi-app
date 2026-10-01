@@ -798,8 +798,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           (v) => _set('chat', 'lead_in', v)),
       _text(theme, 'Name question', chat['name_label'],
           (v) => _set('chat', 'name_label', v)),
-      _text(theme, 'Contact question', chat['contact_label'],
-          (v) => _set('chat', 'contact_label', v)),
       _text(theme, 'Message question', chat['message_label'],
           (v) => _set('chat', 'message_label', v)),
       _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
@@ -1418,7 +1416,10 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                           ],
                           for (final ask in [
                             chat['name_label'],
-                            chat['contact_label'],
+                            // Fixed since 2026-10-01: each its own box, for Leads.
+                            'Phone',
+                            'ZIP code',
+                            'Email',
                             chat['message_label'],
                           ]) ...[
                             Text(

@@ -349,6 +349,8 @@ final class WebsiteEnquiries
                 // A yes/no a rule can test, so "only if they agreed to email"
                 // can be written as a condition as well as enforced by the step.
                 'marketing_consent' => $consented,
+                // The chat's ZIP box, for a rule; null from a form or an older widget.
+                'zip' => $visitor['zip'] ?? null,
                 // For a rule that files it as Not a lead (looksLikeSpam).
                 'looks_like_spam' => $looksLikeSpam,
             ],

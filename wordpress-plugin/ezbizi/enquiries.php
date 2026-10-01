@@ -518,7 +518,6 @@ function ezbizi_chat_shortcode($atts) {
     $intro = ezbizi_widget_text($config, 'intro');
     $lead_in = ezbizi_widget_text($config, 'lead_in');
     $name_label = ezbizi_widget_text($config, 'name_label', 'Your name');
-    $contact_label = ezbizi_widget_text($config, 'contact_label', 'Phone or email');
     $message_label = ezbizi_widget_text($config, 'message_label', 'How can we help?');
 
     /*
@@ -581,8 +580,20 @@ function ezbizi_chat_shortcode($atts) {
         . '<p class="ezbizi-chat-leadin">' . esc_html($lead_in !== '' ? $lead_in : ($intro !== '' ? $intro : 'Hi! Leave your details so we can reach you if the chat drops.')) . '</p>'
         . '<label>' . esc_html($name_label) . ' <span class="ezbizi-chat-req">*</span>'
         . '<input type="text" name="name" autocomplete="name" required /></label>'
-        . '<label>' . esc_html($contact_label) . ' <span class="ezbizi-chat-req">*</span>'
-        . '<input type="text" name="contact" autocomplete="email" required /></label>'
+        /*
+         * Phone, email and ZIP, each its own box (Jose, 2026-10-01): a chat
+         * lead arrives in Leads ready to call, email and place in a service
+         * area, the way a Google lead does. One "phone or email" box gave one
+         * of the two and never the ZIP.
+         */
+        . '<div class="ezbizi-chat-pair">'
+        . '<label>Phone <span class="ezbizi-chat-req">*</span>'
+        . '<input type="tel" name="phone" autocomplete="tel" required /></label>'
+        . '<label>ZIP code <span class="ezbizi-chat-req">*</span>'
+        . '<input type="text" name="zip" autocomplete="postal-code" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" required /></label>'
+        . '</div>'
+        . '<label>Email <span class="ezbizi-chat-req">*</span>'
+        . '<input type="email" name="email" autocomplete="email" required /></label>'
         . '<label>' . esc_html($message_label) . ' <span class="ezbizi-chat-req">*</span>'
         . '<textarea name="message" rows="3" required placeholder="'
         . esc_attr(ezbizi_widget_text($config, 'placeholder', 'Type a message')) . '"></textarea></label>'
@@ -719,12 +730,11 @@ function keep(d){
 }
 pre.addEventListener('submit',function(e){
   e.preventDefault();
-  var name=pre.name.value.trim(),contact=pre.contact.value.trim(),text=pre.message.value.trim();
-  if(!name||!contact||!text)return;
+  if(!pre.checkValidity()){pre.reportValidity();return;}
+  var text=pre.message.value.trim();
   err.hidden=true;
-  var body={key:key,message:text,name:name,page_url:location.href};
+  var body={key:key,message:text,name:pre.name.value.trim(),phone:pre.phone.value.trim(),email:pre.email.value.trim(),zip:pre.zip.value.trim(),page_url:location.href};
   var c=pre.querySelector('.ezbizi-consent-box');if(c&&c.checked){body.marketing_consent=true;body.marketing_consent_text=c.parentNode.textContent.trim();}
-  if(contact.indexOf('@')>-1)body.email=contact;else body.phone=contact;
   fetch(api+'/api/v1/web/chat',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)})
     .then(function(r){return r.ok?r.json():null;})
     .then(function(d){
@@ -897,6 +907,7 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
         . $s . ' .ezbizi-chat-leadin{margin:0 0 12px;font-size:13.5px;color:' . $text . ';opacity:.85}'
         . $s . ' .ezbizi-chat-pre label{display:block;margin:0 0 10px;font-size:13px;font-weight:700;color:' . $text . '}'
         . $s . ' .ezbizi-chat-req{color:' . $accent . '}'
+        . $s . ' .ezbizi-chat-pair{display:grid;grid-template-columns:1fr 110px;gap:10px}'
         . $s . ' .ezbizi-chat-pre input,' . $s . ' .ezbizi-chat-pre textarea,' . $s . ' .ezbizi-chat-text{'
         . 'display:block;width:100%;margin:4px 0 0;padding:10px 12px;background:#fff;color:#1b1b1b;'
         . 'border:1px solid #d3d0cb;border-radius:10px;font:inherit;font-size:14px;'

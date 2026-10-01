@@ -1044,13 +1044,18 @@ $GLOBALS['is_admin'] = false;
 $chat_html = $GLOBALS['sc']['ezbizi_chat']([]);
 
 check('it asks for a name', str_contains($chat_html, 'name="name"'), true);
-check('and a way to reply', str_contains($chat_html, 'name="contact"'), true);
+check('and two ways to reply', str_contains($chat_html, 'name="phone"') && str_contains($chat_html, 'name="email"'), true);
 check('and what they want', str_contains($chat_html, 'name="message"'), true);
-check('all three required', substr_count($chat_html, 'required'), 3);
+check('all five required (name, phone, ZIP, email, message)', substr_count($chat_html, 'required'), 5);
 check('there is a way out of the panel', str_contains($chat_html, 'ezbizi-chat-close'), true);
 
 // The thread exists but is not what they meet first.
 check('the message box waits its turn', str_contains($chat_html, '<div class="ezbizi-chat-log" hidden'), true);
+// Jose, 2026-10-01: phone, email and ZIP, each its own required box, all sent.
+check('it asks for a phone', str_contains($chat_html, 'type="tel" name="phone" autocomplete="tel" required'), true);
+check('an email', str_contains($chat_html, 'type="email" name="email" autocomplete="email" required'), true);
+check('and a five-digit ZIP', str_contains($chat_html, 'name="zip" autocomplete="postal-code" inputmode="numeric" pattern="[0-9]{5}"'), true);
+check('and sends all three', str_contains($chat_html, 'phone:pre.phone.value.trim(),email:pre.email.value.trim(),zip:pre.zip.value.trim()'), true);
 
 /*
  * The fix for what the photograph actually showed. A theme that sets

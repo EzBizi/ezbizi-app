@@ -77,6 +77,8 @@ class EnquiriesController extends Controller
             'name' => ['nullable', 'string', 'max:191'],
             'email' => ['nullable', 'email', 'max:191'],
             'phone' => ['nullable', 'string', 'max:40'],
+            // The chat's ZIP box (2026-10-01); five digits, or nothing from an older widget.
+            'zip' => ['nullable', 'regex:/^[0-9]{5}$/'],
             'page_url' => ['nullable', 'string', 'max:500'],
             // Same pair as the form. See submitForm.
             'marketing_consent' => ['nullable', 'boolean'],
@@ -118,6 +120,7 @@ class EnquiriesController extends Controller
                 'name' => $input['name'] ?? null,
                 'email' => $input['email'] ?? null,
                 'phone' => $input['phone'] ?? null,
+                'zip' => $input['zip'] ?? null,
                 'page_url' => $input['page_url'] ?? null,
                 'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
                 'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
