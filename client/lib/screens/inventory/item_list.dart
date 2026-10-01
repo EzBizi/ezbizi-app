@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
@@ -40,7 +41,11 @@ class _ItemListState extends State<ItemList> {
   String? _pageError;
   bool _fetching = false;
   int _request = 0;
-  bool _discontinued = false;
+  /// The counts on the tiles, the whole catalogue's (`meta.tiles`), and the
+  /// tile narrowing the list: null, `low`, `out` or `discontinued`. A server
+  /// without tiles draws none.
+  Map<String, dynamic>? _tiles;
+  String? _tile;
   bool _adding = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
@@ -80,7 +85,9 @@ class _ItemListState extends State<ItemList> {
     final response = await widget.api.get('/inventory/items', {
       'page': '$page',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
-      if (_discontinued) 'status': 'active,discontinued',
+      if (_tile == 'low') 'stock': 'below_reorder',
+      if (_tile == 'out') 'stock': 'out_of_stock',
+      if (_tile == 'discontinued') 'status': 'discontinued',
     });
 
     if (!mounted || request != _request) return;
@@ -103,6 +110,10 @@ class _ItemListState extends State<ItemList> {
       _total = inventoryTotal(response.body, _items.length);
       _lastPage = inventoryLastPage(response.body);
       _page = page;
+      if (page == 1 && response.body['meta'] is Map) {
+        final tiles = (response.body['meta'] as Map)['tiles'];
+        _tiles = tiles is Map ? Map<String, dynamic>.from(tiles) : null;
+      }
     });
   }
 
@@ -160,6 +171,23 @@ class _ItemListState extends State<ItemList> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_tiles case final tiles?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: LayoutBuilder(
+              builder: (context, box) => inventoryTiles(
+                context,
+                prefix: 'items',
+                tiles: _tileList(tiles),
+                picked: _tile,
+                onPick: (key) {
+                  setState(() => _tile = key);
+                  _load();
+                },
+                twoByTwo: box.maxWidth < 760,
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
@@ -182,25 +210,27 @@ class _ItemListState extends State<ItemList> {
             onChanged: (_) => setState(() {}),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: FilterChip(
-              label: const Text('Discontinued'),
-              selected: _discontinued,
-              onSelected: (_) {
-                setState(() => _discontinued = !_discontinued);
-                _load();
-              },
+        // A server without tiles keeps the old way to see discontinued ones.
+        if (_tiles == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                label: const Text('Discontinued'),
+                selected: _tile == 'discontinued',
+                onSelected: (on) {
+                  setState(() => _tile = on ? 'discontinued' : null);
+                  _load();
+                },
+              ),
             ),
           ),
-        ),
         Expanded(
           child: _items.isEmpty
               ? Center(
                   child: Text(
-                    _search.text.trim().isEmpty && !_discontinued
+                    _search.text.trim().isEmpty && _tile == null
                         ? 'There are no items.'
                         : 'Nothing matches those filters.',
                   ),
@@ -222,6 +252,47 @@ class _ItemListState extends State<ItemList> {
         ),
       ],
     );
+  }
+
+  /// Stock's four tiles, for the catalogue (Analorena Ventoso, suggestion
+  /// 0075: "the inventory layout update needs to be for all the tabs").
+  List<InventoryTile> _tileList(Map<String, dynamic> tiles) {
+    int count(String key) => (tiles[key] as num?)?.toInt() ?? 0;
+    // Null without Stock: how much is left is a stock fact (Inventory,
+    // 83999f2c), so the tile says nothing rather than 0.
+    final seen = tiles['below_reorder'] != null;
+    final low = count('below_reorder');
+    final out = count('out_of_stock');
+    return [
+      InventoryTile(
+        key: null,
+        label: 'All items',
+        value: '${count('items')}',
+        note: 'in the catalogue',
+      ),
+      InventoryTile(
+        key: 'low',
+        label: 'Below reorder',
+        value: seen ? '$low' : '—',
+        note: seen ? 'at or under the point to reorder' : '',
+        tone: !seen || low == 0 ? null : Tone.caution,
+        enabled: seen,
+      ),
+      InventoryTile(
+        key: 'out',
+        label: 'Out of stock',
+        value: seen ? '$out' : '—',
+        note: seen ? 'none left anywhere' : '',
+        tone: !seen || out == 0 ? null : Tone.bad,
+        enabled: seen,
+      ),
+      InventoryTile(
+        key: 'discontinued',
+        label: 'Discontinued',
+        value: '${count('discontinued')}',
+        note: 'kept for their history',
+      ),
+    ];
   }
 
   Widget _more() => LoadMore(

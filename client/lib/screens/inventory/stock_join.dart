@@ -155,3 +155,121 @@ Widget inventoryHeading(
     color: Theme.of(context).colorScheme.onSurfaceVariant,
   ),
 );
+
+/// One of a tab's summary tiles (UI queue 43): a count, what it counts, a
+/// line under it, and a tap that narrows the list to it. Null [key] is the
+/// tile for everything.
+class InventoryTile {
+  const InventoryTile({
+    required this.key,
+    required this.label,
+    required this.value,
+    required this.note,
+    this.tone,
+    this.enabled = true,
+  });
+
+  final String? key;
+  final String label;
+  final String value;
+  final String note;
+  final Tone? tone;
+
+  /// False where the role cannot see the fact: dashed, and no filter.
+  final bool enabled;
+}
+
+/// A tab's tiles in one row, or two by two where the row is narrow; siblings
+/// are one size. Keyed `<prefix>-tile-<key>`.
+Widget inventoryTiles(
+  BuildContext context, {
+  required String prefix,
+  required List<InventoryTile> tiles,
+  required String? picked,
+  required ValueChanged<String?> onPick,
+  required bool twoByTwo,
+}) {
+  Widget card(InventoryTile tile) =>
+      _tileCard(context, prefix, tile, picked == tile.key, onPick);
+  Widget row(Iterable<InventoryTile> some, double gap) => IntrinsicHeight(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, tile) in some.indexed) ...[
+          if (i > 0) SizedBox(width: gap),
+          Expanded(child: card(tile)),
+        ],
+      ],
+    ),
+  );
+
+  if (!twoByTwo) return row(tiles, 10);
+  return Column(
+    children: [
+      for (var i = 0; i < tiles.length; i += 2) ...[
+        if (i > 0) const SizedBox(height: 8),
+        row(tiles.skip(i).take(2), 8),
+      ],
+    ],
+  );
+}
+
+Widget _tileCard(
+  BuildContext context,
+  String prefix,
+  InventoryTile tile,
+  bool picked,
+  ValueChanged<String?> onPick,
+) {
+  final theme = Theme.of(context);
+  final ink = tile.tone == null
+      ? null
+      : ToneColours.of(context, tile.tone!).ink;
+  final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+  return Material(
+    key: Key('$prefix-tile-${tile.key ?? 'all'}'),
+    color: picked
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: radius,
+      side: BorderSide(
+        color: picked ? theme.colorScheme.primary : EzBiziTheme.edge(context),
+      ),
+    ),
+    child: InkWell(
+      borderRadius: radius,
+      onTap: tile.enabled ? () => onPick(picked ? null : tile.key) : null,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              tile.label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              tile.value,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
+            ),
+            Text(
+              tile.note,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}

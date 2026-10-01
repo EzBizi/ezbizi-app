@@ -961,6 +961,194 @@ void main() {
     );
   });
 
+  // Analorena Ventoso, suggestion 0075: "the inventory layout update needs to
+  // be for all the tabs, not just the front".
+  testWidgets("Items opens on Stock's tiles, counted by the server, and a "
+      'tile asks for its slice', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pumpScreen(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/inventory/items')) return null;
+        asked.add(request.url.queryParameters);
+        return _json({
+          'data': [
+            {..._item, 'on_hand': '4.000'},
+          ],
+          'meta': {
+            'total': 1,
+            'last_page': 1,
+            'tiles': {
+              'items': 12,
+              'below_reorder': 3,
+              'out_of_stock': 1,
+              'discontinued': 2,
+            },
+          },
+        });
+      },
+    );
+
+    await tester.tap(find.text('Items'));
+    await tester.pumpAndSettle();
+    Finder tile(String key, String value) => find.descendant(
+      of: find.byKey(Key('items-tile-$key')),
+      matching: find.text(value),
+    );
+    expect(tile('all', '12'), findsOneWidget);
+    expect(tile('low', '3'), findsOneWidget);
+    expect(tile('out', '1'), findsOneWidget);
+    expect(tile('discontinued', '2'), findsOneWidget);
+    // The Discontinued tile replaces the chip.
+    expect(find.widgetWithText(FilterChip, 'Discontinued'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('items-tile-low')));
+    await tester.pumpAndSettle();
+    expect(asked.last['stock'], 'below_reorder');
+
+    await tester.tap(find.byKey(const Key('items-tile-discontinued')));
+    await tester.pumpAndSettle();
+    expect(asked.last['status'], 'discontinued');
+    expect(asked.last.containsKey('stock'), isFalse);
+
+    // A second tap on the picked tile goes back to everything.
+    await tester.tap(find.byKey(const Key('items-tile-discontinued')));
+    await tester.pumpAndSettle();
+    expect(asked.last.containsKey('status'), isFalse);
+  });
+
+  testWidgets('Orders opens on tiles counted by the server, which replace '
+      'the chips and ask for their slice', (tester) async {
+    final asked = <String, Map<String, String>>{};
+    await _pumpScreen(
+      tester,
+      orders: [_openPo],
+      onRequest: (request) {
+        final path = request.url.path;
+        final kind = ['purchase-orders', 'sales', 'issues']
+            .where((k) => path.endsWith('/inventory/$k'))
+            .firstOrNull;
+        if (kind == null) return null;
+        asked[kind] = request.url.queryParameters;
+        return _json({
+          'data': kind == 'purchase-orders' ? [_openPo] : <Object>[],
+          'meta': {
+            'total': kind == 'issues' ? 7 : 1,
+            'last_page': 1,
+            if (kind == 'purchase-orders')
+              'tiles': {'to_receive': 2, 'open': 3},
+            if (kind == 'sales') 'tiles': {'open': 4, 'unpaid': 1},
+          },
+        });
+      },
+    );
+
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    Finder tile(String key, String text) => find.descendant(
+      of: find.byKey(Key('orders-tile-$key')),
+      matching: find.text(text),
+    );
+    expect(tile('receive', '2'), findsOneWidget);
+    expect(tile('open', '3'), findsOneWidget);
+    expect(tile('sales', '4'), findsOneWidget);
+    expect(tile('sales', 'open, 1 unpaid'), findsOneWidget);
+    expect(tile('issues', '7'), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, 'To receive'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('orders-tile-receive')));
+    await tester.pumpAndSettle();
+    expect(asked['purchase-orders'], {'filter': 'to_receive'});
+
+    await tester.tap(find.byKey(const Key('orders-tile-sales')));
+    await tester.pumpAndSettle();
+    expect(asked['sales'], {'filter': 'open'});
+    expect(asked['purchase-orders'], isEmpty);
+    expect(find.byKey(const Key('order-row-po-po-1')), findsNothing);
+  });
+
+  testWidgets('Locations opens on tiles per kind of place, with their value '
+      'for financials, and a tile asks for its kind', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pumpScreen(
+      tester,
+      permissions: [..._allTabs, 'inventory.financials'],
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/inventory/locations')) return null;
+        asked.add(request.url.queryParameters);
+        return _json({
+          'data': [_shop],
+          'meta': {
+            'total': 1,
+            'last_page': 1,
+            'tiles': {'places': 6, 'storage': 2, 'shops': 1, 'vans': 3},
+            'tiles_value_minor': {
+              'places': 1060000,
+              'storage': 802610,
+              'shops': 209000,
+              'vans': null,
+            },
+          },
+        });
+      },
+    );
+
+    await tester.tap(find.text('Locations'));
+    await tester.pumpAndSettle();
+    Finder tile(String key, String text) => find.descendant(
+      of: find.byKey(Key('locations-tile-$key')),
+      matching: find.text(text),
+    );
+    expect(tile('all', '6'), findsOneWidget);
+    expect(tile('shop', r'$2,090.00 held'), findsOneWidget);
+    // Nothing priced in the vans: said as nothing, not as $0.00.
+    expect(tile('van', 'vans'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('locations-tile-van')));
+    await tester.pumpAndSettle();
+    expect(asked.last['kind'], 'van');
+  });
+
+  testWidgets('without Stock the items tiles say nothing about stock, and do '
+      'not filter by it', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pumpScreen(
+      tester,
+      permissions: _allTabs.where((p) => p != 'inventory.stock.view').toList(),
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/inventory/items')) return null;
+        asked.add(request.url.queryParameters);
+        return _json({
+          'data': [_item],
+          'meta': {
+            'total': 1,
+            'last_page': 1,
+            'tiles': {
+              'items': 12,
+              'below_reorder': null,
+              'out_of_stock': null,
+              'discontinued': 2,
+            },
+          },
+        });
+      },
+    );
+
+    await tester.tap(find.text('Items'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('items-tile-low')),
+        matching: find.text('—'),
+      ),
+      findsOneWidget,
+    );
+    final before = asked.length;
+    await tester.tap(find.byKey(const Key('items-tile-low')));
+    await tester.pumpAndSettle();
+    expect(asked.length, before, reason: 'a dashed tile asks for nothing');
+  });
+
   testWidgets('Items, Orders and Locations are tables with their totals', (tester) async {
     await _pumpScreen(
       tester,
@@ -1000,6 +1188,16 @@ void main() {
     );
   });
 }
+
+const _allTabs = [
+  'inventory.view',
+  'inventory.create',
+  'inventory.edit',
+  'inventory.stock.view',
+  'inventory.items.view',
+  'inventory.orders.view',
+  'inventory.locations.view',
+];
 
 const _item = {
   'id': 'item-1',
