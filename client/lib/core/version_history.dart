@@ -26,7 +26,7 @@ class VersionHistory {
       version: '0.0.0341',
       date: '1 Oct 2026',
       items: [
-        'Onboarding: related terms can be marked as not applying together, and contracts are laid out like the A1 Tools agreements.',
+        'Onboarding: ✗ on a term also voids the terms tied to it, the contract preview highlights what changed, and contracts are laid out like the A1 Tools agreements.',
         'Leads: bookings made through Google have their own tab and stay out of All.',
         'A website chat\'s ZIP code shows on the lead in Leads, ready for the availability check.',
         'Web Management: every colour setting has a colour picker; typing a colour code still works.',
@@ -43,7 +43,7 @@ class VersionHistory {
         'Inventory: Stock, Items and Locations read their totals from the server, so what a role may not see reads as unknown rather than zero.',
         'Work Hours: editing opens a side panel, and on a phone a person opens inside the tab.',
         'Website live chat asks for phone, email and ZIP code, so every chat lead in Leads can be called, emailed and placed.',
-        'Onboarding: a term that may not apply has ✓ / ✗ beside it. ✗ voids it and the terms tied to it; ✓ brings them back. The state now comes before the county.',
+        'Onboarding: a term that may not apply has ✓ / ✗ beside it, and the state now comes before the county.',
         'Inventory: an open item shows its history, with what was received, issued, moved, counted and sold, when, and by whom.',
         'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0338 and 0.0.0339, which reached the web first.',
       ],
