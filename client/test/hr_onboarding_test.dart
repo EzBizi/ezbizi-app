@@ -288,6 +288,8 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Nothing saved, so nothing to reuse.
+    expect(find.byKey(const Key('signature-use-saved')), findsNothing);
 
     // Consent alone is not a signature.
     await _tap(tester, find.byType(CheckboxListTile));
@@ -347,6 +349,69 @@ void main() {
       return false;
     });
     expect(inked, isTrue);
+  });
+
+  // A1 Tools: the employer drew once and reused it on every contract.
+  testWidgets('a saved signature can stand in for drawing, and a new drawing '
+      'can be saved as one', (tester) async {
+    Map<String, dynamic>? signed;
+    final saves = <Map<String, dynamic>>[];
+    await _pumpForm(
+      tester,
+      _handler(
+        form: _asEmployee,
+        savedSignature: 'data:image/png;base64,${base64Encode(_png)}',
+        onSign: (body) => signed = body,
+        onSaveSignature: saves.add,
+      ),
+    );
+    await _tap(tester, find.byType(CheckboxListTile));
+    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    expect(_signButton(tester).onPressed, isNull);
+
+    // The stored one takes the pad's place, and is enough to sign with.
+    await _tap(tester, find.byKey(const Key('signature-use-saved')));
+    expect(find.byKey(const Key('signature-pad')), findsNothing);
+    final shown = tester.widget<Image>(
+      find.descendant(
+        of: find.byKey(const Key('signature-saved')),
+        matching: find.byType(Image),
+      ),
+    );
+    expect((shown.image as MemoryImage).bytes, _png);
+    expect(_signButton(tester).onPressed, isNotNull);
+
+    // Clear goes back to drawing; a new drawing is saved over it.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    expect(_signButton(tester).onPressed, isNull);
+    await _draw(tester);
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('signature-save')));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    final fresh = saves.single['drawing'] as String;
+    expect(fresh, startsWith('data:image/png;base64,'));
+    expect(fresh, isNot('data:image/png;base64,${base64Encode(_png)}'));
+    expect(find.text('Saved as your signature.'), findsOneWidget);
+
+    // Using the saved one now uses the new one, and Sign sends exactly it.
+    await _tap(tester, find.byKey(const Key('signature-clear')));
+    await _tap(tester, find.byKey(const Key('signature-use-saved')));
+    await _pressSign(tester);
+    expect(signed!['drawing'], fresh);
+  });
+
+  // HR's A1-style stylesheet sizes in points, and flutter_html reads a point
+  // as a pixel: 12pt headings came out smaller than the 15px body.
+  test('the contract is drawn at screen size, its headings above its body', () {
+    final html = contractOnScreen(
+      '<style>body{font-size:9.5pt}h2{font-size:12pt;margin:10pt 0 4pt}</style>'
+      '<p>A notice in 12pt type stays as written.</p>',
+    );
+    expect(html, contains('body{font-size:15.00px}'));
+    expect(html, contains('h2{font-size:18.95px;margin:15.79px 0 6.32px}'));
+    expect(html, contains('<p>A notice in 12pt type stays as written.</p>'));
   });
 
   testWidgets('a signature that is not yours is shown and not offered', (
@@ -1319,6 +1384,9 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onPreviewBody,
   /// The draft PDF `POST …/preview?format=pdf` answers with.
   Uint8List Function(Map<String, dynamic> body)? onPdf,
+  /// The signer's saved signature, `GET /me/signature`; null when none.
+  String? savedSignature,
+  void Function(Map<String, dynamic> body)? onSaveSignature,
   void Function(Map<String, String> query)? onCounties,
 }) {
   final seen = form ?? _asEmployer;
@@ -1328,6 +1396,18 @@ MockClientHandler _handler({
     final body = request.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;
+
+    if (path.endsWith('/me/signature')) {
+      if (request.method == 'PUT') {
+        onSaveSignature?.call(body);
+        return _json({
+          'data': {'drawing': body['drawing']},
+        });
+      }
+      return _json({
+        'data': {'drawing': savedSignature},
+      });
+    }
 
     if (onPdf != null &&
         path.endsWith('/hr/onboardings/o-1/preview') &&
