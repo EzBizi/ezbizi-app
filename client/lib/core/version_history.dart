@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Leads: every message shows the time it was sent.',
         'Work Hours: you can ask for a correction to the start of the shift you are in.',
+        'Dashboard boxes with a chart no longer also say \'Nothing to show.\' underneath it.',
       ],
     ),
     VersionRelease(
