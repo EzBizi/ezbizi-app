@@ -50,6 +50,56 @@ class InventoryLocationsController extends Controller
     }
 
     /** GET /api/v1/inventory/locations */
+    /**
+     * Per location on this page: how many visible items it holds above zero,
+     * and their value at last cost. One query for the page.
+     *
+     * Only visible ITEMS count, mirroring the other side of the rule on_hand
+     * uses: a location the caller can open may still hold an item they cannot.
+     * Null when the caller lacks `inventory.stock.view`.
+     *
+     * @param  \Illuminate\Support\Collection<int, InventoryLocation>  $locations
+     * @return array<string, array{holds:int, value_minor:?int}>|null
+     */
+    private function totalsFor(\Illuminate\Support\Collection $locations, User $user, ViewScope $scope): ?array
+    {
+        if (! $user->hasPermission('inventory.stock.view')) {
+            return null;
+        }
+
+        if ($locations->isEmpty()) {
+            return [];
+        }
+
+        $rows = \App\Models\InventoryBalance::query()
+            ->whereIn('location_id', $locations->pluck('id')->all())
+            ->where('qty_on_hand', '>', 0)
+            ->whereHas('item', fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope))
+            ->with('item:id,last_cost_minor')
+            ->get(['id', 'location_id', 'item_id', 'qty_on_hand']);
+
+        $out = [];
+        foreach ($rows->groupBy('location_id') as $locationId => $held) {
+            $value = 0;
+            $priced = false;
+            foreach ($held as $balance) {
+                $cost = $balance->item?->last_cost_minor;
+                if ($cost === null) {
+                    continue;
+                }
+                $priced = true;
+                $value += (int) round(((float) $balance->qty_on_hand) * (int) $cost);
+            }
+
+            $out[$locationId] = [
+                'holds' => $held->pluck('item_id')->unique()->count(),
+                'value_minor' => $priced ? $value : null,
+            ];
+        }
+
+        return $out;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', InventoryLocation::class);
@@ -72,10 +122,27 @@ class InventoryLocationsController extends Controller
             ->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
+        $page = collect($locations->items());
+        $totals = $this->totalsFor($page, $user, $scope);
+        $withMoney = $user->hasPermission('inventory.financials');
+
         return response()->json([
-            'data' => collect($locations->items())->map(
-                fn (InventoryLocation $location) => $this->present($location),
-            ),
+            'data' => $page->map(function (InventoryLocation $location) use ($totals, $withMoney) {
+                $row = $this->present($location);
+                $mine = $totals[$location->id] ?? ['holds' => 0, 'value_minor' => null];
+
+                // Null without the Stock tab, like on_hand on /items: how many
+                // items sit here is a stock fact this role was not shown.
+                $row['holds'] = $totals === null ? null : $mine['holds'];
+
+                // Absent without financials (withheld). With it, null when the
+                // role cannot see stock or nothing here has a cost yet.
+                if ($withMoney) {
+                    $row['value_minor'] = $totals === null ? null : $mine['value_minor'];
+                }
+
+                return $row;
+            }),
             'meta' => [
                 'total' => $locations->total(),
                 'per_page' => $locations->perPage(),

@@ -85,9 +85,16 @@ class InventoryItemsController extends Controller
             ->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
+        $onHand = $this->onHandFor(collect($items->items()), $user, $scope);
+
         return response()->json([
             'data' => collect($items->items())->map(
-                fn (InventoryItem $item) => $this->present($item, $user),
+                fn (InventoryItem $item) => [
+                    ...$this->present($item, $user),
+                    // Null without the Stock tab: a quantity this role was not
+                    // shown, never a zero it would read as "holds nothing".
+                    'on_hand' => $onHand === null ? null : ($onHand[$item->id] ?? '0.000'),
+                ],
             ),
             'meta' => [
                 'total' => $items->total(),
@@ -386,6 +393,37 @@ class InventoryItemsController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /**
+     * On hand per item on this page, summed over the places the caller can see —
+     * the same rule as `low_items` and the grouped Stock read, so the three
+     * cannot disagree about one item. One query for the page, not one per row.
+     *
+     * Null when the caller lacks `inventory.stock.view`: this endpoint is
+     * ungated reference data, so the quantity has to carry its own gate.
+     *
+     * @param  \Illuminate\Support\Collection<int, InventoryItem>  $items
+     * @return array<string, string>|null
+     */
+    private function onHandFor(\Illuminate\Support\Collection $items, User $user, ViewScope $scope): ?array
+    {
+        if (! $user->hasPermission('inventory.stock.view')) {
+            return null;
+        }
+
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        return \App\Models\InventoryBalance::query()
+            ->whereIn('item_id', $items->pluck('id')->all())
+            ->whereHas('location', fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope))
+            ->groupBy('item_id')
+            ->selectRaw('item_id, SUM(qty_on_hand) as on_hand')
+            ->pluck('on_hand', 'item_id')
+            ->map(fn ($qty) => bcadd((string) $qty, '0', 3))
+            ->all();
+    }
+
     private function present(InventoryItem $item, User $user): array
     {
         $item->loadMissing([
