@@ -1007,8 +1007,11 @@ Route::prefix('v1')
          * "manage the catalogue, not the quantities", and an item pane that
          * listed on-hand anyway would spend a grant nobody made.
          */
-        Route::middleware('permission:inventory.stock.view')
-            ->get('inventory/stock', [InventoryStockController::class, 'index']);
+        Route::middleware('permission:inventory.stock.view')->group(function () {
+            Route::get('inventory/stock', [InventoryStockController::class, 'index']);
+            // One row per item, grouped server-side (UI queue 43).
+            Route::get('inventory/stock/items', [InventoryStockController::class, 'items']);
+        });
 
         /*
          * `summary` is the General tab's data and General DOES NOT EXIST on the
