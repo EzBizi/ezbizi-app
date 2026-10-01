@@ -129,6 +129,9 @@ class HrPeopleController extends Controller
                 'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // One role (Jose, 2026-10-01: "on record i should be able to
+            // filter by role too"). Here, not on the screen: the list pages.
+            ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function (Builder $inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")

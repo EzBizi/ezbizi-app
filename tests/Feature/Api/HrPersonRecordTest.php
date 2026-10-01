@@ -147,6 +147,21 @@ class HrPersonRecordTest extends TestCase
         ])->assertCreated();
     }
 
+    /** Jose, 2026-10-01: "on record i should be able to filter by role too". */
+    public function test_the_list_narrows_to_one_role(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $dispatcher = $this->userWithRole($t, 'Dispatcher', ['customers.view']);
+
+        $ids = collect($this->signedInAs($t['admin'])
+            ->getJson("/api/v1/hr/people?role_id={$dispatcher->role_id}")->assertOk()->json('data'))
+            ->pluck('id')->all();
+
+        $this->assertSame([$dispatcher->id], $ids);
+        $this->assertNotContains($tech->id, $ids);
+    }
+
     /** Opening somebody's personal details is itself recorded (§9). */
     public function test_reading_a_record_is_audited(): void
     {
