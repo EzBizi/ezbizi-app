@@ -102,11 +102,14 @@ class TimeClockController extends Controller
 
         $from = $request->query('from');
         $to = $request->query('to');
+        $user = $request->query('user');
 
         return response()->json(['data' => $stats->for(
             $request->user(),
             is_string($from) ? $from : null,
             is_string($to) ? $to : null,
+            // One person, with their days, for the Dashboard's panel.
+            is_string($user) && $user !== '' ? $user : null,
         )]);
     }
 

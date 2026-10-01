@@ -76,6 +76,43 @@ class TimeClockStatsTest extends TestCase
         $this->assertSame('2026-09-28', $data['period']['from']);
     }
 
+    /**
+     * `?user=`: one person and their days, for the Dashboard's panel (UI/UX,
+     * 2026-10-01). Usual times count scheduled days only: the Sunday call-in
+     * to 6:30 PM would put the usual clock-out at 4:30 PM instead of 3:30.
+     */
+    public function test_one_person_carries_their_days_and_usual_times_skip_unscheduled_days(): void
+    {
+        [$alpha, $viewer, $ana] = $this->tenant();
+        $this->shift($alpha['org'], $ana, '2026-09-27 14:00', '2026-09-27 22:30'); // Sunday 10:00-18:30
+        $this->shift($alpha['org'], $ana, '2026-09-28 12:02', '2026-09-28 20:00');
+        $this->shift($alpha['org'], $ana, '2026-09-29 12:20', '2026-09-29 16:00');
+        $this->shift($alpha['org'], $ana, '2026-09-29 16:30', '2026-09-29 19:00');
+
+        $row = $this->signedInAs($viewer)
+            ->getJson("/api/v1/hr/time-clock/stats?from=2026-09-27&to=2026-10-01&user={$ana->id}")
+            ->assertOk()->assertJsonCount(1, 'data.people')->json('data.people.0');
+
+        $this->assertSame('3:30 PM', $row['average_out']);
+        $this->assertSame(['2026-10-01', '2026-09-30', '2026-09-29', '2026-09-28', '2026-09-27'], array_column($row['days'], 'date'));
+
+        $tuesday = $row['days'][2];
+        $this->assertSame(['start' => '8:00 AM', 'end' => '4:00 PM'], $tuesday['scheduled']);
+        $this->assertSame('8:20 AM', $tuesday['first_in']);
+        $this->assertSame('3:00 PM', $tuesday['last_out']);
+        $this->assertSame(20, $tuesday['late_minutes']);
+        $this->assertSame(60, $tuesday['left_early_minutes']);
+        $this->assertSame(2, $tuesday['shifts']);
+
+        $this->assertTrue($row['days'][1]['missed'], 'Wednesday');
+        $this->assertNull($row['days'][4]['scheduled'], 'Sunday is not scheduled');
+        $this->assertFalse($row['days'][0]['missed'], 'today is not over');
+
+        $elsewhere = $this->provisionTenant('Beta');
+        $stranger = $this->userWithRole($elsewhere, 'Tech', ['time_clock.view'], 'x@beta.test');
+        $this->signedInAs($viewer)->getJson("/api/v1/hr/time-clock/stats?user={$stranger->id}")->assertNotFound();
+    }
+
     public function test_the_numbers_need_the_tab_and_refuse_a_period_too_long(): void
     {
         [$alpha, $viewer] = $this->tenant();
