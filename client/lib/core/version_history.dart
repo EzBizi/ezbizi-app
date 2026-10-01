@@ -23,6 +23,10 @@ class VersionHistory {
         'Dashboard: New customers counts the day someone became a customer, so the A1 Tools import no longer reads as tens of thousands of new customers this week.',
         'Inventory: Stock, Items and Locations read their totals from the server, so what a role may not see reads as unknown rather than zero.',
         'Work Hours: editing opens a side panel, and on a phone a person opens inside the tab.',
+        'Website live chat: visitors give their name, phone, ZIP and email before chatting, so every chat lead arrives with them.',
+        'Onboarding: each term that may not apply has a tick and a cross beside it, linked terms go together, State comes before County, and the contract preview highlights what changed.',
+        'Inventory: an open item shows its history, newest first: what was received, issued, moved, counted or sold, where, and by whom.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0338 and 0.0.0339, which reached the web first.',
       ],
     ),
     VersionRelease(
