@@ -132,6 +132,20 @@ class HrPeopleController extends Controller
             // One role (Jose, 2026-10-01: "on record i should be able to
             // filter by role too"). Here, not on the screen: the list pages.
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            // One company, with its sub-companies and their franchises, or one
+            // franchise (Jose, 2026-10-01: "adding division by company too
+            // aside from role"). Somebody placed only at organization level
+            // matches neither.
+            ->when($request->query('company_id'), function ($q, $companyId) {
+                $company = \App\Models\Company::query()->find($companyId);
+                $companies = $company?->subtreeCompanyIds() ?? [];
+                $franchises = \App\Models\Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
+                $q->whereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
+                    ->orWhereIn('assigned_franchise_id', $franchises));
+            })
+            ->when($request->query('franchise_id'), fn ($q, $franchiseId) => $q->whereHas(
+                'assignments', fn ($a) => $a->where('assigned_franchise_id', $franchiseId),
+            ))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function (Builder $inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")
