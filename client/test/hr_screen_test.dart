@@ -346,6 +346,29 @@ void main() {
     expect(queries.last.containsKey('role_id'), isFalse);
   });
 
+  // Jose, 2026-10-01: "see if you can improve records as well, by adding
+  // division by company too aside from role". On the server, like the role.
+  testWidgets('the records list filters by company or franchise on the '
+      'server', (tester) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('company_id'), isFalse);
+
+    await _choose(tester, 'Filter by company', 'Serenisima › Texas');
+    expect(queries.last['franchise_id'], 'fr-3');
+    expect(queries.last.containsKey('company_id'), isFalse);
+
+    await _choose(tester, 'Filter by company', 'Serenisima');
+    expect(queries.last['company_id'], 'co-1');
+    expect(queries.last.containsKey('franchise_id'), isFalse);
+
+    await _choose(tester, 'Filter by company', 'All companies');
+    expect(queries.last.containsKey('company_id'), isFalse);
+    expect(queries.last.containsKey('franchise_id'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (

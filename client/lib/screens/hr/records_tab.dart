@@ -72,6 +72,7 @@ class RecordsTab extends StatefulWidget {
 
   /// The role filter above the list.
   static const roleFilterKey = Key('hr.records.role');
+  static const placeFilterKey = Key('hr.records.place');
 
   @override
   State<RecordsTab> createState() => _RecordsTabState();
@@ -105,6 +106,11 @@ class _RecordsTabState extends State<RecordsTab> {
   /// One role, or every role when null (Jose, 2026-10-01). Asked of the
   /// server, because the list arrives a page at a time.
   String? _roleId;
+
+  /// One company with everything under it, or one franchise, or everywhere
+  /// when null (Jose, 2026-10-01: "adding division by company too aside from
+  /// role"): `company:<id>` or `franchise:<id>`. Asked of the server too.
+  String? _place;
 
   /// What a role may be changed TO, and which of those this person may hand
   /// out. The same answer the invite form uses, from the same endpoint: §4's
@@ -141,6 +147,38 @@ class _RecordsTabState extends State<RecordsTab> {
     super.dispose();
   }
 
+
+  /// The companies and franchises this person can see, each named by its
+  /// company ("A-1 Chimney › Ohio"), in that order.
+  List<SearchOption<String>> get _places {
+    final me = widget.session.me;
+    if (me == null) return const [];
+    final companies = {for (final c in me.companies) c.id: c};
+    String pathOf(String? companyId) {
+      final names = <String>[];
+      final seen = <String>{};
+      for (var c = companies[companyId];
+          c != null && seen.add(c.id);
+          c = companies[c.parentCompanyId]) {
+        names.insert(0, c.name);
+      }
+      return names.join(' › ');
+    }
+
+    final rows = [
+      for (final c in me.companies)
+        SearchOption(value: 'company:${c.id}', label: pathOf(c.id)),
+      for (final f in me.franchises)
+        SearchOption(
+          value: 'franchise:${f.id}',
+          label: [pathOf(f.companyId), f.name]
+              .where((part) => part.isNotEmpty)
+              .join(' › '),
+        ),
+    ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return rows;
+  }
+
   Future<void> _load({int page = 1}) async {
     if (page > 1 && _fetching) return;
 
@@ -159,6 +197,7 @@ class _RecordsTabState extends State<RecordsTab> {
         'page': '$page',
         if (_search.isNotEmpty) 'search': _search,
         'role_id': ?_roleId,
+        if (_place?.split(':') case [final kind, final id]) '${kind}_id': id,
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -387,6 +426,24 @@ class _RecordsTabState extends State<RecordsTab> {
               ],
               onChanged: (value) {
                 setState(() => _roleId = (value ?? '').isEmpty ? null : value);
+                _load();
+              },
+            ),
+          ),
+        if (_places case final places when places.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SearchPickerField<String>(
+              key: RecordsTab.placeFilterKey,
+              value: _place ?? '',
+              label: 'Filter by company',
+              border: const OutlineInputBorder(),
+              options: [
+                const SearchOption(value: '', label: 'All companies'),
+                ...places,
+              ],
+              onChanged: (value) {
+                setState(() => _place = (value ?? '').isEmpty ? null : value);
                 _load();
               },
             ),
