@@ -160,41 +160,50 @@ class _OwnershipTabState extends State<OwnershipTab> {
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          // Eight columns do not fit a laptop, let alone a phone. The TABLE
-          // scrolls sideways inside its card rather than the page scrolling,
-          // so the rest of the screen stays put.
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              const DataColumn(label: Text('User')),
-              const DataColumn(label: Text('Role')),
-              const DataColumn(label: Text('Desk')),
-              if (showPc) const DataColumn(label: Text('PC name')),
-              const DataColumn(label: Text('Status')),
-              if (showHours) const DataColumn(label: Text('Work days')),
-              if (showHours) const DataColumn(label: Text('Shift')),
-              const DataColumn(label: Text('Assignment')),
-              const DataColumn(label: Text('Office')),
-            ],
-            rows: [
-              for (final row in _rows)
-                DataRow(
-                  cells: [
-                    DataCell(Text(_name(row))),
-                    DataCell(_orDash(context, row['role'])),
-                    DataCell(_deskCell(row, canRename)),
-                    if (showPc) DataCell(_orDash(context, row['computer_name'])),
-                    DataCell(_StatusCell(online: row['online'] == true)),
-                    if (showHours) DataCell(_orDash(context, row['work_days'])),
-                    if (showHours) DataCell(_orDash(context, row['shift'])),
-                    DataCell(_orDash(context, row['assignment'])),
-                    DataCell(_orDash(context, row['office'])),
-                  ],
-                ),
-            ],
+      // The tab hands this a BOUNDED height (it sits in an Expanded), and a
+      // DataTable is as tall as its rows — so without a vertical scroll the
+      // rows past the fold are clipped and unreachable. Jose, 2026-10-01: "you
+      // also cant scroll down on the general tab." The phone `_list` is a
+      // ListView and already scrolls; this is the desktop table's missing axis.
+      child: SingleChildScrollView(
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: SingleChildScrollView(
+            // Eight columns do not fit a laptop, let alone a phone. The table
+            // scrolls SIDEWAYS inside its card; the vertical scroll above
+            // carries the rows.
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                const DataColumn(label: Text('User')),
+                const DataColumn(label: Text('Role')),
+                const DataColumn(label: Text('Desk')),
+                if (showPc) const DataColumn(label: Text('PC name')),
+                const DataColumn(label: Text('Status')),
+                if (showHours) const DataColumn(label: Text('Work days')),
+                if (showHours) const DataColumn(label: Text('Shift')),
+                const DataColumn(label: Text('Assignment')),
+                const DataColumn(label: Text('Office')),
+              ],
+              rows: [
+                for (final row in _rows)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(_name(row))),
+                      DataCell(_orDash(context, row['role'])),
+                      DataCell(_deskCell(row, canRename)),
+                      if (showPc)
+                        DataCell(_orDash(context, row['computer_name'])),
+                      DataCell(_StatusCell(online: row['online'] == true)),
+                      if (showHours)
+                        DataCell(_orDash(context, row['work_days'])),
+                      if (showHours) DataCell(_orDash(context, row['shift'])),
+                      DataCell(_orDash(context, row['assignment'])),
+                      DataCell(_orDash(context, row['office'])),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -230,8 +239,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
   Widget _list(BuildContext context) {
     final showPc = _rows.any((r) => r.containsKey('computer_name'));
     final showHours = _rows.any((r) => r.containsKey('work_days'));
-    final canRename =
-        widget.session.me?.can('monitoring.map.manage') ?? false;
+    final canRename = widget.session.me?.can('monitoring.map.manage') ?? false;
 
     String? text(Object? value) {
       final t = value?.toString().trim();
@@ -455,7 +463,10 @@ class _DeskCellState extends State<_DeskCell> {
     if (!_editing) {
       final text = widget.label?.isNotEmpty == true
           ? Text(widget.label!)
-          : Text('—', style: TextStyle(color: theme.colorScheme.outlineVariant));
+          : Text(
+              '—',
+              style: TextStyle(color: theme.colorScheme.outlineVariant),
+            );
 
       if (_seatable) return _seatPicker(context, text);
 
@@ -528,7 +539,11 @@ class _DeskCellState extends State<_DeskCell> {
           children: [
             text,
             const SizedBox(width: 6),
-            Icon(Icons.info_outline, size: 13, color: theme.colorScheme.outlineVariant),
+            Icon(
+              Icons.info_outline,
+              size: 13,
+              color: theme.colorScheme.outlineVariant,
+            ),
           ],
         ),
       );
