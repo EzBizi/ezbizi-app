@@ -54,6 +54,7 @@ import '../../core/theme.dart';
 import '../../core/ui_strings.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/user_avatar.dart';
@@ -98,12 +99,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   _Week? _week;
   String? _personId;
 
-  /// The same week, for a phone's pushed person screen: it is a separate
-  /// route, so a correction made on it has to reach it through something it
-  /// listens to rather than through this State's rebuild.
-  final _weekNotifier = ValueNotifier<_Week?>(null);
-
   String _search = '';
+
+  /// On a phone, the person drawn in place of the list.
+  String? _phoneOpenId;
 
   /// Jose, 2026-09-30: "by default it only shows people who have clocked in
   /// on that week … most recent on the top". Everyone else is one tap away,
@@ -124,12 +123,6 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _weekNotifier.dispose();
-    super.dispose();
-  }
-
   Map<String, String>? get _onQuery => _on == null ? null : {'on': _on!};
   String get _onSuffix => _on == null ? '' : '?on=$_on';
 
@@ -147,7 +140,6 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     }
 
     setState(() => _week = _Week.from(data));
-    _weekNotifier.value = _week;
   }
 
   /// Somebody without `work_hours.manage` gets one item, on their own
@@ -299,7 +291,6 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
 
       final data = response.body['data'] as Map<String, dynamic>?;
       _week = _Week.from(data);
-      _weekNotifier.value = _week;
       // Only present for `work_hours.manage` (TimeClockController::week).
       _requests = List<Map<String, dynamic>>.from(
         data?['correction_requests'] as List? ?? const [],
@@ -472,6 +463,41 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   // ── mobile 4: the list, tap through to a person ──────────────────
 
   Widget _narrow(BuildContext context) {
+    final open = _week?.people.where((p) => p.id == _phoneOpenId).firstOrNull;
+    if (open != null) {
+      // The person draws in the tab's own area with its own way back, never
+      // as a pushed full-screen page (Jose's containment rule).
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => setState(() => _phoneOpenId = null),
+              ),
+              Expanded(
+                child: Text(
+                  open.name,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          Expanded(
+            child: _PersonWeek(
+              api: widget.api,
+              person: open,
+              week: _week!,
+              actions: _actions,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -558,34 +584,8 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                         return;
                       }
 
-                      final id = people[i].id;
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) => Scaffold(
-                            appBar: AppBar(title: Text(people[i].name)),
-                            // Rebuilt from the notifier, so a correction made
-                            // on this pushed screen shows on it.
-                            body: ValueListenableBuilder<_Week?>(
-                              valueListenable: _weekNotifier,
-                              builder: (context, week, _) {
-                                final person = week?.people
-                                    .where((p) => p.id == id)
-                                    .firstOrNull;
-                                if (week == null || person == null) {
-                                  return const SizedBox.shrink();
-                                }
-
-                                return _PersonWeek(
-                                  api: widget.api,
-                                  person: person,
-                                  week: week,
-                                  actions: _actions,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
+                      // In place, not pushed: the containment rule.
+                      setState(() => _phoneOpenId = people[i].id);
                     },
                   ),
                 ),
@@ -1692,10 +1692,10 @@ class _MenuButton extends StatelessWidget {
 
 Future<bool> _confirmDelete(BuildContext context) async {
   final labels = MaterialLocalizations.of(context);
-  final yes = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      content: Text(UiStrings.t('time_clock.delete_confirm')),
+  final yes = await showSidePanel<bool>(
+    context,
+    builder: (context) => SidePanel(
+      title: UiStrings.t('time_clock.action.delete'),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -1709,6 +1709,7 @@ Future<bool> _confirmDelete(BuildContext context) async {
           child: Text(UiStrings.t('time_clock.action.delete')),
         ),
       ],
+      child: Text(UiStrings.t('time_clock.delete_confirm')),
     ),
   );
 
@@ -1736,8 +1737,8 @@ Future<Map<String, dynamic>?> _editTimes(
   _Shift shift, {
   bool request = false,
 }) {
-  return showDialog<Map<String, dynamic>>(
-    context: context,
+  return showSidePanel<Map<String, dynamic>>(
+    context,
     builder: (context) => _EditTimesDialog(shift: shift, request: request),
   );
 }
@@ -1816,15 +1817,33 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
         (_out == null || _out!.isAfter(_in!)) &&
         (!widget.request || _reason.text.trim().isNotEmpty);
 
-    return AlertDialog(
-      title: Text(
-        UiStrings.t(
-          widget.request
-              ? 'time_clock.action.request'
-              : 'time_clock.action.edit',
-        ),
+    return SidePanel(
+      title: UiStrings.t(
+        widget.request ? 'time_clock.action.request' : 'time_clock.action.edit',
       ),
-      content: SizedBox(
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: !valid
+              ? null
+              : () => Navigator.of(context).pop(<String, dynamic>{
+                  'clocked_in_at': _formatLocal(_in!),
+                  // Absent keeps an open shift open; the server refuses a
+                  // finished one being reopened anyway.
+                  if (_out != null) 'clocked_out_at': _formatLocal(_out!),
+                  if (widget.request) 'reason': _reason.text.trim(),
+                }),
+          child: Text(
+            widget.request
+                ? UiStrings.t('time_clock.request_send')
+                : labels.saveButtonLabel,
+          ),
+        ),
+      ],
+      child: SizedBox(
         width: 380,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1859,28 +1878,6 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(labels.cancelButtonLabel),
-        ),
-        FilledButton(
-          onPressed: !valid
-              ? null
-              : () => Navigator.of(context).pop(<String, dynamic>{
-                  'clocked_in_at': _formatLocal(_in!),
-                  // Absent keeps an open shift open; the server refuses a
-                  // finished one being reopened anyway.
-                  if (_out != null) 'clocked_out_at': _formatLocal(_out!),
-                  if (widget.request) 'reason': _reason.text.trim(),
-                }),
-          child: Text(
-            widget.request
-                ? UiStrings.t('time_clock.request_send')
-                : labels.saveButtonLabel,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1892,33 +1889,39 @@ Future<Map<String, dynamic>?> _chooseTag(
   BuildContext context,
   String? current,
 ) {
-  return showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (context) => SimpleDialog(
-      title: Text(UiStrings.t('time_clock.action.tag')),
-      children: [
-        for (final tag in [null, ..._tags])
-          SimpleDialogOption(
-            onPressed: () =>
-                Navigator.of(context).pop(<String, dynamic>{'tag': tag}),
-            child: Row(
-              children: [
-                Icon(
-                  tag == current
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                  size: 18,
+  return showSidePanel<Map<String, dynamic>>(
+    context,
+    builder: (context) => SidePanel(
+      title: UiStrings.t('time_clock.action.tag'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final tag in [null, ..._tags])
+            InkWell(
+              onTap: () =>
+                  Navigator.of(context).pop(<String, dynamic>{'tag': tag}),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      tag == current
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      tag == null
+                          ? UiStrings.t('time_clock.no_tag')
+                          : UiStrings.t('time_clock.tag.$tag'),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  tag == null
-                      ? UiStrings.t('time_clock.no_tag')
-                      : UiStrings.t('time_clock.tag.$tag'),
-                ),
-              ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 }
@@ -1929,11 +1932,29 @@ Future<Map<String, dynamic>?> _chooseExtra(BuildContext context, int current) {
   final minutes = TextEditingController(text: '${current % 60}');
   final labels = MaterialLocalizations.of(context);
 
-  return showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(UiStrings.t('time_clock.action.extra')),
-      content: Row(
+  return showSidePanel<Map<String, dynamic>>(
+    context,
+    builder: (context) => SidePanel(
+      title: UiStrings.t('time_clock.action.extra'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: () {
+            final total =
+                (int.tryParse(hours.text.trim()) ?? 0) * 60 +
+                (int.tryParse(minutes.text.trim()) ?? 0);
+            // The server refuses outside 0..1440 with its own sentence.
+            Navigator.of(
+              context,
+            ).pop(<String, dynamic>{'extra_minutes': total});
+          },
+          child: Text(labels.saveButtonLabel),
+        ),
+      ],
+      child: Row(
         children: [
           Expanded(
             child: TextField(
@@ -1956,24 +1977,6 @@ Future<Map<String, dynamic>?> _chooseExtra(BuildContext context, int current) {
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(labels.cancelButtonLabel),
-        ),
-        FilledButton(
-          onPressed: () {
-            final total =
-                (int.tryParse(hours.text.trim()) ?? 0) * 60 +
-                (int.tryParse(minutes.text.trim()) ?? 0);
-            // The server refuses outside 0..1440 with its own sentence.
-            Navigator.of(
-              context,
-            ).pop(<String, dynamic>{'extra_minutes': total});
-          },
-          child: Text(labels.saveButtonLabel),
-        ),
-      ],
     ),
   );
 }
@@ -1986,19 +1989,10 @@ Future<Map<String, dynamic>?> _writeNote(
   final text = TextEditingController(text: current ?? '');
   final labels = MaterialLocalizations.of(context);
 
-  return showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(UiStrings.t('time_clock.action.note')),
-      content: SizedBox(
-        width: 380,
-        child: TextField(
-          controller: text,
-          maxLines: 4,
-          maxLength: 2000,
-          autofocus: true,
-        ),
-      ),
+  return showSidePanel<Map<String, dynamic>>(
+    context,
+    builder: (context) => SidePanel(
+      title: UiStrings.t('time_clock.action.note'),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2011,6 +2005,15 @@ Future<Map<String, dynamic>?> _writeNote(
           child: Text(labels.saveButtonLabel),
         ),
       ],
+      child: SizedBox(
+        width: 380,
+        child: TextField(
+          controller: text,
+          maxLines: 4,
+          maxLength: 2000,
+          autofocus: true,
+        ),
+      ),
     ),
   );
 }
