@@ -105,6 +105,11 @@ class WebChatPeopleTest extends TestCase
         $this->assertSame('13057242199', $lead->phone_digits);
         $this->assertSame('joseph@example.com', $lead->email);
         $this->assertSame('07102', $event->payload['after']['zip']);
+        $this->assertSame('07102', $lead->postal_code);
+
+        // Leads shows it, so the service-area check has a ZIP to read.
+        $this->assertSame('07102', $this->signedInAs($t['admin'])->getJson('/api/v1/leads/'.$lead->getKey())->json('data.details.zip'));
+        auth()->forgetGuards();
 
         $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi', 'zip' => 'abc'])->assertStatus(422);
     }

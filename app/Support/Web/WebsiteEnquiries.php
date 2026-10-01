@@ -326,6 +326,8 @@ final class WebsiteEnquiries
             'phone' => $phone !== '' ? $phone : null,
             'phone_digits' => $phone !== null && $phone !== '' ? Lead::digits($phone) : null,
             'email' => $visitor['email'] ?? null,
+            // Five digits, or ZIP+4, as the chat sends it.
+            'postal_code' => preg_match('/^\d{5}(?:-\d{4})?$/', (string) ($visitor['zip'] ?? '')) === 1 ? $visitor['zip'] : null,
             'marketing_consent_at' => $consented ? now() : null,
             'marketing_consent_text' => $consented ? mb_substr($consentText, 0, 500) : null,
             'summary' => $site->host,

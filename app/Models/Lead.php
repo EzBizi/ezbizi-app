@@ -349,10 +349,11 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             new PersonalDataEntry('contact_name', PersonalDataEntry::IDENTITY,
                 'Who to ask for when the business calls back.',
                 Erasure::erase('Removed enquirer')),
-            new PersonalDataEntry('phone, phone_digits, email', PersonalDataEntry::CONTACT,
+            new PersonalDataEntry('phone, phone_digits, email, postal_code', PersonalDataEntry::CONTACT,
                 'How the business returns the enquiry. `phone_digits` is the same number '
                 .'with the punctuation removed so a search matches however either side '
-                .'wrote it — a second copy of the same personal data, and erased with it.',
+                .'wrote it — a second copy of the same personal data, and erased with it. '
+                .'`postal_code` is the ZIP they gave, which says roughly where they live.',
                 Erasure::erase()),
             new PersonalDataEntry('summary', PersonalDataEntry::CONTENT,
                 'What the person said they wanted, in their own words or transcribed from '
@@ -405,7 +406,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
 
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id', 'job_matched_by',
-        'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
+        'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits', 'postal_code',
         'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
