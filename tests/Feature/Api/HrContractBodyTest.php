@@ -641,8 +641,10 @@ class HrContractBodyTest extends TestCase
 
         $this->signAsEmployer($alpha['admin'], $onboarding);
 
+        // Revision 1 by number: since 2026-10-01 the employer signs first and
+        // the plain endpoint shows the live form until the employee signs.
         $signed = $this->as($alpha['admin'])
-            ->getJson("/api/v1/hr/onboardings/{$onboarding}/document")->assertOk();
+            ->getJson("/api/v1/hr/onboardings/{$onboarding}/document?revision=1")->assertOk();
 
         $this->assertFalse($signed->json('data.is_preview'), 'The document was never stored.');
 
