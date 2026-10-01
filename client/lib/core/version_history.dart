@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0335',
+      date: '1 Oct 2026',
+      items: [
+        'Field, Map: pick the day. Back and forward arrows, a date picker and Today change the jobs shown and the route you can replay. Search people by name. Company headquarters appear on the map with their logo, once a company has an address.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0334',
       date: '1 Oct 2026',
       items: [
