@@ -651,6 +651,33 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * UI queue 39: the summary is Markdown an email renders as structure, one
+     * heading per day with its areas under it, and a name's own punctuation
+     * stays text rather than becoming emphasis.
+     */
+    public function test_the_warning_summary_puts_each_day_over_its_areas(): void
+    {
+        $row = fn (string $date, string $name, ?string $franchise, int $booked, int $capacity, bool $closed = false, string $level = 'area') => [
+            'date' => $date, 'level' => $level, 'name' => $name, 'franchise_name' => $franchise,
+            'booked' => $booked, 'capacity' => $capacity, 'over' => $booked - $capacity, 'closed' => $closed,
+        ];
+
+        $summary = \App\Console\Commands\SchedulingWarnOverbooking::summary([
+            $row('2026-10-05', 'Dallas', 'Texas', 4, 3),
+            $row('2026-10-05', 'St. *Louis*', null, 2, 0, closed: true),
+            $row('2026-10-06', 'Texas', null, 9, 8, level: 'franchise'),
+        ], []);
+
+        $this->assertSame(1, substr_count($summary, '**Mon Oct 5**'), 'one heading per day');
+        $this->assertStringContainsString(
+            "**Mon Oct 5**\n\n- Texas › Dallas: 4 booked of 3 (1 over)\n- St\\. \\*Louis\\*: 2 booked on a closed day",
+            $summary,
+        );
+        $this->assertStringContainsString("**Tue Oct 6**\n\n- Texas (whole franchise): 9 booked of 8 (1 over)", $summary);
+        $this->assertStringStartsWith('## OVERBOOKED', $summary);
+    }
+
+    /**
      * A WEEK SCHEDULED AHEAD (Eve, 2026-09-29: "change automatically starting
      * from October 30"). Dallas takes 2 + 1 on Mondays; from Monday Oct 12 it
      * takes 5 in one window. The Monday before keeps the old numbers.

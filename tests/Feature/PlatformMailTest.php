@@ -835,33 +835,74 @@ class PlatformMailTest extends TestCase
         $this->assertStringNotContainsString('&#039;', $composed);
     }
 
-    public function test_an_automation_message_has_no_html_part(): void
+    public function test_an_automation_message_shows_a_businesss_html_as_text(): void
     {
         /*
-         * THIS is what makes the unescaped body safe, and it is not the view.
+         * THE DECISION THE OLD GUARD ASKED FOR (UI queue 39, 2026-10-01).
          *
-         * text/plain has no markup context, so an escape there protects nothing
-         * and only corrupts apostrophes. Add an ->html() alternative and the
-         * same tenant-authored body becomes markup in a rendering context —
-         * which is the injection the escape would genuinely have been for.
+         * This test used to assert there was no HTML part at all, so that
+         * whoever added one had to decide about escaping. Jose asked for every
+         * automation email in EzBizi's colours, so there is one now, and the
+         * decision is: the body is Markdown with HTML input ESCAPED and unsafe
+         * links dropped. A tag a business types reads as the tag; a script is
+         * text; a javascript: link is not a link.
          *
-         * So the guard lives on the property that actually holds the safety.
-         * Adding an HTML part goes red here, and whoever adds it has to make a
-         * decision about escaping rather than inherit one made when the only
-         * part was plain text.
+         * Asserted on the rendered MIME, as the text-part tests above are.
          */
-        $message = $this->renderedAutomation('Anything at all.');
-
-        $this->assertNull(
-            $message->getHtmlBody(),
-            'AutomationMessage grew an HTML part. The body is a tenant-authored string '
-            .'rendered unescaped, which is safe in text/plain and is an injection in '
-            .'markup — decide about escaping before this test is changed.',
+        $message = $this->renderedAutomation(
+            "<b>hi</b> <script>alert(1)</script>\n\n[click](javascript:alert(1)) **bold**",
         );
+        $html = (string) $message->getHtmlBody();
 
-        // The control: there IS a text part, so this cannot pass by the message
-        // having rendered nothing.
-        $this->assertNotNull($message->getTextBody());
+        $this->assertStringContainsString('&lt;b&gt;hi&lt;/b&gt;', $html);
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringNotContainsString('javascript:', $html);
+        // The control: Markdown itself still becomes markup, so the escaping
+        // above is not passing because nothing was rendered.
+        $this->assertMatchesRegularExpression('/<strong[^>]*>bold<\/strong>/', $html);
+    }
+
+    public function test_markdown_becomes_structure_and_the_text_part_stays_words(): void
+    {
+        $message = $this->renderedAutomation(
+            "## Overbooked\n\n**Mon Oct 5**\n\n- Dallas: 4 booked of 3 (1 over)\n\nA stranger's 4\\.5\\*",
+        );
+        $html = (string) $message->getHtmlBody();
+        $text = (string) $message->getTextBody();
+
+        $this->assertMatchesRegularExpression('/<h2[^>]*>Overbooked<\/h2>/', $html);
+        $this->assertMatchesRegularExpression('/<li[^>]*>Dallas: 4 booked of 3 \(1 over\)<\/li>/', $html);
+
+        $this->assertStringContainsString("Overbooked\n", $text);
+        $this->assertStringContainsString("Mon Oct 5\n", $text);
+        $this->assertStringNotContainsString('##', $text);
+        $this->assertStringNotContainsString('**', $text);
+        $this->assertStringContainsString("A stranger's 4.5*", $text, 'the escapes come out of the words');
+    }
+
+    /**
+     * Who is speaking, said by the band: a business's message carries its name
+     * and "via EzBizi"; only one EzBizi composed (a kind) takes the EzBizi band.
+     */
+    public function test_the_band_names_the_business_unless_ezbizi_composed_it(): void
+    {
+        $business = (string) $this->renderedAutomation('Your sweep is booked.')->getHtmlBody();
+
+        $this->assertStringContainsString('A-1 Chimney', $business);
+        $this->assertStringContainsString('via EzBizi', $business);
+        $this->assertStringNotContainsString('Overbooking found', $business);
+
+        $composed = new AutomationMessage('A subject', '## OVERBOOKED', 'A-1 Chimney', kind: 'Overbooking found');
+        $composed->from('noreply@ezbizi.test', 'EzBizi');
+        $mailer = Mail::build(['transport' => 'array']);
+        $mailer->to('dispatch@example.test')->send($composed);
+        $html = (string) collect($mailer->getSymfonyTransport()->messages())->last()
+            ->getOriginalMessage()->getHtmlBody();
+
+        $this->assertStringContainsString('Overbooking found', $html);
+        $this->assertStringNotContainsString('via EzBizi', $html);
+        $this->assertStringContainsString('Sent by A-1 Chimney through EzBizi', $html);
     }
 
     /** The message as Symfony built it, composed locally and sent nowhere. */

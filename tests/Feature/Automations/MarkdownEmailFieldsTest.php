@@ -51,8 +51,10 @@ class MarkdownEmailFieldsTest extends TestCase
         $this->assertSame("## Monday\n- North",
             $this->fill('{{summary}}', 'test.composed', ['summary' => "## Monday\n- North"], true));
 
-        // And while the layout is still plain text, nothing changes at all.
-        $this->assertSame('Said: '.$phish,
+        // And the real email path is the escaping one: the branded layout is on
+        // (UI queue 39), so what ActionRunner passes for the flag escapes too.
+        $this->assertTrue(AutomationMessage::RENDERS_MARKDOWN);
+        $this->assertSame('Said: \[Your invoice\]\(https://evil\.example\)',
             $this->fill('Said: {{subject}}', 'email.received', ['subject' => $phish], AutomationMessage::RENDERS_MARKDOWN));
     }
 }

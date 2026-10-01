@@ -10,7 +10,7 @@ body *:not(html):not(style):not(br):not(tr):not(code) {
 
 body {
     -webkit-text-size-adjust: none;
-    background-color: #ffffff;
+    background-color: #F5F8FA;
     color: #5B6672;
     height: 100%;
     line-height: 1.4;
@@ -28,7 +28,7 @@ blockquote {
 }
 
 a {
-    color: #00AEEF;
+    color: #00708F;
 }
 
 a img {
@@ -39,8 +39,8 @@ a img {
 
 h1 {
     color: #060808;
-    font-size: 18px;
-    font-weight: bold;
+    font-size: 20px;
+    font-weight: 800;
     margin-top: 0;
     text-align: start;
 }
@@ -95,28 +95,40 @@ img {
     width: 100%;
 }
 
-/* Header */
+/* Header: the sign-in page's navy band, the top of the card (UI queue 39) */
 
 .header {
-    padding: 25px 0;
+    padding: 25px 0 0;
     text-align: center;
 }
 
-.header a {
-    color: #00AEEF;
-    font-size: 19px;
-    font-weight: bold;
+.band {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    background-color: #0A2233;
+    background-image: linear-gradient(135deg, #071018, #0A2233 55%, #06384E);
+    border-radius: 12px 12px 0 0;
+    margin: 0 auto;
+    width: 570px;
+}
+
+.band-cell {
+    padding: 16px 22px;
+    text-align: left;
+}
+
+.wordmark {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
     text-decoration: none;
 }
 
-/* Logo */
-
-.logo {
-    height: 44px;
-    margin-top: 15px;
-    margin-bottom: 10px;
-    max-height: 44px;
-    width: 120px;
+.band-icon {
+    border-radius: 7px;
+    margin-right: 8px;
+    vertical-align: middle;
 }
 
 /* Body */
@@ -138,10 +150,9 @@ img {
     -premailer-cellspacing: 0;
     -premailer-width: 570px;
     background-color: #ffffff;
-    border-color: #E9EDF1;
-    border-radius: 4px;
-    border-width: 1px;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    border: 1px solid #E3E9EC;
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
     margin: 0 auto;
     padding: 0;
     width: 570px;
@@ -230,7 +241,8 @@ img {
 
 .button {
     -webkit-text-size-adjust: none;
-    border-radius: 4px;
+    border-radius: 10px;
+    font-weight: 700;
     color: #fff;
     display: inline-block;
     overflow: hidden;
@@ -239,11 +251,11 @@ img {
 
 .button-blue,
 .button-primary {
-    background-color: #00AEEF;
-    border-bottom: 8px solid #00AEEF;
-    border-left: 18px solid #00AEEF;
-    border-right: 18px solid #00AEEF;
-    border-top: 8px solid #00AEEF;
+    background-color: #00708F;
+    border-bottom: 10px solid #00708F;
+    border-left: 18px solid #00708F;
+    border-right: 18px solid #00708F;
+    border-top: 10px solid #00708F;
 }
 
 .button-green,
@@ -267,7 +279,7 @@ img {
 /* Panels */
 
 .panel {
-    border-left: #00AEEF solid 4px;
+    border-left: #00B4D8 solid 4px;
     margin: 21px 0;
 }
 

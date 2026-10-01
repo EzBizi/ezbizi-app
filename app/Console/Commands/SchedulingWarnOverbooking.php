@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\ServiceArea;
+use App\Support\Automations\ActionRunner;
 use App\Support\Automations\EventEmitter;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
@@ -64,7 +65,11 @@ class SchedulingWarnOverbooking extends Command
     }
 
     /**
-     * The warning as plain text: automation emails are sent as written.
+     * The warning as Markdown, days under headings (UI queue 39: Jose wanted
+     * it "more formatted ... not just text"). The trigger declares `summary`
+     * EzBizi-composed, so an email renders this as structure; the email's text
+     * part takes the marks back out. Area and franchise names are escaped: they
+     * are typed by somebody, and a name with a * in it is not emphasis.
      *
      * @param  array<int, array<string, mixed>>  $over
      * @param  array<int, array<string, mixed>>  $full
@@ -72,18 +77,24 @@ class SchedulingWarnOverbooking extends Command
     public static function summary(array $over, array $full): string
     {
         $day = fn (string $d) => CarbonImmutable::parse($d)->format('D M j');
+        $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
         $lines = [];
 
         if ($over !== []) {
-            $lines[] = 'OVERBOOKED:';
-            foreach ($over as $r) {
-                $who = $r['level'] === 'franchise'
-                    ? "{$r['name']} (whole franchise)"
-                    : ($r['franchise_name'] !== null ? "{$r['franchise_name']} › {$r['name']}" : $r['name']);
-                $what = $r['closed']
-                    ? "{$r['booked']} booked on a closed day"
-                    : "{$r['booked']} booked of {$r['capacity']} ({$r['over']} over)";
-                $lines[] = "- {$day($r['date'])} · {$who}: {$what}";
+            $lines[] = '## OVERBOOKED';
+            foreach (collect($over)->groupBy('date') as $date => $rows) {
+                $lines[] = '';
+                $lines[] = "**{$day((string) $date)}**";
+                $lines[] = '';
+                foreach ($rows as $r) {
+                    $who = $r['level'] === 'franchise'
+                        ? "{$name($r['name'])} (whole franchise)"
+                        : ($r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']));
+                    $what = $r['closed']
+                        ? "{$r['booked']} booked on a closed day"
+                        : "{$r['booked']} booked of {$r['capacity']} ({$r['over']} over)";
+                    $lines[] = "- {$who}: {$what}";
+                }
             }
         }
 
@@ -91,9 +102,10 @@ class SchedulingWarnOverbooking extends Command
             if ($lines !== []) {
                 $lines[] = '';
             }
-            $lines[] = 'FULLY BOOKED, no spot left in the next '.self::DAYS.' days:';
+            $lines[] = '## FULLY BOOKED, no spot left in the next '.self::DAYS.' days';
+            $lines[] = '';
             foreach ($full as $r) {
-                $who = $r['franchise_name'] !== null ? "{$r['franchise_name']} › {$r['name']}" : $r['name'];
+                $who = $r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']);
                 $next = $r['next_opening'] !== null ? 'next opening '.$day($r['next_opening']) : 'no opening found';
                 $lines[] = "- {$who} ({$next})";
             }

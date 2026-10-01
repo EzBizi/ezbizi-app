@@ -1210,8 +1210,9 @@ class ModuleServiceProvider extends ServiceProvider
                  * The first booking event (Jose, 2026-09-29: a warning email
                  * when a service area is overbooked or fully booked for the
                  * next 7 days). Raised once each morning by
-                 * scheduling:warn-overbooking with a plain-text `summary`; who
-                 * is told is an automation on it.
+                 * scheduling:warn-overbooking with a Markdown `summary`, days
+                 * under headings, declared composed so an email renders it as
+                 * structure (UI queue 39); who is told is an automation on it.
                  */
                 // The warning covers every area, so it is filed against the
                 // organization, as Organization settings files its events.
@@ -1221,6 +1222,7 @@ class ModuleServiceProvider extends ServiceProvider
                         'scheduling.overbooking_found',
                         'Overbooking found',
                         'Each morning, when a service area is overbooked or has no spot left in the next 7 days. Its summary lists them.',
+                        composedFields: ['summary'],
                     ),
                 ],
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
