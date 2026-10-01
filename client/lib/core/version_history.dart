@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Onboarding: you can save your drawn signature and reuse it on the next contract. The contract preview now reads as the printed page, in light and dark mode.',
+        'Work Hours: Add shift for HR, request hours for a day you didn\'t clock, and approved requests read Shift corrected.',
       ],
     ),
     VersionRelease(
