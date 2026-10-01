@@ -1,0 +1,357 @@
+<?php
+
+namespace Tests\Feature\Monitoring;
+
+use App\Models\AuditEvent;
+use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\MonitoredDevice;
+use App\Models\PlatformStaff;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Remote file access (2026-10-01-monitoring-files) — a manager browsing and
+ * downloading a monitored machine's files, a round trip over the Remote
+ * Control poll channel: the manager queues a request, the agent pulls it
+ * read-once, answers into a per-request slot, and the manager collects it.
+ *
+ * Mirrors RemoteControlTest's shape — the same beat/deviceFor helpers, the
+ * same §3, gating and exemption cases — one grant away: `monitoring.files.view`
+ * rather than `monitoring.control`.
+ */
+class FilesTest extends TestCase
+{
+    use BuildsTenants, RefreshDatabase;
+
+    private const REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+
+    private function beat($user, string $deviceKey = 'dk-1'): void
+    {
+        $this->signedInAs($user)->postJson('/api/v1/monitoring/heartbeat', [
+            'device_key' => $deviceKey, 'platform' => 'windows', 'capabilities' => ['screenshot'],
+        ])->assertNoContent();
+    }
+
+    private function deviceFor($user, string $deviceKey = 'dk-1'): MonitoredDevice
+    {
+        return MonitoredDevice::withoutGlobalScopes()
+            ->where('user_id', $user->getKey())
+            ->where('device_key', $deviceKey)
+            ->firstOrFail();
+    }
+
+    private function leadStaff(string $email): PlatformStaff
+    {
+        return PlatformStaff::create([
+            'name' => 'Dev '.$email,
+            'email' => $email,
+            'password' => 'a-sufficiently-long-staff-password',
+            'tier' => PlatformStaff::TIER_LEAD,
+            'is_active' => true,
+        ]);
+    }
+
+    // ── the whole round trip: request → agent pulls → agent answers → manager collects ──
+
+    public function test_a_listing_request_travels_to_the_agent_and_its_answer_comes_back(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        // Manager asks for a listing.
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
+                'op' => 'list', 'path' => 'C:\\Users\\toula',
+            ])
+            ->assertOk()
+            ->json('data.request_id');
+
+        $this->assertNotEmpty($requestId);
+
+        // Before the agent answers, the manager's poll says pending — not an
+        // error, not an empty listing that reads as "the folder is empty".
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => ['status' => 'pending']]);
+
+        // Agent pulls what it should do.
+        $pulled = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertOk()
+            ->json('data.requests');
+
+        $this->assertCount(1, $pulled);
+        $this->assertSame('list', $pulled[0]['op']);
+        $this->assertSame('C:\\Users\\toula', $pulled[0]['path']);
+        $this->assertSame($requestId, $pulled[0]['id']);
+
+        // Agent answers.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1',
+                'status' => 'ready',
+                'op' => 'list',
+                'path' => 'C:\\Users\\toula',
+                'entries' => [
+                    ['name' => 'Documents', 'is_dir' => true, 'size' => null, 'modified_at' => '2026-09-30T10:00:00Z'],
+                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size' => 20480, 'modified_at' => '2026-09-29T08:00:00Z'],
+                ],
+            ])
+            ->assertNoContent();
+
+        // Manager collects the answer.
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => [
+                'status' => 'ready',
+                'op' => 'list',
+                'path' => 'C:\\Users\\toula',
+                'entries' => [
+                    ['name' => 'Documents', 'is_dir' => true],
+                    ['name' => 'invoice.pdf', 'is_dir' => false, 'size' => 20480],
+                ],
+            ]]);
+    }
+
+    public function test_a_download_answer_carries_the_bytes_back(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
+                'op' => 'download', 'path' => 'C:\\Users\\toula\\invoice.pdf',
+            ])
+            ->assertOk()->json('data.request_id');
+
+        $bytes = base64_encode('the file body');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1',
+                'status' => 'ready',
+                'op' => 'download',
+                'name' => 'invoice.pdf',
+                'size' => 13,
+                'content_base64' => $bytes,
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => [
+                'status' => 'ready', 'op' => 'download', 'name' => 'invoice.pdf', 'content_base64' => $bytes,
+            ]]);
+    }
+
+    public function test_the_agent_can_report_an_error_the_manager_then_sees(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
+                'op' => 'list', 'path' => 'C:\\Windows\\System32\\config',
+            ])
+            ->assertOk()->json('data.request_id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'error', 'error' => 'access_denied',
+                'path' => 'C:\\Windows\\System32\\config',
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => ['status' => 'error', 'error' => 'access_denied']]);
+    }
+
+    // ── read-once pull ───────────────────────────────────────────────
+
+    public function test_the_agent_pulls_a_request_only_once(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->assertOk();
+
+        $first = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertOk()->json('data.requests');
+        $this->assertCount(1, $first);
+
+        // A retried or duplicated poll must not run the same operation twice.
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertOk()
+            ->assertJson(['data' => ['requests' => []]]);
+    }
+
+    // ── §2.2 audit: one row per path opened, listing vs download distinguished ──
+
+    public function test_each_request_writes_an_audit_row_naming_the_path(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\Users'])
+            ->assertOk();
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'download', 'path' => 'C:\\Users\\secret.txt'])
+            ->assertOk();
+
+        $rows = AuditEvent::withoutGlobalScopes()
+            ->where('organization_id', $alpha['org']->id)
+            ->whereIn('action', ['monitoring.files.listed', 'monitoring.files.downloaded'])
+            ->get();
+
+        $this->assertCount(2, $rows,
+            'Reading another person\'s files is audited per path, not once per session.');
+
+        $listed = $rows->firstWhere('action', 'monitoring.files.listed');
+        $downloaded = $rows->firstWhere('action', 'monitoring.files.downloaded');
+
+        $this->assertSame('C:\\Users', $listed->metadata['path'] ?? null);
+        $this->assertSame('C:\\Users\\secret.txt', $downloaded->metadata['path'] ?? null);
+        $this->assertSame($manager->getKey(), $listed->actor_id);
+        $this->assertSame($device->id, $listed->target_id);
+    }
+
+    // ── gating: monitoring.files.view is its own grant ───────────────
+
+    public function test_files_without_the_permission_is_refused_with_a_sentence(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        // Holds control AND screenshots, but not files — proves files.view is
+        // neither of them: seeing files is not driving the mouse nor watching
+        // the screen.
+        $other = $this->userWithRole($alpha, 'Driver', ['monitoring.control', 'monitoring.screenshots.view']);
+
+        $this->signedInAs($other)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->assertForbidden()
+            ->assertJsonStructure(['message']);
+
+        // And collecting an answer is gated too, not only asking.
+        $this->signedInAs($other)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/whatever')
+            ->assertForbidden();
+
+        // Control: the grant opens it.
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->assertOk();
+    }
+
+    // ── §3 reach ─────────────────────────────────────────────────────
+
+    public function test_a_sibling_orgs_manager_gets_404_requesting_files_on_another_devices(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $elsewhere = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $company = Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Other Co']);
+
+            return Franchise::create([
+                'organization_id' => $alpha['org']->id,
+                'company_id' => $company->id,
+                'name' => 'Other F1',
+            ]);
+        });
+
+        $theirs = $this->userWithRole($alpha, 'Distant', [], onlyAt: $elsewhere);
+        $this->beat($theirs, 'dk-distant');
+        $theirDevice = $this->deviceFor($theirs, 'dk-distant');
+
+        $manager = $this->userWithRole(
+            $alpha, 'Branch Manager', ['monitoring.files.view'], onlyAt: $alpha['franchise'],
+        );
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$theirDevice->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->assertNotFound();
+
+        // No request was queued for a device the manager cannot reach.
+        $this->signedInAs($theirs)
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-distant')
+            ->assertOk()
+            ->assertJson(['data' => ['requests' => []]]);
+    }
+
+    // ── the SECURITY exemption holds at every door ───────────────────
+
+    public function test_the_lead_developers_device_refuses_files_at_every_door(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->leadStaff(strtolower($alpha['admin']->email));
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        // The manager cannot open a request over the exempt machine.
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->assertForbidden()
+            ->assertJson(['message' => self::REFUSAL]);
+
+        // And the exempt machine's own agent is never handed a request to run.
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertForbidden()
+            ->assertJson(['message' => self::REFUSAL]);
+    }
+
+    // ── the inline download ceiling ──────────────────────────────────
+
+    public function test_a_download_over_the_inline_cap_comes_back_as_too_large(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'download', 'path' => 'C:\\big.iso'])
+            ->assertOk()->json('data.request_id');
+
+        // 7 MB of base64 — past the ~6.99 MB encoded ceiling (base64 of the
+        // 5 MB raw cap). The server retires it to too_large rather than parking
+        // it in the cache, even though the agent should have said so itself.
+        $tooBig = str_repeat('A', 7 * 1024 * 1024);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'ready', 'op' => 'download',
+                'name' => 'big.iso', 'size' => 7 * 1024 * 1024, 'content_base64' => $tooBig,
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => ['status' => 'error', 'op' => 'download', 'error' => 'too_large']]);
+    }
+}

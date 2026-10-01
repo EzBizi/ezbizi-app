@@ -41,4 +41,18 @@ class MonitoredDevicePolicy
             ? Response::allow()
             : Refusal::permission('control this device');
     }
+
+    /**
+     * Browse and download files on the device. Its own grant, apart from
+     * `control`: reading somebody's files and driving their mouse are
+     * different authorities an organization must be able to grant separately,
+     * the same reason `control` was split from `screenshots.view`. See
+     * FilesController.
+     */
+    public function files(User $user): Response
+    {
+        return $user->hasPermission('monitoring.files.view')
+            ? Response::allow()
+            : Refusal::permission('access files on this device');
+    }
 }
