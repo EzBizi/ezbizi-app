@@ -1160,7 +1160,10 @@ class _LeadThreadState extends State<LeadThread> {
           : c['automatic'] == true
           ? 'Automation'
           : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
-      final when = messageWhen(c['occurred_at'] as String?);
+      final when = messageWhen(
+        c['occurred_at'] as String?,
+        clock: widget.session?.me?.display.formatTime,
+      );
 
       final Widget body;
       if (c['channel'] == 'PHONE_CALL') {
@@ -1923,20 +1926,26 @@ String leadWhen(String? iso) {
       '${at.day.toString().padLeft(2, '0')}';
 }
 
-/// A message's time of day, 24-hour, and how long ago while that is still
-/// today's news - "13:23 · 57m ago"; past a day, the clock alone, since the
-/// day divider above already says which day (Jose, 2026-10-01: "see the time
-/// of the messages as well like 11:48 13:23").
-String messageWhen(String? iso) {
+/// A message's time of day, and how long ago while that is still today's
+/// news - "1:23 PM · 57m ago"; past a day, the time alone, since the day
+/// divider above already says which day (Jose, 2026-10-01: "see the time of
+/// the messages as well like 11:48 13:23"). In the organization's clock -
+/// 12- or 24-hour - like every other time in the app; 24-hour only when no
+/// session is at hand to say which.
+String messageWhen(
+  String? iso, {
+  String Function(int hour, int minute)? clock,
+}) {
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
   if (at == null) return '';
 
-  final clock = '${at.hour.toString().padLeft(2, '0')}:'
-      '${at.minute.toString().padLeft(2, '0')}';
+  final time = clock?.call(at.hour, at.minute) ??
+      '${at.hour.toString().padLeft(2, '0')}:'
+          '${at.minute.toString().padLeft(2, '0')}';
 
   return DateTime.now().difference(at).inHours < 24
-      ? '$clock · ${leadWhen(iso)}'
-      : clock;
+      ? '$time · ${leadWhen(iso)}'
+      : time;
 }
 
 /// The thread as drawn: a day label (String) where the date changes, then the
