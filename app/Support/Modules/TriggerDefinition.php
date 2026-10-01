@@ -35,6 +35,17 @@ final class TriggerDefinition extends AutomationDeclaration
          * something that now works.
          */
         public readonly bool $isRaised = true,
+        /*
+         * Payload fields EzBizi itself writes, as Markdown, that an email step
+         * may render as structure (UI/UX, 2026-10-01: an overbooking summary
+         * with days as headings). Every other {{field}} is escaped in a
+         * Markdown email body, because it can carry text a stranger wrote: a
+         * customer typing [Your invoice](https://evil) must not become a link
+         * in an email from ezbizi.com.
+         *
+         * @var list<string>
+         */
+        public readonly array $composedFields = [],
     ) {
         parent::__construct(
             $key,

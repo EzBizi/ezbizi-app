@@ -8,6 +8,7 @@ use App\Models\A1LeadsReviewEvent;
 use App\Services\A1Leads\A1LeadsGbpReplies;
 use App\Models\TimeClockReport;
 use App\Support\TimeClock\TimeClockReports;
+use App\Support\Modules\ModuleRegistry;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -1444,7 +1445,8 @@ class ActionRunner
                     // $record, not $subject: in THIS arm `$subject` is the email's
                     // subject line. The record the rule fired on is the other one.
                     subjectLine: $this->interpolate($subject, $event, $record),
-                    body: $this->interpolate((string) $action['body'], $event, $record),
+                    body: $this->interpolate((string) $action['body'], $event, $record,
+                        forMarkdown: AutomationMessage::RENDERS_MARKDOWN),
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                 ),
                 $to,
@@ -3031,13 +3033,26 @@ class ActionRunner
      * because a silent blank is the one failure a person reads and cannot
      * explain.
      */
-    private function interpolate(string $template, AutomationEvent $event, ?Model $subject): string
+    private function interpolate(string $template, AutomationEvent $event, ?Model $subject, bool $forMarkdown = false): string
     {
-        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event) {
-            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
+        // Only the fields EzBizi composes itself keep their Markdown; anything
+        // else may be a stranger's words and is escaped to read as text.
+        $composed = $forMarkdown
+            ? (app(ModuleRegistry::class)->findTrigger($event->event_key)?->composedFields ?? [])
+            : [];
 
-            return is_scalar($value) ? (string) $value : '';
+        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event, $forMarkdown, $composed) {
+            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
+            $text = is_scalar($value) ? (string) $value : '';
+
+            return $forMarkdown && ! in_array($m[1], $composed, true) ? self::escapeMarkdown($text) : $text;
         }, $template);
+    }
+
+    /** Backslash every Markdown control character, so the text renders as itself. */
+    public static function escapeMarkdown(string $text): string
+    {
+        return preg_replace('/([\\\\`*_{}\[\]()#+\-.!|<>~])/', '\\\\$1', $text);
     }
 
     /**

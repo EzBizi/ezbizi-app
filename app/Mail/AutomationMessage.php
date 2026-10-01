@@ -47,6 +47,15 @@ class AutomationMessage extends Mailable
     use SerializesModels;
 
     /**
+     * Whether the body is rendered as Markdown. While false, ActionRunner
+     * substitutes {{fields}} as they are; when the branded layout lands this
+     * turns true in the same commit, and from then on every field not declared
+     * EzBizi-composed (TriggerDefinition::composedFields) is escaped so a
+     * stranger's text stays text.
+     */
+    public const RENDERS_MARKDOWN = false;
+
+    /**
      * @param  string  $subjectLine  what the rule author typed
      * @param  string  $body  what the rule author typed, sent as written
      * @param  string  $businessName  the business the rule belongs to, named in
