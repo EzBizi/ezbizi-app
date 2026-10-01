@@ -2961,6 +2961,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 39 · Every email EzBizi sends · one branded frame — **out for decision** (`docs/previews/ezbizi-email-layouts.html`)
+
+Jose, 2026-10-01, with the overbooking warning in Gmail: *"can we make the overbooking report email more
+formatted, you know, ezbizi colors, etc, not just text, this should apply for any and all automations that
+send emails from ezbizi."* The warning is an automation (`scheduling.overbooking_found` → email.send →
+`AutomationMessage`), and automation email is plain text by a recorded decision: a business's words were
+kept out of EzBizi's styling. This reverses that, keeping its reason: business-written text is shown as
+text, never as HTML (lists, bold and headings allowed), and the business is named in the band and the
+footer. Desktop/phone **1** the sign-in page's navy band, a white card, tiles, days with red "over" and
+grey "closed day" pills, one button (recommended); **2** a light report with a cyan rule and one table;
+**3** a digest with navy day bars and coloured dots. Touches `resources/views/vendor/mail/` (notifications
+and saved reports already use it), `AutomationMessage`, and the overbooking job's payload.
+
 ### 38 · Leads · the Templates tab, and a Dashboard tab beside it — **Jose: "as u recommend" — 1, 4, 7 and 10** — **BUILT** `f4101baa` (the Dashboard reads Leads' `GET /leads/dashboard`, contract sent 2026-09-30)
 
 Jose, 2026-09-30, with a screenshot of Manage › Templates: *"see if you can improve the leads template
