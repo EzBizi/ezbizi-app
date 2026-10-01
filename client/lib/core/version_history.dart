@@ -18,6 +18,7 @@ class VersionHistory {
       date: '1 Oct 2026',
       items: [
         'Onboarding: the employer can mark the new hire\'s questions as not applying, photos and documents included.',
+        'An item opened on a wide screen has a back arrow, so you can return to the full Inventory list. The same arrow now appears in Services and Training.',
       ],
     ),
     VersionRelease(
