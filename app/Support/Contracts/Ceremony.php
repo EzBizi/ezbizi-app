@@ -80,7 +80,9 @@ final class Ceremony
         $version = $this->onboarding->contractVersion;
 
         return sprintf(
-            'By typing my name below I am signing "%s" (version %d) as it was shown to me '
+            // Drawn as well as typed since 2026-10-01 (Jose: "the actual
+            // signature, like hand drawn signature").
+            'By drawing my signature and typing my name below I am signing "%s" (version %d) as it was shown to me '
             .'just now, and I intend this to be my signature and to be bound by it. I '
             .'understand that a fingerprint of the exact document I have read is being '
             .'recorded, so that it can be shown later to be the one I signed.',
