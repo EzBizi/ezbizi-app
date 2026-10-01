@@ -319,6 +319,11 @@ class ProjectWorkizRecords extends Command
                     'state' => StateCode::from($client->state),
                     'postal_code' => $client->postal_code,
                     'is_active' => true,
+                    // When they became a customer, as near as Workiz can say:
+                    // the day their earliest job was booked. Without it every
+                    // customer a catch-up makes counts as new that day (the
+                    // dashboard reads this, b4606536). Set once, like the rest.
+                    'customer_since' => $this->firstBooked($client),
                 ]);
 
                 $client->customer_id = $customer->getKey();
@@ -855,6 +860,21 @@ class ProjectWorkizRecords extends Command
     {
         return $this->text($mirrored->payload['JobName'] ?? null)
             ?: ($mirrored->job_type ?: 'Workiz job '.$mirrored->remote_id);
+    }
+
+    /**
+     * The day this client's earliest Workiz job was booked. `booked_at` is
+     * Workiz's CreatedDate as the account wrote it, its own wall clock, so its
+     * date part is the branch's local day.
+     */
+    private function firstBooked(WorkizClient $client): ?string
+    {
+        $first = WorkizJob::query()
+            ->where('franchise_id', $client->franchise_id)
+            ->where('client_id', $client->client_id)
+            ->min('booked_at');
+
+        return $first === null ? null : substr((string) $first, 0, 10);
     }
 
     private function personName(array $payload): ?string
