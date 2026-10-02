@@ -236,9 +236,17 @@ class PhoneSmsTest extends TestCase
                 'role_id' => $desk->role_id,
             ]);
 
+            $customer = Customer::create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'number' => 'C-sms-list',
+                'name' => 'Thursday Customer',
+                'phone' => '+15557654321',
+            ]);
+
             $kept = PhoneMessage::query()->create([
                 'connection_id' => $granted->connection_id,
                 'number_id' => $granted->id,
+                'customer_id' => $customer->id,
                 'twilio_sid' => 'SMcccccccccccccccccccccccccccccccc',
                 'direction' => PhoneMessage::DIRECTION_INBOUND,
                 'from_e164' => '+15557654321',
@@ -279,6 +287,11 @@ class PhoneSmsTest extends TestCase
         $this->assertContains($hidden->id, array_column($all, 'id'));
         $this->assertSame('See you Thursday', collect($all)->firstWhere('id', $kept->id)['body']);
         $this->assertArrayHasKey('customer_id', $all[0]);
+
+        // Named, so the Messages table can say who rather than a number; a
+        // message with no customer says so with null, not a guess.
+        $this->assertSame('Thursday Customer', collect($all)->firstWhere('id', $kept->id)['customer_name']);
+        $this->assertNull(collect($all)->firstWhere('id', $hidden->id)['customer_name']);
         $this->assertArrayNotHasKey('credentials', $all[0]);
 
         $thread = $this->signedInAs($desk)

@@ -6,10 +6,42 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/list_table.dart';
+import '../../widgets/status_pill.dart';
 import 'recording_playback_bar.dart';
 import 'recording_player.dart';
 
-/// Calls, voicemail and texts — layout 4: 25/75 list and detail.
+/// Calls, voicemail and texts: count tiles over a table, the detail beside it.
+///
+/// Layout A (Mia, 2026-10-02) replaced the 25/75 list and detail. The table
+/// takes the whole width until a row is opened, because eight columns in a
+/// quarter of the screen is a list of stacked cards again; once one is open
+/// the detail sits beside it on a wide screen and replaces it on a narrow one,
+/// as before.
+///
+/// ── What a call's outcome is ─────────────────────────────────────
+///
+/// The tiles split the call log by [_Outcome], worked out from the row's own
+/// fields because the server sends no single "outcome" — it sends Twilio's
+/// status, the dial result in `error_code`, `voicemail`, `answered_by` and the
+/// duration. In order:
+///
+/// 1. `voicemail` → Voicemail. Such a call is also `no-answer`; the message is
+///    the thing to act on, so it wins.
+/// 2. `ringing` / `in-progress` → still happening. Counted in All only.
+/// 3. `answered_by` set → Answered. Somebody here picked it up, whatever the
+///    parent leg's status says afterwards.
+/// 4. `completed`, no `error_code`, and not zero seconds long → Answered.
+/// 5. `blocked` → Didn't connect: refused on purpose, and putting it in Missed
+///    would list a robocaller among the people owed a callback.
+/// 6. Inbound and not a technical failure (`failed`, or a Twilio numeric error
+///    code rather than a `dial:` result) → Missed: they rang, nobody took it.
+/// 7. Everything else → Didn't connect: an outbound call that reached nobody
+///    (busy, no answer, cancelled, refused) or a call Twilio could not place.
+///
+/// Missed is therefore narrower than Reports' "missed" (CallReport's Twilio
+/// statuses), on purpose: Reports counts calls nobody answered, and this tile
+/// is the callback list, which an unanswered call WE placed does not belong on.
 class RecordsTab extends StatefulWidget {
   const RecordsTab({
     super.key,
@@ -73,6 +105,10 @@ class _RecordsTabState extends State<RecordsTab> {
   String? _blockedCallId;
 
   late RecordsFilter _filter = widget.initialFilter;
+
+  /// The tile picked, null for all. Its keys depend on the view: an [_Outcome]
+  /// name or `untagged` for calls, `waiting`/`answered`/`today` for texts.
+  String? _tile;
   _Call? _openCall;
   /// The counterpart number whose conversation is open, if any.
   ///
@@ -102,12 +138,19 @@ class _RecordsTabState extends State<RecordsTab> {
 
   bool get _hasOpen => _openCall != null || _openThread != null;
 
+  /// What the open view lists, after its tile.
+  ///
+  /// Calls now lists every call, voicemails included: the Voicemail TILE is
+  /// how they are picked out of it, and a Calls view that dropped them would
+  /// show a Voicemail tile counting rows it could never list. The Voicemail
+  /// chip stays the voicemail-only list it was, without tiles (every row in it
+  /// has the one outcome).
   List<Object> get _rows {
     switch (_filter) {
       case RecordsFilter.calls:
         return [
           for (final call in _calls)
-            if (!call.voicemail) call,
+            if (_callMatches(call, _tile)) call,
         ];
       case RecordsFilter.voicemail:
         return [
@@ -115,8 +158,62 @@ class _RecordsTabState extends State<RecordsTab> {
             if (call.voicemail) call,
         ];
       case RecordsFilter.sms:
-        return _threads;
+        return [
+          for (final thread in _threads)
+            if (_threadMatches(thread, _tile)) thread,
+        ];
     }
+  }
+
+  bool _callMatches(_Call call, String? tile) {
+    if (tile == null) return true;
+    if (tile == 'untagged') return call.tag == null || call.tag!.isEmpty;
+    return _outcome(call).name == tile;
+  }
+
+  /// Waiting on us: they wrote last. Answered: we did. Today: anything said
+  /// today, either way (Mia, 2026-10-02).
+  bool _threadMatches(_Thread thread, String? tile) {
+    return switch (tile) {
+      null => true,
+      'waiting' => !thread.latest.outbound,
+      'answered' => thread.latest.outbound,
+      'today' => _isToday(thread.latest.createdAt),
+      _ => true,
+    };
+  }
+
+  bool _isToday(String iso) {
+    final at = DateTime.tryParse(iso)?.toLocal();
+    if (at == null) return false;
+    final now = DateTime.now();
+    return at.year == now.year && at.month == now.month && at.day == now.day;
+  }
+
+  /// See the class comment for the rule and why it is in this order.
+  _Outcome _outcome(_Call call) {
+    if (call.voicemail) return _Outcome.voicemail;
+    if (call.status == 'ringing' || call.status == 'in-progress') {
+      return _Outcome.live;
+    }
+    if (call.answeredBy != null && call.answeredBy!.isNotEmpty) {
+      return _Outcome.answered;
+    }
+
+    final code = call.errorCode ?? '';
+    if (call.status == 'completed' &&
+        code.isEmpty &&
+        call.durationSeconds != 0) {
+      return _Outcome.answered;
+    }
+    if (call.status == 'blocked') return _Outcome.failed;
+
+    final technical =
+        call.status == 'failed' ||
+        (code.isNotEmpty && !code.startsWith('dial:'));
+    if (call.direction == 'inbound' && !technical) return _Outcome.missed;
+
+    return _Outcome.failed;
   }
 
   /// One row per PERSON, newest first — not one row per text.
@@ -239,6 +336,7 @@ class _RecordsTabState extends State<RecordsTab> {
     _player.stop();
     setState(() {
       _filter = filter;
+      _tile = null;
       _openCall = null;
       _openThread = null;
     });
@@ -256,6 +354,7 @@ class _RecordsTabState extends State<RecordsTab> {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= RecordsTab.splitAbove;
         final paneOnly = !wide && _hasOpen;
+        final beside = wide && _hasOpen;
 
         return AsyncBody(
           loading: _loading,
@@ -277,12 +376,12 @@ class _RecordsTabState extends State<RecordsTab> {
                   key: const Key('phone-records-pane'),
                   child: _pane(showBack: true),
                 )
-              : wide
+              : beside
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
-                      flex: 1,
+                      flex: 3,
                       child: KeyedSubtree(
                         key: const Key('phone-records-list'),
                         child: _list(),
@@ -294,7 +393,7 @@ class _RecordsTabState extends State<RecordsTab> {
                       color: EzBiziTheme.edge(context),
                     ),
                     Expanded(
-                      flex: 3,
+                      flex: 2,
                       child: KeyedSubtree(
                         key: const Key('phone-records-pane'),
                         child: _pane(showBack: false),
@@ -315,14 +414,14 @@ class _RecordsTabState extends State<RecordsTab> {
     final theme = Theme.of(context);
     final rows = _rows;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         // The whole row goes, not each chip: a sub-tab that IS the filter must
         // not also offer a way to switch away from itself.
         if (widget.showFilters)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -345,85 +444,323 @@ class _RecordsTabState extends State<RecordsTab> {
               ],
             ),
           ),
-        Expanded(
-          child: rows.isEmpty
-              ? Center(
-                  child: Text(
-                    'Nothing matches that filter.',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                )
-              : ListView.separated(
-                  itemCount: rows.length,
-                  separatorBuilder: (_, _) =>
-                      Divider(height: 1, color: EzBiziTheme.edge(context)),
-                  itemBuilder: (context, i) {
-                    final row = rows[i];
-                    if (row is _Call) return _callRow(row);
-                    return _threadRow(row as _Thread);
-                  },
-                ),
+        if (_filter == RecordsFilter.calls) ...[
+          _callTiles(),
+          const SizedBox(height: 12),
+        ],
+        if (_filter == RecordsFilter.sms) ...[
+          _threadTiles(),
+          const SizedBox(height: 12),
+        ],
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Nothing matches that filter.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+          )
+        else if (_filter == RecordsFilter.sms)
+          _threadTable(rows.cast<_Thread>())
+        else
+          _callTable(rows.cast<_Call>()),
+      ],
+    );
+  }
+
+  void _pickTile(String? key) {
+    _player.stop();
+    setState(() {
+      _tile = key;
+      _openCall = null;
+      _openThread = null;
+    });
+  }
+
+  /// Counted over every call this person can read: the endpoint returns the
+  /// whole log, so the count is the rows', never a page's.
+  Widget _callTiles() {
+    int count(String key) => _calls.where((c) => _callMatches(c, key)).length;
+
+    return FilterTiles(
+      prefix: 'records',
+      picked: _tile,
+      onPick: _pickTile,
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'All calls',
+          count: _calls.length,
+          note: 'every call',
+        ),
+        FilterTile(
+          key: _Outcome.answered.name,
+          label: 'Answered',
+          count: count(_Outcome.answered.name),
+          note: 'picked up',
+          tone: Tone.ok,
+        ),
+        FilterTile(
+          key: _Outcome.missed.name,
+          label: 'Missed',
+          count: count(_Outcome.missed.name),
+          note: 'nobody answered',
+          tone: Tone.bad,
+        ),
+        FilterTile(
+          key: _Outcome.voicemail.name,
+          label: 'Voicemail',
+          count: count(_Outcome.voicemail.name),
+          note: 'left a message',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: _Outcome.failed.name,
+          label: "Didn't connect",
+          count: count(_Outcome.failed.name),
+          note: 'busy, no answer, refused',
+        ),
+        FilterTile(
+          key: 'untagged',
+          label: 'Not tagged',
+          count: count('untagged'),
+          note: 'no reason given',
         ),
       ],
     );
   }
 
-  Widget _callRow(_Call call) {
-    final theme = Theme.of(context);
-    final selected = _openCall?.id == call.id;
-    final who = call.direction == 'inbound' ? call.fromE164 : call.toE164;
-    final kind = call.voicemail
-        ? 'Voicemail'
-        : call.direction == 'inbound'
-        ? 'Inbound'
-        : 'Outbound';
+  Widget _threadTiles() {
+    final threads = _threads;
+    int count(String key) =>
+        threads.where((t) => _threadMatches(t, key)).length;
 
-    return Material(
-      key: Key('phone-record-${call.id}'),
-      color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surface,
-      child: InkWell(
-        onTap: () => _selectCall(call),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return FilterTiles(
+      prefix: 'messages',
+      picked: _tile,
+      onPick: _pickTile,
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'Conversations',
+          count: threads.length,
+          note: 'all',
+        ),
+        FilterTile(
+          key: 'waiting',
+          label: 'Waiting on us',
+          count: count('waiting'),
+          note: 'their message was last',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'answered',
+          label: 'Answered',
+          count: count('answered'),
+          note: 'we wrote last',
+        ),
+        FilterTile(
+          key: 'today',
+          label: 'Today',
+          count: count('today'),
+          note: 'active today',
+        ),
+      ],
+    );
+  }
+
+  /// One call per row (layout A, Mia 2026-10-02): who and which way, the line,
+  /// who answered, how it ended, the tag, how long, and when.
+  Widget _callTable(List<_Call> calls) {
+    return ListTable(
+      columns: const [
+        ListColumn('Who', flex: 4),
+        ListColumn('Line', flex: 2),
+        ListColumn('Answered by', flex: 2),
+        ListColumn('Status', flex: 3),
+        ListColumn('Tag', flex: 2),
+        ListColumn('Length', flex: 2, end: true),
+        ListColumn('When', flex: 2, end: true),
+      ],
+      rowKey: (i) => Key('phone-record-${calls[i].id}'),
+      onTap: (i) => _selectCall(calls[i]),
+      rows: [for (final call in calls) _callCells(call)],
+    );
+  }
+
+  List<Widget> _callCells(_Call call) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final inbound = call.direction == 'inbound';
+    final number = formatPhoneNumber(inbound ? call.fromE164 : call.toE164);
+
+    // A customer's name first, a colleague's next, the number last — and the
+    // number under a name, because the name alone cannot be rung back.
+    final name = call.customerName ?? call.peerName;
+    final failure = _failure(call);
+    final recorded = call.recordingSid != null && call.recordingSid!.isNotEmpty;
+
+    return [
+      // Direction rides in the first cell rather than a column of its own:
+      // below 720 the first cell is the row's heading, and an arrow on its own
+      // line above everything else says nothing.
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            inbound ? Icons.call_received : Icons.call_made,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '$kind · $who',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
-                    if (call.tag != null) _tagChip(call, theme),
-                  ],
+                Text(
+                  name ?? number,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 Text(
-                  _subtitle(call),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  [
+                    inbound ? 'Inbound' : 'Outbound',
+                    if (name != null) number,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: small,
                 ),
-
-                // A failure says why, here, rather than in Twilio's console.
-                if (_failure(call) != null)
-                  Text(
-                    _failure(call)!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
               ],
             ),
           ),
-        ),
+        ],
       ),
+      Text(
+        _labels[call.numberId] ?? '—',
+        overflow: TextOverflow.ellipsis,
+        style: small,
+      ),
+      Text(
+        call.answeredByName ?? '—',
+        overflow: TextOverflow.ellipsis,
+        style: small,
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _statusPill(call),
+          // A failure says why, here, rather than in Twilio's console.
+          if (failure != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                failure,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: ToneColours.of(context, Tone.bad).ink,
+                ),
+              ),
+            ),
+        ],
+      ),
+      call.tag == null ? Text('—', style: small) : _tagChip(call, theme),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            call.durationSeconds == null ? '—' : _clock(call.durationSeconds!),
+            style: small,
+          ),
+          if (recorded) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.mic_none,
+              size: 14,
+              semanticLabel: 'recorded',
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ],
+      ),
+      Text(
+        formatListStamp(
+          call.createdAt,
+          '',
+          formats: widget.session.me!.display,
+        ),
+        style: small,
+      ),
+    ];
+  }
+
+  Widget _statusPill(_Call call) {
+    return switch (_outcome(call)) {
+      _Outcome.answered => const StatusPill('Answered', tone: Tone.ok),
+      _Outcome.missed => const StatusPill('Missed', tone: Tone.bad),
+      _Outcome.voicemail => const StatusPill('Voicemail', tone: Tone.caution),
+      _Outcome.live => StatusPill(
+        call.status == 'ringing' ? 'Ringing' : 'On the call',
+        tone: Tone.info,
+      ),
+      _Outcome.failed => StatusPill(
+        call.status == 'blocked' ? 'Blocked' : "Didn't connect",
+      ),
+    };
+  }
+
+  /// One conversation per row: who, the last thing said, how many, when.
+  Widget _threadTable(List<_Thread> threads) {
+    return ListTable(
+      columns: const [
+        ListColumn('Customer', flex: 3),
+        ListColumn('Last message', flex: 5),
+        ListColumn('Messages', flex: 1, end: true),
+        ListColumn('When', flex: 2, end: true),
+      ],
+      rowKey: (i) => Key('phone-thread-${threads[i].peer}'),
+      onTap: (i) => _selectThread(threads[i]),
+      rows: [for (final thread in threads) _threadCells(thread)],
     );
+  }
+
+  List<Widget> _threadCells(_Thread thread) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final latest = thread.latest;
+    final number = formatPhoneNumber(thread.peer);
+    final name = thread.customerName;
+
+    return [
+      PersonCell(name: name ?? number, sub: name == null ? null : number),
+      Text(
+        // Said out loud which way it went. Without it the last line of a
+        // thread reads as something they said when it is often the last thing
+        // we said to them.
+        latest.outbound ? 'You: ${latest.body}' : latest.body,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: small,
+      ),
+      Text('${thread.messages.length}', style: small),
+      Text(
+        formatListStamp(
+          latest.createdAt,
+          '',
+          formats: widget.session.me!.display,
+        ),
+        style: small,
+      ),
+    ];
   }
 
   /// The tag, tinted. An untinted tag still reads — colour is what makes a
@@ -462,7 +799,6 @@ class _RecordsTabState extends State<RecordsTab> {
     final colour = value == null ? null : Color(0xFF000000 | value);
 
     return Container(
-      margin: const EdgeInsets.only(left: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: colour?.withValues(alpha: 0.15),
@@ -470,64 +806,6 @@ class _RecordsTabState extends State<RecordsTab> {
         border: Border.all(color: colour ?? theme.colorScheme.outlineVariant),
       ),
       child: Text(call.tag!, style: theme.textTheme.labelSmall),
-    );
-  }
-
-  /// A conversation: who, the last thing said, and how many there are.
-  Widget _threadRow(_Thread thread) {
-    final theme = Theme.of(context);
-    final selected = _openThread == thread.peer;
-    final latest = thread.latest;
-
-    return Material(
-      key: Key('phone-thread-${thread.peer}'),
-      color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surface,
-      child: InkWell(
-        onTap: () => _selectThread(thread),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        formatPhoneNumber(thread.peer),
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
-                    // Only once there is more than one, because "1" beside a
-                    // single message is noise pretending to be information.
-                    if (thread.messages.length > 1)
-                      Text(
-                        '${thread.messages.length}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-                Text(
-                  // Said out loud which way it went. Without it the last line
-                  // of a thread reads as something they said when it is often
-                  // the last thing we said to them.
-                  latest.outbound ? 'You: ${latest.body}' : latest.body,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -541,6 +819,20 @@ class _RecordsTabState extends State<RecordsTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Beside the table there is nothing to go back to, so it closes
+        // instead: the table is full width again with nothing open.
+        if (!showBack)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Close',
+                onPressed: _clear,
+              ),
+            ),
+          ),
         if (showBack)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 20, 8),
@@ -763,17 +1055,6 @@ class _RecordsTabState extends State<RecordsTab> {
     return call.direction == 'inbound' ? 'Inbound · $who' : 'Outbound · $who';
   }
 
-  String _subtitle(_Call call) {
-    final formats = widget.session.me!.display;
-    final parts = [
-      formatStamp(call.createdAt, '', formats: formats),
-      if (call.durationSeconds != null) _clock(call.durationSeconds!),
-      if (call.recordingSid != null && call.recordingSid!.isNotEmpty)
-        'recording',
-    ];
-    return parts.where((part) => part.isNotEmpty).join(' · ');
-  }
-
   String _clock(int seconds) {
     final minutes = seconds ~/ 60;
     final rest = seconds % 60;
@@ -800,7 +1081,20 @@ class _Call {
     this.peerName,
     this.answeredByName,
     this.voicemailTranscript,
+    this.status = '',
+    this.answeredBy,
+    this.customerName,
   });
+
+  /// Twilio's status as stored: ringing, in-progress, completed, no-answer,
+  /// busy, failed, canceled, or blocked.
+  final String status;
+
+  /// The user id of whoever picked up, when one of ours did.
+  final String? answeredBy;
+
+  /// The customer whose number this is, when one matches.
+  final String? customerName;
 
   /// Which of the people it rang picked up, when that is known.
   final String? answeredByName;
@@ -850,6 +1144,9 @@ class _Call {
     createdAt: json['created_at'] as String? ?? '',
     peerName: json['peer_name'] as String?,
     answeredByName: json['answered_by_name'] as String?,
+    status: json['status'] as String? ?? '',
+    answeredBy: json['answered_by'] as String?,
+    customerName: json['customer_name'] as String?,
     voicemailTranscript: json['voicemail_transcript'] as String?,
     tag: json['tag'] as String?,
     tagColor: json['tag_color'] as String?,
@@ -869,7 +1166,20 @@ class _Thread {
   final List<_Message> messages;
 
   _Message get latest => messages.last;
+
+  /// The newest name any message carries: a number linked to a customer
+  /// part-way through a conversation is still that customer's conversation.
+  String? get customerName {
+    for (final message in messages.reversed) {
+      final name = message.customerName;
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
 }
+
+/// How a call ended, as the Records tiles split them.
+enum _Outcome { answered, missed, voicemail, failed, live }
 
 class _Message {
   const _Message({
@@ -879,7 +1189,11 @@ class _Message {
     required this.body,
     required this.outbound,
     required this.createdAt,
+    this.customerName,
   });
+
+  /// The customer the message is filed against, by name, when there is one.
+  final String? customerName;
 
   final String id;
   final String fromE164;
@@ -895,5 +1209,6 @@ class _Message {
     body: json['body'] as String? ?? '',
     outbound: json['direction'] == 'outbound',
     createdAt: json['created_at'] as String? ?? '',
+    customerName: json['customer_name'] as String?,
   );
 }
