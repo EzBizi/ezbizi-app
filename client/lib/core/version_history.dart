@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0348',
+      date: '2 Oct 2026',
+      items: [
+        'Monitoring: a new Files tab lets a manager browse and download files on a monitored computer. Read-only, its own permission (monitoring.files.view), and every file opened is recorded.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0347',
       date: '1 Oct 2026',
       items: [
