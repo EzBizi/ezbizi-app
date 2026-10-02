@@ -22,6 +22,8 @@ import 'package:http/testing.dart';
 /// a tag while giving nobody a second to choose one has built a dialogue
 /// people dismiss.
 void main() {
+  _tagTiles();
+
   testWidgets('the current setting is what the company actually has', (
     tester,
   ) async {
@@ -85,9 +87,46 @@ void main() {
   });
 }
 
+// Layout A (Mia, 2026-10-02), the table under these settings: the list comes
+// back whole, so the tiles count it here, and the share is of every tagged
+// call, retired tags included.
+void _tagTiles() {
+  testWidgets('the Retired tile counts retired tags and filters to them', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      tags: [
+        {'id': 'tg-1', 'name': 'Booked', 'is_active': true, 'call_count': 3},
+        {'id': 'tg-2', 'name': 'Quote', 'is_active': true, 'call_count': 0},
+        {'id': 'tg-3', 'name': 'Old', 'is_active': false, 'call_count': 1},
+      ],
+    );
+
+    Finder count(String key, String text) => find.descendant(
+      of: find.byKey(Key('tags-tile-$key')),
+      matching: find.text(text),
+    );
+
+    expect(count('all', '3'), findsOneWidget);
+    expect(count('on', '2'), findsOneWidget);
+    expect(count('off', '1'), findsOneWidget);
+    expect(find.text('75%'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('tags-tile-off')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Old'), findsOneWidget);
+    expect(find.text('Booked'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Bring back'), findsOneWidget);
+    expect(find.text('25%'), findsOneWidget);
+  });
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   int wrapUpSeconds = 0,
+  List<Map<String, Object?>>? tags,
   void Function(Map<String, dynamic> body)? onPatch,
   List<String> permissions = const ['phone.view', 'phone.edit'],
 }) async {
@@ -129,7 +168,7 @@ Future<void> _pump(
 
       if (path.endsWith('/phone/tags')) {
         return _json({
-          'data': [
+          'data': tags ?? [
             {
               'id': 'tg-1',
               'name': 'Booked',

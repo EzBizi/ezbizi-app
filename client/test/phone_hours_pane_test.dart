@@ -100,6 +100,49 @@ void main() {
           'that ignores daylight saving',
     );
   });
+
+  // Layout A (Mia, 2026-10-02): the list is a table. "Today" is the
+  // schedule's own date from the server, so a Friday reads its Friday hours,
+  // and the next closed day skips the ones already past.
+  testWidgets('the list says whether it is open today and when it next shuts', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      openEditor: false,
+      schedule: {
+        ..._schedule,
+        'today': '2026-10-02',
+        'exceptions': [
+          {'on': '2026-09-01', 'closed': true},
+          {'on': '2026-11-26', 'closed': true},
+        ],
+      },
+    );
+
+    expect(find.text('Open 09:00 – 17:00'), findsOneWidget);
+    expect(find.text('2026-11-26'), findsOneWidget);
+    expect(find.text('2026-09-01'), findsNothing);
+    expect(find.text('Eastern — New York'), findsOneWidget);
+  });
+
+  testWidgets('a closed date that is today reads as closed today', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      openEditor: false,
+      schedule: {
+        ..._schedule,
+        'today': '2026-10-02',
+        'exceptions': [
+          {'on': '2026-10-02', 'closed': true},
+        ],
+      },
+    );
+
+    expect(find.text('Closed today'), findsOneWidget);
+  });
 }
 
 double _rowHeight(WidgetTester tester, String day) {
@@ -116,6 +159,7 @@ Future<void> _pump(
   WidgetTester tester, {
   Size size = const Size(1280, 900),
   bool openEditor = true,
+  Map<String, Object?> schedule = _schedule,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -126,7 +170,9 @@ Future<void> _pump(
       final path = request.url.path;
 
       if (path.endsWith('/phone/hours')) {
-        return _json({'data': [_schedule]});
+        return _json({
+          'data': [schedule],
+        });
       }
 
       if (path.endsWith('/phone/connections')) {

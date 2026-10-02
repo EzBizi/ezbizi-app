@@ -184,7 +184,24 @@ class HoursController extends Controller
             'timezone' => $schedule->timezone,
             'weeks' => $schedule->weeks,
             'exceptions' => $schedule->exceptions,
+            // The calendar date where the phone is, so the list can say
+            // whether this schedule is open TODAY and which closed day comes
+            // next (Mia, 2026-10-02). The client has no timezone database,
+            // and its own date is a day off for half the evening on a coast.
+            'today' => self::localDate($schedule->timezone),
         ];
+    }
+
+    /** Today's Y-m-d on the schedule's own wall clock; UTC if it has none. */
+    private static function localDate(mixed $timezone): string
+    {
+        try {
+            $zone = new DateTimeZone(is_string($timezone) && $timezone !== '' ? $timezone : 'UTC');
+        } catch (\Exception) {
+            $zone = new DateTimeZone('UTC');
+        }
+
+        return now()->setTimezone($zone)->toDateString();
     }
 
     /**

@@ -39,6 +39,30 @@ void main() {
     expect(find.text('Reaches nothing'), findsOneWidget);
   });
 
+  // Layout A (Mia, 2026-10-02): the directory comes back whole, so the tiles
+  // count it here. The orphan counts in the total only: it reaches nobody.
+  testWidgets('the Teams tile counts teams and filters to them', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    Finder count(String key, String text) => find.descendant(
+      of: find.byKey(Key('extensions-tile-$key')),
+      matching: find.text(text),
+    );
+
+    expect(count('all', '3'), findsOneWidget);
+    expect(count('user', '1'), findsOneWidget);
+    expect(count('ring_group', '1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('extensions-tile-ring_group')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0300'), findsOneWidget);
+    expect(find.text('0102'), findsNothing);
+    expect(find.text('0404'), findsNothing);
+  });
+
   /// Adding one sends the digits, the kind and the target together.
   testWidgets('adding an extension posts what the server needs', (
     tester,
