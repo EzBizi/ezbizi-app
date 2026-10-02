@@ -4,7 +4,9 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'blocked_numbers_pane.dart';
 import 'call_flow_chart_pane.dart';
@@ -273,8 +275,16 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   String? _error;
   List<_Connection> _connections = const [];
 
+  /// Lines per phone account, counted from `/phone/numbers` by
+  /// `connection_id`. Null when that list could not be read - the column
+  /// then says nothing rather than 0.
+  Map<String, int>? _lineCounts;
+
+  /// The Connection tile picked (tiles over a table, Mia 2026-10-02): `ok`,
+  /// `bad` or `none`; null is every row.
+  String? _tile;
+
   bool _saving = false;
-  String? _noticeScope;
   String? _notice;
 
   /// Companies EzBizi has switched phone service on for (§4 gate 2). Reported
@@ -330,8 +340,14 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       _error = null;
     });
 
-    final response = await widget.api.get('/phone/connections');
+    final results = await Future.wait([
+      widget.api.get('/phone/connections'),
+      widget.api.get('/phone/numbers'),
+    ]);
     if (!mounted) return;
+
+    final response = results[0];
+    final numbers = results[1];
 
     setState(() {
       _loading = false;
@@ -343,6 +359,22 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
         for (final row in (response.data as List? ?? const []))
           if (row is Map<String, dynamic>) _Connection.fromJson(row),
       ];
+
+      // Only for the Lines column, so a refusal here does not blank the pane.
+      final lines = numbers.ok ? numbers.data : null;
+      _lineCounts = lines is List
+          ? {
+              for (final row in lines.whereType<Map>())
+                if (row['connection_id'] is String)
+                  row['connection_id'] as String: 0,
+            }
+          : null;
+      if (lines is List) {
+        for (final row in lines.whereType<Map>()) {
+          final id = row['connection_id'];
+          if (id is String) _lineCounts![id] = _lineCounts![id]! + 1;
+        }
+      }
     });
   }
 
@@ -361,7 +393,6 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     setState(() {
       _saving = true;
       _notice = null;
-      _noticeScope = '${place.type}:${place.id}';
     });
 
     final response = await widget.api.post('/phone/connections', {
@@ -607,6 +638,17 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     final companies = _places.where((p) => p.type == 'company').toList();
     final organization = _places.firstWhere((p) => p.type == 'organization');
 
+    // THE ROOT IS A ROW ONLY IF IT EXISTS. Phone service is sold per company
+    // (A2P registration and caller-ID trust are per business), so there is
+    // deliberately no organization account to activate, and a test guards
+    // that. But ConnectionResolver still walks company -> organization, so one
+    // that exists is drawn: drawing it when none does would invent a parent
+    // and point every company's sentence at nothing.
+    final places = [
+      if (_connectionFor(organization) != null) organization,
+      ...companies,
+    ];
+
     return SettingsPane(
       title: 'Connection',
       subtitle: "Which Twilio account each company's calls run on.",
@@ -643,142 +685,194 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           // Six because two different facts were braided into one sentence:
           // WHERE CALLS GO, which never changes, and WHETHER YOU MAY CHANGE
           // IT HERE, which depends on your view. Splitting them is what
-          // collapses the six — the indent carries the routing rule and the
-          // permission gets its own line only when it bites.
-          // THE ROOT IS DRAWN ONLY IF IT EXISTS.
-          //
-          // The design drew an organization node at the top of the tree, and
-          // it was drawn without knowing that phone service is sold per
-          // company — each gets its own subaccount, because A2P registration
-          // and caller-ID trust are per business. There is deliberately no
-          // organization card to activate, and a test guards that.
-          //
-          // But the INHERITANCE is real: ConnectionResolver still walks
-          // company → organization, so an organization-level connection can
-          // exist and a company's numbers really do fall back to it. Drawing
-          // the root when one exists keeps the rule honest; drawing it when
-          // none does would invent a parent for numbers to fall back to and
-          // point every company's sentence at nothing.
-          if (_connectionFor(organization) != null) ...[
-            _connectionCard(organization),
-            const SizedBox(height: 8),
+          // collapses the six - the sentence under each account carries the
+          // routing rule and the permission gets its own line only when it
+          // bites. Tiles over a table since Mia, 2026-10-02.
+          if (_notice != null) ...[
+            ErrorNote(_notice!),
+            const SizedBox(height: 12),
           ],
-
-          for (final place in companies) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: _connectionCard(place),
-            ),
-            const SizedBox(height: 8),
-          ],
+          _connectionTiles(places),
+          const SizedBox(height: 12),
+          _connectionTable(places),
         ],
       ),
     );
   }
 
-  Widget _connectionCard(_Place place) {
-    final theme = Theme.of(context);
+  /// Which tile a row counts under: its own account working, its own account
+  /// not working, or no account of its own (inheriting, or reaching nobody).
+  String _stage(_Place place) {
     final row = _connectionFor(place);
-    final noticeHere = _noticeScope == '${place.type}:${place.id}';
+    if (row == null) return 'none';
 
-    return Material(
-      color: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: EzBiziTheme.edge(context)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(place.name, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
+    return row.status == 'connected' ? 'ok' : 'bad';
+  }
 
-            // Where this row's calls go. One sentence, same shape on every
-            // row, and true regardless of who is looking at it.
-            Text(
-              _usesLine(place, row),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+  Widget _connectionTiles(List<_Place> places) {
+    int count(String key) => places.where((p) => _stage(p) == key).length;
 
-            // A company with no account of its own is not broken and must not
-            // read as an empty slot — it is inheriting, which is the ordinary
-            // case and the whole point of the tree.
-            if (place.type == 'company' && row == null) ...[
-              const SizedBox(height: 8),
-              const Tag('Uses the organization'),
-            ],
-
-            // The permission, said separately and only where it applies.
-            // Folding it into the sentence above is what produced two
-            // variants of the routing rule for every view somebody stood in.
-            if (!_canModifyPlace(place)) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Switch to the whole organization to change this.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            if (row != null) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  Tag(
-                    row.status == 'connected' ? 'Connected' : 'Not working',
-                    warn: row.status != 'connected',
-                  ),
-                  Tag(
-                    row.kind == 'byo' ? 'Your Twilio' : 'EzBizi phone account',
-                  ),
-                ],
-              ),
-              if (row.sidTail != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Account SID ends …${row.sidTail}. The key is never shown back.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              if (row.statusReason != null && row.statusReason!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(row.statusReason!, style: theme.textTheme.bodyMedium),
-              ],
-            ],
-            if (noticeHere && _notice != null) ...[
-              const SizedBox(height: 12),
-              ErrorNote(_notice!),
-            ],
-            if (_canModifyPlace(place) && row == null) ...[
-              const SizedBox(height: 12),
-
-              // One control, and only once EzBizi has said yes to this company.
-              // Bringing your own Twilio is not on offer: phone service is
-              // something EzBizi runs on its own account, so a customer never
-              // sees a credential field and never has an unapproved way in.
-              if (_approved.contains(place.id))
-                Refused(
-                  reason: _canEdit ? null : _editRefusal,
-                  child: FilledButton(
-                    onPressed: _canEdit && !_saving
-                        ? () => _createSubaccount(place)
-                        : null,
-                    child: const Text('Activate phone service'),
-                  ),
-                ),
-            ],
-          ],
+    return FilterTiles(
+      prefix: 'connection',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        // "All" and not the mockup's "Accounts": a company with no account of
+        // its own is a row here too, and calling it an account would be wrong.
+        FilterTile(
+          key: null,
+          label: 'All',
+          count: places.length,
+          note: 'places listed',
         ),
-      ),
+        FilterTile(
+          key: 'ok',
+          label: 'Connected',
+          count: count('ok'),
+          note: 'working',
+          tone: Tone.ok,
+        ),
+        FilterTile(
+          key: 'bad',
+          label: 'Not working',
+          count: count('bad'),
+          note: 'needs attention',
+          tone: Tone.bad,
+        ),
+        FilterTile(
+          key: 'none',
+          label: 'No account',
+          count: count('none'),
+          note: 'none of its own',
+        ),
+      ],
     );
+  }
+
+  Widget _connectionTable(List<_Place> places) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final shown = _tile == null
+        ? places
+        : places.where((p) => _stage(p) == _tile).toList();
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No accounts like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Account', flex: 5),
+        ListColumn('Kind', flex: 4),
+        ListColumn('Status', flex: 3),
+        ListColumn('Lines', flex: 1),
+        ListColumn('', flex: 3, end: true),
+      ],
+      rowKey: (i) => ValueKey('connection-${shown[i].type}-${shown[i].id}'),
+      rows: [
+        for (final place in shown) _connectionRow(place, theme, small),
+      ],
+    );
+  }
+
+  List<Widget> _connectionRow(_Place place, ThemeData theme, TextStyle? small) {
+    final row = _connectionFor(place);
+    final lines = row == null ? null : _lineCounts?[row.id] ?? 0;
+
+    return [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            place.name,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          // Where this row's calls go. One sentence, same shape on every
+          // row, and true regardless of who is looking at it.
+          Text(_usesLine(place, row), style: small),
+          // The permission, said separately and only where it applies.
+          if (!_canModifyPlace(place))
+            Text(
+              'Switch to the whole organization to change this.',
+              style: small,
+            ),
+        ],
+      ),
+      row == null
+          ? const SizedBox.shrink()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  row.kind == 'byo' ? 'Your Twilio' : 'EzBizi phone account',
+                ),
+                if (row.sidTail != null)
+                  Text(
+                    'Account SID ends …${row.sidTail}. The key is never shown '
+                    'back.',
+                    style: small,
+                  ),
+              ],
+            ),
+      // A company with no account of its own is not broken and must not read
+      // as an empty slot - it is inheriting, which is the ordinary case.
+      row == null
+          ? (place.type == 'company'
+                ? const StatusPill('Uses the organization')
+                : const SizedBox.shrink())
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StatusPill(
+                  row.status == 'connected' ? 'Connected' : 'Not working',
+                  tone: row.status == 'connected' ? Tone.ok : Tone.bad,
+                ),
+                if (row.statusReason != null && row.statusReason!.isNotEmpty)
+                  Text(row.statusReason!, style: small),
+              ],
+            ),
+      Text(lines == null ? '—' : '$lines'),
+      _connectionAction(place, row),
+    ];
+  }
+
+  Widget _connectionAction(_Place place, _Connection? row) {
+    // Open goes to Numbers, where this account's lines are set up.
+    if (row != null) {
+      return TextButton(
+        onPressed: () => _openSection('numbers'),
+        child: const Text('Open'),
+      );
+    }
+
+    // One control, and only once EzBizi has said yes to this company.
+    // Bringing your own Twilio is not on offer: phone service is something
+    // EzBizi runs on its own account, so a customer never sees a credential
+    // field and never has an unapproved way in.
+    if (_canModifyPlace(place) && _approved.contains(place.id)) {
+      return Refused(
+        reason: _canEdit ? null : _editRefusal,
+        child: FilledButton(
+          onPressed: _canEdit && !_saving
+              ? () => _createSubaccount(place)
+              : null,
+          child: const Text('Activate phone service'),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   /// Where this row's calls go — the ONE rule, stated the same way everywhere.

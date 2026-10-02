@@ -87,6 +87,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hold the caller in a queue'));
     await tester.pumpAndSettle();
+    // Scrolled to: the tiles over the list push the editor further down
+    // (tiles over a table, Mia 2026-10-02).
+    await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
@@ -100,6 +104,10 @@ void main() {
     await tester.tap(find.text('Edit').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Take a voicemail'));
+    await tester.pumpAndSettle();
+    // Scrolled to: the tiles over the list push the editor further down
+    // (tiles over a table, Mia 2026-10-02).
+    await tester.ensureVisible(find.text('Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
