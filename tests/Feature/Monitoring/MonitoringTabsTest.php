@@ -10,10 +10,10 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Monitoring's four tabs, and the one thing about them that can go wrong
+ * Monitoring's tabs, and the one thing about them that can go wrong
  * silently.
  *
- * Three of the four NAME an action this module already had; one MINTS. Getting
+ * Most NAME an action this module already had; two (General, Map) MINT. Getting
  * that wrong in either direction is invisible:
  *
  *   a minting tab where one should NAME  -> two keys for one authority, and an
@@ -47,7 +47,7 @@ class MonitoringTabsTest extends TestCase
         $tabs = $this->tabs();
 
         $this->assertSame(
-            ['general', 'map', 'specs', 'cameras', 'desktop'],
+            ['general', 'map', 'specs', 'files', 'cameras', 'desktop'],
             array_keys($tabs),
             'The declared order is the order MonitoringScreen draws the chips.'
         );
@@ -58,6 +58,10 @@ class MonitoringTabsTest extends TestCase
         // PC Specs names the module's OWN view, for the reason the next test
         // exists. Cameras and Desktop name grants this module already had.
         $this->assertSame('view', $tabs['specs']->action());
+        // Files NAMES its own grant (declared in the module's actions), split
+        // from control the way control was split from screenshots.view — see
+        // FilesController.
+        $this->assertSame('files.view', $tabs['files']->action());
         $this->assertSame('cameras.view', $tabs['cameras']->action());
         $this->assertSame('screenshots.view', $tabs['desktop']->action());
 

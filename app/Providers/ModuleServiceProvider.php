@@ -3598,6 +3598,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('general', 'General'),
                     new TabDefinition('map', 'Map'),
                     new TabDefinition('specs', 'PC Specs', action: 'view'),
+                    new TabDefinition('files', 'Files', action: 'files.view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
                 ],

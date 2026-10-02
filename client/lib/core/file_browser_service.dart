@@ -1,0 +1,176 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'api_client.dart';
+
+/// The VIEWER half of remote file access (2026-10-01-monitoring-files) — a
+/// manager browsing and downloading a monitored machine's files. The agent half
+/// (file_access_service.dart) answers; this asks.
+///
+/// It is a round trip over a poll channel, so each call is two steps: POST the
+/// request, then poll the per-request result slot until the agent has answered.
+/// The backend contract:
+///   POST /monitoring/devices/{id}/files {op,path} -> {data:{request_id}}
+///   GET  /monitoring/devices/{id}/files/{rid}     -> {data:{status:pending|ready|error,...}}
+///
+/// A device that never answers (offline, or the agent not running) is the case
+/// the poll budget is for: after [maxPolls] still-pending reads the call gives
+/// up with `offline`, which the screen shows rather than spinning forever.
+class FileBrowserService {
+  FileBrowserService(
+    this._api, {
+    Duration pollInterval = const Duration(milliseconds: 900),
+    int maxPolls = 12,
+  })  : _pollInterval = pollInterval,
+        _maxPolls = maxPolls;
+
+  final ApiClient _api;
+  final Duration _pollInterval;
+  final int _maxPolls;
+
+  /// A directory's entries, or a [FileBrowserException] with the agent's slug.
+  /// An empty [path] asks for the roots (the drives).
+  Future<FileListing> list(String deviceId, String path) async {
+    final answer = await _run(deviceId, 'list', path);
+
+    return FileListing(
+      path: answer['path'] as String? ?? path,
+      entries: [
+        for (final raw in (answer['entries'] as List? ?? const []))
+          if (raw is Map)
+            FileEntry(
+              name: raw['name'] as String? ?? '',
+              isDir: raw['is_dir'] == true,
+              sizeBytes: (raw['size_bytes'] as num?)?.toInt(),
+              modifiedAt: raw['modified_at'] as String?,
+            ),
+      ],
+    );
+  }
+
+  /// A file's bytes (base64-decoded), or a [FileBrowserException].
+  Future<FileDownload> download(String deviceId, String path) async {
+    final answer = await _run(deviceId, 'download', path);
+
+    return FileDownload(
+      name: answer['name'] as String? ?? _basename(path),
+      bytes: base64OrEmpty(answer['content_base64'] as String?),
+    );
+  }
+
+  /// POST the request, then poll its slot until the agent answers or the budget
+  /// runs out. An `error` answer is thrown as a [FileBrowserException] carrying
+  /// the slug; exhausting the budget throws `offline`.
+  Future<Map<String, dynamic>> _run(String deviceId, String op, String path) async {
+    final posted = await _api.post('/monitoring/devices/$deviceId/files', {
+      'op': op,
+      'path': path,
+    });
+
+    if (!posted.ok) {
+      throw const FileBrowserException('unreadable');
+    }
+
+    final requestId = posted.data is Map
+        ? (posted.data as Map)['request_id'] as String?
+        : null;
+
+    if (requestId == null) {
+      throw const FileBrowserException('unreadable');
+    }
+
+    for (var i = 0; i < _maxPolls; i++) {
+      await Future<void>.delayed(_pollInterval);
+
+      final res = await _api.get('/monitoring/devices/$deviceId/files/$requestId');
+      if (!res.ok || res.data is! Map) {
+        continue;
+      }
+
+      final data = (res.data as Map).cast<String, dynamic>();
+      final status = data['status'];
+
+      if (status == 'pending') {
+        continue;
+      }
+
+      if (status == 'error') {
+        throw FileBrowserException(data['error'] as String? ?? 'unreadable');
+      }
+
+      return data;
+    }
+
+    // No answer within the budget — the agent is not running or the device is
+    // offline. The screen pairs this with last_seen_at to say which.
+    throw const FileBrowserException('offline');
+  }
+
+  static String _basename(String path) {
+    final parts = path
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    return parts.isEmpty ? path : parts.last;
+  }
+}
+
+/// A directory listing.
+class FileListing {
+  const FileListing({required this.path, required this.entries});
+
+  final String path;
+  final List<FileEntry> entries;
+}
+
+/// One entry in a listing. Matches the backend's {name, is_dir, size_bytes,
+/// modified_at}.
+class FileEntry {
+  const FileEntry({
+    required this.name,
+    required this.isDir,
+    this.sizeBytes,
+    this.modifiedAt,
+  });
+
+  final String name;
+  final bool isDir;
+  final int? sizeBytes;
+  final String? modifiedAt;
+}
+
+/// A downloaded file's bytes, ready for [Files.download].
+class FileDownload {
+  const FileDownload({required this.name, required this.bytes});
+
+  final String name;
+  final List<int> bytes;
+}
+
+/// A read the agent refused or that never came back, carrying the slug the
+/// screen turns into a sentence: access_denied, not_found, too_large,
+/// unreadable, offline.
+class FileBrowserException implements Exception {
+  const FileBrowserException(this.slug);
+
+  final String slug;
+
+  @override
+  String toString() => 'FileBrowserException($slug)';
+}
+
+/// Decode base64, tolerant of a null or malformed blob (an empty file, or an
+/// answer that somehow carried no content) — an empty list rather than a throw,
+/// so a zero-byte download saves a zero-byte file instead of failing.
+List<int> base64OrEmpty(String? encoded) {
+  if (encoded == null || encoded.isEmpty) return const [];
+  try {
+    return _decode(encoded);
+  } catch (_) {
+    return const [];
+  }
+}
+
+List<int> _decode(String encoded) => base64Decode(encoded);

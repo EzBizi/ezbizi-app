@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
+import 'files_tab.dart';
 import 'general_tab.dart';
 import 'ownership_tab.dart';
 import 'pc_specs_tab.dart';
@@ -39,7 +40,7 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { general, map, pcSpecs, desktopMonitoring, cameraMonitoring }
+enum _SubTab { general, map, pcSpecs, files, cameraMonitoring, desktopMonitoring }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   /// Opens on General — the ownership chart — rather than PC Specs.
@@ -69,6 +70,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       if (can('monitoring.map.view'))
         (_SubTab.map, 'Map', Icons.map_outlined),
       (_SubTab.pcSpecs, 'PC Specs', Icons.computer_outlined),
+      if (can('monitoring.files.view'))
+        (_SubTab.files, 'Files', Icons.folder_open_outlined),
       if (can('monitoring.cameras.view'))
         (_SubTab.cameraMonitoring, 'Camera Monitoring', Icons.videocam_outlined),
       if (can('monitoring.screenshots.view'))
@@ -136,6 +139,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         return DesktopMonitoringTab(api: widget.api, session: widget.session);
       case _SubTab.cameraMonitoring:
         return CameraMonitoringTab(api: widget.api, session: widget.session);
+      case _SubTab.files:
+        return FilesTab(api: widget.api, session: widget.session);
       case _SubTab.pcSpecs:
         return PcSpecsTab(api: widget.api, session: widget.session);
     }
