@@ -156,6 +156,7 @@
                 "General",
                 "Map",
                 "PC Specs",
+                "Files",
                 "Camera Monitoring",
                 "Desktop Monitoring"
             ]
@@ -384,6 +385,7 @@
         "monitoring.cameras.manage",
         "monitoring.cameras.view",
         "monitoring.control",
+        "monitoring.files.view",
         "monitoring.general.view",
         "monitoring.map.manage",
         "monitoring.map.view",

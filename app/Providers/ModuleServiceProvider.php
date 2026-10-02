@@ -3516,7 +3516,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // authority than watching its screen, and an organization
                 // must be able to grant one without the other — see
                 // RemoteControlController's docblock (2026-09-02-monitoring-remote-control).
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control'],
+                // `files.view` is split off the same way: browsing and
+                // downloading a machine's files is its own authority, neither
+                // watching the screen nor driving it — see FilesController
+                // (2026-10-01-monitoring-files).
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view'],
                 // cameras.manage and control write records / drive a machine, so
                 // §2.2 requires an audit trail (writesRecords() flags them as
                 // writes since 2026-09-09). CamerasController logs
@@ -3594,6 +3598,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('general', 'General'),
                     new TabDefinition('map', 'Map'),
                     new TabDefinition('specs', 'PC Specs', action: 'view'),
+                    new TabDefinition('files', 'Files', action: 'files.view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
                 ],

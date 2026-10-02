@@ -16,6 +16,7 @@ import 'screens/leads_screen.dart';
 import 'core/field_tracker.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
+import 'core/file_access_service.dart';
 import 'core/remote_control_service.dart';
 import 'core/screenshot_service.dart';
 import 'core/session.dart';
@@ -498,6 +499,7 @@ class _HomeShellState extends State<HomeShell> {
   ///
   /// Null when exempt — it then never polls input-pending and applies nothing.
   RemoteControlService? _remoteControl;
+  FileAccessService? _fileAccess;
 
   /// Field GPS sharing, on a phone whose role is tracked. It asks the server
   /// whether to share and starts or stops itself; null off a phone.
@@ -548,6 +550,7 @@ class _HomeShellState extends State<HomeShell> {
       );
       _liveView = LiveViewService(widget.api);
       _remoteControl = RemoteControlService(widget.api);
+      _fileAccess = FileAccessService(widget.api);
     }
 
     _reminder = ShiftReminderController(
@@ -662,6 +665,7 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots?.dispose();
     _liveView?.dispose();
     _remoteControl?.dispose();
+    _fileAccess?.dispose();
 
     widget.session.removeListener(_followScope);
 

@@ -69,6 +69,7 @@ use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorP
 use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
+use App\Http\Controllers\Api\Monitoring\FilesController as MonitoringFilesController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
@@ -2502,6 +2503,15 @@ Route::prefix('v1')
         Route::post('monitoring/devices/{id}/control', [MonitoringRemoteControlController::class, 'control']);
         Route::post('monitoring/devices/{id}/input', [MonitoringRemoteControlController::class, 'input']);
 
+        // ── Monitoring: remote file access, the manager's half (2026-10-01-monitoring-files) ──
+        //
+        // Same idle reasoning as control just above: a manager browsing and
+        // downloading files IS navigation — the request and the poll that
+        // collects its answer both keep the session's idle window open. The
+        // agent's poll lives in the idle-less group below. See FilesController.
+        Route::post('monitoring/devices/{id}/files', [MonitoringFilesController::class, 'request']);
+        Route::get('monitoring/devices/{id}/files/{requestId}', [MonitoringFilesController::class, 'result']);
+
         // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
         //
         // A normal admin action (register/edit/remove a camera config), not a
@@ -2960,6 +2970,14 @@ Route::prefix('v1')
         // as `live-wanted` just above. See RemoteControlController's
         // docblock.
         Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
+            ->middleware('throttle:120,1');
+
+        // Remote file access's agent half — "what should I read" and "here is
+        // the answer" — same idle-less and throttle reasoning as
+        // `input-pending` just above. See FilesController.
+        Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
+            ->middleware('throttle:120,1');
+        Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
             ->middleware('throttle:120,1');
     });
 
