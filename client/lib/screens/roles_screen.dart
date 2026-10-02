@@ -335,7 +335,7 @@ class _RolesScreenState extends State<RolesScreen> {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
       'permissions': permissions.toList()..sort(),
-      if (hiddenOnLeads != null) 'hidden_on_leads': hiddenOnLeads,
+      'hidden_on_leads': ?hiddenOnLeads,
       // Only when changed: an unchanged list may name a role this editor
       // could not list themselves, and sending it back would be refused.
       if (invitable != null) 'invitable_roles': invitable.ids,
