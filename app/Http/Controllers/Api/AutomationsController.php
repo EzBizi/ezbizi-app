@@ -1108,6 +1108,62 @@ class AutomationsController extends Controller
     }
 
     /**
+     * POST /api/v1/automations/{automation}/duplicate
+     *
+     * A copy of the live version under a new name, OFF - so the same greeting
+     * can be pointed at another company without retyping it, and the copy
+     * cannot double-send beside its original before somebody has changed where
+     * it applies (Mia, 2026-10-02).
+     *
+     * Copied here rather than by the client re-posting what `show` returned:
+     * `show` masks webhook secrets, so a client-side copy would save the mask
+     * as the secret.
+     */
+    public function duplicate(Request $request, Automation $automation): JsonResponse
+    {
+        $this->assertMine($automation);
+        $this->authorize('view', $automation);
+        $this->authorize('create', Automation::class);
+
+        $source = $automation->activeVersion;
+
+        abort_if($source === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'This rule has no version to copy.');
+
+        $copy = DB::transaction(function () use ($automation, $source, $request) {
+            $copy = Automation::create([
+                'name' => Str::limit($automation->name, 140, '').' (copy)',
+                'description' => $automation->description,
+                'trigger_key' => $automation->trigger_key,
+                'scope_type' => $automation->scope_type,
+                'scope_id' => $automation->scope_id,
+                'is_active' => false,
+                'created_by' => $request->user()->getKey(),
+                'schedule' => $automation->schedule,
+                'next_run_at' => $automation->schedule !== null
+                    ? (new AutomationSchedule($automation->schedule))->nextAfter(now())
+                    : null,
+            ]);
+
+            $this->addVersion($copy, [
+                'conditions' => $source->conditions,
+                'actions' => $source->actions,
+            ], $request);
+
+            $this->audit->log('automation.created', $copy, metadata: [
+                'trigger' => $copy->trigger_key,
+                'copied_from' => $automation->getKey(),
+            ]);
+
+            return $copy;
+        });
+
+        return response()->json(
+            ['data' => $this->present($copy->fresh(), detailed: true)],
+            Response::HTTP_CREATED
+        );
+    }
+
+    /**
      * PATCH /api/v1/automations/{automation}
      *
      * Writes a new version rather than editing the live one. The previous

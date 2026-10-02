@@ -1218,4 +1218,35 @@ class AutomationsApiTest extends TestCase
         $this->assertContains('Connecticut — Garage Co', $labels);
         $this->assertNotContains('Connecticut', $labels);
     }
+
+    /**
+     * A copy carries the live version's steps and conditions, and is OFF even
+     * when the original is live, so the two cannot both send before somebody
+     * points the copy somewhere else (Mia, 2026-10-02).
+     */
+    public function test_a_copied_rule_keeps_its_steps_and_starts_switched_off(): void
+    {
+        $original = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Greet chats',
+            'trigger_key' => 'job.status_changed',
+            'conditions' => ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]],
+            'actions' => [['type' => 'notify', 'message' => 'Job {{ title }} is done']],
+        ])->assertCreated()->json('data');
+
+        $this->as()->patchJson("/api/v1/automations/{$original['id']}", ['is_active' => true])->assertOk();
+
+        $copy = $this->as()->postJson("/api/v1/automations/{$original['id']}/duplicate")
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertNotSame($original['id'], $copy['id']);
+        $this->assertSame('Greet chats (copy)', $copy['name']);
+        $this->assertFalse($copy['is_active']);
+        $this->assertSame(1, $copy['version']);
+        $this->assertSame($original['trigger_key'], $copy['trigger_key']);
+        $this->assertSame($original['conditions'], $copy['conditions']);
+        $this->assertSame($original['actions'], $copy['actions']);
+
+        $this->assertTrue(Automation::query()->withoutGlobalScopes()->findOrFail($original['id'])->is_active);
+    }
 }

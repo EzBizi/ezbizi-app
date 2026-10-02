@@ -2459,6 +2459,8 @@ Route::prefix('v1')
         // a real send one wrong argument away from a rehearsal.
         Route::post('automations/{automation}/run-now', [AutomationsController::class, 'runNow']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
+        // A copy, switched off; see AutomationsController::duplicate.
+        Route::post('automations/{automation}/duplicate', [AutomationsController::class, 'duplicate']);
         Route::apiResource('automations', AutomationsController::class)->except(['store'])
             ->parameters(['automations' => 'automation']);
         Route::post('automations', [AutomationsController::class, 'store']);
