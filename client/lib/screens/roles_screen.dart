@@ -313,8 +313,8 @@ class _RolesScreenState extends State<RolesScreen> {
         inboxes: _inboxes,
         heldInboxes: _held[role.id] ?? const {},
         allRoles: _roles,
-        onSave: (name, permissions, nested, invitable) =>
-            _save(role, name, permissions, nested, invitable),
+        onSave: (name, permissions, nested, invitable, hiddenOnLeads) =>
+            _save(role, name, permissions, nested, invitable, hiddenOnLeads),
       ),
     );
 
@@ -330,10 +330,12 @@ class _RolesScreenState extends State<RolesScreen> {
     Set<String> permissions,
     Map<String, Set<String>?> nested,
     ({List<String>? ids})? invitable,
+    bool? hiddenOnLeads,
   ) async {
     final response = await widget.api.patch('/roles/${role.id}', {
       'name': name,
       'permissions': permissions.toList()..sort(),
+      if (hiddenOnLeads != null) 'hidden_on_leads': hiddenOnLeads,
       // Only when changed: an unchanged list may name a role this editor
       // could not list themselves, and sending it back would be refused.
       if (invitable != null) 'invitable_roles': invitable.ids,
@@ -591,6 +593,7 @@ class _RoleEditor extends StatefulWidget {
     Set<String> permissions,
     Map<String, Set<String>?> nested,
     ({List<String>? ids})? invitable,
+    bool? hiddenOnLeads,
   )
   onSave;
 
@@ -630,6 +633,9 @@ class _RoleEditorState extends State<_RoleEditor> {
         : now != null && now.length == before.length && now.containsAll(before);
     return same ? null : (ids: now == null ? null : (now.toList()..sort()));
   }
+
+  /// Left off "X is viewing this lead" (Mia, 2026-10-02).
+  late bool _hiddenOnLeads = widget.role.hiddenOnLeads;
 
   bool _saving = false;
   String? _error;
@@ -1051,9 +1057,13 @@ class _RoleEditorState extends State<_RoleEditor> {
       _error = null;
     });
 
-    final failure = await widget.onSave(name, _payload, {
-      for (final kind in grantKinds) kind: _payloadFor(kind),
-    }, _invitableChange);
+    final failure = await widget.onSave(
+      name,
+      _payload,
+      {for (final kind in grantKinds) kind: _payloadFor(kind)},
+      _invitableChange,
+      _hiddenOnLeads == widget.role.hiddenOnLeads ? null : _hiddenOnLeads,
+    );
 
     if (!mounted) return;
 
@@ -1165,6 +1175,24 @@ class _RoleEditorState extends State<_RoleEditor> {
                   ),
             ],
 
+          const SizedBox(height: 16),
+          SwitchListTile(
+            key: const ValueKey('role-seen-on-leads'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Seen on leads'),
+            subtitle: Text(
+              _hiddenOnLeads
+                  ? 'Hidden: when somebody with this role opens a lead, nobody '
+                        'else is told. For people who inspect leads rather '
+                        'than answer them.'
+                  : 'When somebody with this role opens a lead, the others '
+                        'see their name on it.',
+            ),
+            value: !_hiddenOnLeads,
+            onChanged: _writable
+                ? (seen) => setState(() => _hiddenOnLeads = !seen)
+                : null,
+          ),
           if (_error != null) ...[
             const SizedBox(height: 16),
             ErrorNote(_error!),

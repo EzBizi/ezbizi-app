@@ -179,12 +179,13 @@ final class PdfRenderer
         string $sourceAlgorithm,
         DateTimeInterface $sourceStoredAt,
         array $signatures = [],
+        array $attachments = [],
     ): string {
         $dompdf = new Dompdf($this->options());
 
         $dompdf->loadHtml(
             $this->withBanner(
-                $this->withSignatures($storedDocument, $signatures),
+                $this->withAttachments($this->withSignatures($storedDocument, $signatures), $attachments),
                 $organizationName,
                 $contractName,
                 $version,
@@ -229,6 +230,41 @@ final class PdfRenderer
      * What stays here is what is genuinely this class's: the paper size, which
      * is resolved from the CONTRACT setting below.
      */
+    /**
+     * What they uploaded, after the contract: each picture on its own page, any
+     * other file named (Mia, 2026-10-02: Eve finished a technician's onboarding
+     * and had no way to download the contract "that includes all the images,
+     * signatures"). Added to the COPY, like the signatures, never to the stored
+     * document each signer fingerprinted. Pictures go in as `data:` URIs, the
+     * one source the hardened converter loads.
+     *
+     * @param  list<array{label: string, name: string, mime: string, data: ?string}>  $attachments
+     */
+    private function withAttachments(string $html, array $attachments): string
+    {
+        if ($attachments === []) {
+            return $html;
+        }
+
+        $esc = fn (string $v) => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $out = '<section class="attachments" style="page-break-before:always"><h2>Attachments</h2>';
+
+        foreach ($attachments as $i => $file) {
+            $out .= '<div style="'.($i > 0 && $file['data'] !== null ? 'page-break-before:always;' : '').'margin-bottom:16px">'
+                .'<p><strong>'.$esc($file['label']).'</strong> &middot; '.$esc($file['name']).'</p>'
+                .($file['data'] === null
+                    ? '<p>This file is not a picture, so it is kept on the onboarding record rather than printed here.</p>'
+                    : '<img src="data:'.$esc($file['mime']).';base64,'.$file['data'].'" alt="" style="max-width:100%;max-height:8.5in">')
+                .'</div>';
+        }
+
+        $out .= '</section>';
+
+        return str_contains($html, '</body>')
+            ? str_replace('</body>', $out.'</body>', $html)
+            : $html.$out;
+    }
+
     /**
      * The signature blocks of the copy, filled from the signature records:
      * the drawn signature over the rule, the typed name, the date — A1

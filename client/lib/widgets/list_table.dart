@@ -1,0 +1,332 @@
+import 'package:flutter/material.dart';
+
+import '../core/theme.dart';
+
+/// Count tiles that filter a list, then the list as a table: the layout
+/// Inventory uses, chosen for HR's Invitations, Onboarding and Contracts
+/// (Mia, 2026-10-02, layout A).
+
+/// One tile: a count, what it counts, and the filter it applies. A null [key]
+/// is the tile for everything.
+class FilterTile {
+  const FilterTile({
+    required this.key,
+    required this.label,
+    required this.count,
+    this.note = '',
+    this.tone,
+  });
+
+  final String? key;
+  final String label;
+
+  /// Null while the server has not said - drawn as a dash, never as 0.
+  final int? count;
+  final String note;
+  final Tone? tone;
+}
+
+/// The tiles in a wrapping row. Tapping a picked tile clears it.
+class FilterTiles extends StatelessWidget {
+  const FilterTiles({
+    super.key,
+    required this.prefix,
+    required this.tiles,
+    required this.picked,
+    required this.onPick,
+  });
+
+  /// Keys each tile `<prefix>-tile-<key>`, `all` for the null one.
+  final String prefix;
+  final List<FilterTile> tiles;
+  final String? picked;
+  final ValueChanged<String?> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        const gap = 10.0;
+        final across = (box.maxWidth / 170).floor().clamp(2, tiles.length);
+        final width = (box.maxWidth - gap * (across - 1)) / across;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final tile in tiles)
+              SizedBox(width: width, child: _tile(context, tile)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tile(BuildContext context, FilterTile tile) {
+    final theme = Theme.of(context);
+    final chosen = picked == tile.key;
+    final ink = tile.tone == null || (tile.count ?? 0) == 0
+        ? null
+        : ToneColours.of(context, tile.tone!).ink;
+    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+    return Material(
+      key: Key('$prefix-tile-${tile.key ?? 'all'}'),
+      color: chosen
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: BorderSide(
+          color: chosen ? theme.colorScheme.primary : EzBiziTheme.edge(context),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: radius,
+        onTap: () => onPick(chosen ? null : tile.key),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                tile.label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                tile.count == null ? '—' : '${tile.count}',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+              Text(
+                tile.note,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A column: its heading and how much of the row it takes.
+class ListColumn {
+  const ListColumn(this.label, {this.flex = 2, this.end = false});
+
+  final String label;
+  final int flex;
+
+  /// Right-aligned, for numbers and the actions column.
+  final bool end;
+}
+
+/// Rows under headings, columns lined up. Narrower than [stackBelow], each row
+/// becomes its first cell over the rest, so nothing is squeezed to a sliver.
+class ListTable extends StatelessWidget {
+  const ListTable({
+    super.key,
+    required this.columns,
+    required this.rows,
+    this.onTap,
+    this.rowKey,
+    this.footer,
+    this.stackBelow = 720,
+  });
+
+  final List<ListColumn> columns;
+
+  /// One widget per column, in order.
+  final List<List<Widget>> rows;
+  final void Function(int index)? onTap;
+  final Key Function(int index)? rowKey;
+
+  /// Under the last row: a "load more", for instance.
+  final Widget? footer;
+  final double stackBelow;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth >= stackBelow;
+
+        Widget cell(int i, Widget child) => Expanded(
+          flex: columns[i].flex,
+          child: Align(
+            alignment: columns[i].end
+                ? Alignment.centerRight
+                : Alignment.centerLeft,
+            child: child,
+          ),
+        );
+
+        Widget row(int r) {
+          final cells = rows[r];
+          final body = wide
+              ? Row(
+                  children: [
+                    for (var i = 0; i < cells.length; i++) cell(i, cells[i]),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    cells.first,
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: cells.skip(1).toList(),
+                    ),
+                  ],
+                );
+
+          return Material(
+            key: rowKey?.call(r),
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap == null ? null : () => onTap!(r),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: EzBiziTheme.edge(context)),
+                  ),
+                ),
+                child: body,
+              ),
+            ),
+          );
+        }
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            border: Border.all(color: EzBiziTheme.edge(context)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wide)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: EzBiziTheme.edge(context)),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < columns.length; i++)
+                          cell(
+                            i,
+                            Text(
+                              columns[i].label.toUpperCase(),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                letterSpacing: 0.8,
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                for (var r = 0; r < rows.length; r++) row(r),
+                ?footer,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A person's initials in a circle beside their name and a line under it.
+class PersonCell extends StatelessWidget {
+  const PersonCell({super.key, required this.name, this.sub});
+
+  final String name;
+  final String? sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final initials = name
+        .split(RegExp(r'[\s@._-]+'))
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor: theme.colorScheme.primaryContainer,
+          child: Text(
+            initials,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (sub != null && sub!.isNotEmpty)
+                Text(
+                  sub!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

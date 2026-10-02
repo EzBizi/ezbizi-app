@@ -13,9 +13,11 @@ import 'support/fake_recording_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Records — layout 4: 25/75 list and detail, stack below 600, play control.
+/// Records — tiles over a table (layout A), the detail beside it once a row
+/// is open, the detail alone below 600, play control.
 void main() {
   _blockingTests();
+  _tileTests();
 
   testWidgets('Records is not Coming soon', (tester) async {
     await _pump(tester, calls: const [], messages: const []);
@@ -25,7 +27,9 @@ void main() {
     expect(find.text('There are no calls or messages yet.'), findsOneWidget);
   });
 
-  testWidgets('at 900 the list is a quarter and the detail three quarters', (
+  // Layout A (Mia, 2026-10-02): the table is the whole width until a row is
+  // opened, then the detail sits beside it. Was: a 25/75 split from the start.
+  testWidgets('at 900 the table is full width until a call opens beside it', (
     tester,
   ) async {
     await _pump(tester, size: const Size(900, 800));
@@ -33,15 +37,21 @@ void main() {
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(Dialog), findsNothing);
     expect(find.byKey(const Key('phone-records-list')), findsOneWidget);
-    expect(find.byKey(const Key('phone-records-pane')), findsOneWidget);
+    expect(find.byKey(const Key('phone-records-pane')), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Calls'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Voicemail'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'SMS'), findsOneWidget);
 
+    await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
+
     final list = tester.getRect(find.byKey(const Key('phone-records-list')));
     final pane = tester.getRect(find.byKey(const Key('phone-records-pane')));
-    expect(pane.width, closeTo(list.width * 3, 12));
+    expect(pane.left, greaterThanOrEqualTo(list.right));
+    expect(pane.width, closeTo(list.width * 2 / 3, 12));
     expect(find.byTooltip('Back to the list'), findsNothing);
+
+    await _tap(tester, find.byTooltip('Close'));
+    expect(find.byKey(const Key('phone-records-pane')), findsNothing);
   });
 
   testWidgets('at 375 the detail is the whole body, with Back', (tester) async {
@@ -164,9 +174,18 @@ void main() {
     // Two people, three messages: two rows, not three.
     expect(find.byKey(const Key('phone-thread-+12035550199')), findsOneWidget);
     expect(find.byKey(const Key('phone-thread-+13055550188')), findsOneWidget);
+    // Counted by row key: the tiles above the table are InkWells too, so
+    // counting InkWells (as this did before layout A) counts the tiles.
     expect(
-      find.byType(InkWell).evaluate().length,
-      lessThan(6),
+      find
+          .byWidgetPredicate(
+            (w) =>
+                w.key is ValueKey<String> &&
+                (w.key! as ValueKey<String>).value.startsWith('phone-thread-'),
+          )
+          .evaluate()
+          .length,
+      2,
       reason: 'the list still has a row per message rather than per person',
     );
 
@@ -208,6 +227,159 @@ void main() {
   });
 }
 
+
+/// The tiles count the whole list and filter it (layout A, Mia 2026-10-02).
+void _tileTests() {
+  testWidgets('a Records tile counts its calls and lists only those', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      calls: [
+        // Answered: completed, nothing went wrong.
+        {..._call, 'tag': 'Quote', 'tag_color': '#2E7D32'},
+        // Missed: inbound, the dial reached nobody.
+        {
+          ..._call,
+          'id': 'ca-miss',
+          'status': 'completed',
+          'error_code': 'dial:no-answer',
+          'duration_seconds': 18,
+          'recording_sid': null,
+        },
+        // Voicemail: also no-answer, but the message is what matters.
+        {
+          ..._call,
+          'id': 'ca-vm',
+          'status': 'no-answer',
+          'voicemail': true,
+          'recording_sid': null,
+        },
+        // Didn't connect: one WE placed that nobody picked up — not a
+        // callback owed, so not Missed.
+        {
+          ..._call,
+          'id': 'ca-out',
+          'direction': 'outbound',
+          'from_e164': '+12035550142',
+          'to_e164': '+13055550188',
+          'status': 'busy',
+          'error_code': 'dial:busy',
+          'duration_seconds': 0,
+          'recording_sid': null,
+        },
+      ],
+    );
+
+    Finder count(String key) => find.descendant(
+      of: find.byKey(Key('records-tile-$key')),
+      matching: find.byType(Text),
+    );
+    String tileText(String key) => count(
+      key,
+    ).evaluate().map((e) => (e.widget as Text).data ?? '').join('|');
+
+    // Voicemails are in the Calls view now, so the Voicemail tile counts rows
+    // it can actually list.
+    expect(tileText('all'), contains('|4|'));
+    expect(tileText('answered'), contains('|1|'));
+    expect(tileText('missed'), contains('|1|'));
+    expect(tileText('voicemail'), contains('|1|'));
+    expect(tileText('failed'), contains('|1|'));
+    expect(tileText('untagged'), contains('|3|'));
+
+    await _tap(tester, find.byKey(const Key('records-tile-missed')));
+    expect(find.byKey(const Key('phone-record-ca-miss')), findsOneWidget);
+    expect(find.byKey(const Key('phone-record-ca-1')), findsNothing);
+    expect(find.byKey(const Key('phone-record-ca-out')), findsNothing);
+    expect(find.text('No answer.'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const Key('records-tile-failed')));
+    expect(find.byKey(const Key('phone-record-ca-out')), findsOneWidget);
+    expect(find.byKey(const Key('phone-record-ca-miss')), findsNothing);
+    expect(find.text("Didn't connect"), findsWidgets);
+    expect(find.text('The number was busy.'), findsOneWidget);
+
+    // Tapping the picked tile again is everything.
+    await _tap(tester, find.byKey(const Key('records-tile-failed')));
+    expect(find.byKey(const Key('phone-record-ca-1')), findsOneWidget);
+    expect(find.byKey(const Key('phone-record-ca-vm')), findsOneWidget);
+  });
+
+  testWidgets('a call row says who by customer name, over the number', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      calls: [
+        {..._call, 'customer_name': 'Dana Whitfield', 'answered_by_name': 'Andy'},
+      ],
+    );
+
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+    expect(find.textContaining('Inbound · '), findsOneWidget);
+    expect(find.text('Andy'), findsOneWidget);
+    expect(find.text('CT main'), findsOneWidget);
+    expect(find.text('Answered'), findsWidgets);
+  });
+
+  testWidgets('Messages tiles: waiting on us, answered, today — and filter', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    await _pump(
+      tester,
+      initialFilter: RecordsFilter.sms,
+      showFilters: false,
+      messages: [
+        // They wrote last, today: waiting on us.
+        {..._sms, 'created_at': now, 'customer_name': 'Dana Whitfield'},
+        // We wrote last, long ago: answered.
+        {
+          ..._sms,
+          'id': 'm-out',
+          'direction': 'outbound',
+          'from_e164': '+12035550142',
+          'to_e164': '+13055550188',
+          'body': 'On our way',
+          'customer_id': null,
+        },
+      ],
+    );
+
+    String tileText(String key) => find
+        .descendant(
+          of: find.byKey(Key('messages-tile-$key')),
+          matching: find.byType(Text),
+        )
+        .evaluate()
+        .map((e) => (e.widget as Text).data ?? '')
+        .join('|');
+
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(tileText('all'), contains('|2|'));
+    expect(tileText('waiting'), contains('|1|'));
+    expect(tileText('answered'), contains('|1|'));
+    expect(tileText('today'), contains('|1|'));
+
+    // The customer's name where the server has one.
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const Key('messages-tile-waiting')));
+    expect(find.byKey(const Key('phone-thread-+12035550199')), findsOneWidget);
+    expect(find.byKey(const Key('phone-thread-+13055550188')), findsNothing);
+
+    await _tap(tester, find.byKey(const Key('messages-tile-answered')));
+    expect(find.byKey(const Key('phone-thread-+13055550188')), findsOneWidget);
+    expect(find.byKey(const Key('phone-thread-+12035550199')), findsNothing);
+
+    // Opening a conversation still works from the table.
+    await _tap(tester, find.byKey(const Key('phone-thread-+13055550188')));
+    expect(find.byKey(const Key('phone-records-pane')), findsOneWidget);
+    expect(find.textContaining('On our way'), findsWidgets);
+  });
+}
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   final scrollable = find.ancestor(
@@ -282,6 +454,8 @@ Future<void> _pump(
   List<Map<String, Object?>>? messages,
   RecordingPlayer? player,
   List<http.Request>? seen,
+  RecordsFilter initialFilter = RecordsFilter.calls,
+  bool showFilters = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -305,7 +479,13 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: RecordsTab(api: api, session: session, player: player),
+        body: RecordsTab(
+          api: api,
+          session: session,
+          player: player,
+          initialFilter: initialFilter,
+          showFilters: showFilters,
+        ),
       ),
     ),
   );

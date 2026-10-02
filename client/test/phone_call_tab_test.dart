@@ -8,6 +8,7 @@ import 'package:ezbizi_client/screens/phone/call_tab.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -293,37 +294,77 @@ void main() {
   /// The second half is the control. Asserting only that a red dot exists
   /// passes on a build that draws every dot red, which is a worse screen than
   /// the one being fixed.
-  testWidgets('a teammate on Do not disturb gets a red dot', (tester) async {
+  ///
+  /// The dot became a status pill when the roster became a table (Mia,
+  /// 2026-10-02); the ruling it pinned is unchanged, so the test now reads the
+  /// pill's tone instead of the dot's colour.
+  testWidgets('a teammate on Do not disturb gets a red pill', (tester) async {
     await _pump(tester, view: CallView.team, size: const Size(900, 800));
 
-    final scheme = Theme.of(
-      tester.element(find.text('Bruno Vega')),
-    ).colorScheme;
-
-    Color? dotBeside(String name) {
+    Tone pillBeside(String name) {
       final row = find.ancestor(
         of: find.text(name),
-        matching: find.byType(Row),
+        matching: find.byKey(ValueKey('teammate-${switch (name) {
+          'Bruno Vega' => 'u-3',
+          _ => 'u-1',
+        }}')),
       );
 
       return tester
-          .widget<Icon>(
-            find.descendant(of: row.first, matching: find.byIcon(Icons.circle)),
+          .widget<StatusPill>(
+            find.descendant(of: row, matching: find.byType(StatusPill)).first,
           )
-          .color;
+          .tone;
     }
 
     expect(
-      dotBeside('Bruno Vega'),
-      scheme.error,
-      reason: 'Do not disturb is not drawn in the error colour',
+      pillBeside('Bruno Vega'),
+      Tone.bad,
+      reason: 'Do not disturb is not drawn in red',
     );
 
     expect(
-      dotBeside('Jose Silva'),
-      isNot(scheme.error),
-      reason: 'every dot is red, so the colour says nothing',
+      pillBeside('Jose Silva'),
+      isNot(Tone.bad),
+      reason: 'every pill is red, so the colour says nothing',
     );
+  });
+
+  /// Tiles over the roster (Mia, 2026-10-02): each counts the whole desk, and
+  /// tapping one leaves only the people it counted.
+  testWidgets('the Team tiles count the desk and filter the roster', (
+    tester,
+  ) async {
+    await _pump(tester, view: CallView.team, size: const Size(1000, 800));
+
+    String countOn(String key) {
+      final tile = find.byKey(Key('team-tile-$key'));
+      return tester
+          .widgetList<Text>(find.descendant(of: tile, matching: find.byType(Text)))
+          .elementAt(1)
+          .data!;
+    }
+
+    expect(countOn('all'), '3');
+    expect(countOn('available'), '1', reason: 'registered reads as Available');
+    expect(countOn('on_call'), '1');
+    expect(countOn('dnd'), '1');
+    expect(countOn('unread'), '2', reason: 'messages, not people');
+
+    await _tap(tester, find.byKey(const Key('team-tile-dnd')));
+    expect(find.text('Bruno Vega'), findsOneWidget);
+    expect(find.text('Maya Chen'), findsNothing);
+    expect(find.text('Jose Silva'), findsNothing);
+
+    await _tap(tester, find.byKey(const Key('team-tile-unread')));
+    expect(find.text('Maya Chen'), findsOneWidget);
+    expect(find.text('2 new'), findsOneWidget);
+    expect(find.text('Bruno Vega'), findsNothing);
+
+    // Tapping the picked tile again clears it.
+    await _tap(tester, find.byKey(const Key('team-tile-unread')));
+    expect(find.text('Bruno Vega'), findsOneWidget);
+    expect(find.text('Jose Silva'), findsOneWidget);
   });
 
   testWidgets('the pad stops shrinking before the other two do', (
@@ -2029,6 +2070,14 @@ MockClientHandler _handler({
             'created_at': '2026-08-23T16:09:00+00:00',
           },
         ],
+      });
+    }
+
+    // Two messages waiting from Maya, none from anybody else: the Team
+    // roster's Unread tile counts messages, the filter keeps people.
+    if (path.endsWith('/staff-messages/unread')) {
+      return _json({
+        'data': {'u-2': 2},
       });
     }
 

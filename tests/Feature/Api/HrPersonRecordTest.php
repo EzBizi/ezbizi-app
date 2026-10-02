@@ -248,6 +248,50 @@ class HrPersonRecordTest extends TestCase
             ->assertJsonMissingPath('code');
     }
 
+    // ── where they work ──────────────────────────────────────────
+
+    /**
+     * Mia, 2026-10-02: "assigning andy to A1-Group instead so she has full
+     * access to all companies and franchises". Works at is editable, and a
+     * move replaces where they were rather than adding to it.
+     */
+    public function test_works_at_moves_somebody_to_the_whole_organization(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $andy = $this->userWithRole($t, 'Dispatcher', ['customers.view'], onlyAt: $t['franchise']);
+
+        $this->signedInAs($t['admin'])->patchJson("/api/v1/hr/people/{$andy->id}", [
+            'scope_type' => 'organization',
+            'scope_id' => $t['org']->id,
+        ])->assertOk()
+            ->assertJsonPath('data.assignments.0.type', 'organization');
+
+        $rows = $this->inTenant($t['org'], fn () => $andy->assignments()->get());
+        $this->assertCount(1, $rows);
+        $this->assertSame($t['org']->id, $rows->first()->assigned_organization_id);
+
+        $this->assertTrue($this->inTenant($t['org'], fn () => AuditEvent::query()
+            ->where('action', 'user.assignment_moved')->where('target_id', $andy->id)->exists()));
+    }
+
+    /** Nobody places somebody further up than they reach themselves. */
+    public function test_works_at_is_bounded_by_the_editors_own_reach(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $manager = $this->userWithRole(
+            $t, 'Branch Manager', ['hr.view', 'hr.records.view', 'hr.edit'],
+            onlyAt: $t['franchise'],
+        );
+        $tech = $this->userWithRole($t, 'Technician', ['customers.view'], onlyAt: $t['franchise']);
+
+        $this->signedInAs($manager)->patchJson("/api/v1/hr/people/{$tech->id}", [
+            'scope_type' => 'organization',
+            'scope_id' => $t['org']->id,
+        ])->assertStatus(422);
+
+        $this->assertSame($t['franchise']->id, $this->inTenant($t['org'], fn () => $tech->assignments()->sole()->assigned_franchise_id));
+    }
+
     // ── editing who they are ─────────────────────────────────────
 
     public function test_hr_edits_the_same_columns_the_person_edits(): void

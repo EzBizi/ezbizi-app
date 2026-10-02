@@ -486,6 +486,26 @@ void main() {
 
   // ── the finished record ────────────────────────────────────────
 
+  // Mia, 2026-10-02: Eve finished a technician's onboarding and could not
+  // download the signed contract.
+  testWidgets('a signed contract can be fetched as a PDF to download', (
+    tester,
+  ) async {
+    var asked = 0;
+    await _pumpForm(
+      tester,
+      _handler(form: _asRecord, onSignedPdf: () => asked++),
+    );
+
+    final button = find.byKey(const Key('onboarding-download-pdf'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(asked, 1);
+    expect(find.byKey(const Key('onboarding-save-pdf')), findsOneWidget);
+  });
+
   testWidgets('a finished record reads as one, signature and all', (
     tester,
   ) async {
@@ -572,7 +592,8 @@ void main() {
 
     expect(find.text('Bea Okafor'), findsOneWidget);
     expect(find.text('In progress'), findsOneWidget);
-    expect(find.text('Version 3'), findsOneWidget);
+    // The version rides beside the contract's name in its column now.
+    expect(find.textContaining('v3'), findsOneWidget);
 
     // How far along, and then both sides' counts rather than one verdict word,
     // in the server's names for the sides: an onboarding stuck because nobody
@@ -600,8 +621,15 @@ void main() {
     await _pumpTab(tester, _handler(onList: asked.add));
     expect(asked.last['state'], 'open');
 
-    await _tap(tester, find.byKey(const ValueKey('onboardings-finished')));
-    expect(asked.last['state'], 'finished');
+    // The archive is the Completed and Cancelled tiles now (layout A, Mia
+    // 2026-10-02): one status each, and the ongoing list is still the default.
+    await _tap(tester, find.byKey(const Key('onboardings-tile-completed')));
+    expect(asked.last['status'], 'completed');
+    expect(asked.last.containsKey('state'), isFalse);
+
+    // Tapping the picked tile again goes back to what is still under way.
+    await _tap(tester, find.byKey(const Key('onboardings-tile-completed')));
+    expect(asked.last['state'], 'open');
   });
 
   testWidgets('an in-progress onboarding can be cancelled', (tester) async {
@@ -1578,6 +1606,8 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onPreviewBody,
   /// The draft PDF `POST …/preview?format=pdf` answers with.
   Uint8List Function(Map<String, dynamic> body)? onPdf,
+  /// `GET …/document/pdf`, the signed copy: called with nothing, counts asks.
+  void Function()? onSignedPdf,
   /// The signer's saved signature, `GET /me/signature`; null when none.
   String? savedSignature,
   void Function(Map<String, dynamic> body)? onSaveSignature,
@@ -1659,6 +1689,15 @@ MockClientHandler _handler({
             if (county.toLowerCase().startsWith(q)) county,
         ],
       });
+    }
+
+    if (path.endsWith('/hr/onboardings/o-1/document/pdf')) {
+      onSignedPdf?.call();
+      return http.Response.bytes(
+        utf8.encode('%PDF-1.4 signed'),
+        200,
+        headers: {'content-type': 'application/pdf'},
+      );
     }
 
     if (path.endsWith('/hr/onboardings/o-1/document')) {

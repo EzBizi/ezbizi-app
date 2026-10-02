@@ -72,6 +72,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   /// null before the first search; an empty list is "nothing covers that".
   List<Map<String, dynamic>>? _areas;
 
+  /// The address a search was looked up as, so the reader sees which house
+  /// the zip came from (Mia, 2026-10-02). Null for any other search.
+  Map<String, dynamic>? _resolved;
+
   List<Map<String, dynamic>> _franchises = [];
   String? _franchiseId;
 
@@ -153,6 +157,13 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     if (q.isEmpty) return;
     setState(() => _suggestions = []);
 
+    // A house number then words is a street address ("86 Jerusalem hill
+    // Trumbull"): the server finds its zip (Mia, 2026-10-02).
+    if (_looksLikeAddress(q)) {
+      await _run({'address': q});
+      return;
+    }
+
     // Digits are a zip; anything else is most likely an area name somebody
     // typed without waiting for the suggestion.
     if (!RegExp(r'^[\d\s-]+$').hasMatch(q)) {
@@ -172,6 +183,9 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
     await _run({'zip': q});
   }
+
+  static bool _looksLikeAddress(String q) =>
+      RegExp(r'^\d+[A-Za-z]?\s+[A-Za-z]').hasMatch(q);
 
   /// 5 digits, zip+4, or a New England zip that lost its leading zero.
   static const _zipLengths = {4, 5, 9};
@@ -200,11 +214,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
     setState(() {
       _loading = false;
+      _resolved = null;
       if (!response.ok) {
-        _error = response.message;
+        _error = response.reason;
         _areas = null;
         return;
       }
+      final resolved = response.body['data']?['resolved'];
+      _resolved = resolved is Map ? resolved.cast<String, dynamic>() : null;
       _areas = (response.body['data']?['areas'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
     });
@@ -244,7 +261,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Search by zip code, pick an area, or see a month.',
+                  'Search by zip code or address, pick an area, or see a month.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
@@ -305,6 +322,24 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 },
                 const SizedBox(height: 20),
                 if (_error != null) ErrorNote(_error!),
+                if (_resolved != null && !_loading)
+                  Padding(
+                    key: const Key('availability-resolved'),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 18, color: muted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${_resolved!['address']} — zip ${_resolved!['zip']}'
+                            '${_resolved!['exact'] == true ? '' : ' (approximate: check the street with the customer)'}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.all(24),
@@ -369,7 +404,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 controller: _search,
                 textInputAction: TextInputAction.search,
                 decoration: const InputDecoration(
-                  hintText: 'Zip code, city or area',
+                  hintText: 'Zip code, address, city or area',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: _suggest,
@@ -445,6 +480,25 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     final first = area['first'] as Map<String, dynamic>?;
     final after = (area['after'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
+    // Closed days the server named, up to the last day shown (Mia,
+    // 2026-10-02). Rows with a `reason` are closed; the rest are openings.
+    final closed = (area['closed'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    List<Map<String, dynamic>> closedBefore(String date) => [
+      for (final day in closed)
+        if ((day['date'] as String).compareTo(date) < 0) day,
+    ];
+    // The server only names closed days up to the last day it shows, so
+    // every one after the first opening belongs in this list.
+    List<Map<String, dynamic>> withClosed(List<Map<String, dynamic>> open) {
+      if (first == null) return open;
+      final from = first['date'] as String;
+      return [
+        ...open,
+        for (final day in closed)
+          if ((day['date'] as String).compareTo(from) > 0) day,
+      ]..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    }
     final heading = [
       area['franchise_name'],
       area['area_name'],
@@ -471,12 +525,30 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
               ),
             ),
             const SizedBox(height: 10),
-            if (area['configured'] != true || first == null)
+            if (area['configured'] != true ||
+                (first == null && area['none_because'] != 'closed'))
               Text(
                 _unknown,
                 style: theme.textTheme.bodyMedium?.copyWith(color: muted),
               )
+            // Set up and closed every day (Mia, 2026-10-02): said, not
+            // passed off to Workiz as unknown.
+            else if (first == null)
+              Text(
+                'Closed. This area is not taking jobs on any day.',
+                key: const Key('availability-closed-all'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              )
             else ...[
+              // Closed days before the first opening: a holiday tomorrow
+              // reads as closed, not as missing.
+              for (final day in closedBefore(first['date'] as String))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _closedRow(theme, day),
+                ),
               Text(
                 'First available',
                 style: theme.textTheme.bodySmall?.copyWith(color: muted),
@@ -492,14 +564,20 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
               const SizedBox(height: 10),
               _windowRow(first),
               _noTime(theme, first),
-              if (after.isNotEmpty) ...[
+              if (withClosed(after).isNotEmpty) ...[
                 const Divider(height: 28),
                 Text(
                   'After that',
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
                 const SizedBox(height: 8),
-                for (final day in after)
+                for (final day in withClosed(after))
+                  if (day['reason'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _closedRow(theme, day),
+                    )
+                  else
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Row(
@@ -526,6 +604,47 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
           ],
         ),
       ),
+    );
+  }
+
+  /// A closed day in the list: its date and why (Mia, 2026-10-02).
+  Widget _closedRow(ThemeData theme, Map<String, dynamic> day) {
+    final neutral = ToneColours.of(context, Tone.neutral);
+    final why = switch (day['reason']) {
+      'date' => 'Closed that day',
+      'not_yet' => 'Not open yet',
+      _ => 'Closed',
+    };
+
+    return Row(
+      key: ValueKey('availability-closed-${day['date']}'),
+      children: [
+        SizedBox(
+          width: 92,
+          child: Text(
+            _shortDate(day['date'] as String),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: neutral.fill,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              why,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: neutral.ink,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

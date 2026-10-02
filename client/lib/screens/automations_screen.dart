@@ -323,6 +323,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   Widget _row(BuildContext context, Map<String, dynamic> automation) {
     final noEdit = _noEdit;
     final noDelete = _noDelete;
+    final noCreate = _noCreate;
     final live = automation['is_live'] as bool? ?? false;
     final disabledReason = automation['disabled_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
@@ -398,6 +399,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       value: 'edit',
                       label: 'Open and edit',
                       reason: noEdit,
+                    ),
+                    // A copy starts OFF, so it cannot send beside its
+                    // original before somebody changes where it applies.
+                    refusedMenuItem(
+                      context,
+                      value: 'duplicate',
+                      label: 'Make a copy',
+                      reason: noCreate,
                     ),
                     const PopupMenuItem(
                       value: 'runs',
@@ -605,6 +614,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     switch (action) {
       case 'edit':
         await _edit(automation);
+      case 'duplicate':
+        await _duplicate(automation);
       case 'runs':
         await _showRuns(automation);
       case 'test':
@@ -614,6 +625,40 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       case 'delete':
         await _delete(automation);
     }
+  }
+
+  /// Copy a rule, switched off, and open the copy to be renamed and pointed
+  /// somewhere else. The server copies it: the rule as read here has its
+  /// webhook secrets masked, and re-posting it would save the mask.
+  Future<void> _duplicate(Map<String, dynamic> automation) async {
+    final response = await widget.api.post(
+      '/automations/${automation['id']}/duplicate',
+      const {},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Copied, and switched off. Change where it applies, then turn it on.',
+        ),
+      ),
+    );
+
+    _load();
+
+    setState(() {
+      _editing = Map<String, dynamic>.from(response.data as Map);
+      _tab = 'build';
+    });
   }
 
   Future<void> _delete(Map<String, dynamic> automation) async {

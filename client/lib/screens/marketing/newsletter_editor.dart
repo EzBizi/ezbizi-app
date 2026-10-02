@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/search_picker.dart';
+import '../email/message_html.dart';
 import 'clock_label.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -9,16 +10,31 @@ import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
 import 'newsletter_blocks.dart';
 
-/// The left half of Newsletter: subject, blocks, audience, schedule, Send.
+/// Newsletter › Composer: blocks to add, the email itself, and who/when/Send.
 ///
-/// ── Why the blocks are a list and not a canvas ──────────────────
+/// ── Layout A, and why the email is the editor ───────────────────
+///
+/// Mia's pick, 2026-10-02: three columns. Blocks to add on the left, the email
+/// in the middle where a click on a block edits it IN PLACE, and Subject / Who
+/// gets it / When / Send on the right. The old layout put a form on one side
+/// and the server's HTML on the other, so changing a heading meant finding its
+/// card in a list and then looking across for the result. Now the thing being
+/// changed and the thing being read are the same thing.
+///
+/// Below 1000 points the three stack, in the same order.
+///
+/// ── Why the blocks are still a stack ────────────────────────────
 ///
 /// An email IS a stack of rows — that is what every mail client renders and
 /// what `BlockRenderer` emits. A drag-anywhere canvas would let somebody build
-/// a layout that cannot survive Outlook, and then the composer would be lying
-/// about the artefact. The list is the honest shape, and columns are the one
-/// place two things sit side by side because that is the one place email
-/// supports it.
+/// a layout that cannot survive Outlook. Columns are the one place two things
+/// sit side by side, because that is the one place email supports it.
+///
+/// ── Read-only once it has gone ──────────────────────────────────
+///
+/// The server refuses edits to a scheduled, sending or sent newsletter. The
+/// screen says so up front ([readOnlyBecause]) rather than letting somebody
+/// type a paragraph that the next autosave throws away.
 class NewsletterEditor extends StatefulWidget {
   const NewsletterEditor({
     super.key,
@@ -28,10 +44,14 @@ class NewsletterEditor extends StatefulWidget {
     required this.audienceId,
     required this.when,
     required this.viewName,
+    required this.company,
     required this.scheduledTimezone,
     required this.session,
     required this.sendingRefusedBecause,
+    required this.readOnlyBecause,
     required this.saveError,
+    required this.saveState,
+    required this.previewHtml,
     required this.onChanged,
     required this.onAudience,
     required this.onHtml,
@@ -45,13 +65,25 @@ class NewsletterEditor extends StatefulWidget {
   final TextEditingController when;
   final String viewName;
 
+  /// The name the footer carries, as the renderer writes it.
+  final String company;
+
   /// The clock this mailing is already filed against, when it is already
   /// scheduled. Null on a draft, where nothing has picked a clock yet.
   final String? scheduledTimezone;
 
   final Session session;
   final String? sendingRefusedBecause;
+
+  /// Why nothing here can be changed, or null for a draft.
+  final String? readOnlyBecause;
   final String? saveError;
+
+  /// "Saved", "Saving…" or "Unsaved", for the open newsletter.
+  final String saveState;
+
+  /// GET /newsletters/{id}/preview: the exact document that will go out.
+  final String previewHtml;
 
   final VoidCallback onChanged;
   final ValueChanged<String?> onAudience;
@@ -66,6 +98,16 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   bool _htmlMode = false;
   final TextEditingController _html = TextEditingController();
   bool _scheduling = false;
+
+  /// The block being edited in place, by position.
+  int? _selected;
+  bool _phone = false;
+
+  /// Show the server's HTML instead of the Flutter drawing, so the exact
+  /// output stays checkable.
+  bool _serverPreview = false;
+
+  bool get _locked => widget.readOnlyBecause != null;
 
   @override
   void initState() {
@@ -82,14 +124,17 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// Why Send cannot be pressed, or null when it can.
   ///
   /// Permission first, because it is the one nothing on this screen can fix.
-  /// Then the server's own sentence about the connection, then the things the
-  /// person can actually do something about.
+  /// Then whether it has already gone, then the server's own sentence about
+  /// the connection, then the things the person can actually do something
+  /// about.
   String? get _sendRefusal {
     final unpermitted = widget.session.me?.refusal(
       'newsletter.send',
       'send a newsletter',
     );
     if (unpermitted != null) return unpermitted;
+
+    if (widget.readOnlyBecause != null) return widget.readOnlyBecause;
 
     if (widget.sendingRefusedBecause != null) return widget.sendingRefusedBecause;
 
@@ -108,161 +153,299 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final refusal = _sendRefusal;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 1000) {
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              _palette(context, wrap: true),
+              const SizedBox(height: 12),
+              _email(context, bounded: false),
+              const SizedBox(height: 12),
+              _settings(context),
+            ],
+          );
+        }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        DashboardCard(
-          title: 'Newsletter',
-          icon: Icons.drafts_outlined,
-          child: Column(
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                controller: widget.subject,
-                decoration: const InputDecoration(
-                  labelText: 'Subject',
-                  hintText: 'What lands in the inbox',
+              SizedBox(
+                width: 190,
+                child: SingleChildScrollView(
+                  child: _palette(context, wrap: false),
                 ),
-                onChanged: (_) => widget.onChanged(),
               ),
-              const SizedBox(height: 14),
-              _modeSwitch(context),
-              const SizedBox(height: 10),
-              if (_htmlMode) _htmlPane(context) else _blockList(context),
+              const SizedBox(width: 12),
+              Expanded(child: _email(context, bounded: true)),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 300,
+                child: SingleChildScrollView(child: _settings(context)),
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-        _audienceCard(context),
-        const SizedBox(height: 12),
-        _sendCard(context, refusal),
-      ],
+        );
+      },
     );
   }
 
-  Widget _modeSwitch(BuildContext context) {
-    return Row(
+  // ── left: what can be added ──────────────────────────────────
+
+  Widget _palette(BuildContext context, {required bool wrap}) {
+    final adding = !_locked && !_htmlMode;
+    final buttons = [
+      for (final kind in BlockKind.values)
+        OutlinedButton.icon(
+          onPressed: adding ? () => _add(kind) : null,
+          icon: Icon(kind.icon, size: 16),
+          label: Text(kind.label),
+          style: wrap ? null : OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+        ),
+    ];
+
+    return DashboardCard(
+      title: 'Add a block',
+      icon: Icons.add_box_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (wrap)
+            Wrap(spacing: 6, runSpacing: 6, children: buttons)
+          else
+            for (final b in buttons)
+              Padding(padding: const EdgeInsets.only(bottom: 6), child: b),
+          const SizedBox(height: 8),
+          Text('Or', style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(
+            onPressed: _locked
+                ? null
+                : () => setState(() {
+                    _htmlMode = !_htmlMode;
+                    _selected = null;
+                  }),
+            icon: Icon(_htmlMode ? Icons.dashboard_outlined : Icons.code, size: 16),
+            label: Text(_htmlMode ? 'Back to blocks' : 'Write HTML'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A new block goes under the selected one, or at the end, and is selected
+  /// so its fields are open where it landed.
+  void _add(BlockKind kind) {
+    setState(() {
+      final at = _selected == null ? widget.blocks.length : _selected! + 1;
+      widget.blocks.insert(at, kind.blank());
+      _selected = at;
+      _serverPreview = false;
+    });
+    widget.onChanged();
+  }
+
+  // ── middle: the email ────────────────────────────────────────
+
+  Widget _email(BuildContext context, {required bool bounded}) {
+    final controls = Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SegmentedButton<bool>(
           segments: const [
-            ButtonSegment(value: false, label: Text('Blocks'), icon: Icon(Icons.dashboard_outlined, size: 16)),
-            ButtonSegment(value: true, label: Text('HTML'), icon: Icon(Icons.code, size: 16)),
+            ButtonSegment(
+              value: false,
+              label: Text('Desktop'),
+              icon: Icon(Icons.desktop_windows_outlined, size: 16),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text('Phone'),
+              icon: Icon(Icons.phone_iphone, size: 16),
+            ),
           ],
-          selected: {_htmlMode},
-          onSelectionChanged: (s) => setState(() => _htmlMode = s.first),
+          selected: {_phone},
+          onSelectionChanged: (s) => setState(() => _phone = s.first),
           showSelectedIcon: false,
         ),
+        if (!_htmlMode)
+          FilterChip(
+            label: const Text('Server preview'),
+            selected: _serverPreview,
+            onSelected: (on) => setState(() {
+              _serverPreview = on;
+              _selected = null;
+            }),
+          ),
       ],
+    );
+
+    final Widget body;
+    if (_htmlMode) {
+      body = _htmlPane(context, bounded: bounded);
+    } else if (_serverPreview) {
+      body = bounded
+          ? Expanded(child: _serverView())
+          : SizedBox(height: 520, child: _serverView());
+    } else {
+      final email = NewsletterEmail(
+        blocks: widget.blocks,
+        company: widget.company,
+        phone: _phone,
+        selected: _selected,
+        onSelect: _locked ? null : (i) => setState(() => _selected = i),
+        editorFor: _locked ? null : (i) => _inPlace(context, i),
+      );
+      body = bounded
+          ? Expanded(child: SingleChildScrollView(child: email))
+          : email;
+    }
+
+    return DashboardCard(
+      title: 'What they will get',
+      icon: Icons.mark_email_read_outlined,
+      /*
+       * `expand` is what makes the server preview VISIBLE on the web: the
+       * viewer is an iframe in `SizedBox.expand`, which collapses to nothing
+       * when its height is unbounded. Wide, the card fills its column and the
+       * body takes the leftover; narrow, the preview gets a fixed 520 instead.
+       */
+      expand: bounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          controls,
+          const SizedBox(height: 10),
+          if (_locked) ...[
+            DashboardNote(widget.readOnlyBecause!),
+            const SizedBox(height: 10),
+          ],
+          body,
+        ],
+      ),
     );
   }
 
-  /// Raw HTML for the whole mailing.
+  /// The server's HTML, at the width the Desktop/Phone switch picked.
+  Widget _serverView() {
+    if (widget.previewHtml.isEmpty) {
+      return const Center(child: DashboardNote('Nothing to show yet.'));
+    }
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        width: _phone ? 375 : double.infinity,
+        child: MessageHtmlView(html: widget.previewHtml),
+      ),
+    );
+  }
+
+  /// Raw HTML for the whole mailing, under the server's rendering of it.
   ///
   /// It replaces the blocks rather than sitting beside them, and says so —
   /// two sources of truth for one email is how somebody edits the markup, adds
   /// a block, and silently loses the markup.
-  Widget _htmlPane(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const DashboardNote(
-          'Write the email yourself. While this is set it is what goes out — '
-          'the blocks below it are kept but not used, so you can clear this '
-          'and get them back.',
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _html,
-          minLines: 12,
-          maxLines: 26,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-          decoration: const InputDecoration(
-            hintText: '<table>…</table>',
-            alignLabelWithHint: true,
-          ),
-          onChanged: widget.onHtml,
-        ),
-      ],
+  Widget _htmlPane(BuildContext context, {required bool bounded}) {
+    final box = TextField(
+      controller: _html,
+      minLines: 6,
+      maxLines: 12,
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+      decoration: const InputDecoration(
+        hintText: '<table>…</table>',
+        alignLabelWithHint: true,
+      ),
+      onChanged: widget.onHtml,
     );
+
+    final children = <Widget>[
+      const DashboardNote(
+        'Write the email yourself. While this is set it is what goes out — '
+        'the blocks are kept but not used, so you can clear this and get them '
+        'back.',
+      ),
+      const SizedBox(height: 10),
+      if (bounded)
+        Expanded(child: _serverView())
+      else
+        SizedBox(height: 520, child: _serverView()),
+      const SizedBox(height: 10),
+      box,
+    ];
+
+    return bounded
+        ? Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
   }
 
-  Widget _blockList(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.blocks.isEmpty)
-          const DashboardNote('Add a block to start writing.'),
-        for (var i = 0; i < widget.blocks.length; i++)
-          _blockCard(context, i, widget.blocks[i]),
-        const SizedBox(height: 10),
-        _addRow(context, (block) => setState(() => widget.blocks.add(block))),
-      ],
-    );
-  }
-
-  Widget _addRow(BuildContext context, ValueChanged<Map<String, dynamic>> onAdd) {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final kind in BlockKind.values)
-          OutlinedButton.icon(
-            onPressed: () {
-              onAdd(kind.blank());
-              widget.onChanged();
-            },
-            icon: Icon(kind.icon, size: 16),
-            label: Text(kind.label),
-          ),
-      ],
-    );
-  }
-
-  Widget _blockCard(BuildContext context, int index, Map<String, dynamic> block) {
+  /// The selected block's fields, where the block was, with the moves.
+  Widget _inPlace(BuildContext context, int index) {
+    final block = widget.blocks[index];
     final kind = BlockKind.forType(block['type'] as String? ?? '');
     final theme = Theme.of(context);
 
+    // The theme's surface, not the email's white: these are controls, and in
+    // dark mode they must read as controls.
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(kind?.icon ?? Icons.help_outline, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                kind?.label ?? (block['type'] as String? ?? 'Block'),
+                style: theme.textTheme.labelLarge,
+              ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  kind?.label ?? (block['type'] as String? ?? 'Block'),
-                  style: theme.textTheme.labelLarge,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Move up',
+              // Arrows rather than drag: this sits in a scrolling pane on a
+              // touch screen, and a drag that competes with the scroll is the
+              // gesture people lose. Two taps always work.
+              TextButton(
                 onPressed: index == 0 ? null : () => _move(index, index - 1),
-                icon: const Icon(Icons.arrow_upward, size: 16),
+                child: const Text('Move up'),
               ),
-              IconButton(
-                tooltip: 'Move down',
+              TextButton(
                 onPressed: index == widget.blocks.length - 1
                     ? null
                     : () => _move(index, index + 1),
-                icon: const Icon(Icons.arrow_downward, size: 16),
+                child: const Text('Move down'),
               ),
-              IconButton(
-                tooltip: 'Remove',
-                onPressed: () => setState(() {
-                  widget.blocks.removeAt(index);
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    widget.blocks.removeAt(index);
+                    _selected = null;
+                  });
                   widget.onChanged();
-                }),
-                icon: const Icon(Icons.close, size: 16),
+                },
+                style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                child: const Text('Remove'),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _selected = null),
+                child: const Text('Done'),
               ),
             ],
           ),
@@ -308,6 +491,12 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       ],
       BlockKind.spacer => [_number(block, 'height', 'Height in points')],
       BlockKind.columns => [_columns(context, block)],
+      BlockKind.divider => const [
+        Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: DashboardNote('A line across the email. Nothing to fill in.'),
+        ),
+      ],
       _ => const [],
     };
   }
@@ -336,11 +525,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           child: TextButton.icon(
             onPressed: columns.length >= 3
                 ? null
-                : () => setState(() {
-                    columns.add({'blocks': <Map<String, dynamic>>[]});
-                    block['columns'] = columns;
+                : () {
+                    setState(() {
+                      columns.add({'blocks': <Map<String, dynamic>>[]});
+                      block['columns'] = columns;
+                    });
                     widget.onChanged();
-                  }),
+                  },
             icon: const Icon(Icons.add, size: 16),
             // Three is where a 600-point email runs out of room; a fourth
             // column is 130 points wide and unreadable on a phone.
@@ -383,11 +574,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                 tooltip: 'Remove column',
                 onPressed: columns.length <= 1
                     ? null
-                    : () => setState(() {
-                        columns.removeAt(index);
-                        parent['columns'] = columns;
+                    : () {
+                        setState(() {
+                          columns.removeAt(index);
+                          parent['columns'] = columns;
+                        });
                         widget.onChanged();
-                      }),
+                      },
                 icon: const Icon(Icons.close, size: 14),
               ),
             ],
@@ -400,11 +593,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                   Expanded(child: _text(inner[i], 'text', BlockKind.forType(inner[i]['type'] as String? ?? '')?.label ?? 'Text')),
                   IconButton(
                     tooltip: 'Remove',
-                    onPressed: () => setState(() {
-                      inner.removeAt(i);
-                      columns[index]['blocks'] = inner;
+                    onPressed: () {
+                      setState(() {
+                        inner.removeAt(i);
+                        columns[index]['blocks'] = inner;
+                      });
                       widget.onChanged();
-                    }),
+                    },
                     icon: const Icon(Icons.close, size: 14),
                   ),
                 ],
@@ -417,12 +612,14 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               children: [
                 for (final kind in [BlockKind.heading, BlockKind.text, BlockKind.image, BlockKind.button])
                   TextButton(
-                    onPressed: () => setState(() {
-                      inner.add(kind.blank());
-                      columns[index]['blocks'] = inner;
+                    onPressed: () {
+                      setState(() {
+                        inner.add(kind.blank());
+                        columns[index]['blocks'] = inner;
+                      });
                       widget.onChanged();
-                    }),
-                    child: Text(kind.label, style: const TextStyle(fontSize: 12)),
+                    },
+                    child: Text('+ ${kind.label}', style: const TextStyle(fontSize: 12)),
                   ),
               ],
             ),
@@ -432,17 +629,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
-  /// Reorder without drag-and-drop.
-  ///
-  /// Arrows rather than a drag handle because this list lives inside a
-  /// scrolling pane on a touch screen, and a drag that competes with the scroll
-  /// is the gesture people lose. Two taps always work.
   void _move(int from, int to) {
     setState(() {
       final block = widget.blocks.removeAt(from);
       widget.blocks.insert(to, block);
-      widget.onChanged();
+      _selected = to;
     });
+    widget.onChanged();
   }
 
   Widget _text(Map<String, dynamic> block, String field, String label, {int lines = 1}) {
@@ -454,7 +647,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         maxLines: lines == 1 ? 1 : lines + 4,
         decoration: InputDecoration(labelText: label, isDense: true),
         onChanged: (v) {
-          block[field] = v;
+          // setState so the drawing under the cursor follows the typing.
+          setState(() => block[field] = v);
           widget.onChanged();
         },
       ),
@@ -469,7 +663,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         keyboardType: TextInputType.number,
         decoration: InputDecoration(labelText: label, isDense: true),
         onChanged: (v) {
-          block[field] = int.tryParse(v) ?? 0;
+          setState(() => block[field] = int.tryParse(v) ?? 0);
           widget.onChanged();
         },
       ),
@@ -492,22 +686,49 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           ],
           selected: {current},
           showSelectedIcon: false,
-          onSelectionChanged: (s) => setState(() {
-            block['align'] = s.first;
+          onSelectionChanged: (s) {
+            setState(() => block['align'] = s.first);
             widget.onChanged();
-          }),
+          },
         ),
       ),
     );
   }
 
-  Widget _audienceCard(BuildContext context) {
+  // ── right: subject, who, when, Send ──────────────────────────
+
+  Widget _settings(BuildContext context) {
+    final refusal = _sendRefusal;
+    final theme = Theme.of(context);
+
+    Widget kind(String label) => Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Text(
+        label.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          letterSpacing: 0.8,
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
     return DashboardCard(
-      title: 'Who gets it',
-      icon: Icons.group_outlined,
+      title: 'Newsletter',
+      icon: Icons.drafts_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          TextField(
+            controller: widget.subject,
+            readOnly: _locked,
+            decoration: const InputDecoration(
+              labelText: 'Subject',
+              hintText: 'What lands in the inbox',
+            ),
+            onChanged: (_) => widget.onChanged(),
+          ),
+          kind('Who gets it'),
           if (widget.audiences.isEmpty)
             DashboardNote(
               'No mailing list in ${widget.viewName} yet. A list is either built '
@@ -523,35 +744,27 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                 for (final a in widget.audiences)
                   SearchOption(value: a.id, label: '${a.name} · ${a.where}'),
               ],
-              onChanged: widget.onAudience,
+              onChanged: _locked ? null : widget.onAudience,
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sendCard(BuildContext context, String? refusal) {
-    return DashboardCard(
-      title: 'Send',
-      icon: Icons.send_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+          kind('When'),
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() {
-                _scheduling = !_scheduling;
-                if (!_scheduling) {
-                  widget.when.clear();
-                  widget.onChanged();
-                }
-              }),
-              icon: Icon(
-                _scheduling ? Icons.schedule : Icons.schedule_outlined,
-                size: 18,
-              ),
-              label: Text(_scheduling ? 'Send it now instead' : 'Send it later'),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Now')),
+                ButtonSegment(value: true, label: Text('Later')),
+              ],
+              selected: {_scheduling},
+              showSelectedIcon: false,
+              onSelectionChanged: _locked
+                  ? null
+                  : (s) {
+                      setState(() => _scheduling = s.first);
+                      if (!_scheduling) {
+                        widget.when.clear();
+                        widget.onChanged();
+                      }
+                    },
             ),
           ),
           if (_scheduling) ...[
@@ -561,6 +774,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               formats: widget.session.me?.display ?? DisplayFormats.fallback,
               label: 'Send at',
               withTime: true,
+              enabled: !_locked,
               firstDate: DateTime.now(),
               onChanged: (_) => widget.onChanged(),
             ),
@@ -603,21 +817,25 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                         'is a wall time on that clock.',
             ),
           ],
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Refused(
-              reason: refusal,
-              child: FilledButton.icon(
-                onPressed: refusal == null ? () => widget.onSend() : null,
-                icon: const Icon(Icons.send, size: 18),
-                label: Text(
-                  _scheduling && widget.when.text.trim().isNotEmpty
-                      ? 'Schedule'
-                      : 'Send now',
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.saveState, style: theme.textTheme.bodySmall),
+              ),
+              Refused(
+                reason: refusal,
+                child: FilledButton.icon(
+                  onPressed: refusal == null ? () => widget.onSend() : null,
+                  icon: const Icon(Icons.send, size: 18),
+                  label: Text(
+                    _scheduling && widget.when.text.trim().isNotEmpty
+                        ? 'Schedule'
+                        : 'Send now',
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
           if (widget.saveError != null) ...[
             const SizedBox(height: 10),

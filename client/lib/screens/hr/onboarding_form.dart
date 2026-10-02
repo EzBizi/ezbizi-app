@@ -1041,6 +1041,19 @@ class _OnboardingFormState extends State<OnboardingForm> {
         Row(
           children: [
             Expanded(child: _sectionTitle(context, 'The contract')),
+            // The signed copy as a PDF: the contract, every signature drawn
+            // in, and the pictures they uploaded at the back (Mia,
+            // 2026-10-02: Eve could not download a finished one).
+            if (frozen)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10, right: 8),
+                child: TextButton.icon(
+                  key: const Key('onboarding-download-pdf'),
+                  onPressed: _gettingPdf ? null : _signedPdf,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: Text(_gettingPdf ? 'Preparing…' : 'Download PDF'),
+                ),
+              ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -2104,6 +2117,58 @@ class _OnboardingFormState extends State<OnboardingForm> {
           await _loadDocument();
           widget.onChanged?.call();
         },
+      ),
+    );
+  }
+
+  bool _gettingPdf = false;
+
+  /// Fetch the signed copy, show it, and offer to save it. Its own endpoint
+  /// (`…/document/pdf`) audits the copy and refuses one whose stored document
+  /// no longer matches its fingerprint, in a sentence shown here.
+  Future<void> _signedPdf() async {
+    setState(() {
+      _gettingPdf = true;
+      _actionError = null;
+    });
+
+    final response = await widget.api.getBytesResponse(
+      '/hr/onboardings/${widget.onboardingId}/document/pdf',
+    );
+    if (!mounted) return;
+    setState(() => _gettingPdf = false);
+
+    final bytes = response.bytes;
+    if (!response.ok || bytes == null) {
+      setState(() => _actionError = response.message ?? 'The PDF could not be made.');
+      return;
+    }
+
+    final form = _form;
+    final name = [
+      if (form != null && form.contractName.isNotEmpty) form.contractName,
+      if (form != null && form.personName.isNotEmpty) form.personName,
+    ].join(' - ');
+    final filename = '${name.isEmpty ? 'Signed contract' : name}.pdf';
+
+    await showSidePanel<void>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Signed contract',
+        width: 640,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            key: const Key('onboarding-save-pdf'),
+            onPressed: () => Files.download(filename, bytes),
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: const Text('Download'),
+          ),
+        ],
+        child: PdfView(bytes: Uint8List.fromList(bytes)),
       ),
     );
   }

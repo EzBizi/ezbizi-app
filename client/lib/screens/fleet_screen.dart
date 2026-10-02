@@ -5,7 +5,9 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/refused.dart';
+import '../widgets/tab_bar_like.dart';
 import 'fleet/add_vehicle_pane.dart';
+import 'fleet/fleet_general.dart';
 import 'fleet/vehicle_list.dart';
 import 'fleet/vehicle_pane.dart';
 
@@ -16,6 +18,9 @@ import 'fleet/vehicle_pane.dart';
 /// is the whole body with Back. Add is that pane, not a modal — covering the
 /// list you are filing a van onto is the thing a side-by-side split exists
 /// to avoid.
+///
+/// Two chips (Mia, 2026-10-02): General, the module's dashboard, opens first;
+/// Vehicles is the register. A General figure opens Vehicles filtered to it.
 class FleetScreen extends StatefulWidget {
   const FleetScreen({super.key, required this.api, required this.session});
 
@@ -51,6 +56,9 @@ class _FleetScreenState extends State<FleetScreen> {
   bool _rented = false;
   bool _unassigned = false;
   bool _dueSoon = false;
+
+  /// 0 General, 1 Vehicles.
+  int _tab = 0;
 
   bool _adding = false;
   String? _selectedId;
@@ -124,7 +132,28 @@ class _FleetScreenState extends State<FleetScreen> {
     _open = null;
   });
 
+  /// Vehicles, filtered the way a General link says: `status=in_shop`,
+  /// `ownership=rented`, `unassigned=1`, `due_soon=1`, or '' for all of them.
+  void _openLink(String link) {
+    final query = Uri.splitQueryString(link);
+    setState(() {
+      _search.clear();
+      _statuses
+        ..clear()
+        ..addAll(
+          (query['status'] ?? '').split(',').where((s) => s.isNotEmpty),
+        );
+      _owned = query['ownership'] == 'owned';
+      _rented = query['ownership'] == 'rented';
+      _unassigned = query['unassigned'] == '1';
+      _dueSoon = query['due_soon'] == '1';
+      _tab = 1;
+    });
+    _load();
+  }
+
   void _add() => setState(() {
+    _tab = 1;
     _adding = true;
     _selectedId = null;
     _open = null;
@@ -153,6 +182,58 @@ class _FleetScreenState extends State<FleetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final me = widget.session.me!;
+    final canCreate = me.can('fleet_management.create');
+    final general = me.permissions.contains('fleet_management.general.view');
+    final vehicles = me.permissions.contains('fleet_management.vehicles.view');
+
+    // One tab granted: that tab is the whole screen, no strip to choose from.
+    if (!general && !vehicles) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No Fleet Management tabs have been granted to your role.'),
+        ),
+      );
+    }
+    if (!general) return _register(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            labels: [
+              ('General', Icons.dashboard_outlined),
+              if (vehicles) ('Vehicles', Icons.local_shipping_outlined),
+            ],
+            selected: vehicles ? _tab : 0,
+            onSelected: (tab) => setState(() => _tab = tab),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: IndexedStack(
+            index: vehicles ? _tab : 0,
+            children: [
+              FleetGeneral(
+                api: widget.api,
+                visible: _tab == 0 || !vehicles,
+                // Without Vehicles there is no list for a figure to open.
+                onOpen: vehicles ? _openLink : (_) {},
+                canAdd: canCreate && vehicles,
+                onAdd: _add,
+              ),
+              if (vehicles) _register(context),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _register(BuildContext context) {
     final me = widget.session.me!;
     final canCreate = me.can('fleet_management.create');
     final nowhere = (me.companies.isEmpty && me.franchises.isEmpty)

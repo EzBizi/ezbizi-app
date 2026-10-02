@@ -632,6 +632,31 @@ class HrOnboardingDocumentPdfTest extends TestCase
     }
 
     /** The arguments a conversion takes, with everything but the document fixed. */
+    /**
+     * What they uploaded rides at the back of the copy (Mia, 2026-10-02: the
+     * finished contract "that includes all the images, signatures"): a picture
+     * is drawn, any other file is named, and the stored document is untouched.
+     */
+    public function test_uploaded_pictures_are_printed_after_the_contract(): void
+    {
+        $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+        $without = app(PdfRenderer::class)->render(...$this->conversionOf('<html><body><p>Terms.</p></body></html>'));
+        $with = app(PdfRenderer::class)->render(...$this->conversionOf('<html><body><p>Terms.</p></body></html>') + [
+            'attachments' => [
+                ['label' => 'Driving licence', 'name' => 'licence.png', 'mime' => 'image/png', 'data' => $png],
+                ['label' => 'Certificate', 'name' => 'cert.pdf', 'mime' => 'application/pdf', 'data' => null],
+            ],
+        ]);
+
+        $this->assertStringNotContainsString('/Subtype /Image', $without);
+        $this->assertStringContainsString('/Subtype /Image', $with);
+        $text = $this->textOf($with);
+        $this->assertStringContainsString('Attachments', $text);
+        $this->assertStringContainsString('licence.png', $text);
+        $this->assertStringContainsString('cert.pdf', $text);
+    }
+
     private function conversionOf(string $document): array
     {
         return [

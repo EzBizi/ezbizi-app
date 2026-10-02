@@ -83,7 +83,10 @@
         "fleet_management": {
             "label": "Fleet Management",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "General",
+                "Vehicles"
+            ]
         },
         "franchises": {
             "label": "Franchises",
@@ -95,10 +98,10 @@
             "parent": null,
             "tabs": [
                 "Dashboard",
-                "Onboarding",
                 "Records",
+                "Contracts",
                 "Invitations",
-                "Contracts"
+                "Onboarding"
             ]
         },
         "inspection": {
@@ -114,6 +117,7 @@
             "label": "Inventory",
             "parent": null,
             "tabs": [
+                "General",
                 "Stock",
                 "Items",
                 "Orders",
@@ -326,6 +330,8 @@
         "fleet_management.delete",
         "fleet_management.edit",
         "fleet_management.financials",
+        "fleet_management.general.view",
+        "fleet_management.vehicles.view",
         "fleet_management.view",
         "franchises.create",
         "franchises.delete",
@@ -354,6 +360,7 @@
         "inventory.delete",
         "inventory.edit",
         "inventory.financials",
+        "inventory.general.view",
         "inventory.items.view",
         "inventory.locations.view",
         "inventory.orders.view",

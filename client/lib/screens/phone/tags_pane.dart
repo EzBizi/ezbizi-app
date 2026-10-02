@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 
@@ -48,8 +49,16 @@ class _TagsPaneState extends State<TagsPane> {
   /// made a dialogue people dismiss.
   int _wrapUpSeconds = 0;
 
-  /// Which tag has its palette open, if any.
+  /// Which tag is open for editing (its name and colour), if any. The editor
+  /// opens in place above the table rather than over it: no modals, and a
+  /// colour is chosen by comparing it with the tags listed under it.
   String? _colouring;
+  final _rename = TextEditingController();
+
+  /// The tile picked: `on` (offered on calls), `off` (retired), or null for
+  /// every tag. The list comes back whole, so the tiles count it here (Mia,
+  /// 2026-10-02).
+  String? _shown;
 
   bool _loading = true;
   String? _error;
@@ -70,6 +79,7 @@ class _TagsPaneState extends State<TagsPane> {
   @override
   void dispose() {
     _name.dispose();
+    _rename.dispose();
     super.dispose();
   }
 
@@ -262,6 +272,11 @@ class _TagsPaneState extends State<TagsPane> {
 
     final live = _tags.where((t) => t.isActive).toList();
     final retired = _tags.where((t) => !t.isActive).toList();
+    final shown = switch (_shown) {
+      'on' => live,
+      'off' => retired,
+      _ => _tags,
+    };
 
     return ListView(
       key: const ValueKey('tags-pane'),
@@ -400,28 +415,210 @@ class _TagsPaneState extends State<TagsPane> {
 
         const SizedBox(height: 24),
 
-        if (live.isEmpty)
+        if (_tags.isEmpty)
           Text(
             'No tags yet. Until there is at least one, a call cannot be said to '
             'be about anything.',
             style: theme.textTheme.bodySmall,
           )
-        else
-          for (final tag in live) _row(tag, theme, retired: false),
-
-        if (retired.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('Retired', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Text(
-            'Still naming the calls they were used on. Not offered any more.',
-            style: theme.textTheme.bodySmall,
+        else ...[
+          FilterTiles(
+            prefix: 'tags',
+            picked: _shown,
+            onPick: (key) => setState(() => _shown = key),
+            tiles: [
+              FilterTile(
+                key: null,
+                label: 'Tags',
+                count: _tags.length,
+                note: 'all',
+              ),
+              FilterTile(
+                key: 'on',
+                label: 'In use',
+                count: live.length,
+                note: 'offered on calls',
+              ),
+              FilterTile(
+                key: 'off',
+                label: 'Retired',
+                count: retired.length,
+                note: 'kept on old calls',
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          for (final tag in retired) _row(tag, theme, retired: true),
+          const SizedBox(height: 12),
+          if (_editing != null) _editor(_editing!, theme),
+          if (shown.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                _shown == 'off'
+                    ? 'Nothing retired.'
+                    : 'No tag is offered on calls right now.',
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            _table(shown, theme),
         ],
       ],
     );
+  }
+
+  _Tag? get _editing {
+    for (final tag in _tags) {
+      if (tag.id == _colouring) return tag;
+    }
+
+    return null;
+  }
+
+  /// Tag, calls, share of calls, and what can be done to it (layout A, Mia,
+  /// 2026-10-02). The share is of every tagged call, retired tags included,
+  /// so the bars add up to the whole and last month still reads the same.
+  Widget _table(List<_Tag> shown, ThemeData theme) {
+    final total = _tags.fold<int>(0, (sum, tag) => sum + tag.callCount);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return ListTable(
+      columns: const [
+        ListColumn('Tag', flex: 4),
+        ListColumn('Calls', flex: 2, end: true),
+        ListColumn('Share of calls', flex: 4),
+        ListColumn('', flex: 4, end: true),
+      ],
+      rowKey: (i) => ValueKey('tag:${shown[i].id}'),
+      rows: [
+        for (final tag in shown)
+          [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The swatch IS a control: a tag's colour is the thing you
+                // are looking at when you decide to change it.
+                _canEdit
+                    ? InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => _pickColour(tag),
+                        child: _swatch(tag.color, theme, ringed: true),
+                      )
+                    : _swatch(tag.color, theme, ringed: false),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    tag.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: tag.isActive
+                          ? null
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              '${tag.callCount}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            _ShareBar(share: total == 0 ? 0 : tag.callCount / total),
+            !_canEdit
+                ? Text(tag.callCount == 0 ? 'Not used yet' : '', style: small)
+                : Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
+                      if (tag.isActive)
+                        TextButton(
+                          onPressed: () => _pickColour(tag),
+                          child: const Text('Edit'),
+                        ),
+                      TextButton(
+                        onPressed: () => _setActive(tag, !tag.isActive),
+                        child: Text(tag.isActive ? 'Retire' : 'Bring back'),
+                      ),
+                      if (tag.callCount == 0)
+                        TextButton(
+                          onPressed: () => _remove(tag),
+                          child: const Text('Remove'),
+                        ),
+                    ],
+                  ),
+          ],
+      ],
+    );
+  }
+
+  /// The open tag's name and colour, above the table.
+  Widget _editor(_Tag tag, ThemeData theme) {
+    return Card(
+      key: const ValueKey('tag-editor'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('tag-rename'),
+                    controller: _rename,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _saveName(tag),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: () => _saveName(tag),
+                  child: const Text('Save'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _colouring = null),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _palettePicker(tag, theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Renaming renames it on every call it is on, which is the point of a list
+  /// over free text (see the note at the top).
+  Future<void> _saveName(_Tag tag) async {
+    final name = _rename.text.trim();
+    if (name.isEmpty || name == tag.name) {
+      setState(() => _colouring = null);
+      return;
+    }
+
+    final response = await widget.api.patch('/phone/tags/${tag.id}', {
+      'name': name,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _formError = response.reason);
+      return;
+    }
+
+    setState(() => _colouring = null);
+    await _load();
   }
 
   /// The eight the server accepts. Kept in step with PhoneCallTag::COLORS —
@@ -475,6 +672,7 @@ class _TagsPaneState extends State<TagsPane> {
   /// Opens in place under the row rather than over it — the house rule is no
   /// modals, and a colour is chosen by comparing it with the tags around it.
   Future<void> _pickColour(_Tag tag) async {
+    _rename.text = tag.name;
     setState(() => _colouring = _colouring == tag.id ? null : tag.id);
   }
 
@@ -497,7 +695,7 @@ class _TagsPaneState extends State<TagsPane> {
 
   Widget _palettePicker(_Tag tag, ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -517,54 +715,41 @@ class _TagsPaneState extends State<TagsPane> {
       ),
     );
   }
+}
 
-  Widget _row(_Tag tag, ThemeData theme, {required bool retired}) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            key: ValueKey('tag:${tag.id}'),
+/// A share of the whole as a bar and a percentage.
+class _ShareBar extends StatelessWidget {
+  const _ShareBar({required this.share});
 
-            // The swatch IS the control. A tag's colour is the thing you are
-            // looking at when you decide to change it, so the dot you can see is
-            // the dot you press rather than a separate button somewhere else.
-            leading: _canEdit
-                ? InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _pickColour(tag),
-                    child: _swatch(tag.color, theme, ringed: true),
-                  )
-                : _swatch(tag.color, theme, ringed: false),
-            title: Text(tag.name),
-            subtitle: Text(
-              tag.callCount == 0
-                  ? 'Not used yet'
-                  : 'On ${tag.callCount} call${tag.callCount == 1 ? '' : 's'}',
-              style: theme.textTheme.bodySmall,
+  final double share;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 100,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: share.clamp(0, 1).toDouble(),
+              minHeight: 6,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
             ),
-            trailing: !_canEdit
-                ? null
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: () => _setActive(tag, retired),
-                        child: Text(retired ? 'Offer again' : 'Retire'),
-                      ),
-                      if (tag.callCount == 0)
-                        TextButton(
-                          onPressed: () => _remove(tag),
-                          child: const Text('Remove'),
-                        ),
-                    ],
-                  ),
           ),
-
-          if (_colouring == tag.id) _palettePicker(tag, theme),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '${(share * 100).round()}%',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }

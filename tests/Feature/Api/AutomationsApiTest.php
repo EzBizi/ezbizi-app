@@ -1194,4 +1194,59 @@ class AutomationsApiTest extends TestCase
             'Built and running, but the builder greys these out as "Not built yet": '
             .'action_types has no key equal to their execution type.');
     }
+
+    /**
+     * Franchises are named after territories, so every company had its own
+     * "Connecticut" and the picker listed eight identical rows (Mia,
+     * 2026-10-02). Each now says whose it is.
+     */
+    public function test_a_franchise_in_the_place_picker_names_its_company(): void
+    {
+        $orgId = $this->org['organization']->id;
+
+        app(TenantContext::class)->run($this->org['organization'], function () use ($orgId) {
+            foreach (['Chimney Co', 'Garage Co'] as $name) {
+                $company = \App\Models\Company::create(['organization_id' => $orgId, 'name' => $name]);
+                Franchise::create(['organization_id' => $orgId, 'company_id' => $company->id, 'name' => 'Connecticut']);
+            }
+        });
+
+        $labels = collect($this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.places'))
+            ->pluck('label');
+
+        $this->assertContains('Connecticut — Chimney Co', $labels);
+        $this->assertContains('Connecticut — Garage Co', $labels);
+        $this->assertNotContains('Connecticut', $labels);
+    }
+
+    /**
+     * A copy carries the live version's steps and conditions, and is OFF even
+     * when the original is live, so the two cannot both send before somebody
+     * points the copy somewhere else (Mia, 2026-10-02).
+     */
+    public function test_a_copied_rule_keeps_its_steps_and_starts_switched_off(): void
+    {
+        $original = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Greet chats',
+            'trigger_key' => 'job.status_changed',
+            'conditions' => ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]],
+            'actions' => [['type' => 'notify', 'message' => 'Job {{ title }} is done']],
+        ])->assertCreated()->json('data');
+
+        $this->as()->patchJson("/api/v1/automations/{$original['id']}", ['is_active' => true])->assertOk();
+
+        $copy = $this->as()->postJson("/api/v1/automations/{$original['id']}/duplicate")
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertNotSame($original['id'], $copy['id']);
+        $this->assertSame('Greet chats (copy)', $copy['name']);
+        $this->assertFalse($copy['is_active']);
+        $this->assertSame(1, $copy['version']);
+        $this->assertSame($original['trigger_key'], $copy['trigger_key']);
+        $this->assertSame($original['conditions'], $copy['conditions']);
+        $this->assertSame($original['actions'], $copy['actions']);
+
+        $this->assertTrue(Automation::query()->withoutGlobalScopes()->findOrFail($original['id'])->is_active);
+    }
 }

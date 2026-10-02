@@ -509,10 +509,12 @@ class ModuleServiceProvider extends ServiceProvider
                     // Work Hours and Paid time off moved to the `work_hours`
                     // module on 2026-09-24 (Jose: "separate it from human
                     // resources and make a new main tab called Work Hours").
-                    new TabDefinition('onboarding', 'Onboarding'),
+                    // Order is Mia's, 2026-10-02: Records, Contracts,
+                    // Invitations, Onboarding.
                     new TabDefinition('records', 'Records'),
-                    new TabDefinition('invitations', 'Invitations'),
                     new TabDefinition('contracts', 'Contracts'),
+                    new TabDefinition('invitations', 'Invitations'),
+                    new TabDefinition('onboarding', 'Onboarding'),
                 ],
                 triggers: [
                     /*
@@ -1958,6 +1960,13 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'assign', 'financials'],
+                // General is the module's dashboard (Mia, 2026-10-02), opened
+                // first; Vehicles is the register. Granted to every role that
+                // held Fleet by 2026_10_02_300000_grant_general_tabs.
+                tabs: [
+                    new TabDefinition('general', 'General'),
+                    new TabDefinition('vehicles', 'Vehicles'),
+                ],
                 subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
                 triggers: [
                     new TriggerDefinition(
@@ -2104,6 +2113,9 @@ class ModuleServiceProvider extends ServiceProvider
                  * endpoint for the forms — see TODO #36.
                  */
                 tabs: [
+                    // The module's dashboard, first and opened first (spec
+                    // 2026-09-09-inventory-general-tab, built 2026-10-02).
+                    new TabDefinition('general', 'General'),
                     new TabDefinition('stock', 'Stock'),
                     new TabDefinition('items', 'Items'),
                     new TabDefinition('orders', 'Orders'),

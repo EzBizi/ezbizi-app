@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/tab_bar_like.dart';
+import 'inventory/general_tab.dart';
 import 'inventory/item_list.dart';
 import 'inventory/location_list.dart';
 import 'inventory/order_list.dart';
@@ -12,8 +13,10 @@ import 'inventory/stock_list.dart';
 
 /// Inventory (spec §13).
 ///
-/// Up to four chips — Stock, Items, Orders, Locations — each drawn only for a
-/// role holding its `inventory.<tab>.view` (Jose, 2026-09-17: grant by sub tab).
+/// Up to five chips — General (the module's dashboard, first and opened
+/// first: spec 2026-09-09-inventory-general-tab, built 2026-10-02), Stock,
+/// Items, Orders, Locations — each drawn only for a role holding its
+/// `inventory.<tab>.view` (Jose, 2026-09-17: grant by sub tab).
 /// Nothing selected: the list is the whole face. A row or Add selected: 25%
 /// list / 75% pane. Below 600px the pane is the whole body with Back. Add is
 /// that pane, not a modal.
@@ -35,6 +38,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   final Set<int> _shown = {0};
 
+  /// The Stock tile a General figure asked for, with a count so asking twice
+  /// for the same tile still reaches Stock.
+  ({String? tile, int serial})? _stockTile;
+
   /// Every chip this screen has, with the permission key that opens it.
   ///
   /// ── Why the builder takes its own visibility ──────────────────
@@ -48,11 +55,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
   late final List<(String, String, IconData, Widget Function(bool))>
   _declaredTabs = [
     (
+      'general',
+      'General',
+      Icons.dashboard_outlined,
+      (bool visible) => InventoryGeneral(
+        api: widget.api,
+        visible: visible,
+        onOpen: _openLink,
+      ),
+    ),
+    (
       'stock',
       'Stock',
       Icons.inventory_2_outlined,
-      (bool visible) =>
-          StockList(api: widget.api, session: widget.session, visible: visible),
+      (bool visible) => StockList(
+        api: widget.api,
+        session: widget.session,
+        visible: visible,
+        tileRequest: _stockTile,
+      ),
     ),
     (
       'items',
@@ -94,6 +115,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
   /// everything.
   bool _mayOpen(String tab) =>
       widget.session.me?.permissions.contains('inventory.$tab.view') ?? false;
+
+  /// Open the chip a General link names - `stock?low_items=1`, `orders` - if
+  /// this role holds it. One it does not hold stays where it is.
+  void _openLink(String link) {
+    final uri = Uri.parse(link);
+    final index = _tabs.indexWhere((tab) => tab.$1 == uri.path);
+    if (index < 0) return;
+
+    setState(() {
+      if (uri.path == 'stock') {
+        _stockTile = (
+          tile: uri.queryParameters['low_items'] == '1' ? 'low' : null,
+          serial: (_stockTile?.serial ?? 0) + 1,
+        );
+      }
+      _tab = index;
+      _shown.add(index);
+    });
+  }
 
   void _select(int tab) => setState(() {
     _tab = tab;

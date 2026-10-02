@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// The block vocabulary, and the one place the client knows it.
+import '../../core/theme.dart';
+
+/// The block vocabulary, and the email drawn from it.
 ///
-/// ── Why this file holds no HTML ─────────────────────────────────
+/// ── Two renderings, and which one is the truth ──────────────────
 ///
-/// The email is rendered by `App\Support\Newsletter\BlockRenderer` on the
-/// server, and nothing here reproduces a line of it. Email HTML is table
-/// layouts, attribute widths beside CSS widths, and a media query Outlook
-/// ignores — a second renderer in Dart would drift from the first within a
-/// week, and the drift would show as an email that looked right in the
-/// composer and broke in somebody's inbox.
-///
-/// So this file describes what a block IS (its fields, its name, its icon) and
-/// the preview pane asks the server what it LOOKS like.
+/// The email that goes out is rendered by `App\Support\Newsletter\BlockRenderer`
+/// on the server, and nothing here writes a line of HTML. Until 2026-10-02 the
+/// composer only showed that server HTML, so a block was edited in one place
+/// and read in another. Mia asked for the email itself to be the editor
+/// (layout A): click a heading, change it where it sits. So [NewsletterEmail]
+/// draws the blocks in Flutter with the renderer's own sizes and colours, and
+/// the composer keeps a "Server preview" switch beside it so the exact document
+/// is one tap away. When the two disagree, the server preview is the truth and
+/// this file is the bug.
 enum BlockKind {
   heading('heading', 'Heading', Icons.title),
   text('text', 'Text', Icons.notes_outlined),
@@ -109,4 +111,301 @@ class NewsletterAudience {
         name: json['name'] as String? ?? '',
         kind: json['kind'] as String? ?? '',
       );
+}
+
+/// The email, drawn from its blocks the way `BlockRenderer` lays them out.
+///
+/// [phone] narrows the paper to a phone's width and stacks columns, which is
+/// what the renderer's media query does in a mail client that honours it.
+/// Tapping a block calls [onSelect]; the selected block is outlined and drawn
+/// by [editorFor] instead, so it is edited where it sits.
+class NewsletterEmail extends StatelessWidget {
+  const NewsletterEmail({
+    super.key,
+    required this.blocks,
+    required this.company,
+    this.phone = false,
+    this.selected,
+    this.onSelect,
+    this.editorFor,
+  });
+
+  final List<Map<String, dynamic>> blocks;
+
+  /// The name in the footer. The renderer writes the organization's.
+  final String company;
+  final bool phone;
+  final int? selected;
+
+  /// Null when the newsletter cannot be changed: nothing is tappable then.
+  final ValueChanged<int>? onSelect;
+  final Widget Function(int index)? editorFor;
+
+  /// The renderer's 600px table, and a phone's width less its margins.
+  static const desktopWidth = 600.0;
+  static const phoneWidth = 340.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Container(
+      color: EmailInk.page,
+      padding: EdgeInsets.symmetric(vertical: 18, horizontal: phone ? 8 : 18),
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        key: const Key('newsletter-email'),
+        constraints: BoxConstraints(
+          maxWidth: phone ? phoneWidth : desktopWidth,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: ColoredBox(
+            color: EmailInk.paper,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (blocks.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'Add a block to start writing.',
+                      style: TextStyle(fontSize: 15, color: EmailInk.body),
+                    ),
+                  ),
+                for (var i = 0; i < blocks.length; i++)
+                  if (i == selected && editorFor != null)
+                    Container(
+                      key: Key('newsletter-block-$i'),
+                      margin: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: primary, width: 2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: editorFor!(i),
+                    )
+                  else
+                    _tappable(i, EmailBlockView(block: blocks[i], phone: phone)),
+                _footer(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tappable(int i, Widget child) {
+    if (onSelect == null) {
+      return KeyedSubtree(key: Key('newsletter-block-$i'), child: child);
+    }
+
+    return Material(
+      key: Key('newsletter-block-$i'),
+      color: Colors.transparent,
+      child: InkWell(onTap: () => onSelect!(i), child: child),
+    );
+  }
+
+  // The footer the renderer always adds. Not a block, because it cannot be
+  // removed: marketing mail without a way out is unlawful where this sells.
+  Widget _footer() {
+    return Container(
+      color: EmailInk.footer,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Column(
+        children: [
+          Text(
+            company,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11.5,
+              height: 1.5,
+              color: EmailInk.footerInk,
+            ),
+          ),
+          const Text(
+            'Unsubscribe from these emails',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.5,
+              color: EmailInk.footerInk,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One block, as the renderer draws it: its padding, size, colour and
+/// alignment.
+class EmailBlockView extends StatelessWidget {
+  const EmailBlockView({super.key, required this.block, this.phone = false});
+
+  final Map<String, dynamic> block;
+  final bool phone;
+
+  @override
+  Widget build(BuildContext context) {
+    // Kept exactly as typed on the server; its HTML is not drawn here.
+    if (isHandWritten(block)) {
+      return _row(
+        const Text(
+          'This block was written as HTML. Turn on Server preview to see it.',
+          style: TextStyle(
+            fontSize: 13,
+            fontStyle: FontStyle.italic,
+            color: EmailInk.footerInk,
+          ),
+        ),
+      );
+    }
+
+    final align = _align(block);
+
+    return switch (BlockKind.forType(block['type'] as String? ?? '')) {
+      BlockKind.heading => _row(
+        Text(
+          block['text'] as String? ?? '',
+          textAlign: align,
+          style: TextStyle(
+            fontSize: _int(block, 'size', 24).toDouble(),
+            height: 1.25,
+            fontWeight: FontWeight.bold,
+            color: EmailInk.heading,
+          ),
+        ),
+      ),
+      BlockKind.text => _row(
+        Text(
+          block['text'] as String? ?? '',
+          textAlign: align,
+          style: const TextStyle(
+            fontSize: 15,
+            height: 1.55,
+            color: EmailInk.body,
+          ),
+        ),
+      ),
+      BlockKind.image => _row(_image()),
+      BlockKind.button => _row(
+        Align(
+          alignment: switch (align) {
+            TextAlign.center => Alignment.center,
+            TextAlign.right => Alignment.centerRight,
+            _ => Alignment.centerLeft,
+          },
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: EmailInk.button,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              child: Text(
+                block['text'] as String? ?? '',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: EmailInk.paper,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      BlockKind.divider => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: Divider(height: 1, thickness: 1, color: EmailInk.rule),
+      ),
+      BlockKind.spacer => SizedBox(
+        height: _int(block, 'height', 16).toDouble(),
+      ),
+      BlockKind.columns => _columns(),
+      // The renderer draws nothing for a type it does not know, so neither
+      // does this.
+      null => const SizedBox.shrink(),
+    };
+  }
+
+  Widget _row(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+    child: child,
+  );
+
+  Widget _image() {
+    final src = (block['src'] as String? ?? '').trim();
+
+    // No address yet: a grey plate the shape of a picture, so an added image
+    // block is visible before anything is typed into it.
+    final plate = Container(
+      height: phone ? 90 : 160,
+      color: EmailInk.rule,
+      alignment: Alignment.center,
+      child: Text(
+        src.isEmpty ? 'Image · add its address' : (block['alt'] as String? ?? src),
+        style: const TextStyle(fontSize: 13, color: EmailInk.footerInk),
+      ),
+    );
+
+    if (src.isEmpty) return plate;
+
+    return Image.network(
+      src,
+      width: double.infinity,
+      fit: BoxFit.fitWidth,
+      semanticLabel: block['alt'] as String?,
+      errorBuilder: (_, _, _) => plate,
+    );
+  }
+
+  /// Side by side on a computer, stacked on a phone, as the renderer's media
+  /// query does it. Reads the composer's `{blocks: [...]}` and the bare list
+  /// the renderer also accepts.
+  Widget _columns() {
+    final columns = [
+      for (final c in (block['columns'] as List<dynamic>?) ?? const [])
+        if (c is Map && c['blocks'] is List)
+          (c['blocks'] as List).whereType<Map<String, dynamic>>().toList()
+        else if (c is List)
+          c.whereType<Map<String, dynamic>>().toList(),
+    ];
+    if (columns.isEmpty) return const SizedBox.shrink();
+
+    Widget column(List<Map<String, dynamic>> inner) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final child in inner) EmailBlockView(block: child, phone: phone),
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: phone
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [for (final c in columns) column(c)],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final c in columns) Expanded(child: column(c))],
+            ),
+    );
+  }
+
+  static TextAlign _align(Map<String, dynamic> b) => switch (b['align']) {
+    'center' => TextAlign.center,
+    'right' => TextAlign.right,
+    _ => TextAlign.left,
+  };
+
+  /// The renderer's bounds: outside 1-399 it uses the default.
+  static int _int(Map<String, dynamic> b, String key, int fallback) {
+    final raw = b[key];
+    final v = raw is num ? raw.toInt() : int.tryParse('$raw') ?? fallback;
+    return v > 0 && v < 400 ? v : fallback;
+  }
 }

@@ -130,17 +130,19 @@ class _HrScreenState extends State<HrScreen> {
     ),
     // Work Hours and Paid time off left for their own module on 2026-09-24
     // (work_hours_screen.dart).
-    (
-      'onboarding',
-      'Onboarding',
-      Icons.how_to_reg_outlined,
-      () => OnboardingTab(api: widget.api, session: widget.session),
-    ),
+    // Order is Mia's, 2026-10-02: Records, Contracts, Invitations,
+    // Onboarding.
     (
       'records',
       'Records',
       Icons.folder_shared_outlined,
       () => RecordsTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'contracts',
+      'Contracts',
+      Icons.description_outlined,
+      () => ContractsTab(api: widget.api, session: widget.session),
     ),
     (
       'invitations',
@@ -149,10 +151,10 @@ class _HrScreenState extends State<HrScreen> {
       () => InvitationsTab(api: widget.api, session: widget.session),
     ),
     (
-      'contracts',
-      'Contracts',
-      Icons.description_outlined,
-      () => ContractsTab(api: widget.api, session: widget.session),
+      'onboarding',
+      'Onboarding',
+      Icons.how_to_reg_outlined,
+      () => OnboardingTab(api: widget.api, session: widget.session),
     ),
   ];
 

@@ -5,6 +5,8 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../core/theme.dart';
+import '../../widgets/list_table.dart';
+import '../../widgets/status_pill.dart';
 import 'recording_playback_bar.dart';
 import 'recording_player.dart';
 
@@ -58,6 +60,13 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   List<_Box> _boxes = const [];
   List<_Voicemail> _messages = const [];
   String? _boxId;
+
+  /// The picked tile — `todo`, `dealt`, `no_transcript` — or null for all.
+  String? _tile;
+
+  /// The server's counts over everything the box holds, not the 50 shown
+  /// (Mia, 2026-10-02, layout B). Null until it answers, drawn as a dash.
+  Map<String, int>? _tiles;
 
   @override
   void initState() {
@@ -119,12 +128,25 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
     // No box chosen is EVERY voicemail, not none. `voicemail_only` asks the
     // server for the same set the box filter would have narrowed.
-    final query = boxId == null
-        ? {'voicemail_only': '1', 'per_page': '50'}
-        : {'box_id': boxId, 'per_page': '50'};
+    final query = {
+      ...boxId == null ? {'voicemail_only': '1'} : {'box_id': boxId},
+      'per_page': '50',
+
+      // The tile narrows the rows on the server, so "To deal with" shows the
+      // 50 newest waiting rather than whichever of the newest 50 are waiting.
+      ...switch (_tile) {
+        'todo' => {'dealt': '0'},
+        'dealt' => {'dealt': '1'},
+        'no_transcript' => {'transcript': '0'},
+        _ => const <String, String>{},
+      },
+    };
 
     final response = await widget.api.get('/phone/calls', query);
     if (!mounted) return;
+
+    final meta = response.ok ? response.body['meta'] : null;
+    final tiles = meta is Map ? meta['tiles'] : null;
 
     setState(() {
       _messages = response.ok
@@ -133,6 +155,12 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                 if (row is Map<String, dynamic>) _Voicemail.fromJson(row),
             ]
           : const [];
+      _tiles = tiles is Map
+          ? {
+              for (final entry in tiles.entries)
+                entry.key.toString(): (entry.value as num?)?.toInt() ?? 0,
+            }
+          : null;
     });
   }
 
@@ -240,6 +268,18 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
         spacing: 8,
         runSpacing: 8,
         children: [
+          // The way back to every box, which the wide list has as its first
+          // row and the chips lacked: once a box was picked on a phone, All
+          // was unreachable (the mockup's "All mailboxes" chip).
+          ChoiceChip(
+            key: const Key('voicemail-chip-all'),
+            label: const Text('All mailboxes'),
+            selected: _boxId == null,
+            onSelected: (_) {
+              setState(() => _boxId = null);
+              _loadMessages();
+            },
+          ),
           for (final box in _boxes)
             ChoiceChip(
               label: Text(box.name),
@@ -254,7 +294,76 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     );
   }
 
+  /// Tiles over the cards (layout B): the cards stay as they were, with the
+  /// counts on top. A tile counts the whole box, so it stays put while the
+  /// list under it narrows.
+  Widget _tileRow() {
+    return FilterTiles(
+      prefix: 'voicemail',
+      picked: _tile,
+      onPick: (key) {
+        setState(() => _tile = key);
+        _loadMessages();
+      },
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'All',
+          count: _tiles?['all'],
+          note: 'messages',
+        ),
+        FilterTile(
+          key: 'todo',
+          label: 'To deal with',
+          count: _tiles?['todo'],
+          note: 'nobody has marked them',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'dealt',
+          label: 'Dealt with',
+          count: _tiles?['dealt'],
+          note: 'marked done',
+        ),
+        FilterTile(
+          key: 'no_transcript',
+          label: 'No transcript',
+          count: _tiles?['no_transcript'],
+          note: 'listen to it',
+        ),
+      ],
+    );
+  }
+
   Widget _messageList(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: _tileRow(),
+        ),
+        Expanded(child: _cards(theme)),
+      ],
+    );
+  }
+
+  Widget _cards(ThemeData theme) {
+    // A tile with nothing under it is not an empty box: the box has messages,
+    // just none in this state.
+    if (_messages.isEmpty && _tile != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No messages in this state.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+
     if (_messages.isEmpty) {
       final box = _boxes.where((b) => b.id == _boxId).firstOrNull;
 
@@ -324,13 +433,11 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                     ),
                   ),
                 ),
-                if (message.dealt)
-                  Text(
-                    'Dealt with',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                // Both states named, as the tiles name them, so a card read
+                // under All says which tile it is counted in.
+                message.dealt
+                    ? const StatusPill('Dealt with', tone: Tone.ok)
+                    : const StatusPill('To deal with', tone: Tone.caution),
               ],
             ),
 

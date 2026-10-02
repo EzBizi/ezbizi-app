@@ -784,7 +784,7 @@ class _LeadThreadState extends State<LeadThread> {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              '${(_lead['contact_name'] as String?)?.split(' ').first ?? 'They'} is typing…',
+              typingLine(_lead['contact_name'] as String?),
               key: const ValueKey('visitor-typing'),
               style: theme.textTheme.bodySmall?.copyWith(
                 fontStyle: FontStyle.italic,
@@ -901,7 +901,7 @@ class _LeadThreadState extends State<LeadThread> {
                 enabled: !_sending,
                 decoration: const InputDecoration(
                   isDense: true,
-                  hintText: 'Reply to them',
+                  hintText: 'Reply to the customer',
                   border: OutlineInputBorder(),
                   // 12 + a 24 line + 12 is the 48 the buttons beside it are.
                   contentPadding: EdgeInsets.symmetric(
@@ -1268,7 +1268,7 @@ class _LeadThreadState extends State<LeadThread> {
       // name was sent outside EzBizi - A1 Tools, Google - so it is not
       // "You", which would claim the reader sent it.
       final who = !mine
-          ? 'They'
+          ? 'Customer'
           : c['automatic'] == true
           ? 'Automation'
           : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
@@ -1484,7 +1484,8 @@ class _LeadThreadState extends State<LeadThread> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               key: const ValueKey('check-availability'),
-              onPressed: () => _openAvailability(zip),
+              // No zip yet: the address they wrote, which the pane looks up.
+              onPressed: () => _openAvailability(zip ?? address),
               icon: const Icon(Icons.event_available_outlined, size: 18),
               label: Text(zip == null ? 'Check availability' : 'Check availability for $zip'),
             ),
@@ -2249,3 +2250,13 @@ Tone googleStatusTone(String status) => switch (status.toLowerCase()) {
   'declined' || 'consumer declined' => Tone.bad,
   _ => Tone.neutral,
 };
+
+/// "Candy is typing…", or "Customer is typing…" when the lead has no name - or
+/// only a number for one, which used to read "+1 is typing…".
+@visibleForTesting
+String typingLine(String? contactName) {
+  final first = (contactName ?? '').trim().split(RegExp(r'\s+')).first;
+  return RegExp(r"^[A-Za-z][A-Za-z'’-]+$").hasMatch(first)
+      ? '$first is typing…'
+      : 'Customer is typing…';
+}

@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 import 'settings_pane.dart';
 import '../../widgets/refused.dart';
 import 'buy_number_panel.dart';
@@ -70,6 +73,18 @@ class _NumbersPaneState extends State<NumbersPane> {
   _Line? _editing;
   bool _saving = false;
   String? _formError;
+
+  /// The tile picked over the Lines table (tiles over a table, Mia
+  /// 2026-10-02): `answered`, `silent` or `recorded`; null is every line.
+  /// Counted here - `/phone/numbers` is every line in one answer.
+  String? _tile;
+
+  bool _matches(_Line line) => switch (_tile) {
+    'answered' => line.answers,
+    'silent' => !line.answers,
+    'recorded' => line.record,
+    _ => true,
+  };
 
   @override
   void initState() {
@@ -435,6 +450,8 @@ class _NumbersPaneState extends State<NumbersPane> {
   }
 
   Widget _linesList(ThemeData theme) {
+    final moving = _moving;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       children: [
@@ -444,10 +461,174 @@ class _NumbersPaneState extends State<NumbersPane> {
             'a new one.',
             style: theme.textTheme.bodySmall,
           )
-        else
-          for (final line in _lines) _lineRow(line, theme),
+        else ...[
+          _tiles(),
+          const SizedBox(height: 12),
+          // Above the table rather than inside a row: a table row is its
+          // cells, and the panel is a paragraph and a row of buttons.
+          if (moving != null) ...[
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Text(
+                        moving.heading,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    _movePanel(moving, theme),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _linesTable(theme),
+        ],
       ],
     );
+  }
+
+  Widget _tiles() {
+    int count(bool Function(_Line) test) => _lines.where(test).length;
+
+    return FilterTiles(
+      prefix: 'lines',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'Lines',
+          count: _lines.length,
+          note: 'on this account',
+        ),
+        FilterTile(
+          key: 'answered',
+          label: 'Answered',
+          count: count((l) => l.answers),
+          note: 'something picks up',
+          tone: Tone.ok,
+        ),
+        // The same rule as the red note above: the server's `answers`.
+        FilterTile(
+          key: 'silent',
+          label: 'Nobody answers',
+          count: count((l) => !l.answers),
+          note: 'calls go to voicemail',
+          tone: Tone.bad,
+        ),
+        FilterTile(
+          key: 'recorded',
+          label: 'Recorded',
+          count: count((l) => l.record),
+          note: 'calls kept',
+        ),
+      ],
+    );
+  }
+
+  /// The company a line belongs to, by name, when this view spans several.
+  /// The row carries `scope_id`; the name is the one `/me` already has.
+  String _company(_Line line) {
+    final company = _me.companiesInView
+        .where((c) => c.id == line.scopeId)
+        .firstOrNull;
+
+    return company?.name ?? '—';
+  }
+
+  Widget _linesTable(ThemeData theme) {
+    final shown = _lines.where(_matches).toList();
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    // A company view holds one company; the column would say it every row.
+    final showCompany = _me.scope.type != 'company';
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No lines like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: [
+        const ListColumn('Line', flex: 3),
+        const ListColumn('Number', flex: 3),
+        const ListColumn('What answers it', flex: 4),
+        if (showCompany) const ListColumn('Company', flex: 3),
+        const ListColumn('Recorded', flex: 2),
+        const ListColumn('Written down', flex: 2),
+        const ListColumn('', flex: 3, end: true),
+      ],
+      rowKey: (i) => ValueKey('line:${shown[i].id}'),
+      rows: [
+        for (final line in shown)
+          [
+            Text(
+              line.label.trim().isEmpty || line.label == line.e164
+                  ? formatPhoneNumber(line.e164)
+                  : line.label,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(formatPhoneNumber(line.e164)),
+            // A line nobody answers is a fault, not a footnote - the reason
+            // it is a red pill and not grey text, which is how it went unread
+            // on all five production lines for three hours.
+            line.answers
+                ? Text(_answeredBy(line))
+                : const StatusPill('Nobody answers', tone: Tone.bad),
+            if (showCompany) Text(_company(line), style: small),
+            Text(line.record ? 'Yes' : 'No', style: small),
+            Text(line.transcribe ? 'Yes' : 'No', style: small),
+            if (_canEdit)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_canMove)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _moving = _moving?.id == line.id ? null : line;
+                        _formError = null;
+                      }),
+                      child: Text(_moving?.id == line.id ? 'Close' : 'Move'),
+                    ),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _editing = line;
+                      _formError = null;
+                    }),
+                    child: const Text('Edit'),
+                  ),
+                ],
+              )
+            else
+              const SizedBox.shrink(),
+          ],
+      ],
+    );
+  }
+
+  /// The answer step's own title from the server's trace ("Rings Dispatch"),
+  /// so this cannot disagree with Call flow; worked out from the group only
+  /// for a server that sends no trace.
+  String _answeredBy(_Line line) {
+    if (line.answerTitle != null) return line.answerTitle!;
+
+    final group = _groups.where((g) => g.id == line.ringGroupId).firstOrNull;
+
+    return group == null ? 'Answered by a call menu' : 'Rings ${group.name}';
   }
 
   Widget _placePicker(ThemeData theme) {
@@ -624,68 +805,6 @@ class _NumbersPaneState extends State<NumbersPane> {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _lineRow(_Line line, ThemeData theme) {
-    final group = _groups.where((g) => g.id == line.ringGroupId).firstOrNull;
-
-    // A line nobody answers is a fault, not a footnote. This was grey
-    // secondary text on all five production lines for three hours and read as
-    // a caption — five identical grey sentences on a screen somebody opened
-    // to do something else are easy to scan straight past.
-    final silent = !line.answers;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-        key: ValueKey('line:${line.id}'),
-        leading: silent
-            ? Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error)
-            : null,
-        title: Text(line.heading),
-        subtitle: Text(
-          silent
-              ? 'Nobody answers this line. Every call goes straight to '
-                    'voicemail — give it a ring group below.'
-              : group == null
-              ? 'Answered by a call menu.'
-              : 'Rings ${group.name}.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: silent ? theme.colorScheme.error : null,
-            fontWeight: silent ? FontWeight.w600 : null,
-          ),
-        ),
-        trailing: !_canEdit
-            ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_canMove)
-                    TextButton(
-                      onPressed: () => setState(() {
-                        _moving = _moving?.id == line.id ? null : line;
-                        _formError = null;
-                      }),
-                      child: const Text('Move'),
-                    ),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _editing = line;
-                      _formError = null;
-                    }),
-                    child: const Text('Edit'),
-                  ),
-                ],
-              ),
-          ),
-
-          if (_moving?.id == line.id) _movePanel(line, theme),
         ],
       ),
     );
@@ -1061,6 +1180,7 @@ class _Line {
     this.emergencyAddressSid,
     this.fallbackNumber,
     this.recordingNotice,
+    this.answerTitle,
   });
 
   final String id;
@@ -1092,6 +1212,9 @@ class _Line {
 
   /// Null means the built-in consent sentence, never silence.
   final String? recordingNotice;
+
+  /// The `answer` step's title from the server's `steps` trace.
+  final String? answerTitle;
 
   /// Formatted for reading, compared raw.
   ///
@@ -1132,8 +1255,21 @@ class _Line {
         emergencyAddressSid: row['emergency_address_sid'] as String?,
         fallbackNumber: row['fallback_number'] as String?,
         recordingNotice: row['recording_notice'] as String?,
+        answerTitle: _answerTitle(row['steps']),
       );
     }).toList(growable: false);
+  }
+
+  static String? _answerTitle(Object? steps) {
+    if (steps is! List) return null;
+
+    for (final step in steps.whereType<Map>()) {
+      if (step['step'] == 'answer' && step['title'] is String) {
+        return step['title'] as String;
+      }
+    }
+
+    return null;
   }
 }
 

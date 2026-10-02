@@ -50,12 +50,13 @@ void main() {
     await _pump(tester, _handler());
 
     expect(find.text('Technician, full time'), findsOneWidget);
-    expect(find.text('Version 3'), findsOneWidget);
+    expect(find.text('v3'), findsOneWidget);
 
     // The server's count is of the questions still ASKED — the template carries
     // four and one is retired — so the wording has to say which number it is,
     // or a template that has been tidied up reads as one that shrank.
-    expect(find.textContaining('3 questions asked today'), findsOneWidget);
+    // Under a Questions heading now (layout A, Mia 2026-10-02).
+    expect(find.text('3 asked today'), findsOneWidget);
   });
 
   /// *"We are missing something critical which is the contract writing itself"*
@@ -67,11 +68,14 @@ void main() {
       'still only questions', (tester) async {
     await _pump(tester, _handler(templates: _twoTemplates));
 
-    expect(find.textContaining('wording written'), findsOneWidget);
-    expect(
-      find.textContaining('questions only, no wording yet'),
-      findsOneWidget,
-    );
+    // A Wording column, and a tile counting each (layout A, Mia 2026-10-02).
+    expect(find.text('Written'), findsOneWidget);
+    expect(find.text('Questions only'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('contracts-tile-questions')));
+    await tester.pumpAndSettle();
+    expect(find.text('Written'), findsNothing);
+    expect(find.text('Questions only'), findsOneWidget);
   });
 
   /// §2.1, and the whole point of this screen. The catalogue's types are

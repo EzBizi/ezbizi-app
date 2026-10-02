@@ -103,6 +103,7 @@ class SchedulingPatternController extends Controller
 
             foreach ($areas as $area) {
                 ServiceAreaSlot::where('service_area_id', $area->id)->delete();
+                $area->forceFill(['capacity_set_at' => now()])->save();
 
                 foreach ($slots as $slot) {
                     ServiceAreaSlot::create([

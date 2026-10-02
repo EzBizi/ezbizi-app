@@ -1446,6 +1446,17 @@ class HrOnboardingTest extends TestCase
      *
      * @return array{0: array, 1: User, 2: string, 3: string}
      */
+    /** The list's tiles count every status across all pages. */
+    public function test_the_list_counts_each_status_for_its_tiles(): void
+    {
+        [$alpha, , $id] = $this->scenario();
+
+        $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?status=completed')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.tiles', ['in_progress' => 1, 'submitted' => 0, 'completed' => 0, 'cancelled' => 0]);
+    }
+
     private function scenario(?array $fields = null): array
     {
         $alpha      = $this->provisionTenant('Alpha');

@@ -105,4 +105,36 @@ class PhoneHoursValidationTest extends TestCase
             'a schedule with impossible times was stored',
         ));
     }
+
+    /**
+     * The list says whether each schedule is open today, which needs today's
+     * date where the phone is, not where the reader is (Mia, 2026-10-02).
+     * 02:30 UTC on Oct 3 is still Oct 2 in New York.
+     */
+    public function test_the_list_carries_today_on_the_schedules_own_clock(): void
+    {
+        [$t, $connection, $editor] = $this->ready();
+
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-03 02:30:00', 'UTC'));
+
+        try {
+            foreach (['America/New_York', 'UTC'] as $zone) {
+                $this->signedInAs($editor)->postJson('/api/v1/phone/hours', [
+                    'connection_id' => $connection->id,
+                    'name' => $zone,
+                    'timezone' => $zone,
+                    'weeks' => ['fri' => [['09:00', '17:00']]],
+                ])->assertCreated();
+            }
+
+            $rows = collect($this->signedInAs($editor)->getJson('/api/v1/phone/hours')
+                ->assertOk()
+                ->json('data'))->keyBy('name');
+
+            $this->assertSame('2026-10-02', $rows['America/New_York']['today']);
+            $this->assertSame('2026-10-03', $rows['UTC']['today']);
+        } finally {
+            \Carbon\Carbon::setTestNow();
+        }
+    }
 }

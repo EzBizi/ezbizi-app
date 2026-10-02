@@ -787,3 +787,20 @@ abstract final class PersonColours {
   static List<ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
 }
+
+/// A newsletter's own colours, copied from `BlockRenderer`. Kept here with
+/// every other colour literal (theme_conventions_test).
+///
+/// Not app chrome, so not from the theme: these are what the recipient's mail
+/// client paints, and they stay the same in dark mode because the email does.
+/// A change to the renderer's palette has to be made here too.
+class EmailInk {
+  static const page = Color(0xFFEDF1F4);
+  static const paper = Color(0xFFFFFFFF);
+  static const heading = Color(0xFF060808);
+  static const body = Color(0xFF3A4650);
+  static const button = Color(0xFF00708F);
+  static const rule = Color(0xFFE9EDF1);
+  static const footer = Color(0xFFF5F8FA);
+  static const footerInk = Color(0xFF5B6672);
+}

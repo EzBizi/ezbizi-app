@@ -18,6 +18,113 @@ import 'package:http/testing.dart';
 /// full — not only on the words. A chip that read "1 Spot Left" in green would
 /// pass every text assertion and tell a dispatcher the opposite of the truth.
 void main() {
+  // Mia, 2026-10-02: an area set up closed every day said "check Workiz";
+  // a holiday between openings was simply missing.
+  testWidgets('an area closed every day says Closed, not check Workiz', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      onRequest: (r) => r.url.path.endsWith('/scheduling/availability')
+          ? _json({
+              'data': {
+                'basis': 'remaining',
+                'areas': [
+                  {
+                    'area_id': 'a-sa',
+                    'area_name': 'San Antonio',
+                    'franchise_name': 'Nationwide',
+                    'configured': true,
+                    'first': null,
+                    'after': const [],
+                    'closed': const [],
+                    'none_because': 'closed',
+                  },
+                ],
+              },
+            })
+          : null,
+    );
+
+    await tester.enterText(find.byKey(const Key('availability-search')), '78201');
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('availability-closed-all')), findsOneWidget);
+    expect(find.textContaining('Workiz'), findsNothing);
+  });
+
+  testWidgets('a closed date sits in the list where it falls', (tester) async {
+    final area = Map<String, dynamic>.from(
+      (_dallas['areas'] as List).first as Map,
+    );
+    final after = (area['after'] as List).cast<Map<String, dynamic>>();
+    area['closed'] = [
+      {'date': after.first['date'], 'reason': 'date'},
+    ];
+    area['after'] = after.skip(1).toList();
+
+    await _pump(
+      tester,
+      onRequest: (r) => r.url.path.endsWith('/scheduling/availability')
+          ? _json({
+              'data': {
+                ..._dallas,
+                'areas': [area],
+              },
+            })
+          : null,
+    );
+
+    await tester.enterText(find.byKey(const Key('availability-search')), '75201');
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(ValueKey('availability-closed-${after.first['date']}')),
+      findsOneWidget,
+    );
+    expect(find.text('Closed that day'), findsOneWidget);
+  });
+
+  // Mia, 2026-10-02: a customer writes "86 Jerusalem hill Trumbull", not a
+  // zip. The pane asks by address and says which address the zip came from.
+  testWidgets('an address is asked as an address and shows where it landed', (
+    tester,
+  ) async {
+    Uri? asked;
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (!r.url.path.endsWith('/scheduling/availability')) return null;
+        asked = r.url;
+        return _json({
+          'data': {
+            ..._dallas,
+            'resolved': {
+              'address': '86 Jerusalem Hill Rd, Trumbull, CT 06611, USA',
+              'zip': '06611',
+              'exact': true,
+            },
+          },
+        });
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '86 Jerusalem hill Trumbull',
+    );
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+
+    expect(asked?.queryParameters['address'], '86 Jerusalem hill Trumbull');
+    expect(
+      find.text('86 Jerusalem Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'a zip answers with the first day and colours each window by what is left',
     (tester) async {

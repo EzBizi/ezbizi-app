@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/foundation.dart';
 
@@ -84,14 +86,41 @@ Future<PickedFile?> pickText() async {
   return PickedFile(file.name, await file.readAsString());
 }
 
-/// Still a no-op off the web, and deliberately so in this change.
+/// A Save dialog, then the write (Mia, 2026-10-02: a signed contract could
+/// not be downloaded on the desktop app). It was a no-op until then.
 ///
-/// Saving needs `getSaveLocation` plus a real write, and the facade declares
-/// `void download(...)` — making it await would turn six call sites async in
-/// Settings, Inspection and Fleet. That is a different change with a
-/// different blast radius from fixing a picker that returns null, so it is not
-/// smuggled in beside one. Export and download still do nothing off the web.
-void download(String filename, List<int> content) {}
+/// The facade's `void download(...)` is kept: the dialog runs without being
+/// awaited, so the seven call sites stay as they are. A cancelled dialog
+/// writes nothing; a failed write is swallowed rather than thrown into a
+/// caller that already moved on, and leaves no half-file behind it.
+void download(String filename, List<int> content) {
+  unawaited(_saveAs(filename, content));
+}
+
+Future<void> _saveAs(String filename, List<int> content) async {
+  try {
+    final dot = filename.lastIndexOf('.');
+    final location = await fs.getSaveLocation(
+      suggestedName: filename,
+      acceptedTypeGroups: dot < 0
+          ? const []
+          : [
+              fs.XTypeGroup(
+                label: filename.substring(dot + 1).toUpperCase(),
+                extensions: [filename.substring(dot + 1)],
+              ),
+            ],
+    );
+    if (location == null) return;
+
+    await fs.XFile.fromData(
+      Uint8List.fromList(content),
+      name: filename,
+    ).saveTo(location.path);
+  } catch (_) {
+    // Nothing to tell: see above.
+  }
+}
 
 void clearQuery() {}
 

@@ -181,6 +181,15 @@ final class Openings
                 default => $this->versionOn($versions, $key, $slots)->get($date->dayOfWeek, collect()),
             };
 
+            // Why a day offers nothing, so Availability can say CLOSED rather
+            // than skip it (Mia, 2026-10-02): before the area opens, a date
+            // closed on its own (a holiday), or a weekday the week leaves shut.
+            $closed = $pattern->isNotEmpty() ? null : match (true) {
+                $floor !== null && $key < $floor => 'not_yet',
+                $overrides->has($key) => 'date',
+                default => 'weekly',
+            };
+
             foreach ($pattern as $slot) {
                 $start = substr((string) $slot->start_time, 0, 5);
                 $end = substr((string) $slot->end_time, 0, 5);
@@ -235,6 +244,7 @@ final class Openings
                 'franchise_limit' => $limit,
                 'area_limit' => isset($areaLimits[$date->dayOfWeek]) ? (int) $areaLimits[$date->dayOfWeek] : null,
                 'franchise_booked' => $limit === null ? null : ($franchiseBooked[$key] ?? 0),
+                'closed' => $closed,
             ];
         }
 
@@ -253,14 +263,37 @@ final class Openings
      */
     public function next(ServiceArea $area, CarbonImmutable $from, int $after = 5): array
     {
+        $days = $this->days($area, $from, self::HORIZON_DAYS);
+
         $open = array_values(array_filter(
-            $this->days($area, $from, self::HORIZON_DAYS),
+            $days,
             fn (array $day) => collect($day['windows'])->contains(fn ($w) => $w['remaining'] > 0),
         ));
+
+        $shown = array_slice($open, 0, $after + 1);
+        $last = $shown === [] ? null : end($shown)['date'];
 
         return [
             'first' => $open[0] ?? null,
             'after' => array_slice($open, 1, $after),
+            /*
+             * Dates closed on their own (a holiday) and days before the area
+             * opens, up to the last day shown, so they read "Closed" in place
+             * instead of silently missing (Mia, 2026-10-02). A weekday the
+             * week always leaves shut is not listed: an area open only on
+             * Mondays would otherwise list six closed days between each one.
+             */
+            'closed' => $last === null ? [] : array_values(array_map(
+                fn (array $day) => ['date' => $day['date'], 'reason' => $day['closed']],
+                array_filter(
+                    $days,
+                    fn (array $day) => in_array($day['closed'], ['date', 'not_yet'], true) && $day['date'] < $last,
+                ),
+            )),
+            // Why there is no first day: every day in a year is closed, or
+            // there are openings and every one is taken.
+            'none_because' => $open !== [] ? null
+                : (collect($days)->every(fn (array $day) => $day['closed'] !== null) ? 'closed' : 'full'),
         ];
     }
 
@@ -414,7 +447,11 @@ final class Openings
             $area = ServiceArea::find($area->shares_with_id) ?? $area;
         }
 
-        return ServiceAreaSlot::query()->where('service_area_id', $area->id)->exists()
+        // A week SAVED with every day closed is set up - closed, not unknown.
+        // Its rows were deleted (a closed day has none), so the save itself is
+        // what records it (Mia, 2026-10-02: San Antonio read "not available").
+        return $area->capacity_set_at !== null
+            || ServiceAreaSlot::query()->where('service_area_id', $area->id)->exists()
             || ServiceAreaScheduledSlot::query()->where('service_area_id', $area->id)->exists()
             || ServiceAreaDateOverride::query()->where('service_area_id', $area->id)
                 ->whereNotNull('start_time')->exists();

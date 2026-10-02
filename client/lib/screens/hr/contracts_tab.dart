@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../core/contracts.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/tag.dart';
 import 'contract_designer.dart';
 
@@ -52,6 +54,18 @@ class _ContractsTabState extends State<ContractsTab> {
   int _request = 0;
 
   List<Map<String, dynamic>> _templates = const [];
+
+  /// The tile picked (layout A, Mia 2026-10-02): `written`, `questions` or
+  /// `no_cover`; null is every contract. Counted here - the list is every
+  /// contract in one answer, not a page of them.
+  String? _tile;
+
+  bool _matches(Map<String, dynamic> t) => switch (_tile) {
+    'written' => t['has_body'] == true,
+    'questions' => t['has_body'] == false,
+    'no_cover' => t['has_cover'] == false,
+    _ => true,
+  };
   ContractVocabulary _vocabulary = ContractVocabulary.none;
 
   /// Why the designer cannot be opened for writing, when it cannot. Kept apart
@@ -216,11 +230,13 @@ class _ContractsTabState extends State<ContractsTab> {
                       ),
                     ),
                   )
-                : ListView.separated(
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _templates.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _templates[i]),
+                    children: [
+                      _tiles(),
+                      const SizedBox(height: 12),
+                      _table(context),
+                    ],
                   ),
           ),
         ),
@@ -228,50 +244,127 @@ class _ContractsTabState extends State<ContractsTab> {
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> template) {
-    final id = template['id'] as String?;
-    final version = template['version'];
+  Widget _tiles() {
+    int count(bool Function(Map<String, dynamic>) test) =>
+        _templates.where(test).length;
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                template['name'] as String? ?? '',
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+    return FilterTiles(
+      prefix: 'contracts',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'All',
+          count: _templates.length,
+          note: 'contracts',
+        ),
+        FilterTile(
+          key: 'written',
+          label: 'Wording written',
+          count: count((t) => t['has_body'] == true),
+          note: 'produce an agreement',
+        ),
+        FilterTile(
+          key: 'questions',
+          label: 'Questions only',
+          count: count((t) => t['has_body'] == false),
+          note: 'no wording yet',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'no_cover',
+          label: 'No cover page',
+          count: count((t) => t['has_cover'] == false),
+          note: 'open straight on the text',
+        ),
+      ],
+    );
+  }
+
+  Widget _table(BuildContext context) {
+    final shown = _templates.where(_matches).toList();
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No contracts like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Contract', flex: 6),
+        ListColumn('Version', flex: 1),
+        ListColumn('Questions', flex: 2),
+        ListColumn('Wording', flex: 2),
+        ListColumn('Cover', flex: 1),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('contract-${shown[i]['id']}'),
+      onTap: (i) {
+        final id = shown[i]['id'] as String?;
+        if (id != null) _open(id);
+      },
+      rows: [
+        for (final template in shown)
+          [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  template['name'] as String? ?? '',
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (template['description'] is String &&
+                    (template['description'] as String).isNotEmpty)
+                  Text(
+                    template['description'] as String,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: small,
+                  ),
+              ],
             ),
-            if (version != null) Tag('Version $version'),
+            Text(
+              template['version'] == null ? '—' : 'v${template['version']}',
+            ),
+            Text(_questionCount(template['field_count'])),
+            // Written, or still only questions: a template with no wording
+            // produces a dump of answers, not an agreement. Absent is a server
+            // that does not say, so nothing is claimed either way.
+            switch (template['has_body']) {
+              true => const Tag('Written', good: true),
+              false => const Tag('Questions only', warn: true),
+              _ => const SizedBox.shrink(),
+            },
+            Text(switch (template['has_cover']) {
+              true => 'Yes',
+              false => 'No',
+              _ => '—',
+            }, style: small),
+            _opening == template['id']
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : TextButton(
+                    onPressed: template['id'] == null
+                        ? null
+                        : () => _open(template['id'] as String),
+                    child: Text(_mayEdit ? 'Design' : 'Read'),
+                  ),
           ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            [
-              if (template['description'] is String &&
-                  (template['description'] as String).isNotEmpty)
-                template['description'] as String,
-              _questionCount(template['field_count']),
-              _wording(template['has_body']),
-            ].where((part) => part.isNotEmpty).join(' · '),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-        trailing: _opening == id
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : TextButton(
-                onPressed: id == null ? null : () => _open(id),
-                child: Text(_mayEdit ? 'Design' : 'Read'),
-              ),
-        onTap: id == null ? null : () => _open(id),
-      ),
+      ],
     );
   }
 
@@ -287,31 +380,8 @@ class _ContractsTabState extends State<ContractsTab> {
 
     if (count == null) return '';
 
-    return '$count ${count == 1 ? 'question' : 'questions'} asked today';
+    return '$count asked today';
   }
-
-  /// Whether this template has been WRITTEN, or is still only a set of
-  /// questions.
-  ///
-  /// ── The distinction the owner was pointing at ────────────────
-  ///
-  /// *"We are missing something critical which is the contract writing itself"*
-  /// — a template with no wording still produces a document, but the document
-  /// is a dump of the answers that were collected. That is a record, not an
-  /// agreement, and it is not what anybody means when they say "the contract".
-  ///
-  /// The server puts `has_body` on every row of `GET /hr/contracts` for exactly
-  /// this, and the list read past it. Somebody looking at four templates could
-  /// not tell which of them anybody had actually written.
-  ///
-  /// Read as a tri-state, not a bool: absent means a server that does not send
-  /// it, and the honest answer to "is this one written" is then to say nothing
-  /// rather than to say no about every template on the screen.
-  String _wording(Object? hasBody) => switch (hasBody) {
-    true => 'wording written',
-    false => 'questions only, no wording yet',
-    _ => '',
-  };
 
   void _create() => setState(() {
     _creating = true;

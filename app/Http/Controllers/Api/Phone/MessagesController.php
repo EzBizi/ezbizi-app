@@ -73,8 +73,21 @@ class MessagesController extends Controller
                 ->orWhere('to_e164', $peer));
         }
 
-        $rows = $query->get()
-            ->map(fn (PhoneMessage $message) => $this->row($message))
+        $messages = $query->get();
+
+        // The customer's NAME beside the id, so a conversation row can say who
+        // rather than a number - the same thing the call list sends (Mia,
+        // 2026-10-02, Messages as tiles over a table). One query for the page,
+        // not one per row.
+        $ids = $messages->pluck('customer_id')->filter()->unique()->values()->all();
+        $names = $ids === []
+            ? []
+            : Customer::query()->whereIn('id', $ids)->pluck('name', 'id')->all();
+
+        $rows = $messages
+            ->map(fn (PhoneMessage $message) => $this->row($message) + [
+                'customer_name' => $names[(string) $message->customer_id] ?? null,
+            ])
             ->all();
 
         return response()->json(['data' => $rows]);

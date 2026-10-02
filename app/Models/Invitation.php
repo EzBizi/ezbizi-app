@@ -429,6 +429,29 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
      * expiry after seven days and quietly rewrite the history the row exists to
      * keep.
      */
+    /**
+     * status() as a query, in the same order, so the list can count and filter
+     * by it across every page (HR lists, layout A, Mia 2026-10-02). `opened`
+     * is received and in progress together: both are "they have the link open,
+     * nothing is finished".
+     */
+    public function scopeInStatus(Builder $query, string $status): Builder
+    {
+        $pending = fn (Builder $q) => $q->whereNull('accepted_at')->whereNull('revoked_at')
+            ->where('expires_at', '>', now());
+
+        return match ($status) {
+            self::COMPLETED => $query->whereNotNull('accepted_at'),
+            self::REVOKED => $query->whereNull('accepted_at')->whereNotNull('revoked_at'),
+            self::ABANDONED => $query->whereNull('accepted_at')->whereNull('revoked_at')
+                ->where('expires_at', '<=', now()),
+            'opened' => $pending($query)->where(fn (Builder $q) => $q->whereNotNull('opened_at')
+                ->orWhereHas('onboarding')),
+            self::SENT => $pending($query)->whereNull('opened_at')->whereDoesntHave('onboarding'),
+            default => $query,
+        };
+    }
+
     public function status(): string
     {
         return match (true) {

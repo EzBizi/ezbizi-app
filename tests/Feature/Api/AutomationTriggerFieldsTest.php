@@ -329,4 +329,44 @@ class AutomationTriggerFieldsTest extends TestCase
         $this->assertContains('schedule_kind', $data['fields']);
         $this->assertSame('daily', $data['samples']['schedule_kind'] ?? null);
     }
+
+    /**
+     * `{{company_name}}` worked in a lead's message and no chip offered it,
+     * because chips came only from the payload and the name is read off the
+     * lead. So an auto reply kept the brand typed in by hand (Mia, 2026-10-02).
+     * It is offered for messages and kept out of `fields`, which a condition
+     * reads and where it would always compare against nothing.
+     */
+    public function test_a_lead_message_is_offered_the_company_name_with_an_example(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_WEBSITE_CHAT,
+            'remote_id' => 'chat-1',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now(),
+        ]));
+
+        $this->inTenant($t['org'], fn () => AutomationEvent::create([
+            'organization_id' => $t['org']->id,
+            'event_key' => 'lead.received',
+            'subject_type' => Lead::class,
+            'subject_id' => $lead->getKey(),
+            'payload' => ['after' => ['source' => 'website_chat', 'kind' => 'website_chat']],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/trigger-fields?trigger=lead.received')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertContains('company_name', $data['message_fields']);
+        $this->assertNotContains('company_name', $data['fields']);
+        $this->assertSame($t['company']->name, $data['samples']['company_name'] ?? null);
+    }
 }

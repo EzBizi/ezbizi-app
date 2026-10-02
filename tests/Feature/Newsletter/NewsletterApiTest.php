@@ -371,6 +371,78 @@ class NewsletterApiTest extends TestCase
             ->assertOk()->assertJsonPath('data.0.id', $id);
     }
 
+    public function test_a_status_narrows_the_list_and_leaves_the_counts_whole(): void
+    {
+        $t = $this->provisionTenant('Tiles');
+        $draft = $this->draft($t);
+        $sent = $this->draft($t);
+        $this->inTenant($t['org'], fn () => Newsletter::findOrFail($sent)->forceFill(['status' => 'sent'])->save());
+
+        $response = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?status=sent')->assertOk();
+        $this->assertSame([$sent], array_column($response->json('data'), 'id'));
+        // The tiles count every mailing, whatever the table is narrowed to.
+        $response->assertJsonPath('stats.drafts', 1)->assertJsonPath('stats.sent', 1);
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?status=draft')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $draft);
+
+        // Unknown is ignored rather than refused: the whole list.
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?status=nonsense')
+            ->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    public function test_a_row_carries_its_list_its_send_time_and_addresses_reached(): void
+    {
+        $t = $this->provisionTenant('Rows');
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Rows', 'audience_id' => $audience->getKey(),
+        ])->assertCreated()->json('data.id');
+        $connection = $this->mailchimp($t);
+        $this->inTenant($t['org'], function () use ($id, $connection) {
+            $n = Newsletter::findOrFail($id);
+            $n->forceFill(['status' => 'sent'])->save();
+            $n->sends()->create(['connection_id' => $connection->getKey(), 'provider' => 'mailchimp',
+                'status' => 'sent', 'recipients' => 412])->forceFill(['sent_at' => now()])->save();
+        });
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)->assertOk()
+            ->assertJsonPath('data.0.audience.name', 'Everybody')
+            ->assertJsonPath('data.0.last_send.recipients', 412)
+            ->assertJsonPath('data.0.last_send.sent_at', fn ($v) => is_string($v) && $v !== '');
+    }
+
+    public function test_a_column_saved_by_the_composer_renders_its_blocks(): void
+    {
+        $t = $this->provisionTenant('Columns');
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Columns',
+            'blocks' => [['type' => 'columns', 'columns' => [
+                ['blocks' => [['type' => 'text', 'text' => 'Sweep from 319']]],
+                ['blocks' => [['type' => 'text', 'text' => 'Inspection 149']]],
+            ]]],
+        ])->assertCreated()->json('data.id');
+
+        $html = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preview")->assertOk()->json('data.html');
+        $this->assertStringContainsString('Sweep from 319', $html);
+        $this->assertStringContainsString('Inspection 149', $html);
+    }
+
+    public function test_a_blocks_fields_survive_saving(): void
+    {
+        $t = $this->provisionTenant('Fields');
+        $id = $this->draft($t);
+
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", [
+            'subject' => 'Fields',
+            'blocks' => [['type' => 'heading', 'text' => 'Autumn sweeps', 'size' => 28, 'align' => 'center']],
+        ])->assertOk()->assertJsonPath('data.blocks.0.text', 'Autumn sweeps')
+            ->assertJsonPath('data.blocks.0.align', 'center');
+
+        $this->assertStringContainsString('Autumn sweeps',
+            $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preview")->json('data.html'));
+    }
+
     public function test_franchise_actor_cannot_create_organization_rows_from_overview(): void
     {
         $t = $this->provisionTenant('Create authority');
@@ -678,5 +750,19 @@ class NewsletterApiTest extends TestCase
                 ]),
             ])->save();
         });
+    }
+
+    /** A block's address keeps only a scheme a newsletter uses. */
+    public function test_a_block_link_with_a_script_scheme_is_dropped(): void
+    {
+        $html = app(\App\Support\Newsletter\BlockRenderer::class)->render([
+            ['type' => 'button', 'text' => 'Go', 'url' => 'javascript:alert(1)'],
+            ['type' => 'button', 'text' => 'Book', 'url' => 'https://a-1chimney.com/book'],
+            ['type' => 'image', 'src' => 'data:image/svg+xml;base64,PHN2Zz4=', 'alt' => 'x'],
+        ], ['company' => 'A-1', 'address' => '1 Main St', 'unsubscribe_url' => 'https://example.test/u']);
+
+        $this->assertStringNotContainsString('javascript:', $html);
+        $this->assertStringNotContainsString('data:image/svg', $html);
+        $this->assertStringContainsString('https://a-1chimney.com/book', $html);
     }
 }

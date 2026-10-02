@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 
 /// Phone › Settings › Blocked callers — who the phone will not ring for.
@@ -49,6 +51,10 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
 
   String? _connectionId;
   List<_Blocked> _rows = const [];
+
+  /// `month` when the "Added this month" tile is picked, else null. The list
+  /// comes back whole, so both tiles count it here (Mia, 2026-10-02).
+  String? _shown;
 
   final _number = TextEditingController();
   final _reason = TextEditingController();
@@ -295,31 +301,102 @@ class _BlockedNumbersPaneState extends State<BlockedNumbersPane> {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           )
-        else
-          for (final row in _rows)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                key: ValueKey('blocked-${row.id}'),
-                leading: const Icon(Icons.block_outlined),
-                title: Text(row.e164),
-                subtitle: Text(
-                  [
-                    if (row.reason != null && row.reason!.isNotEmpty)
-                      row.reason!,
-                    if (row.blockedByName != null)
-                      'Blocked by ${row.blockedByName}',
-                  ].join(' · '),
-                ),
-                trailing: Refused(
-                  reason: _canEdit ? null : _editRefusal,
-                  child: TextButton(
-                    onPressed: _canEdit ? () => _unblock(row) : null,
-                    child: const Text('Unblock'),
-                  ),
-                ),
+        else ...[
+          FilterTiles(
+            prefix: 'blocked',
+            picked: _shown,
+            onPick: (key) => setState(() => _shown = key),
+            tiles: [
+              FilterTile(
+                key: null,
+                label: 'Blocked',
+                count: _rows.length,
+                note: 'numbers',
+              ),
+              FilterTile(
+                key: 'month',
+                label: 'Added this month',
+                count: _rows.where(_thisMonth).length,
+                note: 'since the 1st',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _table(theme),
+        ],
+      ],
+    );
+  }
+
+  /// Whether a block was added in the reader's current calendar month. A row
+  /// with no date is not counted: guessing would put it in the wrong tile.
+  bool _thisMonth(_Blocked row) {
+    final at = row.createdAt?.toLocal();
+    if (at == null) return false;
+    final now = DateTime.now();
+
+    return at.year == now.year && at.month == now.month;
+  }
+
+  Widget _table(ThemeData theme) {
+    final shown = _shown == 'month' ? _rows.where(_thisMonth).toList() : _rows;
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'Nobody was blocked this month.',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Number', flex: 3),
+        ListColumn('Reason', flex: 4),
+        ListColumn('Blocked by', flex: 3),
+        ListColumn('When', flex: 2),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('blocked-${shown[i].id}'),
+      rows: [
+        for (final row in shown)
+          [
+            Text(
+              row.e164,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
+            Text(
+              row.reason == null || row.reason!.isEmpty ? '—' : row.reason!,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              row.blockedByName ?? '—',
+              overflow: TextOverflow.ellipsis,
+              style: small,
+            ),
+            Text(
+              row.createdAt == null
+                  ? '—'
+                  : formats.formatDate(row.createdAt!.toLocal()),
+              style: small,
+            ),
+            Refused(
+              reason: _canEdit ? null : _editRefusal,
+              child: TextButton(
+                onPressed: _canEdit ? () => _unblock(row) : null,
+                child: const Text('Unblock'),
+              ),
+            ),
+          ],
       ],
     );
   }
@@ -331,12 +408,14 @@ class _Blocked {
     required this.e164,
     this.reason,
     this.blockedByName,
+    this.createdAt,
   });
 
   final String id;
   final String e164;
   final String? reason;
   final String? blockedByName;
+  final DateTime? createdAt;
 
   static List<_Blocked> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
@@ -348,6 +427,7 @@ class _Blocked {
         e164: (row['e164'] ?? '').toString(),
         reason: row['reason'] as String?,
         blockedByName: row['blocked_by_name'] as String?,
+        createdAt: DateTime.tryParse('${row['created_at'] ?? ''}'),
       );
     }).toList();
   }

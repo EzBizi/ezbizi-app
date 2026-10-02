@@ -39,11 +39,25 @@ void main() {
     expect(saved.single['wait_seconds'], 7);
     expect(saved.single['replays'], 1);
   });
+
+  // Layout A (Mia, 2026-10-02): the list is a table of name, the keys set
+  // (named after where each goes), and the lines using it.
+  testWidgets('the list names what each key does and flags an unused menu', (
+    tester,
+  ) async {
+    await _pump(tester, onSave: (_) {}, extraFlow: true);
+
+    expect(find.text('1 Message'), findsOneWidget);
+    expect(find.text('On 1 line'), findsOneWidget);
+    expect(find.text('1 Sales · 9 Repeat'), findsOneWidget);
+    expect(find.text('Not used'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(
   WidgetTester tester, {
   required void Function(Map<String, dynamic>) onSave,
+  bool extraFlow = false,
 }) async {
   tester.view.physicalSize = const Size(1100, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -77,6 +91,27 @@ Future<void> _pump(
               'number_ids': ['n-1'],
               'plays': true,
             },
+            if (extraFlow)
+              {
+                'id': 'f-2',
+                'connection_id': 'pc-1',
+                'name': 'Garage menu',
+                'prompt': 'Press 1 for sales.',
+                'options': [
+                  {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'g-1'},
+                  {'digit': '9', 'action': 'repeat'},
+                ],
+                'number_ids': <String>[],
+                'plays': true,
+              },
+          ],
+        });
+      }
+
+      if (path.endsWith('/phone/ring-groups')) {
+        return _json({
+          'data': [
+            {'id': 'g-1', 'name': 'Sales'},
           ],
         });
       }

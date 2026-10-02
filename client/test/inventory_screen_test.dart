@@ -7,6 +7,7 @@ import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/inventory/stock_join.dart';
 import 'package:ezbizi_client/screens/inventory_screen.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -50,6 +51,102 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('The header'), findsNothing);
+  });
+
+  // The General tab (spec 2026-09-09, built 2026-10-02): the module opens on
+  // it, its figures and warnings are the server's, and a figure opens the
+  // list behind it.
+  Map<String, dynamic> summary({bool money = true}) => {
+    'health': {
+      'empty': false,
+      'in_stock': 1,
+      'low': 1,
+      'out': 5,
+      'items': 7,
+      'locations': 9,
+      'open_purchase_orders': 1,
+      'links': {
+        'low': 'stock?low_items=1',
+        'items': 'items',
+        'locations': 'locations',
+        'open_purchase_orders': 'orders',
+      },
+      if (money) 'value': {'currency': 'USD', 'amount_minor': 1234500},
+    },
+    'warnings': [
+      {'key': 'out_of_stock', 'count': 5, 'sentence': '5 items are out of stock.'},
+      {
+        'key': 'below_reorder',
+        'count': 1,
+        'sentence': '1 item is at or below its reorder point.',
+        'link': 'stock?low_items=1',
+      },
+    ],
+    'movement': {
+      'period': 'month',
+      'buckets': ['2026-08-30', '2026-09-06'],
+      'lines': [
+        {'key': 'in', 'label': 'Received', 'internal': false, 'points': [4.0, 0.0]},
+        {'key': 'out', 'label': 'Issued and sold', 'internal': false, 'points': [0.0, 8.0]},
+        {'key': 'adjusted', 'label': 'Adjusted', 'internal': false, 'points': [0.0, -6.0]},
+        {'key': 'transferred', 'label': 'Transferred', 'internal': true, 'points': [0.0, 10.0]},
+      ],
+    },
+  };
+
+  testWidgets('Inventory opens on General, with the server\'s figures and '
+      'warnings', (tester) async {
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) => request.url.path.endsWith('/inventory/summary')
+          ? _json(summary())
+          : null,
+    );
+
+    expect(find.text('General'), findsOneWidget);
+    expect(find.byKey(const Key('inventory-general-items')), findsOneWidget);
+    expect(find.text('\$12,345.00'), findsOneWidget);
+    expect(find.text('5 items are out of stock.'), findsOneWidget);
+    expect(find.text('Moved between your places'), findsOneWidget);
+  });
+
+  testWidgets('without financials General has no money on it', (tester) async {
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) => request.url.path.endsWith('/inventory/summary')
+          ? _json(summary(money: false))
+          : null,
+    );
+
+    expect(find.byKey(const Key('inventory-general-value')), findsNothing);
+    expect(find.byKey(const Key('inventory-general-items')), findsOneWidget);
+  });
+
+  testWidgets('Below reorder on General opens Stock filtered to it', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) => request.url.path.endsWith('/inventory/summary')
+          ? _json(summary())
+          : null,
+    );
+
+    await tester.tap(find.byKey(const Key('inventory-general-low')));
+    await tester.pumpAndSettle();
+
+    final tile = tester.widget<Material>(
+      find.byKey(const Key('stock-tile-low')),
+    );
+    expect(
+      tile.color,
+      Theme.of(tester.element(find.byType(InventoryScreen)))
+          .colorScheme
+          .primaryContainer,
+    );
   });
 
   testWidgets('a granted Inventory tab shows chips, not Coming soon', (
@@ -195,6 +292,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
+    // Five chips no longer fit across 375, so the row scrolls to Items.
+    await tester.ensureVisible(find.text('Items'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Items'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -263,6 +363,7 @@ void main() {
       tester,
       permissions: const [
         'inventory.view',
+        'inventory.general.view',
         'inventory.create',
         'inventory.edit',
         'inventory.financials',
@@ -1191,6 +1292,7 @@ void main() {
 
 const _allTabs = [
   'inventory.view',
+  'inventory.general.view',
   'inventory.create',
   'inventory.edit',
   'inventory.stock.view',
@@ -1320,6 +1422,7 @@ Future<void> _pumpScreen(
   WidgetTester tester, {
   List<String> permissions = const [
     'inventory.view',
+    'inventory.general.view',
     'inventory.create',
     'inventory.edit',
     // The four tab grants (Jose, 2026-09-17). A role holding `inventory.view`
@@ -1343,6 +1446,7 @@ Future<void> _pumpScreen(
   List<Map<String, dynamic>> movements = const [],
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
+  bool stayOnGeneral = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1379,11 +1483,33 @@ Future<void> _pumpScreen(
     ),
   );
   await tester.pumpAndSettle();
+
+  // General opens first now. These tests are about the lists, so they start
+  // on the first list chip this role holds - where they used to land.
+  if (stayOnGeneral) return;
+  for (final (tab, label) in const [
+    ('stock', 'Stock'),
+    ('items', 'Items'),
+    ('orders', 'Orders'),
+    ('locations', 'Locations'),
+  ]) {
+    if (permissions.contains('inventory.$tab.view')) {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TabBarLike),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
 }
 
 MockClientHandler _handler({
   List<String> permissions = const [
     'inventory.view',
+    'inventory.general.view',
     'inventory.create',
     'inventory.edit',
     // The four tab grants (Jose, 2026-09-17). A role holding `inventory.view`

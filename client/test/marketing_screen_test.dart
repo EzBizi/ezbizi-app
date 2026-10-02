@@ -6,13 +6,16 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
+import 'package:ezbizi_client/widgets/month_calendar.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -104,11 +107,18 @@ void main() {
 
       expect(find.widgetWithText(ChoiceChip, 'Posts'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
-      expect(find.text('Pages'), findsOneWidget);
-      expect(find.text('Compose'), findsOneWidget);
+      // Layout A (Mia, 2026-10-02): the Pages card is a line in the bar, and
+      // the calendars sit behind Calendar.
+      expect(find.text('No pages connected in Everdoors yet'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Connect'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      expect(find.text('How it will look'), findsOneWidget);
+      expect(find.text('Publish now'), findsOneWidget);
+      expect(find.text('Weekly Calendar'), findsNothing);
+
+      await _openCalendar(tester);
       expect(find.text('Weekly Calendar'), findsOneWidget);
       expect(find.text('Monthly Calendar'), findsOneWidget);
-      expect(find.text('Publish now'), findsOneWidget);
     });
 
     testWidgets('the month calendar can be moved back and forth', (
@@ -118,6 +128,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
+      await _openCalendar(tester);
 
       final now = DateTime.now();
       final thisMonth = _monthTitle(now);
@@ -143,6 +154,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
+      await _openCalendar(tester);
 
       expect(find.byTooltip('Previous week'), findsNothing);
       expect(find.byTooltip('Next week'), findsNothing);
@@ -488,9 +500,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Compose'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      expect(find.text('How it will look'), findsOneWidget);
+
       // A month grid does not fit a phone: the calendar is an agenda there
       // (design 27, Jose's pick 4).
+      await _openCalendar(tester);
+      expect(tester.takeException(), isNull);
       expect(find.text('Your posts'), findsOneWidget);
       expect(find.text('Monthly Calendar'), findsNothing);
     });
@@ -504,6 +520,7 @@ void main() {
           find.widgetWithText(ChoiceChip, 'Social Media Management'),
         );
         await tester.pumpAndSettle();
+        await _openCalendar(tester);
 
         expect(tester.takeException(), isNull);
 
@@ -572,16 +589,16 @@ void main() {
 
       // The tickbox is present and dead rather than absent: somebody looking
       // for the Facebook page they just connected finds it, and finds out why.
-      final box = tester.widget<CheckboxListTile>(
-        find.widgetWithText(CheckboxListTile, 'Everdoors Doors'),
+      final box = tester.widget<FilterChip>(
+        find.widgetWithText(FilterChip, 'Everdoors Doors'),
       );
-      expect(box.onChanged, isNull);
+      expect(box.onSelected, isNull);
 
       expect(
         tester
             .widget<Refused>(
               find.ancestor(
-                of: find.widgetWithText(CheckboxListTile, 'Everdoors Doors'),
+                of: find.widgetWithText(FilterChip, 'Everdoors Doors'),
                 matching: find.byType(Refused),
               ),
             )
@@ -607,7 +624,7 @@ void main() {
       expect(_publishRefusal(tester), contains('Tick at least one account'));
 
       await tester.tap(
-        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+        find.widgetWithText(FilterChip, 'Everdoors Boards'),
       );
       await tester.pumpAndSettle();
 
@@ -635,7 +652,7 @@ void main() {
         'New flue liner, same day.',
       );
       await tester.tap(
-        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+        find.widgetWithText(FilterChip, 'Everdoors Boards'),
       );
       await tester.pumpAndSettle();
 
@@ -684,7 +701,7 @@ void main() {
         'Just words',
       );
       await tester.tap(
-        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+        find.widgetWithText(FilterChip, 'Everdoors Boards'),
       );
       await tester.pumpAndSettle();
 
@@ -737,7 +754,7 @@ void main() {
       );
       await _openPosts(tester);
 
-      expect(find.text('Sent'), findsOneWidget);
+      expect(find.widgetWithText(StatusPill, 'Failed'), findsOneWidget);
       expect(find.text('Chimney sweeping season is here.'), findsOneWidget);
 
       // The whole sentence, not the word "failed".
@@ -899,6 +916,7 @@ void main() {
       expect(find.text('View on Pinterest'), findsOneWidget);
 
       // On today's square at the same moment, outlined.
+      await _openCalendar(tester);
       final chip = find.descendant(
         of: find.byKey(Key('month-day-${DateTime.now().day}')),
         matching: find.textContaining('New flue liner'),
@@ -942,7 +960,7 @@ void main() {
         find.text('Pinterest did not take it. The reason is below.'),
         findsOneWidget,
       );
-      expect(find.textContaining('has no boards'), findsOneWidget);
+      expect(find.textContaining('has no boards'), findsWidgets);
     });
 
     testWidgets('a scheduled post says when, and the calendar goes to it', (
@@ -967,7 +985,7 @@ void main() {
       );
 
       await _write(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Later'));
       await tester.pumpAndSettle();
       await _typeWhen(tester, when, hour: '09', minute: '00');
       await tester.tap(find.widgetWithText(FilledButton, 'Schedule'));
@@ -1060,6 +1078,7 @@ void main() {
         ),
       );
 
+      await _openCalendar(tester);
       await tester.tap(
         find.descendant(
           of: find.byKey(Key('month-day-${DateTime.now().day}')),
@@ -1100,6 +1119,7 @@ void main() {
         ),
       );
 
+      await _openCalendar(tester);
       await tester.tap(
         find.descendant(
           of: find.byKey(Key('month-day-${DateTime.now().day}')),
@@ -1131,6 +1151,7 @@ void main() {
         ),
       );
 
+      await _openCalendar(tester);
       await tester.tap(
         find.descendant(
           of: find.byKey(Key('month-day-${DateTime.now().day}')),
@@ -1167,7 +1188,7 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Compose'), findsOneWidget);
+      expect(find.text('New post'), findsOneWidget);
     });
   });
 
@@ -1265,7 +1286,7 @@ void main() {
       // one of them is a question nobody asked.
       expect(find.text('Send at'), findsNothing);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Later'));
       await tester.pumpAndSettle();
 
       expect(find.text('Send at'), findsOneWidget);
@@ -1291,14 +1312,14 @@ void main() {
         'Autumn sweeps, booking now.',
       );
       await tester.tap(
-        find.widgetWithText(CheckboxListTile, 'Everdoors Boards'),
+        find.widgetWithText(FilterChip, 'Everdoors Boards'),
       );
       await tester.pumpAndSettle();
 
       // Before scheduling it is an immediate send, and says so.
       expect(find.widgetWithText(FilledButton, 'Publish now'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Later'));
       await tester.pumpAndSettle();
 
       // CalendarDayField is deliberately four number boxes, not one field a
@@ -1357,7 +1378,7 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('scheduled'), findsWidgets);
+      expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
       expect(find.textContaining('waiting to send'), findsNothing);
       expect(find.textContaining('Goes out 2099-03-04 09:00'), findsOneWidget);
 
@@ -1416,6 +1437,222 @@ void main() {
     });
   });
 
+
+  /// Posts, layout A (Mia, 2026-10-02): a character count per ticked network,
+  /// a likeness per network beside the composer, and every post under tiles.
+  group('posts layout A', () {
+    final xPostable = {
+      ..._xAccount,
+      'can_publish': true,
+      'cannot_publish_because': null,
+    };
+    const linkedInPostable = {
+      'id': 'conn-6',
+      'display_name': 'Everdoors on LinkedIn',
+      'provider': 'linkedin',
+      'provider_label': 'LinkedIn',
+      'handle': null,
+      'can_publish': true,
+      'cannot_publish_because': null,
+      'posting_note': null,
+    };
+
+    testWidgets('a body over a ticked network’s limit is red and blocks '
+        'Publish, and unticking that network lets it go', (tester) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: [xPostable, _pinterestBoard],
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors HQ'));
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors Boards'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What should go out?'),
+        'a' * 281,
+      );
+      await tester.pumpAndSettle();
+
+      final x = tester.widget<Text>(find.byKey(const ValueKey('social-count-x')));
+      expect(x.data, 'X 281/280');
+      expect(x.style?.fontWeight, FontWeight.w700);
+      // Pinterest has no limit in the map: counted, never warned.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('social-count-pinterest')))
+            .data,
+        'Pinterest 281',
+      );
+      expect(_publishRefusal(tester), contains('X takes 280 characters'));
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Publish now'),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors HQ'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('social-count-x')), findsNothing);
+      expect(_publishRefusal(tester), isNull);
+    });
+
+    testWidgets('the preview draws the network its chip picks', (tester) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard, linkedInPostable],
+        ),
+      );
+
+      expect(find.textContaining('Tick an account to see'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors Boards'));
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors on LinkedIn'));
+      await tester.enterText(
+        find.widgetWithText(TextField, 'What should go out?'),
+        'Autumn sweeps.',
+      );
+      await tester.pumpAndSettle();
+
+      // The first ticked network by default, in its own shape.
+      final pinterest = find.byKey(const ValueKey('social-likeness-pinterest'));
+      expect(pinterest, findsOneWidget);
+      expect(
+        find.descendant(of: pinterest, matching: find.text('14 characters')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('social-preview-linkedin')));
+      await tester.pumpAndSettle();
+
+      final linkedIn = find.byKey(const ValueKey('social-likeness-linkedin'));
+      expect(pinterest, findsNothing);
+      expect(linkedIn, findsOneWidget);
+      expect(
+        find.descendant(
+          of: linkedIn,
+          matching: find.text('Everdoors on LinkedIn'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: linkedIn, matching: find.text('Autumn sweeps.')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: linkedIn,
+          matching: find.text('14 / 3000 characters'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('A close likeness'), findsOneWidget);
+    });
+
+    testWidgets('the tiles carry the server’s counts, and a tile asks the '
+        'server for its posts', (tester) async {
+      final asked = <String?>[];
+      Map<String, Object?> post(String id, String status) => {
+        ..._landed(status, failure: status == 'failed' ? 'No boards.' : null),
+        'id': id,
+        'body': 'Post $id',
+      };
+      final list = [
+        post('s1', 'sent'),
+        post('s2', 'sent'),
+        post('f1', 'failed'),
+        post('c1', 'scheduled'),
+      ];
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/social/posts')) {
+          final status = request.url.queryParameters['status'];
+          asked.add(status);
+
+          // Thirty-seven sent across the whole history; twenty drawn.
+          return _json({
+            'data': [
+              for (final p in list)
+                if (status == null || _tileOf(p) == status) p,
+            ],
+            'meta': {
+              'tiles': {'scheduled': 1, 'sent': 37, 'failed': 1},
+            },
+          });
+        }
+
+        return inner(request);
+      });
+
+      String count(String key) => tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(Key('social-posts-tile-$key')),
+              matching: find.byWidgetPredicate(
+                (w) => w is Text && RegExp(r'^\d+$').hasMatch(w.data ?? ''),
+              ),
+            ),
+          )
+          .data!;
+
+      expect(count('sent'), '37');
+      expect(count('failed'), '1');
+      expect(count('scheduled'), '1');
+      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
+      await tester.pumpAndSettle();
+
+      expect(asked.last, 'failed');
+      expect(find.byKey(const ValueKey('social-post-f1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('social-post-s1')), findsNothing);
+      expect(find.byKey(const ValueKey('social-post-c1')), findsNothing);
+      expect(find.textContaining('No boards.'), findsOneWidget);
+
+      // Tapping it again shows everything.
+      await tester.tap(find.byKey(const Key('social-posts-tile-failed')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
+    });
+
+    testWidgets('Retry on a failed row sends that account again', (
+      tester,
+    ) async {
+      var retried = false;
+
+      await _pumpSocial(
+        tester,
+        _retrying(
+          _handler(
+            canEdit: true,
+            connections: const [_pinterestBoard],
+            postsFor: () => [
+              retried
+                  ? _landed('queued')
+                  : _landed('failed', failure: 'Pinterest did not answer.'),
+            ],
+          ),
+          onRetry: () => retried = true,
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('social-retry-post-1')));
+      await tester.pumpAndSettle();
+
+      expect(retried, isTrue);
+      expect(find.text('Posting… 0 of 1 done'), findsOneWidget);
+    });
+  });
 
   /// Each pane follows its own grant (Jose, 2026-09-29: tabs grantable "like
   /// all the others"). The server refuses what the screen hides; these assert
@@ -1537,9 +1774,14 @@ void main() {
         ),
       );
 
-      // Both halves, at once. Layout 3 is the preview never hiding.
+      // The email is never out of sight: drawn from the blocks by default
+      // (layout A, 2026-10-02), the server's own HTML one switch away.
       expect(find.text('Newsletter'), findsWidgets);
       expect(find.text('What they will get'), findsOneWidget);
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
+      await tester.pumpAndSettle();
 
       // And it is the SERVER's HTML in the viewer the Email module uses, not
       // markup this screen built. A Dart renderer would drift from the one
@@ -1611,6 +1853,9 @@ void main() {
           previewHtml: '<h1>Autumn sweeps</h1>',
         ),
       );
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
+      await tester.pumpAndSettle();
 
       final box = tester.renderObject<RenderBox>(find.byType(MessageHtmlView));
 
@@ -1704,7 +1949,7 @@ void main() {
         _handler(canEdit: true, newsletters: const [_draft]),
       );
 
-      await tester.tap(find.text('HTML'));
+      await tester.tap(find.text('Write HTML'));
       await tester.pumpAndSettle();
 
       // Two sources of truth for one email is how somebody edits the markup,
@@ -1765,14 +2010,23 @@ void main() {
       // The server's counts, not a count of the fifty rows the list carries.
       // Scoped to the stats card: a bare `find.text('7')` also matches the
       // calendar's seventh day, which is what this assertion tripped on first.
-      final statsCard = find.widgetWithText(DashboardCard, 'Mailings in Everdoors');
-      expect(statsCard, findsOneWidget);
-      expect(find.descendant(of: statsCard, matching: find.text('7')), findsOneWidget);
-      expect(find.descendant(of: statsCard, matching: find.text('1240')), findsOneWidget);
+      // Scoped to the tiles (layout A, 2026-10-02): a bare `find.text('7')`
+      // also matches the calendar's seventh day.
+      expect(
+        find.descendant(of: find.byKey(const Key('newsletters-tile-sent')), matching: find.text('7')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('newsletters-fact-reached')),
+          matching: find.text('1240'),
+        ),
+        findsOneWidget,
+      );
 
       // Named honestly. EzBizi knows what the provider ACCEPTED; "delivered"
       // would be a claim it cannot stand behind.
-      expect(find.text('Addresses reached'), findsOneWidget);
+      expect(find.text('ADDRESSES REACHED'), findsOneWidget);
       expect(find.textContaining('delivered'), findsNothing);
     });
 
@@ -1805,11 +2059,12 @@ void main() {
 
       // On the calendar, in the current month, by subject.
       expect(find.text('Scheduled'), findsWidgets);
-      expect(find.text('Autumn sweeps'), findsOneWidget);
+      // In the calendar; the table beside it carries the subject too.
+      expect(_inCalendar('Autumn sweeps'), findsOneWidget);
 
       // "Review them or edit them" — tapping it lands in the composer with
       // that mailing open. A date with no way in is a poster.
-      await tester.tap(find.text('Autumn sweeps'));
+      await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
       expect(find.text('What they will get'), findsOneWidget);
@@ -1869,7 +2124,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Autumn sweeps'));
+      await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
       expect(
@@ -1909,7 +2164,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Send it later'));
+      await tester.tap(find.text('Later'));
       await tester.pumpAndSettle();
 
       expect(
@@ -1961,6 +2216,160 @@ void main() {
       expect(find.widgetWithText(TextButton, 'Disconnect'), findsOneWidget);
       // No second Connect form beside a live connection.
       expect(find.text('Mailchimp API key'), findsNothing);
+    });
+  });
+
+  /// Layout A (Mia, 2026-10-02): tiles over a table on the dashboard, and the
+  /// email itself as the editor in the composer.
+  group('newsletter layout A', () {
+    const sent = {
+      'id': 'n-5',
+      'subject': 'September specials',
+      'status': 'sent',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'last_send': {'status': 'sent', 'recipients': 412, 'sent_at': '2026-09-03T14:00:00Z'},
+      'blocks': [
+        {'type': 'heading', 'text': 'September specials', 'align': 'left'},
+      ],
+    };
+    const scheduled = {
+      'id': 'n-9',
+      'subject': 'Fall chimney tips',
+      'status': 'scheduled',
+      'scheduled_for': '2099-10-08 09:00',
+      'audience': null,
+      'blocks': [],
+    };
+
+    testWidgets('a dashboard tile counts and filters the table', (tester) async {
+      final asked = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        newsletters: const [_draft, sent, scheduled],
+        stats: const {
+          'drafts': 1,
+          'scheduled': 1,
+          'sent': 1,
+          'recipients': 412,
+          'last_sent_at': '2026-09-03T14:00:00Z',
+        },
+      );
+      await _pumpNewsletter(tester, (request) {
+        final status = request.url.queryParameters['status'];
+        if (status != null) {
+          asked.add(status);
+          return Future.value(_json({
+            'data': [
+              for (final n in const [_draft, sent, scheduled])
+                if (n['status'] == status) n,
+            ],
+            'sending': {'refused_because': null},
+            'stats': const {},
+          }));
+        }
+        return inner(request);
+      });
+
+      // Every newsletter, with what each row carries.
+      for (final id in ['n-1', 'n-5', 'n-9']) {
+        expect(find.byKey(ValueKey('newsletter-$id')), findsOneWidget);
+      }
+      final sentRow = find.byKey(const ValueKey('newsletter-n-5'));
+      expect(find.descendant(of: sentRow, matching: find.text('412')), findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.text('Customers · built from your customers')),
+          findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.text('View')), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const Key('newsletters-tile-sent')), matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('newsletters-tile-sent')));
+      await tester.pumpAndSettle();
+
+      // Asked of the server: the list is capped at fifty, the tile is not.
+      expect(asked, ['sent']);
+      expect(find.byKey(const ValueKey('newsletter-n-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-n-1')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-n-9')), findsNothing);
+
+      // Tapping it again clears it.
+      await tester.tap(find.byKey(const Key('newsletters-tile-sent')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-n-1')), findsOneWidget);
+    });
+
+    testWidgets('clicking a block edits it in place, and the edit autosaves', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draft}));
+        }
+        return inner(request);
+      });
+
+      final block = find.byKey(const Key('newsletter-block-0'));
+      expect(find.descendant(of: block, matching: find.byType(TextFormField)), findsNothing);
+
+      await tester.tap(block);
+      await tester.pumpAndSettle();
+
+      // The fields replace the block, where it was, with the moves beside them.
+      final field = find.descendant(of: block, matching: find.widgetWithText(TextFormField, 'Heading'));
+      expect(field, findsOneWidget);
+      expect(find.descendant(of: block, matching: find.text('Remove')), findsOneWidget);
+      expect(find.descendant(of: block, matching: find.text('Move down')), findsOneWidget);
+
+      await tester.enterText(field, 'Winter sweeps');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'Typing in place must autosave.');
+      expect((saved.last['blocks'] as List).first['text'], 'Winter sweeps');
+
+      // Done puts the drawn block back, showing the new words.
+      await tester.tap(find.descendant(of: block, matching: find.text('Done')));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
+    });
+
+    testWidgets('the dashboard lays out on a 375-point window', (tester) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft, sent, scheduled]),
+        size: const Size(375, 2400),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('newsletter-n-5')), findsOneWidget);
+      expect(find.text('New newsletter'), findsOneWidget);
+    });
+
+    testWidgets('the Desktop / Phone switch narrows the email', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      final email = find.byKey(const Key('newsletter-email'));
+      expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
+
+      await tester.tap(find.text('Phone'));
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(email).width, NewsletterEmail.phoneWidth);
+    });
+
+    testWidgets('a sent newsletter is read-only', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [sent]));
+
+      expect(find.textContaining('has gone out, so it cannot be changed'), findsWidgets);
+
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, 'Heading'), findsNothing);
+
+      final add = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Heading'));
+      expect(add.onPressed, isNull);
     });
   });
 
@@ -2032,6 +2441,11 @@ Future<void> _pumpComposer(
   await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
   await tester.pumpAndSettle();
 }
+
+/// A calendar entry by its subject: the dashboard's table carries the same
+/// subject, so a bare find.text is ambiguous since layout A.
+Finder _inCalendar(String subject) =>
+    find.descendant(of: find.byType(MonthCalendar), matching: find.text(subject));
 
 /// The sentence on a disabled button, or null when it may be pressed.
 String? _refusalOn(WidgetTester tester, String label) => tester
@@ -2157,6 +2571,13 @@ Future<void> _pumpSocial(
 /// Marketing → Social Media Management → Posts, which is where compose lives.
 Future<void> _openPosts(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+  await tester.pumpAndSettle();
+}
+
+/// Posts → Calendar, where the week and month calendars (or the phone's
+/// agenda) live since layout A (Mia, 2026-10-02).
+Future<void> _openCalendar(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Calendar'));
   await tester.pumpAndSettle();
 }
 
@@ -2413,13 +2834,43 @@ MockClientHandler _handler({
         }, 201);
       }
 
+      // As the server answers: the tiles counted across the whole list, and
+      // `status` narrowing the rows (SocialPostsController::index).
+      final all = postsFor != null ? postsFor() : (posts ?? <Map<String, Object?>>[]);
+      final status = request.url.queryParameters['status'];
+
       return _json({
-        'data': postsFor != null ? postsFor() : (posts ?? <Map<String, Object?>>[]),
+        'data': [
+          for (final post in all)
+            if (status == null || _tileOf(post) == status) post,
+        ],
+        'meta': {
+          'tiles': {
+            for (final key in const ['scheduled', 'sent', 'failed'])
+              key: all.where((p) => _tileOf(p) == key).length,
+          },
+        },
       });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
+}
+
+/// The tile a post counts under, as the server reads it: any failed account
+/// is failed, all scheduled is scheduled, anything still queued is in none.
+String? _tileOf(Map<String, Object?> post) {
+  final statuses = [
+    for (final t in (post['targets'] as List<dynamic>? ?? const []))
+      (t as Map<String, Object?>)['status'],
+  ];
+  if (statuses.contains('failed')) return 'failed';
+  if (statuses.contains('queued')) return null;
+  if (statuses.isNotEmpty && statuses.every((s) => s == 'scheduled')) {
+    return 'scheduled';
+  }
+
+  return 'sent';
 }
 
 /// One post as GET /social/posts carries it, made today, to Everdoors Boards.
@@ -2453,7 +2904,7 @@ Future<void> _write(WidgetTester tester) async {
   final words = find.widgetWithText(TextField, 'What should go out?');
   await tester.ensureVisible(words);
   await tester.enterText(words, 'New flue liner, same day.');
-  final board = find.widgetWithText(CheckboxListTile, 'Everdoors Boards');
+  final board = find.widgetWithText(FilterChip, 'Everdoors Boards');
   await tester.ensureVisible(board);
   await tester.pumpAndSettle();
   await tester.tap(board);

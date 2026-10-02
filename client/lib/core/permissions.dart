@@ -325,7 +325,12 @@ class RoleSummary {
     required this.mayDelete,
     this.lockedReason,
     this.invitableRoles,
+    this.hiddenOnLeads = false,
   });
+
+  /// Whether its holders are left off "X is viewing this lead" - marketing,
+  /// people inspecting rather than answering (Mia, 2026-10-02).
+  final bool hiddenOnLeads;
 
   final String id;
   final String name;
@@ -367,6 +372,7 @@ class RoleSummary {
 
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
+    hiddenOnLeads: json['hidden_on_leads'] as bool? ?? false,
     invitableRoles: (json['invitable_roles'] as List<dynamic>?)
         ?.whereType<String>()
         .toList(),

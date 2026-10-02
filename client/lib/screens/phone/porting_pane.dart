@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 
 /// Phone › Settings › Porting — numbers moving in from another carrier.
 ///
@@ -40,6 +44,11 @@ class _PortingPaneState extends State<PortingPane> {
   List<_Port> _ports = const [];
   List<_Conn> _connections = const [];
   String? _connectionId;
+
+  /// The tile picked (tiles over a table, Mia 2026-10-02): `progress`,
+  /// `action` or `done`; null is every port. Counted here - `/phone/ports`
+  /// answers with every port in one list, not a page of them.
+  String? _tile;
 
   final _numbers = TextEditingController();
 
@@ -183,8 +192,11 @@ class _PortingPaneState extends State<PortingPane> {
             'without changing them.',
             style: theme.textTheme.bodySmall,
           )
-        else
-          for (final port in _ports) _row(port, theme),
+        else ...[
+          _tiles(),
+          const SizedBox(height: 12),
+          _table(theme),
+        ],
 
         const SizedBox(height: 24),
         _portOutNote(theme),
@@ -264,28 +276,83 @@ class _PortingPaneState extends State<PortingPane> {
     );
   }
 
-  Widget _row(_Port port, ThemeData theme) {
-    return Card(
-      key: ValueKey('port:${port.id}'),
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(
-          port.settled ? Icons.check_circle_outline : Icons.sync_outlined,
-          color: port.settled ? null : theme.colorScheme.primary,
+  Widget _tiles() {
+    int count(String key) => _ports.where((p) => p.stage == key).length;
+
+    return FilterTiles(
+      prefix: 'ports',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'Ports',
+          count: _ports.length,
+          note: 'all',
         ),
-        title: Text(port.numbers.join(', ')),
-        subtitle: Text(
-          port.reason.isEmpty
-              ? 'Port-in · ${port.status}'
-              : 'Port-in · ${port.status} — ${port.reason}',
-          style: theme.textTheme.bodySmall,
+        FilterTile(
+          key: 'progress',
+          label: 'In progress',
+          count: count('progress'),
+          note: 'with the carrier',
+          tone: Tone.info,
         ),
-        trailing: Chip(
-          label: Text(port.status),
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        FilterTile(
+          key: 'action',
+          label: 'Action needed',
+          count: count('action'),
+          note: 'something to sign or fix',
+          tone: Tone.bad,
         ),
-      ),
+        FilterTile(
+          key: 'done',
+          label: 'Completed',
+          count: count('done'),
+          note: 'moved over',
+          tone: Tone.ok,
+        ),
+      ],
+    );
+  }
+
+  Widget _table(ThemeData theme) {
+    final shown = _tile == null
+        ? _ports
+        : _ports.where((p) => p.stage == _tile).toList();
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No ports like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Numbers', flex: 4),
+        ListColumn('Status', flex: 2),
+        ListColumn('What the carrier said', flex: 5),
+        ListColumn('Started', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('port:${shown[i].id}'),
+      rows: [
+        for (final port in shown)
+          [
+            Text(
+              port.numbers.join(', '),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            StatusPill(port.statusLabel, tone: port.tone),
+            Text(port.reason.isEmpty ? '—' : port.reason, style: small),
+            Text(formatListStamp(port.createdAt, '—', formats: formats)),
+          ],
+      ],
     );
   }
 
@@ -343,6 +410,7 @@ class _Port {
     required this.status,
     required this.reason,
     required this.settled,
+    required this.createdAt,
   });
 
   final String id;
@@ -350,6 +418,43 @@ class _Port {
   final String status;
   final String reason;
   final bool settled;
+  final String? createdAt;
+
+  /// Which tile it counts under. `waiting_for_signature` is action needed,
+  /// not progress: the carrier has emailed a letter of authorization and
+  /// nothing moves until somebody here signs it. The vocabulary is
+  /// HttpTwilioGateway::normalizePortStatus's; `settled` is the server's.
+  /// A port that ended without completing (canceled, failed, expired)
+  /// counts under none but Ports.
+  String? get stage {
+    if (status == 'completed') return 'done';
+    if (status == 'action_required' || status == 'waiting_for_signature') {
+      return 'action';
+    }
+    if (!settled) return 'progress';
+    return null;
+  }
+
+  String get statusLabel => switch (status) {
+    'in_review' => 'In review',
+    'waiting_for_signature' => 'Waiting for signature',
+    'in_progress' => 'In progress',
+    'action_required' => 'Action needed',
+    'completed' => 'Completed',
+    'canceling' => 'Canceling',
+    'canceled' => 'Canceled',
+    'failed' => 'Failed',
+    'expired' => 'Expired',
+    _ => status.replaceAll('_', ' '),
+  };
+
+  Tone get tone => switch (status) {
+    'completed' => Tone.ok,
+    'action_required' || 'failed' => Tone.bad,
+    'waiting_for_signature' => Tone.caution,
+    _ when !settled => Tone.info,
+    _ => Tone.neutral,
+  };
 
   static List<_Port> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
@@ -365,6 +470,7 @@ class _Port {
           status: (row['status'] ?? 'unknown').toString(),
           reason: (row['status_reason'] ?? '').toString(),
           settled: row['settled'] == true,
+          createdAt: row['created_at'] as String?,
         ),
     ];
   }

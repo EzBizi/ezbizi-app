@@ -635,6 +635,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   List<String> _triggerFields = const [];
   int? _fieldsSampled;
 
+  /// Words a message can drop in that the event itself does not carry, such
+  /// as `company_name` on a lead. Chips only: a condition reads the event, so
+  /// these never reach the "only if" dropdown.
+  List<String> _messageFields = const [];
+
+  /// Everything a `{{ }}` box can use: the event's fields, then the extras.
+  List<String> get _insertableFields => [
+    ..._triggerFields,
+    for (final field in _messageFields)
+      if (!_triggerFields.contains(field)) field,
+  ];
+
   /// Value => label for fields whose set is fixed in code, keyed by field.
   ///
   /// A field with no entry keeps its text box: a dropdown over an open set
@@ -663,6 +675,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (key == null) {
       setState(() {
         _triggerFields = const [];
+        _messageFields = const [];
         _fieldsSampled = null;
       });
 
@@ -682,6 +695,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _triggerFields = response.ok
           ? [
               for (final field in (response.data?['fields'] as List? ?? const []))
+                field.toString(),
+            ]
+          : const [];
+      _messageFields = response.ok
+          ? [
+              for (final field
+                  in (response.data?['message_fields'] as List? ?? const []))
                 field.toString(),
             ]
           : const [];
@@ -1255,6 +1275,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // wrong the instant the trigger changes, and offering them for the moment
       // the request is in flight is offering fields that cannot be read.
       _triggerFields = const [];
+      _messageFields = const [];
       _fieldsSampled = null;
       _fieldValues = const {};
       _fieldSamples = const {};
@@ -3420,17 +3441,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// the same names the "only if" dropdown lists, because they come from the
   /// same event.
   String _variableHint() {
-    if (_triggerFields.isEmpty) {
+    if (_insertableFields.isEmpty) {
       return _trigger == null
           ? 'Choose what sets the rule off and the fields you can drop in appear here.'
           : 'Use {{ field }} to drop in a detail. Nothing of this kind has '
                 'happened here yet, so there are no names to suggest.';
     }
 
-    final shown = _triggerFields.take(4).join(', ');
+    final fields = _insertableFields;
+    final shown = fields.take(4).join(', ');
 
-    return _triggerFields.length > 4
-        ? 'Drop in a detail with {{ }} — $shown and ${_triggerFields.length - 4} more.'
+    return fields.length > 4
+        ? 'Drop in a detail with {{ }} — $shown and ${fields.length - 4} more.'
         : 'Drop in a detail with {{ }} — $shown.';
   }
 
@@ -3451,7 +3473,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// does not reach. It still gets a chip, because the field is real and the
   /// rule will resolve it when it runs; what it cannot have is a preview.
   Widget _variableTools(TextEditingController controller) {
-    if (_triggerFields.isEmpty) return const SizedBox.shrink();
+    if (_insertableFields.isEmpty) return const SizedBox.shrink();
 
     final typed = controller.text;
     final used = RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false)
@@ -3478,7 +3500,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final field in _triggerFields)
+              for (final field in _insertableFields)
                 ActionChip(
                   label: Text(
                     _fieldSamples[field] == null

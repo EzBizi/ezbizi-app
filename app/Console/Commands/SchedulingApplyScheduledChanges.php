@@ -47,6 +47,7 @@ class SchedulingApplyScheduledChanges extends Command
 
                     DB::transaction(function () use ($areaId, $week, $today) {
                         ServiceAreaSlot::where('service_area_id', $areaId)->delete();
+                        \App\Models\ServiceArea::query()->whereKey($areaId)->update(['capacity_set_at' => now()]);
 
                         foreach ($week as $r) {
                             ServiceAreaSlot::create([

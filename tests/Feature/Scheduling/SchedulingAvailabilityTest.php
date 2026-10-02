@@ -12,6 +12,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -162,6 +163,86 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([2, 1], array_column($area['first']['windows'], 'remaining'));
         $this->assertCount(5, $area['after']);
         $this->assertSame('2026-10-12', $area['after'][0]['date']);
+    }
+
+    /**
+     * Mia, 2026-10-02: San Antonio is set up closed every day, and Availability
+     * said "check Workiz" as if nobody had set it up. A week saved with every
+     * day closed is set up, and closed.
+     */
+    public function test_an_area_saved_closed_every_day_is_closed_not_unknown(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => []])
+            ->assertOk();
+
+        $body = $this->first($tenant, 'zip=75201');
+        $this->assertTrue($body['configured']);
+        $this->assertNull($body['first']);
+        $this->assertSame('closed', $body['none_because']);
+
+        $listed = $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/areas')->assertOk()->json('data');
+        $this->assertTrue(collect($listed)->firstWhere('id', $area->id)['configured']);
+    }
+
+    /** A date closed on its own (a holiday) is listed as closed, in place. */
+    public function test_a_closed_date_is_listed_between_the_openings(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        // Mondays are Oct 5, 12, 19 ...: close the 12th.
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-12", ['closed' => true])
+            ->assertOk();
+
+        $body = $this->first($tenant, 'zip=75201');
+        $this->assertSame('2026-10-05', $body['first']['date']);
+        $this->assertSame([['date' => '2026-10-12', 'reason' => 'date']], $body['closed']);
+        $this->assertNotContains('2026-10-12', array_column($body['after'], 'date'));
+    }
+
+    /**
+     * An address a customer wrote is searched by the zip Google gives it
+     * (Mia, 2026-10-02: "86 Jerusalem hill Trumbull"), and the answer says
+     * which address the zip came from.
+     */
+    public function test_an_address_is_searched_by_its_zip(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        config(['services.google_maps.server_key' => 'maps-key']);
+        Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'OK', 'results' => [[
+            'formatted_address' => '1500 Marilla St, Dallas, TX 75201, USA',
+            'address_components' => [['short_name' => '75201', 'types' => ['postal_code']]],
+            'geometry' => ['location_type' => 'ROOFTOP'],
+        ]]])]);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?address='.urlencode('1500 Marilla St Dallas'))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('zip', $body['by']);
+        $this->assertSame('75201', $body['resolved']['zip']);
+        $this->assertSame('Dallas', $body['areas'][0]['area_name']);
+    }
+
+    public function test_an_address_with_no_zip_says_so(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        config(['services.google_maps.server_key' => 'maps-key']);
+        Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'ZERO_RESULTS', 'results' => []])]);
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?address=nowhere')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('address');
     }
 
     /**

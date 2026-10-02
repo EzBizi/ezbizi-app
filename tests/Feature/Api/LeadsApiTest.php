@@ -238,6 +238,29 @@ class LeadsApiTest extends TestCase
         $this->assertSame([], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
     }
 
+    /**
+     * Marketing reads leads to inspect them; naming them as viewing told the
+     * dispatchers somebody else was answering (Mia, 2026-10-02). A role set
+     * hidden on leads is never named. Switched from Roles & Permissions.
+     */
+    public function test_a_role_hidden_on_leads_is_not_named_as_viewing(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $lead = $this->lead($t);
+        $marketing = $this->userWithRole($t, 'Marketing', ['leads.view', 'leads.local_services.view']);
+
+        $this->signedInAs($t['admin'])
+            ->patchJson('/api/v1/roles/'.$marketing->role_id, ['hidden_on_leads' => true])
+            ->assertOk()
+            ->assertJsonPath('data.hidden_on_leads', true);
+
+        $this->signedInAs($marketing->fresh())->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk();
+
+        $this->signedInAs($t['admin']);
+        $this->assertSame([], $this->getJson(self::ENDPOINT)->assertOk()->json('data.0.viewers'));
+        $this->assertSame([], $this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data.viewers'));
+    }
+
     public function test_a_lead_is_listed_for_somebody_who_may_see_it(): void
     {
         $t = $this->provisionTenant('A1-Group');

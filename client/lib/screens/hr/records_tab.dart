@@ -1648,7 +1648,19 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   bool get _savedActive => widget.person['is_active'] != false;
   String? get _savedStart => widget.person['started_on']?.toString();
 
+  /// Where they work as `type:id`, when it is one place; null for none or
+  /// several, which the picker shows as text until somebody picks one.
+  String? get _savedPlace {
+    final rows = (widget.person['assignments'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    return rows.length == 1
+        ? '${rows.single['type']}:${rows.single['scope_id']}'
+        : null;
+  }
+
   late String? _role = _savedRole;
+  late String? _place = _savedPlace;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
   late final _startDay = TextEditingController(text: _savedStart ?? '');
@@ -1663,6 +1675,10 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
     if (_role != _savedRole && _role != null) 'role_id': _role,
     if (_active != _savedActive) 'is_active': _active,
     if (_start != _savedStart && _start != null) 'started_on': _start,
+    if (_place != _savedPlace && _place != null) ...{
+      'scope_type': _place!.split(':').first,
+      'scope_id': _place!.split(':').last,
+    },
   };
 
   @override
@@ -1743,17 +1759,45 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
           ),
         ),
         const SizedBox(height: 14),
-        _Field(
-          label: 'Works at',
-          why:
-              'Set when they were invited. Moving somebody between places '
-              'comes with onboarding.',
-          child: Text(
-            _RecordsTabState._where(widget.person).isEmpty
-                ? '—'
+        // Editable (Mia, 2026-10-02: "assigning andy to A1-Group instead so
+        // she has full access"). Only places the editor reaches are offered,
+        // the same list the invitation uses, and the server checks it again.
+        if (editable && widget.options.scopes.isNotEmpty)
+          SearchPickerField<String>(
+            key: const ValueKey('hr-works-at'),
+            value: _place,
+            label: 'Works at',
+            hint: _RecordsTabState._where(widget.person).isEmpty
+                ? null
                 : _RecordsTabState._where(widget.person),
+            helperText:
+                'Everything beneath it comes with it: a company covers its '
+                'franchises, the organization covers every company. Moving '
+                'them replaces where they were.',
+            helperMaxLines: 3,
+            border: const OutlineInputBorder(),
+            options: [
+              for (final scope in widget.options.scopes)
+                SearchOption(
+                  value: scope.value,
+                  label: scope.isActive
+                      ? scope.pathLabel
+                      : '${scope.pathLabel} — deactivated',
+                  enabled: scope.isActive,
+                ),
+            ],
+            onChanged: (value) => setState(() => _place = value),
+          )
+        else
+          _Field(
+            label: 'Works at',
+            why: 'Set when they were invited.',
+            child: Text(
+              _RecordsTabState._where(widget.person).isEmpty
+                  ? '—'
+                  : _RecordsTabState._where(widget.person),
+            ),
           ),
-        ),
         if (editable)
           _SaveBar(
             label: 'Save employment',
@@ -1761,6 +1805,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
             onSave: () => widget.onSave(_change),
             onDiscard: () => setState(() {
               _role = _savedRole;
+              _place = _savedPlace;
               _active = _savedActive;
               _start = _savedStart;
               _startDay.text = _savedStart ?? '';

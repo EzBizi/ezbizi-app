@@ -5,9 +5,11 @@ import '../../core/contracts.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
@@ -75,10 +77,17 @@ class _OnboardingTabState extends State<OnboardingTab> {
   /// The onboarding being filled in, or null for the list.
   String? _open;
 
-  /// In progress, or the finished ones — their own archive (a Suggestion
-  /// Jose said to build, 2026-10-01: "a seperate archieved for all the forms
-  /// that are already done"). Asked of the server: the list pages.
-  bool _finished = false;
+  /// Which tile is picked (layout A, Mia 2026-10-02). `open` - in progress
+  /// and submitted together - is where the tab opens, so finished forms stay
+  /// their own archive (a Suggestion Jose said to build, 2026-10-01: "a
+  /// seperate archieved for all the forms that are already done"); the rest
+  /// are one status each. Asked of the server: the list pages.
+  String _filter = 'open';
+
+  bool get _finished => _filter == 'completed' || _filter == 'cancelled';
+
+  /// Each status counted across every page, by the server.
+  Map<String, int>? _tiles;
 
   DisplayFormats get _formats =>
       widget.session.me?.display ?? DisplayFormats.fallback;
@@ -111,7 +120,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
     final answers = await Future.wait([
       widget.api.get('/hr/onboardings', {
         'page': '$page',
-        'state': _finished ? 'finished' : 'open',
+        if (_filter == 'open') 'state': 'open' else 'status': _filter,
       }),
       widget.api.get('/hr/contracts/catalogue'),
     ]);
@@ -141,6 +150,13 @@ class _OnboardingTabState extends State<OnboardingTab> {
       _total = meta?['total'] as int? ?? _rows.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
+      final tiles = meta?['tiles'];
+      _tiles = tiles is Map
+          ? {
+              for (final e in tiles.entries)
+                '${e.key}': (e.value as num?)?.toInt() ?? 0,
+            }
+          : null;
 
       _vocabulary = catalogue.ok && catalogue.data is Map
           ? ContractVocabulary.fromJson(
@@ -211,44 +227,18 @@ class _OnboardingTabState extends State<OnboardingTab> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: ErrorNote(_cannotStart!),
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: Wrap(
-            spacing: 6,
-            children: [
-              for (final (finished, label) in [
-                (false, 'Ongoing'),
-                (true, 'Finished'),
-              ])
-                ChoiceChip(
-                  key: ValueKey('onboardings-${finished ? 'finished' : 'open'}'),
-                  label: Text(label),
-                  selected: _finished == finished,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) {
-                    if (_finished == finished) return;
-                    setState(() {
-                      _finished = finished;
-                      _rows = const [];
-                    });
-                    _load();
-                  },
-                ),
-            ],
-          ),
-        ),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _rows.isEmpty
+            child: _rows.isEmpty && _filter == 'open' && (_tiles?.values.every((n) => n == 0) ?? true)
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: SizedBox(
                         width: 460,
-                        child: _finished
+                        child: _finished || _filter != 'open'
                             ? const Text(
                                 'Nothing finished yet. Completed and cancelled '
                                 'onboardings are kept here.',
@@ -266,19 +256,13 @@ class _OnboardingTabState extends State<OnboardingTab> {
                       ),
                     ),
                   )
-                : ListView.separated(
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _rows.length + (_page < _lastPage ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => i == _rows.length
-                        ? LoadMore(
-                            shown: _rows.length,
-                            total: _total,
-                            busy: _fetching,
-                            error: _pageError,
-                            onMore: () => _load(page: _page + 1),
-                          )
-                        : _row(context, _rows[i]),
+                    children: [
+                      _tilesRow(),
+                      const SizedBox(height: 12),
+                      _table(context),
+                    ],
                   ),
           ),
         ),
@@ -286,65 +270,131 @@ class _OnboardingTabState extends State<OnboardingTab> {
     );
   }
 
-  Widget _row(BuildContext context, OnboardingSummary row) {
-    final theme = Theme.of(context);
+  Widget _tilesRow() {
+    int? n(String status) => _tiles?[status];
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                row.personName.isEmpty ? row.personEmail : row.personName,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium,
-              ),
+    return FilterTiles(
+      prefix: 'onboardings',
+      picked: _filter,
+      // A picked tile tapped again goes back to the ones still under way.
+      onPick: (key) {
+        setState(() {
+          _filter = key ?? 'open';
+          _rows = const [];
+        });
+        _load();
+      },
+      tiles: [
+        FilterTile(
+          key: 'open',
+          label: 'Ongoing',
+          count: _tiles == null ? null : (n('in_progress') ?? 0) + (n('submitted') ?? 0),
+          note: 'not finished',
+        ),
+        FilterTile(
+          key: 'in_progress',
+          label: 'Being filled in',
+          count: n('in_progress'),
+          note: 'answers still owed',
+        ),
+        FilterTile(
+          key: 'submitted',
+          label: 'Submitted',
+          count: n('submitted'),
+          note: 'waiting on a signature',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'completed',
+          label: 'Completed',
+          count: n('completed'),
+          note: 'signed by everyone',
+        ),
+        FilterTile(
+          key: 'cancelled',
+          label: 'Cancelled',
+          count: n('cancelled'),
+          note: 'stopped before signing',
+        ),
+      ],
+    );
+  }
+
+  Widget _table(BuildContext context) {
+    if (_rows.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No onboardings in this state.', textAlign: TextAlign.center),
+      );
+    }
+
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return ListTable(
+      columns: const [
+        ListColumn('Person', flex: 4),
+        ListColumn('Contract', flex: 3),
+        ListColumn('Status', flex: 2),
+        ListColumn('Where it is', flex: 4),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('onboarding-${_rows[i].id}'),
+      onTap: (i) => setState(() => _open = _rows[i].id),
+      rows: [
+        for (final row in _rows)
+          [
+            PersonCell(
+              name: row.personName.isEmpty ? row.personEmail : row.personName,
+              sub: row.personName.isEmpty ? null : row.personEmail,
             ),
-            if (row.status.isNotEmpty) Tag(onboardingStatusLabel(row.status)),
-            if (row.version != null) Tag('Version ${row.version}'),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                [
-                  if (row.personName.isNotEmpty && row.personEmail.isNotEmpty)
-                    row.personEmail,
-                  if (row.contractName.isNotEmpty) row.contractName,
-                ].join(' · '),
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(_waitingOn(row), style: theme.textTheme.bodySmall),
-            ],
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_canCancel(row))
-              Refused(
-                reason: widget.session.me?.refusal(
-                  'hr.create',
-                  'cancel onboardings',
+            Text(
+              [
+                if (row.contractName.isNotEmpty) row.contractName,
+                if (row.version != null) 'v${row.version}',
+              ].join(' · '),
+              overflow: TextOverflow.ellipsis,
+            ),
+            row.status.isEmpty
+                ? const SizedBox.shrink()
+                : Tag(
+                    onboardingStatusLabel(row.status),
+                    good: row.status == 'completed',
+                  ),
+            Text(_waitingOn(row), style: small),
+            Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                if (_canCancel(row))
+                  Refused(
+                    reason: widget.session.me?.refusal(
+                      'hr.create',
+                      'cancel onboardings',
+                    ),
+                    child: TextButton(
+                      onPressed: _mayCreate ? () => _cancel(row) : null,
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                TextButton(
+                  onPressed: () => setState(() => _open = row.id),
+                  child: const Text('Open'),
                 ),
-                child: TextButton(
-                  onPressed: _mayCreate ? () => _cancel(row) : null,
-                  child: const Text('Cancel'),
-                ),
-              ),
-            TextButton(
-              onPressed: () => setState(() => _open = row.id),
-              child: const Text('Open'),
+              ],
             ),
           ],
-        ),
-        onTap: () => setState(() => _open = row.id),
-      ),
+      ],
+      footer: _page < _lastPage
+          ? LoadMore(
+              shown: _rows.length,
+              total: _total,
+              busy: _fetching,
+              error: _pageError,
+              onMore: () => _load(page: _page + 1),
+            )
+          : null,
     );
   }
 

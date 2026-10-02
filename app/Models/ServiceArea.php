@@ -60,7 +60,7 @@ class ServiceArea extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['available_from' => 'date:Y-m-d'];
+        return ['available_from' => 'date:Y-m-d', 'capacity_set_at' => 'datetime'];
     }
 
     public function slots(): HasMany

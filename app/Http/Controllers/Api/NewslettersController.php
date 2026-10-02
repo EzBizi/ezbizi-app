@@ -72,7 +72,21 @@ class NewslettersController extends Controller
             Refusal::permission('open this tab')->message(),
         );
 
+        /*
+         * `status` narrows the rows to one of the dashboard's tiles. The list is
+         * capped at fifty, so the screen cannot filter it itself: a company
+         * with sixty drafts tapping "Drafts" would see whichever drafts fell
+         * inside the newest fifty mailings, under a tile counting all sixty
+         * (Mia, 2026-10-02). An unknown value is ignored rather than refused,
+         * so the unfiltered list is what an old or confused client gets.
+         */
+        $status = $request->query('status');
+        $filter = in_array($status, [
+            Newsletter::STATUS_DRAFT, Newsletter::STATUS_SCHEDULED, Newsletter::STATUS_SENT,
+        ], true) ? $status : null;
+
         $rows = NewsletterAccess::visible(Newsletter::query(), $user)
+            ->when($filter !== null, fn ($q) => $q->where('status', $filter))
             ->with(['audience', 'author:id,name', 'sends'])
             ->latest()
             ->limit(50)
@@ -459,7 +473,7 @@ class NewslettersController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'subject' => ['required', 'string', 'max:255'],
             'blocks' => ['nullable', 'array'],
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
@@ -472,6 +486,20 @@ class NewslettersController extends Controller
             'scheduled_for.date_format' => 'That is not a time this can read. Pick the day and '
                 .'time again.',
         ]);
+
+        /*
+         * The blocks as SENT, not as validated. `blocks.*.type` makes the
+         * validator return each block with only its type, so every heading,
+         * text and button was saved empty and the email rendered as a footer
+         * - found when the composer began drawing the blocks itself and the
+         * server preview disagreed (Mia, 2026-10-02). The renderer escapes
+         * every field, so keeping them is safe.
+         */
+        if (array_key_exists('blocks', $data)) {
+            $data['blocks'] = $request->input('blocks');
+        }
+
+        return $data;
     }
 
     /**

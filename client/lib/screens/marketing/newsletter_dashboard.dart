@@ -1,48 +1,76 @@
 import 'package:flutter/material.dart';
 
 import 'clock_label.dart';
+import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/month_calendar.dart';
+import '../../widgets/refused.dart';
+import '../../widgets/status_pill.dart';
 
-/// Newsletter › Dashboard — what has gone out, what is waiting, and when.
+/// Newsletter › Dashboard — what has gone out, what is booked, what is still
+/// a draft.
 ///
-/// ── Why the calendar is the point ───────────────────────────────
+/// ── Layout A (Mia, 2026-10-02) ──────────────────────────────────
+///
+/// Tiles, then every newsletter as a table, with the month calendar beside it
+/// on a wide screen. The tiles are the HR pattern: Sent, Scheduled and Drafts
+/// filter the table; Addresses reached and Last one went out are facts and
+/// filter nothing.
+///
+/// The tiles count from the server's `stats`, which covers every newsletter in
+/// view. The list is capped at fifty, so a filter is asked of the server too
+/// (`?status=`) rather than applied to the fifty — see [rows].
+///
+/// ── Why the calendar stays ──────────────────────────────────────
 ///
 /// A scheduled newsletter is invisible until it arrives in somebody's inbox.
-/// The composer can say "goes out Tuesday" about the ONE you have open; nothing
-/// could answer "what is going out this month", which is the question a person
-/// asks before booking a promotion or leaving for a week.
-///
-/// So the calendar carries the scheduled ones and opens them for editing — a
-/// list that only shows you what you already knew about would not have been
-/// worth building.
+/// The table answers "what is there"; the calendar answers "what is going out
+/// this month", which is the question a person asks before booking a
+/// promotion or leaving for a week. Its entries open for editing.
 class NewsletterDashboard extends StatelessWidget {
   const NewsletterDashboard({
     super.key,
     required this.stats,
+    required this.rows,
     required this.scheduled,
     required this.viewName,
+    required this.session,
+    required this.status,
+    required this.onStatus,
     required this.onOpen,
+    required this.onNew,
   });
 
   final NewsletterStats stats;
+
+  /// The table: every newsletter in view, or those with [status].
+  final List<NewsletterRow> rows;
 
   /// The scheduled ones, with the wall time they are promised for.
   final List<ScheduledNewsletter> scheduled;
 
   final String viewName;
-  final ValueChanged<String> onOpen;
+  final Session session;
+
+  /// The tile picked: `sent`, `scheduled` or `draft`; null is everything.
+  final String? status;
+  final ValueChanged<String?> onStatus;
+
+  /// Null when this role cannot open the Composer: the rows are then to read.
+  final ValueChanged<String>? onOpen;
+  final VoidCallback onNew;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 900;
+        final wide = constraints.maxWidth >= 1100;
 
-        final numbers = _numbers(context);
         final calendar = MonthCalendar(
           title: 'Scheduled',
-          expand: !narrow,
           entries: [
             for (final s in scheduled)
               if (s.at != null)
@@ -50,91 +78,355 @@ class NewsletterDashboard extends StatelessWidget {
                   day: s.at!,
                   label: s.subject,
                   detail: '${s.subject} · ${s.wall}${clockSuffix(s.zone)}',
-                  onTap: () => onOpen(s.id),
+                  onTap: () => onOpen?.call(s.id),
                 ),
           ],
           emptyNote: 'Nothing is scheduled this month. A newsletter with a time '
               'on it appears here, and opens for editing until it goes.',
         );
 
-        if (narrow) {
-          return ListView(
-            padding: const EdgeInsets.all(12),
-            children: [numbers, const SizedBox(height: 12), calendar],
-          );
-        }
-
-        return Padding(
+        return ListView(
           padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(width: 260, child: SingleChildScrollView(child: numbers)),
-              const SizedBox(width: 12),
-              Expanded(child: calendar),
+          children: [
+            _bar(context),
+            const SizedBox(height: 12),
+            _tiles(context),
+            const SizedBox(height: 12),
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 3, child: _table(context)),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 2, child: calendar),
+                ],
+              )
+            else ...[
+              _table(context),
+              const SizedBox(height: 12),
+              calendar,
             ],
-          ),
+          ],
         );
       },
     );
   }
 
-  Widget _numbers(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget _bar(BuildContext context) {
+    final can = session.me?.can('newsletter.create') ?? false;
 
-    return DashboardCard(
-      title: 'Mailings in $viewName',
-      icon: Icons.insights_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _stat(theme, 'Sent', '${stats.sent}'),
-          _stat(theme, 'Scheduled', '${stats.scheduled}'),
-          _stat(theme, 'Drafts', '${stats.drafts}'),
-          const Divider(height: 20),
-          _stat(theme, 'Addresses reached', '${stats.recipients}'),
-          const SizedBox(height: 6),
-          // Named for what it is. The provider reports what happens after it
-          // takes the mailing; EzBizi knows only what was accepted, and
-          // calling this "delivered" would be a claim it cannot stand behind.
-          Text(
-            'Addresses the mailing account accepted, across every send. What '
-            'happens after that is reported where the account lives.',
-            style: theme.textTheme.bodySmall,
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Mailings in $viewName',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          if (stats.lastSentAt != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Last one went out ${stats.lastSentAt}.',
-              style: theme.textTheme.bodySmall,
+        ),
+        Refused(
+          reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
+          child: FilledButton.icon(
+            onPressed: can ? onNew : null,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New newsletter'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Three tiles that filter and two that state a fact, five across when
+  /// there is room.
+  ///
+  /// FilterTiles lays out only the tiles it is given, so the two facts are
+  /// drawn here at the same width beside it rather than as filters that
+  /// would filter nothing.
+  Widget _tiles(BuildContext context) {
+    final filters = FilterTiles(
+      prefix: 'newsletters',
+      picked: status,
+      onPick: onStatus,
+      tiles: [
+        FilterTile(
+          key: 'sent',
+          label: 'Sent',
+          count: stats.sent,
+          note: 'went out',
+          tone: Tone.ok,
+        ),
+        FilterTile(
+          key: 'scheduled',
+          label: 'Scheduled',
+          count: stats.scheduled,
+          note: 'booked',
+          tone: Tone.info,
+        ),
+        FilterTile(
+          key: 'draft',
+          label: 'Drafts',
+          count: stats.drafts,
+          note: 'not sent',
+        ),
+      ],
+    );
+
+    // Named for what it is. The provider reports what happens after it takes
+    // the mailing; EzBizi knows only what was accepted, and calling this
+    // "delivered" would be a claim it cannot stand behind.
+    final reached = _FactTile(
+      key: const Key('newsletters-fact-reached'),
+      label: 'Addresses reached',
+      value: '${stats.recipients}',
+      note: 'accepted by the mailing account',
+    );
+    final lastAt = DateTime.tryParse(stats.lastSentAt ?? '')?.toLocal();
+    final last = _FactTile(
+      key: const Key('newsletters-fact-last'),
+      label: 'Last one went out',
+      value: lastAt == null
+          ? '—'
+          : (session.me?.display ?? DisplayFormats.fallback).formatDate(lastAt),
+      note: lastAt == null ? 'nothing sent yet' : '',
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        const gap = 10.0;
+        if (box.maxWidth >= 5 * 170) {
+          final width = (box.maxWidth - gap * 4) / 5;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: width * 3 + gap * 2, child: filters),
+              const SizedBox(width: gap),
+              SizedBox(width: width, child: reached),
+              const SizedBox(width: gap),
+              SizedBox(width: width, child: last),
+            ],
+          );
+        }
+
+        final half = (box.maxWidth - gap) / 2;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            filters,
+            const SizedBox(height: gap),
+            Row(
+              children: [
+                SizedBox(width: half, child: reached),
+                const SizedBox(width: gap),
+                SizedBox(width: half, child: last),
+              ],
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _table(BuildContext context) {
+    if (rows.isEmpty) {
+      return DashboardNote(
+        status == null
+            ? 'No newsletters in $viewName yet. New newsletter starts one.'
+            : 'None of the newsletters in $viewName are ${_tileWord(status!)}.',
+      );
+    }
+
+    final formats = session.me?.display ?? DisplayFormats.fallback;
+    final theme = Theme.of(context);
+
+    return ListTable(
+      columns: const [
+        ListColumn('Newsletter', flex: 4),
+        ListColumn('Status', flex: 2),
+        ListColumn('Mailing list', flex: 3),
+        ListColumn('When', flex: 3),
+        ListColumn('Reached', flex: 2, end: true),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('newsletter-${rows[i].id}'),
+      onTap: onOpen == null ? null : (i) => onOpen!(rows[i].id),
+      rows: [
+        for (final n in rows)
+          [
+            Text(
+              n.subject,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            StatusPill(n.statusLabel, tone: n.tone),
+            Text(
+              n.audienceName == null
+                  ? 'No list chosen'
+                  : '${n.audienceName} · ${n.audienceWhere}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+            Text(n.when(formats), style: theme.textTheme.bodySmall),
+            Text(
+              n.recipients == null ? '—' : '${n.recipients}',
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (onOpen == null)
+              const SizedBox.shrink()
+            else
+              TextButton(
+                onPressed: () => onOpen!(n.id),
+                child: Text(n.status == 'draft' || n.status == 'failed' ? 'Open' : 'View'),
+              ),
+          ],
+      ],
+    );
+  }
+
+  static String _tileWord(String key) => switch (key) {
+    'sent' => 'sent',
+    'scheduled' => 'scheduled',
+    _ => 'drafts',
+  };
+}
+
+/// A tile that states a number and filters nothing: FilterTile's look, with
+/// no tap. Private to this screen because list_table.dart is shared and has
+/// no such tile.
+class _FactTile extends StatelessWidget {
+  const _FactTile({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.note,
+  });
+
+  final String label;
+  final String value;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+        border: Border.all(color: EzBiziTheme.edge(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            note,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _stat(ThemeData theme, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          // Expanded, or a label the width of "Addresses reached" pushes the
-          // number past the edge of a 228-point card — 30 points past it, on
-          // the first run. The number keeps its natural width; the label
-          // gives way.
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(value, style: theme.textTheme.titleMedium),
-        ],
-      ),
+/// One line of the table, from a GET /newsletters row.
+class NewsletterRow {
+  const NewsletterRow({
+    required this.id,
+    required this.subject,
+    required this.status,
+    this.audienceName,
+    this.audienceKind,
+    this.scheduledFor,
+    this.scheduledTimezone,
+    this.sentAt,
+    this.recipients,
+  });
+
+  final String id;
+  final String subject;
+  final String status;
+  final String? audienceName;
+  final String? audienceKind;
+  final String? scheduledFor;
+  final String? scheduledTimezone;
+
+  /// `last_send.sent_at`: when the provider took it.
+  final String? sentAt;
+
+  /// `last_send.recipients` on a sent one: addresses the provider accepted.
+  final int? recipients;
+
+  String get audienceWhere =>
+      audienceKind == 'mailchimp' ? 'in Mailchimp' : 'built from your customers';
+
+  String get statusLabel => switch (status) {
+    'sent' => 'Sent',
+    'sending' => 'Sending',
+    'scheduled' => 'Scheduled',
+    'failed' => 'Failed',
+    _ => 'Draft',
+  };
+
+  Tone get tone => switch (status) {
+    'sent' => Tone.ok,
+    'sending' || 'scheduled' => Tone.info,
+    'failed' => Tone.bad,
+    _ => Tone.neutral,
+  };
+
+  /// The time it went, or the wall time it is promised for and its clock.
+  String when(DisplayFormats formats) {
+    if (sentAt != null && status != 'scheduled') {
+      return formatStamp(sentAt, '—', formats: formats);
+    }
+    final wall = scheduledFor;
+    final at = wall == null ? null : DateTime.tryParse(wall.replaceFirst(' ', 'T'));
+    if (at == null) return '—';
+
+    return '${formats.formatDate(at)} ${formats.formatTime(at.hour, at.minute)}'
+        '${clockSuffix(scheduledTimezone)}';
+  }
+
+  factory NewsletterRow.fromJson(Map<String, dynamic> json) {
+    final audience = json['audience'];
+    final send = json['last_send'];
+    final status = json['status'] as String? ?? 'draft';
+
+    return NewsletterRow(
+      id: json['id'] as String? ?? '',
+      subject: json['subject'] as String? ?? '',
+      status: status,
+      audienceName: audience is Map ? audience['name'] as String? : null,
+      audienceKind: audience is Map ? audience['kind'] as String? : null,
+      scheduledFor: json['scheduled_for'] as String?,
+      scheduledTimezone: json['scheduled_timezone'] as String?,
+      sentAt: send is Map ? send['sent_at'] as String? : null,
+      // Only a sent one has reached anybody; a queued send carries 0, which
+      // would read as "reached nobody".
+      recipients: status == 'sent' && send is Map ? (send['recipients'] as num?)?.toInt() : null,
     );
   }
 }
@@ -152,6 +444,8 @@ class NewsletterStats {
   final int scheduled;
   final int sent;
   final int recipients;
+
+  /// ISO 8601, as the server sent it.
   final String? lastSentAt;
 
   factory NewsletterStats.fromJson(Map<String, dynamic> json) => NewsletterStats(
@@ -159,7 +453,7 @@ class NewsletterStats {
     scheduled: json['scheduled'] as int? ?? 0,
     sent: json['sent'] as int? ?? 0,
     recipients: json['recipients'] as int? ?? 0,
-    lastSentAt: (json['last_sent_at'] as String?)?.split('T').first,
+    lastSentAt: json['last_sent_at'] as String?,
   );
 }
 

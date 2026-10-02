@@ -484,9 +484,16 @@ class AutomationsController extends Controller
                         ->sortBy('name')
                         ->map(fn (Company $c) => ['id' => 'company:'.$c->id, 'label' => $c->name.' and everything under it'])
                         ->values()->all(),
-                    $request->user()->reachableFranchises()
-                        ->sortBy('name')
-                        ->map(fn (Franchise $f) => ['id' => 'franchise:'.$f->id, 'label' => $f->name])
+                    // NAMED WITH THEIR COMPANY. Franchises are named after the
+                    // territory, so eight companies each having a "Connecticut"
+                    // listed eight identical rows nobody could tell apart.
+                    \Illuminate\Database\Eloquent\Collection::make($request->user()->reachableFranchises())
+                        ->loadMissing('company:id,name')
+                        ->sortBy(fn (Franchise $f) => mb_strtolower(($f->company?->name ?? '')."\0".$f->name))
+                        ->map(fn (Franchise $f) => [
+                            'id' => 'franchise:'.$f->id,
+                            'label' => $f->company === null ? $f->name : $f->name.' — '.$f->company->name,
+                        ])
                         ->values()->all(),
                 ),
 
@@ -729,11 +736,30 @@ class AutomationsController extends Controller
             );
         }
 
+        /*
+         * ADDITIVE, like `values`: words a MESSAGE can drop in that no payload
+         * carries - `{{company_name}}` on a lead, worked out from the record
+         * when the step runs. Kept apart from `fields` because a condition
+         * reads the payload, and offering these there would build a test that
+         * always compares against nothing.
+         */
+        $messageFields = [];
+
+        foreach ($recent->pluck('subject_type')->push($this->registry->get($moduleKey)?->subject?->model)->filter()->unique() as $class) {
+            if (is_string($class) && class_exists($class) && method_exists($class, 'automationMessageFields')) {
+                $messageFields = array_merge($messageFields, $class::automationMessageFields());
+            }
+        }
+
+        $messageFields = array_values(array_diff(array_unique($messageFields), $fields));
+        sort($messageFields);
+
         return response()->json(['data' => [
             'trigger' => $key,
             'fields' => $fields,
+            'message_fields' => $messageFields,
             'values' => $values,
-            'samples' => $this->samplesFor($recent, $fields, $request->user()),
+            'samples' => $this->samplesFor($recent, $fields, $request->user(), $messageFields),
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
@@ -773,11 +799,12 @@ class AutomationsController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, AutomationEvent>  $events
      * @param  list<string>  $fields
+     * @param  list<string>  $messageFields
      * @return array<string, string>
      */
-    private function samplesFor($events, array $fields, ?User $viewer): array
+    private function samplesFor($events, array $fields, ?User $viewer, array $messageFields = []): array
     {
-        if ($viewer === null || $fields === []) {
+        if ($viewer === null || ($fields === [] && $messageFields === [])) {
             return [];
         }
 
@@ -815,6 +842,15 @@ class AutomationsController extends Controller
                 }
 
                 $samples[$field] = Str::limit((string) $flat[$field], 60);
+            }
+
+            // Read off the record, as the runner will read them.
+            foreach ($subject === null ? [] : $messageFields as $field) {
+                $value = $subject->getAttribute($field);
+
+                if (! array_key_exists($field, $samples) && is_scalar($value) && (string) $value !== '') {
+                    $samples[$field] = Str::limit((string) $value, 60);
+                }
             }
         }
 
@@ -1067,6 +1103,62 @@ class AutomationsController extends Controller
 
         return response()->json(
             ['data' => $this->present($automation->fresh(), detailed: true)],
+            Response::HTTP_CREATED
+        );
+    }
+
+    /**
+     * POST /api/v1/automations/{automation}/duplicate
+     *
+     * A copy of the live version under a new name, OFF - so the same greeting
+     * can be pointed at another company without retyping it, and the copy
+     * cannot double-send beside its original before somebody has changed where
+     * it applies (Mia, 2026-10-02).
+     *
+     * Copied here rather than by the client re-posting what `show` returned:
+     * `show` masks webhook secrets, so a client-side copy would save the mask
+     * as the secret.
+     */
+    public function duplicate(Request $request, Automation $automation): JsonResponse
+    {
+        $this->assertMine($automation);
+        $this->authorize('view', $automation);
+        $this->authorize('create', Automation::class);
+
+        $source = $automation->activeVersion;
+
+        abort_if($source === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'This rule has no version to copy.');
+
+        $copy = DB::transaction(function () use ($automation, $source, $request) {
+            $copy = Automation::create([
+                'name' => Str::limit($automation->name, 140, '').' (copy)',
+                'description' => $automation->description,
+                'trigger_key' => $automation->trigger_key,
+                'scope_type' => $automation->scope_type,
+                'scope_id' => $automation->scope_id,
+                'is_active' => false,
+                'created_by' => $request->user()->getKey(),
+                'schedule' => $automation->schedule,
+                'next_run_at' => $automation->schedule !== null
+                    ? (new AutomationSchedule($automation->schedule))->nextAfter(now())
+                    : null,
+            ]);
+
+            $this->addVersion($copy, [
+                'conditions' => $source->conditions,
+                'actions' => $source->actions,
+            ], $request);
+
+            $this->audit->log('automation.created', $copy, metadata: [
+                'trigger' => $copy->trigger_key,
+                'copied_from' => $automation->getKey(),
+            ]);
+
+            return $copy;
+        });
+
+        return response()->json(
+            ['data' => $this->present($copy->fresh(), detailed: true)],
             Response::HTTP_CREATED
         );
     }

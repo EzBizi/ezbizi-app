@@ -158,7 +158,15 @@ class HrOnboardingsController extends Controller
                 if ($reachesOrganization) {
                     $visible->orWhereNull('invitation_id');
                 }
-            })
+            });
+
+        // Every status counted across all pages, before a filter narrows the
+        // list - the tiles above it (HR lists, layout A, Mia 2026-10-02).
+        $tiles = (clone $query)->toBase()->reorder()
+            ->selectRaw('status, COUNT(*) as total')->groupBy('status')
+            ->pluck('total', 'status')->map(fn ($n) => (int) $n)->all();
+
+        $query
             ->when(
                 $request->query('status'),
                 fn (Builder $q, string $status) => $q->where('status', $status),
@@ -190,6 +198,12 @@ class HrOnboardingsController extends Controller
                 'per_page'     => $onboardings->perPage(),
                 'current_page' => $onboardings->currentPage(),
                 'last_page'    => $onboardings->lastPage(),
+                'tiles'        => [
+                    Onboarding::IN_PROGRESS => $tiles[Onboarding::IN_PROGRESS] ?? 0,
+                    Onboarding::SUBMITTED => $tiles[Onboarding::SUBMITTED] ?? 0,
+                    Onboarding::COMPLETED => $tiles[Onboarding::COMPLETED] ?? 0,
+                    Onboarding::CANCELLED => $tiles[Onboarding::CANCELLED] ?? 0,
+                ],
             ],
         ]);
     }

@@ -116,6 +116,16 @@ class HrInvitationsController extends Controller
 
         $this->reach->constrain($query, $request->user());
 
+        // The tiles count every page, before the one they filter is applied.
+        $tiles = [];
+        foreach ([Invitation::SENT, 'opened', Invitation::COMPLETED, Invitation::ABANDONED, Invitation::REVOKED] as $status) {
+            $tiles[$status] = (clone $query)->inStatus($status)->count();
+        }
+
+        if (filled($request->query('status'))) {
+            $query->inStatus((string) $request->query('status'));
+        }
+
         $invitations = $query
             // Newest first: the list exists to be acted on, and the thing most
             // likely to need chasing or withdrawing is the thing just sent.
@@ -129,6 +139,7 @@ class HrInvitationsController extends Controller
                 'per_page'     => $invitations->perPage(),
                 'current_page' => $invitations->currentPage(),
                 'last_page'    => $invitations->lastPage(),
+                'tiles'        => $tiles,
             ],
         ]);
     }

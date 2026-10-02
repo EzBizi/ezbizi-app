@@ -33,8 +33,17 @@ final class LeadPresence
         Cache::put(self::key($leadId), $viewers, self::LASTS + 15);
     }
 
+    /**
+     * A role marked hidden on leads (marketing, somebody inspecting) never
+     * checks in, so dispatchers are not told a lead is being handled by
+     * somebody who will not answer it (Mia, 2026-10-02).
+     */
     public static function checkIn(string $leadId, User $user): void
     {
+        if ($user->role?->hidden_on_leads) {
+            return;
+        }
+
         $now = now()->getTimestamp();
         $viewers = array_filter((array) Cache::get(self::key($leadId), []), fn ($v) => ($v['until'] ?? 0) > $now);
         $viewers[(string) $user->getKey()] = ['name' => (string) $user->name, 'until' => $now + self::LASTS];

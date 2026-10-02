@@ -1212,6 +1212,39 @@ class HrInvitationsTest extends TestCase
         });
     }
 
+    /**
+     * The list's tiles count every page, and a tile's filter matches what
+     * each row's own status says (HR lists, layout A, Mia 2026-10-02).
+     */
+    public function test_the_list_counts_and_filters_by_status_as_each_row_reports_it(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->invite($alpha, ['email' => 'sent@example.test']);
+        $this->invite($alpha, ['email' => 'opened@example.test']);
+        $this->invite($alpha, ['email' => 'expired@example.test']);
+        $this->invite($alpha, ['email' => 'revoked@example.test']);
+        $this->accept($this->invite($alpha, ['email' => 'done@example.test']), 'done@example.test');
+
+        $this->inTenant($alpha['org'], function () {
+            Invitation::where('email', 'opened@example.test')->firstOrFail()->forceFill(['opened_at' => now()])->save();
+            Invitation::where('email', 'expired@example.test')->firstOrFail()->forceFill(['expires_at' => now()->subDay()])->save();
+            Invitation::where('email', 'revoked@example.test')->firstOrFail()->forceFill(['revoked_at' => now()])->save();
+        });
+
+        $this->signedInAs($alpha['admin']);
+
+        $this->getJson('/api/v1/hr/invitations')->assertOk()->assertJsonPath('meta.tiles', [
+            'sent' => 1, 'opened' => 1, 'completed' => 1, 'abandoned' => 1, 'revoked' => 1,
+        ]);
+
+        foreach (['sent' => 'sent', 'opened' => 'received', 'completed' => 'completed', 'abandoned' => 'abandoned', 'revoked' => 'revoked'] as $filter => $status) {
+            $rows = $this->getJson('/api/v1/hr/invitations?status='.$filter)->assertOk()->json('data');
+            $this->assertCount(1, $rows, $filter);
+            $this->assertSame($status, $rows[0]['status'], $filter);
+        }
+    }
+
     /** Invite as the tenant's administrator; returns the raw token. */
     private function invite(array $tenant, array $overrides = []): string
     {

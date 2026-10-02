@@ -17,6 +17,8 @@ void main() {
       vehicles: [_van],
       permissions: const [
         'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
         'fleet_management.create',
         'fleet_management.edit',
       ],
@@ -42,6 +44,8 @@ void main() {
       vehicles: [_vanWithMoney],
       permissions: const [
         'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
         'fleet_management.create',
         'fleet_management.edit',
         'fleet_management.financials',
@@ -191,6 +195,8 @@ Future<void> _pumpScreen(
   required List<Map<String, dynamic>> vehicles,
   List<String> permissions = const [
     'fleet_management.view',
+    'fleet_management.general.view',
+    'fleet_management.vehicles.view',
     'fleet_management.create',
   ],
   Size size = const Size(1280, 900),
@@ -214,6 +220,10 @@ Future<void> _pumpScreen(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+
+  // General opens first now; these tests are about the register.
+  await tester.tap(find.text('Vehicles'));
   await tester.pumpAndSettle();
 }
 
