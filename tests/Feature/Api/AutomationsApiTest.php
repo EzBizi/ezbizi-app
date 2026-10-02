@@ -1194,4 +1194,28 @@ class AutomationsApiTest extends TestCase
             'Built and running, but the builder greys these out as "Not built yet": '
             .'action_types has no key equal to their execution type.');
     }
+
+    /**
+     * Franchises are named after territories, so every company had its own
+     * "Connecticut" and the picker listed eight identical rows (Mia,
+     * 2026-10-02). Each now says whose it is.
+     */
+    public function test_a_franchise_in_the_place_picker_names_its_company(): void
+    {
+        $orgId = $this->org['organization']->id;
+
+        app(TenantContext::class)->run($this->org['organization'], function () use ($orgId) {
+            foreach (['Chimney Co', 'Garage Co'] as $name) {
+                $company = \App\Models\Company::create(['organization_id' => $orgId, 'name' => $name]);
+                Franchise::create(['organization_id' => $orgId, 'company_id' => $company->id, 'name' => 'Connecticut']);
+            }
+        });
+
+        $labels = collect($this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.places'))
+            ->pluck('label');
+
+        $this->assertContains('Connecticut — Chimney Co', $labels);
+        $this->assertContains('Connecticut — Garage Co', $labels);
+        $this->assertNotContains('Connecticut', $labels);
+    }
 }

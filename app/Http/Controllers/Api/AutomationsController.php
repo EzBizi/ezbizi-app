@@ -484,9 +484,16 @@ class AutomationsController extends Controller
                         ->sortBy('name')
                         ->map(fn (Company $c) => ['id' => 'company:'.$c->id, 'label' => $c->name.' and everything under it'])
                         ->values()->all(),
-                    $request->user()->reachableFranchises()
-                        ->sortBy('name')
-                        ->map(fn (Franchise $f) => ['id' => 'franchise:'.$f->id, 'label' => $f->name])
+                    // NAMED WITH THEIR COMPANY. Franchises are named after the
+                    // territory, so eight companies each having a "Connecticut"
+                    // listed eight identical rows nobody could tell apart.
+                    \Illuminate\Database\Eloquent\Collection::make($request->user()->reachableFranchises())
+                        ->loadMissing('company:id,name')
+                        ->sortBy(fn (Franchise $f) => mb_strtolower(($f->company?->name ?? '')."\0".$f->name))
+                        ->map(fn (Franchise $f) => [
+                            'id' => 'franchise:'.$f->id,
+                            'label' => $f->company === null ? $f->name : $f->name.' — '.$f->company->name,
+                        ])
                         ->values()->all(),
                 ),
 
