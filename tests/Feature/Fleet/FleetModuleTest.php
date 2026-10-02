@@ -31,6 +31,8 @@ class FleetModuleTest extends TestCase
                 'fleet_management.delete',
                 'fleet_management.assign',
                 'fleet_management.financials',
+                'fleet_management.general.view',
+                'fleet_management.vehicles.view',
             ],
             $module->permissionKeys(),
         );

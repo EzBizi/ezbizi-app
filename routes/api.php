@@ -747,6 +747,9 @@ Route::prefix('v1')
 
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);
+        // Fleet's General tab. Before `vehicles/{vehicle}`, same reason as drivers.
+        Route::get('vehicles/summary', [\App\Http\Controllers\Api\FleetSummaryController::class, 'index'])
+            ->middleware('permission:fleet_management.general.view');
         Route::post('vehicles/{vehicle}/assignments', [VehicleAssignmentsController::class, 'store']);
         Route::post('vehicles/{vehicle}/unassign', [VehicleAssignmentsController::class, 'unassign']);
         Route::post('vehicles/{vehicle}/ownership', [VehicleOwnershipController::class, 'store']);
@@ -1019,19 +1022,15 @@ Route::prefix('v1')
         });
 
         /*
-         * `summary` is the General tab's data and General DOES NOT EXIST on the
-         * chip row yet — the screen is UI/UX's and unbuilt. So there is no tab
-         * to grant and no label to put in the roles editor; declaring one would
-         * hand an administrator a checkbox for a tab they cannot find. It stays
-         * on `inventory.view` until that screen ships.
-         *
          * Adjustments and transfers are movements rather than tabs, and are
          * already authorized by `inventory.edit` inside their controllers. They
          * are reached from panes whose tabs are gated above, and a tab gate on
          * top would refuse an adjustment from the item pane, which is where the
          * product puts it.
          */
-        Route::get('inventory/summary', [InventorySummaryController::class, 'index']);
+        // The General tab's one request; gated on that tab.
+        Route::get('inventory/summary', [InventorySummaryController::class, 'index'])
+            ->middleware('permission:inventory.general.view');
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
         /*

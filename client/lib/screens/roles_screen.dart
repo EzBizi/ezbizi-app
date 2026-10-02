@@ -1127,24 +1127,6 @@ class _RoleEditorState extends State<_RoleEditor> {
           const SizedBox(height: 20),
           _whoTheyCanInvite(theme),
           const SizedBox(height: 20),
-          SwitchListTile(
-            key: const ValueKey('role-seen-on-leads'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Seen on leads'),
-            subtitle: Text(
-              _hiddenOnLeads
-                  ? 'Hidden: when somebody with this role opens a lead, nobody '
-                        'else is told. For people who inspect leads rather '
-                        'than answer them.'
-                  : 'When somebody with this role opens a lead, the others '
-                        'see their name on it.',
-            ),
-            value: !_hiddenOnLeads,
-            onChanged: _writable
-                ? (seen) => setState(() => _hiddenOnLeads = !seen)
-                : null,
-          ),
-          const SizedBox(height: 20),
 
           // Which state means what, said once, above the thing it describes. A
           // dash in a checkbox is not self-explanatory and this screen has a lot
@@ -1193,6 +1175,24 @@ class _RoleEditorState extends State<_RoleEditor> {
                   ),
             ],
 
+          const SizedBox(height: 16),
+          SwitchListTile(
+            key: const ValueKey('role-seen-on-leads'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Seen on leads'),
+            subtitle: Text(
+              _hiddenOnLeads
+                  ? 'Hidden: when somebody with this role opens a lead, nobody '
+                        'else is told. For people who inspect leads rather '
+                        'than answer them.'
+                  : 'When somebody with this role opens a lead, the others '
+                        'see their name on it.',
+            ),
+            value: !_hiddenOnLeads,
+            onChanged: _writable
+                ? (seen) => setState(() => _hiddenOnLeads = !seen)
+                : null,
+          ),
           if (_error != null) ...[
             const SizedBox(height: 16),
             ErrorNote(_error!),

@@ -121,7 +121,7 @@ void main() {
     await _pump(tester, player: player, recordingGate: gate);
 
     expect(find.text('Call · 2:05'), findsOneWidget);
-    expect(find.textContaining('They called'), findsOneWidget);
+    expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);
     expect(find.byKey(const Key('recording-scrub')), findsOneWidget);
@@ -180,6 +180,12 @@ void main() {
     await tester.pump();
     expect(_typingPosts, ['/api/v1/leads/lead-1/typing'],
         reason: 'one signal, not one per keystroke');
+  });
+
+  test('a lead with no name, or a number for one, reads as Customer', () {
+    expect(typingLine('Marcus Hill'), 'Marcus is typing…');
+    expect(typingLine(null), 'Customer is typing…');
+    expect(typingLine('+1 (914) 325-8137'), 'Customer is typing…');
   });
 
   testWidgets('a text lead never says it is typing', (tester) async {
@@ -869,7 +875,7 @@ void main() {
 
     expect(find.text('Is Saturday ok?'), findsOneWidget);
     expect(find.text('Yes, 10am works.'), findsOneWidget);
-    expect(find.textContaining('They · '), findsOneWidget);
+    expect(find.textContaining('Customer · '), findsOneWidget);
     // Our reply had no sender on record: it was sent outside EzBizi, and it
     // says so rather than "You" (2026-09-29).
     expect(find.textContaining('Sent outside EzBizi · '), findsOneWidget);

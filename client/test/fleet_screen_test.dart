@@ -16,6 +16,106 @@ import 'package:http/testing.dart';
 
 /// Fleet is a register, not a placeholder: list, 25/75 add, no modal.
 void main() {
+
+  // General (Mia, 2026-10-02): the module opens on it, its figures are the
+  // server's, and a figure opens the register filtered to it.
+  Map<String, dynamic> fleetSummary({bool money = true}) => {
+    'health': {
+      'empty': false,
+      'vehicles': 24,
+      'active': 20,
+      'in_shop': 3,
+      'out_of_service': 1,
+      'owned': 22,
+      'rented': 2,
+      'unassigned': 21,
+      'links': {
+        'vehicles': '',
+        'active': 'status=active',
+        'in_shop': 'status=in_shop',
+        'out_of_service': 'status=out_of_service',
+        'owned': 'ownership=owned',
+        'rented': 'ownership=rented',
+        'unassigned': 'unassigned=1',
+      },
+    },
+    'warnings': [
+      {
+        'key': 'service_overdue',
+        'count': 2,
+        'sentence': '2 vehicles are past their service date or mileage.',
+        'link': 'due_soon=1',
+      },
+    ],
+    if (money)
+      'spending': {
+        'period': 'month',
+        'currency': 'USD',
+        'total_minor': 125000,
+        'categories': [
+          {'key': 'maintenance', 'label': 'Maintenance', 'amount_minor': 125000},
+        ],
+        'buckets': ['2026-09-28'],
+        'points': [125000],
+      },
+  };
+
+  testWidgets('Fleet opens on General with the server\'s figures', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) => request.url.path.endsWith('/vehicles/summary')
+          ? _json(fleetSummary())
+          : null,
+    );
+
+    expect(find.byKey(const Key('fleet-general-vehicles')), findsOneWidget);
+    expect(
+      find.text('2 vehicles are past their service date or mileage.'),
+      findsOneWidget,
+    );
+    expect(find.text('\$1,250.00'), findsWidgets);
+  });
+
+  testWidgets('without financials Fleet General has no spending block', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) => request.url.path.endsWith('/vehicles/summary')
+          ? _json(fleetSummary(money: false))
+          : null,
+    );
+
+    expect(find.byKey(const Key('fleet-general-spending')), findsNothing);
+    expect(find.text('Needs attention'), findsOneWidget);
+  });
+
+  testWidgets('In shop on General opens the register filtered to it', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pumpScreen(
+      tester,
+      stayOnGeneral: true,
+      onRequest: (request) {
+        if (request.url.path.endsWith('/vehicles/summary')) {
+          return _json(fleetSummary());
+        }
+        if (request.url.path.endsWith('/vehicles')) asked.add(request.url);
+        return null;
+      },
+    );
+
+    await tester.tap(find.byKey(const Key('fleet-general-in-shop')));
+    await tester.pumpAndSettle();
+
+    expect(asked.last.queryParameters['status'], 'in_shop');
+    expect(find.text('Add vehicle'), findsWidgets);
+  });
   testWidgets('a granted Fleet tab is the register, not Coming soon', (
     tester,
   ) async {
@@ -116,7 +216,11 @@ void main() {
   });
 
   testWidgets('Add is not drawn without create', (tester) async {
-    await _pumpScreen(tester, permissions: const ['fleet_management.view']);
+    await _pumpScreen(tester, permissions: const [
+      'fleet_management.view',
+      'fleet_management.general.view',
+      'fleet_management.vehicles.view',
+    ]);
 
     expect(find.text('Add vehicle'), findsNothing);
     expect(find.text('Assign'), findsNothing);
@@ -128,6 +232,8 @@ void main() {
       vehicles: [_van],
       permissions: const [
         'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
         'fleet_management.create',
         'fleet_management.edit',
       ],
@@ -256,6 +362,8 @@ void main() {
         matching: find.text('Fleet Management'),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vehicles'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add vehicle'));
     await tester.pumpAndSettle();
@@ -480,6 +588,8 @@ void main() {
       tester,
       permissions: const [
         'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
         'fleet_management.edit',
       ],
       vehicles: const [_subtreeVan],
@@ -583,6 +693,8 @@ void main() {
       tester,
       permissions: const [
         'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
         'fleet_management.edit',
         'fleet_management.financials',
       ],
@@ -744,18 +856,25 @@ Future<void> _pumpShell(WidgetTester tester) async {
   expect(inSidebar, findsOneWidget);
   await tester.tap(inSidebar);
   await tester.pumpAndSettle();
+
+  // General opens first now; these tests are about the register.
+  await tester.tap(find.text('Vehicles'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pumpScreen(
   WidgetTester tester, {
   List<String> permissions = const [
     'fleet_management.view',
+    'fleet_management.general.view',
+    'fleet_management.vehicles.view',
     'fleet_management.create',
   ],
   List<Map<String, dynamic>> vehicles = const [],
   Map<String, dynamic>? me,
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
+  bool stayOnGeneral = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -784,11 +903,18 @@ Future<void> _pumpScreen(
     ),
   );
   await tester.pumpAndSettle();
+  if (stayOnGeneral) return;
+
+  // General opens first now; these tests are about the register.
+  await tester.tap(find.text('Vehicles'));
+  await tester.pumpAndSettle();
 }
 
 MockClientHandler _handler({
   List<String> permissions = const [
     'fleet_management.view',
+    'fleet_management.general.view',
+    'fleet_management.vehicles.view',
     'fleet_management.create',
   ],
   List<Map<String, dynamic>> vehicles = const [],
@@ -940,6 +1066,8 @@ Future<void> _pumpIdentity(
   WidgetTester tester, {
   List<String> permissions = const [
     'fleet_management.view',
+    'fleet_management.general.view',
+    'fleet_management.vehicles.view',
     'fleet_management.edit',
   ],
   Map<String, dynamic> vehicle = _platedVan,

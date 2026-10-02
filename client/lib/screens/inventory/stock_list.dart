@@ -23,11 +23,16 @@ class StockList extends StatefulWidget {
     required this.api,
     required this.session,
     required this.visible,
+    this.tileRequest,
   });
 
   final ApiClient api;
   final Session session;
   final bool visible;
+
+  /// A tile another tab asked for (General's "Below reorder"); a new serial
+  /// applies it again.
+  final ({String? tile, int serial})? tileRequest;
 
   @override
   State<StockList> createState() => _StockListState();
@@ -54,12 +59,17 @@ class _StockListState extends State<StockList> {
   @override
   void initState() {
     super.initState();
+    _tile = widget.tileRequest?.tile;
     _load();
   }
 
   @override
   void didUpdateWidget(covariant StockList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.tileRequest != oldWidget.tileRequest &&
+        widget.tileRequest != null) {
+      _tile = widget.tileRequest!.tile;
+    }
     if (widget.visible && !oldWidget.visible) _load();
   }
 

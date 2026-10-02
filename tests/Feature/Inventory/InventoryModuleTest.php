@@ -39,6 +39,7 @@ class InventoryModuleTest extends TestCase
                 'inventory.edit',
                 'inventory.delete',
                 'inventory.financials',
+                'inventory.general.view',
                 'inventory.stock.view',
                 'inventory.items.view',
                 'inventory.orders.view',
@@ -61,7 +62,7 @@ class InventoryModuleTest extends TestCase
          * told wrongly, and nothing errors.
          */
         $this->assertSame(
-            ['stock' => 'Stock', 'items' => 'Items', 'orders' => 'Orders', 'locations' => 'Locations'],
+            ['general' => 'General', 'stock' => 'Stock', 'items' => 'Items', 'orders' => 'Orders', 'locations' => 'Locations'],
             collect($tabs)->mapWithKeys(fn ($tab) => [$tab->key => $tab->label])->all(),
         );
     }
