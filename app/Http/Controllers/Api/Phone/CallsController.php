@@ -234,6 +234,35 @@ class CallsController extends Controller
             );
         }
 
+        // Voicemail tiles (Mia, 2026-10-02): To deal with, Dealt with, No
+        // transcript, All. The screen asks for 50 and shows no total, so a
+        // count taken there would stop at 50 and call it everything. Counted
+        // here over every message the box (or All voicemails) holds, BEFORE
+        // the tile's own filter, so picking a tile does not zero the others.
+        $tiles = null;
+        if ($request->boolean('voicemail_only') || $boxId !== '') {
+            $tiles = [
+                'todo' => (clone $query)->reorder()->whereNull('dealt_at')->count(),
+                'dealt' => (clone $query)->reorder()->whereNotNull('dealt_at')->count(),
+                'no_transcript' => $this->withoutVoicemailTranscript((clone $query)->reorder())->count(),
+                'all' => (clone $query)->reorder()->count(),
+            ];
+        }
+
+        // The tile filters. `dealt` is the dealt_at column read as yes/no;
+        // `transcript=0` is the MESSAGE transcript missing, the same field the
+        // Voicemail screen prints, not the live one Records shows.
+        $dealt = (string) $request->query('dealt', '');
+        if ($dealt === '0') {
+            $query->whereNull('dealt_at');
+        } elseif ($dealt === '1') {
+            $query->whereNotNull('dealt_at');
+        }
+
+        if ((string) $request->query('transcript', '') === '0') {
+            $this->withoutVoicemailTranscript($query);
+        }
+
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $query->limit(min($perPage, 200));
@@ -249,7 +278,25 @@ class CallsController extends Controller
             ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues, $customerNames))
             ->all();
 
-        return response()->json(['data' => $rows]);
+        return response()->json($tiles === null
+            ? ['data' => $rows]
+            : ['data' => $rows, 'meta' => ['tiles' => $tiles]]);
+    }
+
+    /**
+     * A voicemail with nothing written down: no text, or only whitespace —
+     * the screen shows both as "No transcript", so the tile counts both.
+     *
+     * @template T of \Illuminate\Database\Eloquent\Builder
+     *
+     * @param  T  $query
+     * @return T
+     */
+    private function withoutVoicemailTranscript($query)
+    {
+        return $query->where(fn ($q) => $q
+            ->whereNull('voicemail_transcript')
+            ->orWhereRaw("TRIM(voicemail_transcript) = ''"));
     }
 
     /**

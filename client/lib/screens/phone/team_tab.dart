@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 import 'settings_pane.dart';
 
@@ -50,6 +52,9 @@ class _TeamTabState extends State<TeamTab> {
   /// What the server last gave us, to work out what is unsaved.
   Map<String, String> _savedExtension = const {};
   Map<String, String?> _savedNumber = const {};
+
+  /// Which tile is picked: `ext`, `noext`, `line`, or null for everybody.
+  String? _filter;
 
   @override
   void initState() {
@@ -227,110 +232,155 @@ class _TeamTabState extends State<TeamTab> {
           ],
         ),
 
-        SettingsSection(
-          title: 'People',
-          children: [
-            if (_connectionId == null)
+        if (_connectionId == null)
+          SettingsSection(
+            title: 'People',
+            children: [
               Text(
                 'No phone account is connected yet, so there is nothing to '
                 'assign.',
                 style: theme.textTheme.bodySmall,
-              )
-            else ...[
-              Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text('Person', style: theme.textTheme.labelSmall),
-                  ),
-                  SizedBox(
-                    width: 110,
-                    child: Text('Extension', style: theme.textTheme.labelSmall),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'Calls out from',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ),
-                ],
               ),
-              const Divider(height: 16),
-              for (final person in _people) _row(person, theme),
             ],
-          ],
-        ),
+          )
+        else
+          ..._peopleTable(),
       ],
     );
   }
 
-  Widget _row(_Person person, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: Text(person.name, style: theme.textTheme.bodyMedium),
+  /// Tiles over the editable table (Mia, 2026-10-02, the `users` mockup).
+  ///
+  /// Counted, and filtered, on what is SAVED rather than what is typed: a row
+  /// somebody is halfway through giving an extension would otherwise jump out
+  /// of "No extension" under their cursor and take the field with it. The
+  /// endpoint returns everybody at once, so the counts are taken here.
+  List<Widget> _peopleTable() {
+    bool hasExtension(_Person p) => (_savedExtension[p.userId] ?? '').isNotEmpty;
+    bool ownLine(_Person p) => _savedNumber[p.userId] != null;
+
+    final shown = [
+      for (final person in _people)
+        if (switch (_filter) {
+          'ext' => hasExtension(person),
+          'noext' => !hasExtension(person),
+          'line' => ownLine(person),
+          _ => true,
+        })
+          person,
+    ];
+
+    return [
+      FilterTiles(
+        prefix: 'users',
+        picked: _filter,
+        onPick: (key) => setState(() => _filter = key),
+        tiles: [
+          FilterTile(
+            key: null,
+            label: 'People',
+            count: _people.length,
+            note: 'in Communication',
           ),
-          SizedBox(
-            width: 110,
-            child: TextField(
-              key: Key('extension:${person.userId}'),
-              controller: _extensionOf[person.userId],
-              enabled: _canEdit,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(8),
-              ],
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                // The rule, said in the field rather than only in the 422.
-                // Jose, 2026-09-22: every extension begins with a zero — it is
-                // what tells an extension apart from a menu key at the moment
-                // a caller presses it. Somebody typing 101 here would
-                // otherwise learn that only when the save came back refused.
-                hintText: '0101',
-                helperText: 'Starts with 0',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
+          FilterTile(
+            key: 'ext',
+            label: 'With an extension',
+            count: _people.where(hasExtension).length,
+            note: 'can be dialled inside',
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: SearchPickerField<String?>(
-              key: Key('number:${person.userId}'),
-              value: _numberOf[person.userId],
-              border: const OutlineInputBorder(),
-              isDense: true,
-              options: [
-                // Named rather than blank, because an empty option reads as
-                // "not loaded" and this is a real, common answer.
-                const SearchOption<String?>(
-                  value: null,
-                  label: 'Whichever line is selected',
-                ),
-                for (final line in _lines)
-                  SearchOption<String?>(
-                    value: line.id,
-                    label: line.label.isEmpty
-                        ? formatPhoneNumber(line.e164)
-                        : '${line.label} · ${formatPhoneNumber(line.e164)}',
-                  ),
-              ],
-              onChanged: _canEdit
-                  ? (id) => setState(() => _numberOf[person.userId] = id)
-                  : null,
-            ),
+          FilterTile(
+            key: 'noext',
+            label: 'No extension',
+            count: _people.where((p) => !hasExtension(p)).length,
+            note: 'cannot be dialled inside',
+            tone: Tone.caution,
+          ),
+          FilterTile(
+            key: 'line',
+            label: 'Own outgoing line',
+            count: _people.where(ownLine).length,
+            note: 'others use the selected line',
           ),
         ],
       ),
-    );
+      const SizedBox(height: 12),
+      if (shown.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Nobody in this state.', textAlign: TextAlign.center),
+        )
+      else
+        ListTable(
+          columns: const [
+            ListColumn('Person', flex: 3),
+            ListColumn('Extension', flex: 2),
+            ListColumn('Calls out from', flex: 4),
+          ],
+          rowKey: (i) => ValueKey('user-${shown[i].userId}'),
+          rows: [for (final person in shown) _cells(person)],
+        ),
+    ];
+  }
+
+  List<Widget> _cells(_Person person) {
+    return [
+      PersonCell(name: person.name),
+      SizedBox(
+        width: 120,
+        child: TextField(
+          key: Key('extension:${person.userId}'),
+          controller: _extensionOf[person.userId],
+          enabled: _canEdit,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(8),
+          ],
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            // The rule, said in the field rather than only in the 422.
+            // Jose, 2026-09-22: every extension begins with a zero — it is
+            // what tells an extension apart from a menu key at the moment
+            // a caller presses it. Somebody typing 101 here would
+            // otherwise learn that only when the save came back refused.
+            hintText: '0101',
+            helperText: 'Starts with 0',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+      ),
+      // A width of its own, because a stacked row (below 720) lays its cells
+      // in a Wrap, and a picker there would otherwise take the whole line or
+      // none of it.
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: SearchPickerField<String?>(
+          key: Key('number:${person.userId}'),
+          value: _numberOf[person.userId],
+          border: const OutlineInputBorder(),
+          isDense: true,
+          options: [
+            // Named rather than blank, because an empty option reads as
+            // "not loaded" and this is a real, common answer.
+            const SearchOption<String?>(
+              value: null,
+              label: 'Whichever line is selected',
+            ),
+            for (final line in _lines)
+              SearchOption<String?>(
+                value: line.id,
+                label: line.label.isEmpty
+                    ? formatPhoneNumber(line.e164)
+                    : '${line.label} · ${formatPhoneNumber(line.e164)}',
+              ),
+          ],
+          onChanged: _canEdit
+              ? (id) => setState(() => _numberOf[person.userId] = id)
+              : null,
+        ),
+      ),
+    ];
   }
 }
 
