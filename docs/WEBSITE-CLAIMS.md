@@ -97,6 +97,7 @@ touches apps, monitoring, social, Google or mail.
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
 | "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
+| "watch a machine live and take control of it, and … browse the files on it and download them — reading only … each folder opened and file downloaded recorded" · "watching a screen or browsing its files shows no notice" | `/privacy/` | `app/Http/Controllers/Api/Monitoring/FilesController.php` (ops `list`/`download` only; audit `monitoring.files.listed` / `.downloaded` per path; grant `monitoring.files.view`) and `client/lib/core/file_access_service.dart` (no notice drawn). Added 2026-10-02 after `0.0.0348` shipped it. An upload/rename/delete op, or audit moving to once-per-session, falsifies it; a notice on the machine falsifies the second clause in the reassuring direction. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
 | "WhatsApp … kept for 24 months" · "Facebook or Instagram message is kept with the enquiry … deleted when that enquiry is" | `/privacy/` | `WhatsAppMessage::retention()` (`window(months: 24)`) and `LeadConversation::retention()` (`withParent`). Two different rules; never merge them into one period. |
 | "Who we rely on … **these are all of them**" (AWS, SES, Twilio, Apple and Google, Mailchimp, the accounts you connect) | `/privacy/` | `config/services.php`'s top-level keys, against that list. **An exhaustive list is the only kind of sentence that a new integration falsifies by existing**, and nothing announces it — the integration ships in its own module and never reads this page. Mailchimp and the two push services were missing when this row was written (2026-09-23) and had been for weeks. `bedrock` is configured and **off** (`LeadInsights::enabled()` false, no keys) — the day it gains keys, a model is reading lead text and this list needs a line. `google_speech` (2026-09-28, `CallTranscripts`) is the same: configured and **off** until `GOOGLE_SPEECH_KEY` is set - the day it is, Local Services call audio goes to Google Cloud Speech-to-Text and this list needs a line **before** the key goes in. **2026-09-29: transcription runs on our own box instead** (Whisper in /opt/whisper, `ezbizi-transcribe.timer`; Jose: "i don't want to rely on any physical computers"), so call audio reaches no new processor and this list needs no line - unless somebody sets `GOOGLE_SPEECH_KEY` AND removes /opt/whisper, which is the only way the Google path runs. `google_mail` / `microsoft_mail` are a customer's own mailbox, covered by "the accounts you connect". **2026-10-01: `config/services.php` is NOT the whole test — it missed Photon (komoot), keyless and hardcoded, which had received typed addresses since 2026-08-24.** Also run `grep -rhoE "https://[a-z0-9.-]+\.[a-z]{2,}" app --include=*.php | sort -u` and account for every host that is not Google/Meta/Twilio/AWS/Apple/Mailchimp or an account the customer connects (Workiz, Airtable, the social networks). |
@@ -2363,6 +2364,49 @@ Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Before the edit all seven pages,
 `robots.txt` and `sitemap.xml` were byte-identical to production. Stores: Play
 `200`; Apple `resultCount` 1, version 0.0.0318; WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
+
+## 2026-10-02: 2 releases, and `/privacy/` had not caught up with remote file access
+
+**Production is `0.0.0349` at `f2b575e1`** (`/download/windows.json`). `0088`
+(desk) confirms yesterday's Photon edit published in `0.0.0348`'s web leg;
+verified independently: all seven pages, `robots.txt` and `sitemap.xml` were
+byte-identical to `www/` before today's edit. No desk asked: `send_message` is
+unavailable to a scheduled run.
+
+**The finding: Monitoring's read-only Files tab (`0.0.0348`) was not on the
+"set out here in full" monitoring section.** A role holding
+`monitoring.files.view` can list folders and download files (≤5 MB) on a
+monitored computer; no path sandbox beyond Windows ACLs; every list/download
+audited with its path; the agent draws no notice. Added one clause to the
+live-view sentence, and "or browsing its files" to the no-notice sentence. The
+Lead Developer security exemption also blocks it, but the page's per-person
+exemption sentence was NOT extended to files - that exemption is a different
+mechanism and was not checked. New load-bearing row.
+
+**Also: Scheduling's Availability search now sends a typed street address to
+Google** (`0f175402`, `AddressCheck` → `maps.googleapis.com/.../geocode`), so
+the Google Maps bullet's "in Leads … Nothing else from the conversation is
+sent" was incomplete. Added "And in Scheduling: a street address somebody
+types to see which branch covers it, to find its ZIP code." Last updated /
+`dateModified` / sitemap `lastmod` → 2026-10-02.
+
+**Checked, unchanged at `f2b575e1`:** no new outbound host in the window's
+`app`/`client/lib` diff; `config/services.php`, `app/Mail`,
+`app/Notifications`, manifests and `pubspec.yaml` untouched; no new runtime
+permission request. Onboarding's signed-contract PDF is "onboarding documents
+and signed agreements". Roles' "Seen on leads", Automations copies/chips,
+tiles-over-tables layouts: nothing the site says.
+
+**Deliberately unpublished:** Monitoring Files on the landing card (privacy
+only, like live view's detail), estimates (row above).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, version 0.0.0318; WordPress directory 1.10.0.
 
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
