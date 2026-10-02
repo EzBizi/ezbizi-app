@@ -75,13 +75,13 @@ class BlockRenderer
             'text'     => $this->row('<p style="margin:0;font-size:15px;line-height:1.55;'
                             .'color:#3a4650;text-align:'.$this->align($b).';">'
                             .nl2br($this->text($b)).'</p>'),
-            'image'    => $this->row('<img src="'.$this->esc((string) ($b['src'] ?? ''))
+            'image'    => $this->row('<img src="'.$this->esc($this->link((string) ($b['src'] ?? ''), ['http', 'https']))
                             .'" alt="'.$this->esc((string) ($b['alt'] ?? ''))
                             .'" width="'.(self::WIDTH - 40).'" style="display:block;width:100%;'
                             .'max-width:100%;height:auto;border:0;">'),
             'button'   => $this->row('<table role="presentation" cellpadding="0" cellspacing="0" '
                             .'align="'.$this->align($b).'"><tr><td style="background:#00708F;'
-                            .'border-radius:6px;"><a href="'.$this->esc((string) ($b['url'] ?? '#'))
+                            .'border-radius:6px;"><a href="'.$this->esc($this->link((string) ($b['url'] ?? ''), ['http', 'https', 'mailto', 'tel']))
                             .'" style="display:inline-block;padding:11px 20px;color:#ffffff;'
                             .'text-decoration:none;font-weight:600;font-size:15px;">'
                             .$this->text($b).'</a></td></tr></table>'),
@@ -192,6 +192,22 @@ class BlockRenderer
         $v = (int) ($b[$key] ?? $fallback);
 
         return $v > 0 && $v < 400 ? $v : $fallback;
+    }
+
+    /**
+     * A block's link or picture address, only when its scheme is one a
+     * newsletter has any business with; anything else (`javascript:`,
+     * `data:`) becomes `#`. Escaping alone keeps the quotes closed but not the
+     * scheme out, and the blocks are stored as the composer sent them.
+     *
+     * @param  list<string>  $schemes
+     */
+    private function link(string $url, array $schemes): string
+    {
+        $url = trim($url);
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        return $url !== '' && in_array($scheme, $schemes, true) ? $url : '#';
     }
 
     private function esc(string $v): string

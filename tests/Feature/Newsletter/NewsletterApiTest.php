@@ -751,4 +751,18 @@ class NewsletterApiTest extends TestCase
             ])->save();
         });
     }
+
+    /** A block's address keeps only a scheme a newsletter uses. */
+    public function test_a_block_link_with_a_script_scheme_is_dropped(): void
+    {
+        $html = app(\App\Support\Newsletter\BlockRenderer::class)->render([
+            ['type' => 'button', 'text' => 'Go', 'url' => 'javascript:alert(1)'],
+            ['type' => 'button', 'text' => 'Book', 'url' => 'https://a-1chimney.com/book'],
+            ['type' => 'image', 'src' => 'data:image/svg+xml;base64,PHN2Zz4=', 'alt' => 'x'],
+        ], ['company' => 'A-1', 'address' => '1 Main St', 'unsubscribe_url' => 'https://example.test/u']);
+
+        $this->assertStringNotContainsString('javascript:', $html);
+        $this->assertStringNotContainsString('data:image/svg', $html);
+        $this->assertStringContainsString('https://a-1chimney.com/book', $html);
+    }
 }
