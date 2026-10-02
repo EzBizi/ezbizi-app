@@ -9,34 +9,27 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
-import '../email/message_html.dart';
 import 'newsletter_blocks.dart';
 import 'newsletter_dashboard.dart';
 import 'newsletter_editor.dart';
 import 'newsletter_settings.dart';
 
-/// Marketing › Newsletter — write it on the left, see the real email on the
-/// right.
+/// Marketing › Newsletter — the dashboard, the composer and the settings.
 ///
-/// ── Layout 3, and why the preview never hides ───────────────────
+/// ── The email is never out of sight ─────────────────────────────
 ///
-/// Jose picked it, and the reason it is the right pick is that a newsletter is
-/// the one thing in this product where the artefact and the editor look
-/// nothing alike. A form that yields an email you cannot see until you send it
-/// is how a broken mailing reaches twelve hundred people. The preview is the
-/// work, so it holds half the screen and never collapses.
+/// A newsletter is the one thing in this product where the artefact and a
+/// form for it look nothing alike, and a form that yields an email you cannot
+/// see until you send it is how a broken mailing reaches twelve hundred
+/// people. Layout A (Mia, 2026-10-02) goes further than the old side-by-side
+/// preview: the email IS the editor — see newsletter_editor.dart.
 ///
-/// Below 900 points there is not room for two panes, so the preview moves under
-/// the editor rather than disappearing — the same rule the Posts pane follows,
-/// and for the same reason.
+/// ── The server's HTML is still one tap away ─────────────────────
 ///
-/// ── The preview is the SERVER's HTML ────────────────────────────
-///
-/// Rendered by `BlockRenderer` and shown in the sandboxed iframe the Email
-/// module already uses for HTML mail. Nothing here builds email HTML. A Dart
-/// copy of that renderer would drift from the real one, and the drift would
-/// surface as a newsletter that looked right while composing and broke in an
-/// inbox — the failure this pane exists to prevent.
+/// The composer draws the blocks in Flutter so they can be edited in place,
+/// and keeps a "Server preview" switch that shows GET /newsletters/{id}/preview
+/// — `BlockRenderer`'s own output in the Email module's sandboxed viewer. That
+/// is the document that goes out; nothing here builds email HTML.
 class NewsletterTab extends StatefulWidget {
   const NewsletterTab({super.key, required this.api, required this.session});
 
@@ -91,6 +84,16 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
   List<_Newsletter> _all = const [];
   List<NewsletterAudience> _audiences = const [];
+
+  /// The dashboard tile picked (`sent`, `scheduled`, `draft`), and the rows
+  /// the server returned for it. Null rows while that answer is on its way,
+  /// when the table shows the matching rows of the list already held.
+  String? _dashStatus;
+  List<_Newsletter>? _dashLetters;
+
+  /// Which filter request owns the table; an answer for a tile no longer
+  /// picked is dropped.
+  int _dashRequest = 0;
   String? _selectedId;
 
   /// The newsletter whose Delete was tapped once; the next tap deletes it.
@@ -192,7 +195,58 @@ class _NewsletterTabState extends State<NewsletterTab> {
       if (_selectedId == null && _all.isNotEmpty) _open(_all.first);
     });
 
+    if (_dashStatus != null) await _filter(_dashStatus);
     if (_selectedId != null) await _refreshPreview();
+  }
+
+  /// A dashboard tile was picked (or cleared).
+  ///
+  /// Asked of the SERVER, because the list is capped at fifty and the tiles
+  /// count every newsletter: filtering the fifty would show some drafts under
+  /// a tile counting all of them (Mia, 2026-10-02).
+  Future<void> _filter(String? status) async {
+    final request = ++_dashRequest;
+    setState(() {
+      _dashStatus = status;
+      _dashLetters = null;
+    });
+    if (status == null) return;
+
+    final response = await widget.api.get('/newsletters?status=$status');
+    if (!mounted || request != _dashRequest || !response.ok) return;
+
+    setState(() {
+      _dashLetters = ((response.body['data'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_Newsletter.fromJson)
+          .toList();
+    });
+  }
+
+  /// The table's rows: the server's answer for the tile, or, until it lands,
+  /// the matching rows already held.
+  List<NewsletterRow> get _tableRows => [
+    for (final n in _dashLetters ?? _all)
+      if (_dashStatus == null || n.row.status == _dashStatus) n.row,
+  ];
+
+  /// Open a newsletter from the dashboard in the composer.
+  ///
+  /// A filtered row can be older than the fifty the picker holds, so it is
+  /// added to that list rather than failing to open.
+  void _openFromDashboard(String id) {
+    final picked = [
+      ..._all.where((n) => n.id == id),
+      ...?_dashLetters?.where((n) => n.id == id),
+    ];
+    if (picked.isEmpty) return;
+
+    setState(() {
+      if (!_all.any((n) => n.id == id)) _all = [..._all, picked.first];
+      _open(picked.first);
+      _tab = 'composer';
+    });
+    _refreshPreview();
   }
 
   void _open(_Newsletter n) {
@@ -271,10 +325,16 @@ class _NewsletterTabState extends State<NewsletterTab> {
     if (!mounted || !letters.ok) return;
 
     setState(() {
-      _all = ((letters.body['data'] as List<dynamic>?) ?? const [])
+      final fresh = ((letters.body['data'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_Newsletter.fromJson)
           .toList();
+      // One opened from a dashboard filter can be older than the newest
+      // fifty; it stays in the picker while it is open.
+      final open = _selected;
+      _all = open == null || fresh.any((n) => n.id == open.id)
+          ? fresh
+          : [...fresh, open];
     });
   }
 
@@ -329,10 +389,30 @@ class _NewsletterTabState extends State<NewsletterTab> {
     final data = response.body['data'];
     if (data is Map && data['id'] is String) {
       final made = _all.where((n) => n.id == data['id']).toList();
-      if (made.isNotEmpty) setState(() => _open(made.first));
+      if (made.isNotEmpty) {
+        setState(() {
+          _open(made.first);
+          // From the dashboard's New newsletter, land where it is written.
+          if (_mayOpen('composer')) _tab = 'composer';
+        });
+      }
       await _refreshPreview();
     }
   }
+
+  /// Why the open newsletter cannot be changed, or null for a draft. The
+  /// server refuses these edits; saying so here stops a paragraph being typed
+  /// only for the autosave to throw it away.
+  String? get _readOnlyBecause => switch (_selected?.status) {
+    'scheduled' =>
+      'This newsletter is scheduled, so it cannot be changed. Delete it to '
+          'stop it, or start a new one.',
+    'sending' => 'This newsletter is being sent, so it cannot be changed.',
+    'sent' =>
+      'This newsletter has gone out, so it cannot be changed — the copy in '
+          'people’s inboxes is the real one.',
+    _ => null,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -387,6 +467,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
       'dashboard' => NewsletterDashboard(
         stats: _stats,
         viewName: _viewName,
+        session: widget.session,
+        rows: _tableRows,
+        status: _dashStatus,
+        onStatus: _filter,
+        onNew: _create,
         scheduled: [
           for (final n in _all)
             if (n.status == 'scheduled' && n.scheduledFor != null)
@@ -398,23 +483,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
                 at: DateTime.tryParse(n.scheduledFor!.replaceFirst(' ', 'T')),
               ),
         ],
-        // Tapping a scheduled mailing opens it in the composer, because
-        // "review them or edit them" is the reason to draw the calendar at
-        // all — a date with no way in is a poster.
-        onOpen: (id) {
-          // Opening a mailing lands in the Composer, so without that pane the
-          // entry is a date to read rather than a door — tapping it must not
-          // switch to a pane this role cannot see.
-          if (!_mayOpen('composer')) return;
-
-          final picked = _all.where((n) => n.id == id).toList();
-          if (picked.isEmpty) return;
-          setState(() {
-            _open(picked.first);
-            _tab = 'composer';
-          });
-          _refreshPreview();
-        },
+        // A row or a calendar entry opens it in the composer, because
+        // "review them or edit them" is the reason to list them at all — a
+        // date with no way in is a poster. Without the Composer pane it is a
+        // line to read rather than a door, so there is nothing to tap.
+        onOpen: _mayOpen('composer') ? _openFromDashboard : null,
       ),
       'composer' => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -471,21 +544,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
                     ),
                   ),
           ),
-          // The save state describes THE OPEN NEWSLETTER, so with none open it
-          // has nothing to describe. It used to read "Saved" beside "No
-          // newsletters in … yet", which UI/UX found on a phone as a stray word:
-          // a status without its noun is a claim about nothing.
-          if (_selectedId != null) ...[
-            const SizedBox(width: 12),
-            Text(
-              _dirty
-                  ? 'Unsaved'
-                  : _saving
-                      ? 'Saving…'
-                      : 'Saved',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+          // The save state moved beside Send in layout A (Mia, 2026-10-02),
+          // in the composer's right column, which exists only while a
+          // newsletter is open — so it still never reads "Saved" about nothing.
           // Delete the open one. Offered only when something is open, and
           // refused in the server's words without `newsletter.delete`; a
           // mailing already going out is refused by the server, which says so.
@@ -552,53 +613,29 @@ class _NewsletterTabState extends State<NewsletterTab> {
     );
   }
 
+  /// The three columns. Keyed by the open newsletter, so switching to
+  /// another one starts with nothing selected and its own When.
   Widget _split(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final editor = _editorPane(context);
-        final preview = _previewPane(context);
-
-        // Under 900 the preview goes BELOW rather than away. A newsletter you
-        // cannot see is the thing this layout exists to prevent, and a phone
-        // does not change that.
-        if (constraints.maxWidth < 900) {
-          return ListView(
-            padding: const EdgeInsets.all(12),
-            children: [
-              editor,
-              const SizedBox(height: 12),
-              SizedBox(height: 520, child: preview),
-            ],
-          );
-        }
-
-        return Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: 5, child: SingleChildScrollView(child: editor)),
-              const SizedBox(width: 12),
-              Expanded(flex: 4, child: preview),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _editorPane(BuildContext context) {
     return NewsletterEditor(
+      key: ValueKey(_selectedId),
       subject: _subject,
       blocks: _blocks,
       audiences: _audiences,
       audienceId: _audienceId,
       when: _when,
       viewName: _viewName,
+      company: widget.session.me?.organization.name ?? 'EzBizi',
       scheduledTimezone: _selected?.scheduledTimezone,
       session: widget.session,
       sendingRefusedBecause: _sendingRefusedBecause,
+      readOnlyBecause: _readOnlyBecause,
       saveError: _saveError,
+      saveState: _dirty
+          ? 'Unsaved'
+          : _saving
+              ? 'Saving…'
+              : 'Saved',
+      previewHtml: _previewHtml,
       onChanged: _touched,
       onAudience: (id) {
         setState(() => _audienceId = id);
@@ -609,37 +646,6 @@ class _NewsletterTabState extends State<NewsletterTab> {
         _touched();
       },
       onSend: _send,
-    );
-  }
-
-  Widget _previewPane(BuildContext context) {
-    return DashboardCard(
-      title: 'What they will get',
-      icon: Icons.mark_email_read_outlined,
-      /*
-       * `expand` is what makes the preview VISIBLE, and its absence is why
-       * this pane was blank on the web.
-       *
-       * The card sizes to its contents unless told otherwise. The contents
-       * here are a sandboxed iframe wrapped in `SizedBox.expand`, which
-       * collapses to nothing when its height is unbounded — so the card drew
-       * its header, stretched to the row, and showed an empty body. Nothing
-       * errored and nothing looked wrong except the part that mattered.
-       *
-       * The flag's own docblock names exactly this case: turn it on when the
-       * parent is a bounded slot and the body should use the leftover space.
-       * Both parents here are bounded — `Expanded` in the wide row, a fixed
-       * 520 box in the narrow list — so the condition was met the whole time
-       * and only the flag was missing.
-       *
-       * No height of its own, still. The parent decides; this says "use all
-       * of what the parent gave you" rather than naming a number, which is
-       * the mistake the 640 made before it.
-       */
-      expand: true,
-      child: _previewHtml.isEmpty
-          ? const Center(child: DashboardNote('Nothing to show yet.'))
-          : MessageHtmlView(html: _previewHtml),
     );
   }
 
@@ -692,10 +698,14 @@ class _Newsletter {
     required this.subject,
     required this.blocks,
     required this.status,
+    required this.row,
     this.audienceId,
     this.scheduledFor,
     this.scheduledTimezone,
   });
+
+  /// The same newsletter as the dashboard's table reads it.
+  final NewsletterRow row;
 
   final String id;
   final String subject;
@@ -723,6 +733,7 @@ class _Newsletter {
       id: json['id'] as String? ?? '',
       subject: json['subject'] as String? ?? '',
       status: json['status'] as String? ?? 'draft',
+      row: NewsletterRow.fromJson(json),
       audienceId: audience is Map ? audience['id'] as String? : null,
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,

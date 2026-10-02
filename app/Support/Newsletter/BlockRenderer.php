@@ -123,6 +123,17 @@ class BlockRenderer
         $width = (int) floor(100 / count($columns));
 
         $cells = implode('', array_map(function (array $column) use ($width) {
+            /*
+             * The composer has always saved a column as `{blocks: [...]}`, and
+             * this read it as a bare list of blocks - so every column the
+             * composer made rendered empty on the server, found when the
+             * composer began drawing columns itself (Mia, 2026-10-02). Both
+             * shapes are read, so nothing already saved changes meaning.
+             */
+            if (isset($column['blocks']) && is_array($column['blocks'])) {
+                $column = $column['blocks'];
+            }
+
             $inner = implode('', array_map(function (array $child) {
                 // Children render as rows, so each column holds its own little
                 // table — a column of blocks is the same thing as the email,
