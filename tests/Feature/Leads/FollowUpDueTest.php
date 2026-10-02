@@ -123,4 +123,23 @@ class FollowUpDueTest extends TestCase
         ]));
         $this->assertSame($this->t['company']->name, $this->inTenant($this->t['org'], fn () => $lead->fresh()->company_name));
     }
+
+    /**
+     * A Local Services account connected at franchise level files its leads
+     * with a franchise and no company, and the reply named the organization
+     * instead of the brand the customer called.
+     */
+    public function test_a_franchise_lead_signs_with_its_company_not_the_organization(): void
+    {
+        $lead = $this->inTenant($this->t['org'], fn () => Lead::create([
+            'organization_id' => $this->t['org']->id,
+            'franchise_id' => $this->t['franchise']->id,
+            'source' => Lead::SOURCE_THUMBTACK,
+            'remote_id' => 'n-2',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now(),
+        ]));
+
+        $this->assertSame($this->t['company']->name, $this->inTenant($this->t['org'], fn () => $lead->fresh()->company_name));
+    }
 }

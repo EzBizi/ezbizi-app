@@ -729,11 +729,30 @@ class AutomationsController extends Controller
             );
         }
 
+        /*
+         * ADDITIVE, like `values`: words a MESSAGE can drop in that no payload
+         * carries - `{{company_name}}` on a lead, worked out from the record
+         * when the step runs. Kept apart from `fields` because a condition
+         * reads the payload, and offering these there would build a test that
+         * always compares against nothing.
+         */
+        $messageFields = [];
+
+        foreach ($recent->pluck('subject_type')->push($this->registry->get($moduleKey)?->subject?->model)->filter()->unique() as $class) {
+            if (is_string($class) && class_exists($class) && method_exists($class, 'automationMessageFields')) {
+                $messageFields = array_merge($messageFields, $class::automationMessageFields());
+            }
+        }
+
+        $messageFields = array_values(array_diff(array_unique($messageFields), $fields));
+        sort($messageFields);
+
         return response()->json(['data' => [
             'trigger' => $key,
             'fields' => $fields,
+            'message_fields' => $messageFields,
             'values' => $values,
-            'samples' => $this->samplesFor($recent, $fields, $request->user()),
+            'samples' => $this->samplesFor($recent, $fields, $request->user(), $messageFields),
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
@@ -773,11 +792,12 @@ class AutomationsController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, AutomationEvent>  $events
      * @param  list<string>  $fields
+     * @param  list<string>  $messageFields
      * @return array<string, string>
      */
-    private function samplesFor($events, array $fields, ?User $viewer): array
+    private function samplesFor($events, array $fields, ?User $viewer, array $messageFields = []): array
     {
-        if ($viewer === null || $fields === []) {
+        if ($viewer === null || ($fields === [] && $messageFields === [])) {
             return [];
         }
 
@@ -815,6 +835,15 @@ class AutomationsController extends Controller
                 }
 
                 $samples[$field] = Str::limit((string) $flat[$field], 60);
+            }
+
+            // Read off the record, as the runner will read them.
+            foreach ($subject === null ? [] : $messageFields as $field) {
+                $value = $subject->getAttribute($field);
+
+                if (! array_key_exists($field, $samples) && is_scalar($value) && (string) $value !== '') {
+                    $samples[$field] = Str::limit((string) $value, 60);
+                }
             }
         }
 

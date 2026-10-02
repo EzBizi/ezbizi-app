@@ -556,10 +556,31 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * `{{company_name}}`: the brand the enquiry came to - A-1 Chimney, A1
      * Garage Doors - so one auto reply can serve every company (Jose,
      * 2026-09-30).
+     *
+     * THE FRANCHISE'S COMPANY BEFORE THE ORGANIZATION. A Local Services account
+     * connected at franchise level files its leads with a franchise and no
+     * company_id, so reading only `company` greeted those customers with the
+     * organization's name instead of the brand they called.
      */
     public function getCompanyNameAttribute(): string
     {
-        return (string) ($this->company?->name ?? $this->organization?->name ?? '');
+        return (string) ($this->company?->name
+            ?? $this->franchise?->company?->name
+            ?? $this->organization?->name
+            ?? '');
+    }
+
+    /**
+     * Words a rule's message can drop in that no event payload carries: they
+     * are worked out from the lead when the message is written. The builder
+     * lists them beside the event's own fields so nobody has to know they
+     * exist. Message-only: a condition reads the payload, not these.
+     *
+     * @return list<string>
+     */
+    public static function automationMessageFields(): array
+    {
+        return ['company_name', 'source_name', 'thank_you'];
     }
 
     public function getSourceNameAttribute(): string
