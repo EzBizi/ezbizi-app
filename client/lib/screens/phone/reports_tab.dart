@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 
 /// Phone › Reports — counting the calls.
@@ -67,6 +71,12 @@ class _ReportsTabState extends State<ReportsTab> {
   List<_Saved> _saved = const [];
 
   Map<String, dynamic> _totals = const {};
+
+  /// The totals without the Direction filter. The tiles count the whole
+  /// period, as tiles do on every tiles-over-a-table screen (Mia,
+  /// 2026-10-02); read off the filtered totals, picking Incoming would show
+  /// Outgoing as 0 calls, which is a claim about the period, not the filter.
+  Map<String, dynamic> _wholeTotals = const {};
   List<_Row> _rows = const [];
   Map<String, String> _labels = const {};
 
@@ -124,15 +134,22 @@ class _ReportsTabState extends State<ReportsTab> {
       _error = null;
     });
 
-    final query = <String>[
+    String query({required bool withDirection}) => <String>[
       'period=$_period',
       'group_by=$_groupBy',
-      if (_direction != null) 'direction=$_direction',
+      if (withDirection && _direction != null) 'direction=$_direction',
       for (final id in _lineIds) 'number_ids[]=$id',
       for (final id in _tagIds) 'tag_ids[]=$id',
     ].join('&');
 
-    final response = await widget.api.get('/phone/reports/run?$query');
+    // A second question only when a direction is picked: without one, the
+    // filtered answer already is the whole.
+    final answers = await Future.wait([
+      widget.api.get('/phone/reports/run?${query(withDirection: true)}'),
+      if (_direction != null)
+        widget.api.get('/phone/reports/run?${query(withDirection: false)}'),
+    ]);
+    final response = answers.first;
 
     if (!mounted) return;
 
@@ -149,10 +166,18 @@ class _ReportsTabState extends State<ReportsTab> {
     // back as `[]`, PHP's empty array. Cast to a map it threw here, after
     // the answer had arrived, and the spinner never stopped.
     final labels = data['labels'];
+    final totals = data['totals'] as Map<String, dynamic>? ?? const {};
+    final wholeData = answers.length > 1 && answers.last.ok
+        ? answers.last.body['data']
+        : null;
+    final whole = wholeData is Map ? wholeData['totals'] : null;
 
     setState(() {
       _running = false;
-      _totals = data['totals'] as Map<String, dynamic>? ?? const {};
+      _totals = totals;
+      _wholeTotals = whole is Map<String, dynamic>
+          ? whole
+          : (_direction == null ? totals : const {});
       _rows = _Row.listFrom(data['rows']);
       _labels = {
         if (labels is Map)
@@ -375,10 +400,14 @@ class _ReportsTabState extends State<ReportsTab> {
     );
   }
 
+  /// Tiles rather than a card of figures (Mia, 2026-10-02). Incoming and
+  /// Outgoing set the Direction filter above, so the two always agree.
+  /// Missed, Voicemails, Average call and Not tagged do not filter: the run
+  /// endpoint takes no status, voicemail or untagged parameter, and a tile
+  /// that narrowed nothing would be a lie about what is under it. Missed is
+  /// already drawn inside every bar and counted in the table.
   Widget _totalsCard(ThemeData theme) {
-    final calls = (_totals['calls'] as num?)?.toInt() ?? 0;
-
-    if (calls == 0) {
+    if (_int(_totals, 'calls') == 0 && _int(_wholeTotals, 'calls') == 0) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -392,72 +421,83 @@ class _ReportsTabState extends State<ReportsTab> {
       );
     }
 
-    final rate = _totals['missed_rate'];
+    final t = _wholeTotals;
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _stat('Calls', '$calls', theme),
-        _stat(
-          'Incoming',
-          '${(_totals['inbound'] as num?)?.toInt() ?? 0}',
-          theme,
+    // The whole-period answer failed while a direction was picked: a dash,
+    // never a 0 that reads as a quiet week.
+    String v(String text) => t.isEmpty ? '—' : text;
+    final all = _int(t, 'calls');
+    final inbound = _int(t, 'inbound');
+    final outbound = _int(t, 'outbound');
+    final missed = _int(t, 'missed');
+    final rate = t['missed_rate'];
+
+    String share(int n) => all == 0 ? '' : '${(n / all * 100).round()}%';
+
+    return _ReportTiles(
+      picked: _direction,
+      onPick: (key) {
+        setState(() => _direction = key);
+        _run();
+      },
+      tiles: [
+        _ReportTile(
+          key: null,
+          label: 'Calls',
+          value: v('$all'),
+          note: 'in and out',
         ),
-        _stat(
-          'Outgoing',
-          '${(_totals['outbound'] as num?)?.toInt() ?? 0}',
-          theme,
+        _ReportTile(
+          key: 'inbound',
+          label: 'Incoming',
+          value: v('$inbound'),
+          note: share(inbound),
         ),
-        _stat('Missed', '${(_totals['missed'] as num?)?.toInt() ?? 0}', theme),
-        _stat('Missed rate', rate == null ? '—' : '$rate%', theme),
-        _stat(
-          'Voicemails',
-          '${(_totals['voicemails'] as num?)?.toInt() ?? 0}',
-          theme,
+        _ReportTile(
+          key: 'outbound',
+          label: 'Outgoing',
+          value: v('$outbound'),
+          note: share(outbound),
         ),
-        _stat(
-          'Average call',
-          _duration((_totals['average_seconds'] as num?)?.toInt() ?? 0),
-          theme,
+        _ReportTile(
+          key: 'missed',
+          label: 'Missed',
+          value: v('$missed'),
+          note: rate == null ? '' : '$rate% of calls',
+          tone: missed == 0 ? null : Tone.bad,
+          filters: false,
         ),
-        _stat(
-          'Time on calls',
-          _duration((_totals['total_seconds'] as num?)?.toInt() ?? 0),
-          theme,
+        _ReportTile(
+          key: 'voicemails',
+          label: 'Voicemails',
+          value: v('${_int(t, 'voicemails')}'),
+          note: 'left a message',
+          filters: false,
+        ),
+        _ReportTile(
+          key: 'average',
+          label: 'Average call',
+          value: v(_duration(_int(t, 'average_seconds'))),
+          note: '${_duration(_int(t, 'total_seconds'))} on calls',
+          filters: false,
         ),
 
         // Not a vanity number: an untagged call is one that will not appear in
         // any breakdown by what it was about, so the tag report is only as
         // honest as this figure is small.
-        _stat(
-          'Not tagged',
-          '${(_totals['untagged'] as num?)?.toInt() ?? 0}',
-          theme,
+        _ReportTile(
+          key: 'untagged',
+          label: 'Not tagged',
+          value: v('${_int(t, 'untagged')}'),
+          note: 'no reason given',
+          filters: false,
         ),
       ],
     );
   }
 
-  Widget _stat(String label, String value, ThemeData theme) {
-    return SizedBox(
-      width: 150,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: theme.textTheme.bodySmall),
-              const SizedBox(height: 4),
-              Text(value, style: theme.textTheme.titleLarge),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  static int _int(Map<String, dynamic> m, String key) =>
+      (m[key] as num?)?.toInt() ?? 0;
 
   String _duration(int seconds) {
     if (seconds < 60) return '${seconds}s';
@@ -466,55 +506,129 @@ class _ReportsTabState extends State<ReportsTab> {
     return '${minutes ~/ 60}h ${minutes % 60}m';
   }
 
+  /// A real bar chart with the missed share drawn inside each bar, and the
+  /// same numbers as a table under it (Mia, 2026-10-02). DashboardChart's bars
+  /// carry one value each, so the calls-and-missed pair is painted here.
   Widget _breakdown(ThemeData theme) {
     if (_rows.isEmpty) return const SizedBox.shrink();
 
-    final most = _rows.map((r) => r.calls).reduce((a, b) => a > b ? a : b);
+    final callsInk = theme.colorScheme.primary;
+    final missedInk = ToneColours.of(context, Tone.bad).ink;
+
+    Widget swatch(Color colour, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: colour,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: theme.textTheme.bodySmall),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(_groupings[_groupBy] ?? '', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        for (final row in _rows)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            border: Border.all(color: EzBiziTheme.edge(context)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 140,
-                  child: Text(
-                    _bucketLabel(row.bucket),
-                    style: theme.textTheme.bodyMedium,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: most == 0 ? 0 : row.calls / most,
-                      minHeight: 14,
+                  key: const ValueKey('report-chart'),
+                  height: 170,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: _BarsPainter(
+                      bars: [
+                        for (final row in _rows)
+                          (
+                            label: _bucketLabel(row.bucket),
+                            calls: row.calls,
+                            missed: row.missed,
+                          ),
+                      ],
+                      callsInk: callsInk,
+                      missedInk: missedInk,
+                      text: theme.textTheme.bodySmall!.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    row.missed == 0
-                        ? '${row.calls}'
-                        : '${row.calls} · ${row.missed} missed',
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.right,
-                  ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 16,
+                  children: [
+                    swatch(callsInk, 'Calls'),
+                    swatch(missedInk, 'Missed'),
+                  ],
                 ),
               ],
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        ListTable(
+          columns: [
+            ListColumn(_bucketHeading, flex: 3),
+            const ListColumn('Calls', end: true),
+            const ListColumn('Missed', end: true),
+            const ListColumn('Missed rate', end: true),
+          ],
+          rowKey: (i) => ValueKey('report-row:${_rows[i].bucket}'),
+          rows: [
+            for (final row in _rows)
+              [
+                Text(
+                  _bucketLabel(row.bucket),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text('${row.calls}', style: theme.textTheme.bodyMedium),
+                Text(
+                  '${row.missed}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: row.missed == 0 ? null : missedInk,
+                  ),
+                ),
+                Text(
+                  row.calls == 0
+                      ? '—'
+                      : '${(row.missed / row.calls * 100).round()}%',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+          ],
+        ),
       ],
     );
   }
+
+  String get _bucketHeading => switch (_groupBy) {
+    'day' => 'Day',
+    'hour' => 'Hour',
+    'tag' => 'About',
+    'user' => 'Answered by',
+    'line' => 'Line',
+    'direction' => 'Direction',
+    _ => '',
+  };
 
   /// Ids mean nothing on a screen, and an empty bucket is "not set" rather
   /// than a blank row nobody can interpret.
@@ -575,35 +689,270 @@ class _ReportsTabState extends State<ReportsTab> {
         if (_saved.isEmpty)
           Text('None saved yet.', style: theme.textTheme.bodySmall)
         else
-          for (final report in _saved)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                key: ValueKey('saved:${report.id}'),
-                title: Text(report.name),
-                subtitle: Text(
-                  '${_periods[report.period] ?? report.period} · '
-                  '${_groupings[report.groupBy] ?? report.groupBy}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton(
-                      onPressed: () => _openSaved(report),
-                      child: const Text('Open'),
+          ListTable(
+            columns: const [
+              ListColumn('Name', flex: 3),
+              ListColumn('Shows', flex: 4),
+              ListColumn('', end: true),
+            ],
+            rowKey: (i) => ValueKey('saved:${_saved[i].id}'),
+            rows: [
+              for (final report in _saved)
+                [
+                  Text(
+                    report.name,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                    TextButton(
-                      onPressed: () => _deleteSaved(report),
-                      child: const Text('Remove'),
+                  ),
+                  Text(
+                    _shows(report),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () => _openSaved(report),
+                        child: const Text('Open'),
+                      ),
+                      TextButton(
+                        onPressed: () => _deleteSaved(report),
+                        child: const Text('Remove'),
+                      ),
+                    ],
+                  ),
+                ],
+            ],
+          ),
       ],
     );
   }
+
+  /// What a saved report answers: period · breakdown, then any narrowing, so
+  /// two reports with the same period and breakdown can be told apart.
+  String _shows(_Saved report) {
+    String names(List<String> ids, List<_Choice> choices) {
+      final byId = {for (final c in choices) c.id: c.name};
+      return ids
+          .map((id) => byId[id] ?? '')
+          .where((n) => n.isNotEmpty)
+          .join(', ');
+    }
+
+    final lines = names(report.numberIds, _lines);
+    final tags = names(report.tagIds, _tags);
+
+    return [
+      _periods[report.period] ?? report.period,
+      _groupings[report.groupBy] ?? report.groupBy,
+      if (report.direction == 'inbound') 'Incoming',
+      if (report.direction == 'outbound') 'Outgoing',
+      if (lines.isNotEmpty) lines,
+      if (tags.isNotEmpty) tags,
+    ].join(' · ');
+  }
+}
+
+/// One totals tile. Unlike [FilterTile] its figure may be a duration, and it
+/// may not filter at all.
+@immutable
+class _ReportTile {
+  const _ReportTile({
+    required this.key,
+    required this.label,
+    required this.value,
+    this.note = '',
+    this.tone,
+    this.filters = true,
+  });
+
+  final String? key;
+  final String label;
+  final String value;
+  final String note;
+  final Tone? tone;
+  final bool filters;
+}
+
+/// [FilterTiles]' look for the totals, keyed `reports-tile-<key>` the same
+/// way. A private copy because the shared widget takes only counts that all
+/// filter, and here Average call is a duration and four tiles cannot filter.
+class _ReportTiles extends StatelessWidget {
+  const _ReportTiles({
+    required this.tiles,
+    required this.picked,
+    required this.onPick,
+  });
+
+  final List<_ReportTile> tiles;
+  final String? picked;
+  final ValueChanged<String?> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        const gap = 10.0;
+        final across = (box.maxWidth / 170).floor().clamp(2, tiles.length);
+        final width = (box.maxWidth - gap * (across - 1)) / across;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final tile in tiles)
+              SizedBox(width: width, child: _tile(context, tile)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tile(BuildContext context, _ReportTile tile) {
+    final theme = Theme.of(context);
+    final chosen = tile.filters && picked == tile.key;
+    final ink = tile.tone == null
+        ? null
+        : ToneColours.of(context, tile.tone!).ink;
+    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+    return Material(
+      key: Key('reports-tile-${tile.key ?? 'all'}'),
+      color: chosen
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: BorderSide(
+          color: chosen ? theme.colorScheme.primary : EzBiziTheme.edge(context),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: radius,
+        onTap: tile.filters ? () => onPick(chosen ? null : tile.key) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                tile.label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                tile.value,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
+              Text(
+                tile.note,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Calls per bucket as bars, the missed part filled from the foot of each.
+/// Labels and counts are thinned where they would collide (90 days by day):
+/// the table under the chart carries every figure anyway.
+class _BarsPainter extends CustomPainter {
+  _BarsPainter({
+    required this.bars,
+    required this.callsInk,
+    required this.missedInk,
+    required this.text,
+  });
+
+  final List<({String label, int calls, int missed})> bars;
+  final Color callsInk;
+  final Color missedInk;
+  final TextStyle text;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bars.isEmpty) return;
+
+    const labelBand = 18.0;
+    const countBand = 16.0;
+    final most = bars.map((b) => b.calls).reduce(math.max);
+    final slot = size.width / bars.length;
+    final barWidth = math.min(46.0, slot * 0.7);
+    final plot = size.height - labelBand - countBand;
+
+    TextPainter layout(String s) => TextPainter(
+      text: TextSpan(text: s, style: text),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Every nth label, n chosen so the widest one fits its share of the width.
+    final widest = bars.map((b) => layout(b.label).width).reduce(math.max) + 6;
+    final every = math.max(1, (widest / slot).ceil());
+    final counts = slot >= 22;
+
+    for (var i = 0; i < bars.length; i++) {
+      final b = bars[i];
+      final centre = slot * i + slot / 2;
+      final h = most == 0 ? 0.0 : b.calls / most * plot;
+      final top = countBand + plot - h;
+      final rect = Rect.fromLTWH(centre - barWidth / 2, top, barWidth, h);
+
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          rect,
+          topLeft: const Radius.circular(4),
+          topRight: const Radius.circular(4),
+        ),
+        Paint()..color = callsInk,
+      );
+
+      if (b.calls > 0 && b.missed > 0) {
+        final mh = h * (b.missed / b.calls);
+        canvas.drawRect(
+          Rect.fromLTWH(rect.left, rect.bottom - mh, barWidth, mh),
+          Paint()..color = missedInk,
+        );
+      }
+
+      if (counts) {
+        final c = layout('${b.calls}');
+        c.paint(canvas, Offset(centre - c.width / 2, top - c.height - 2));
+      }
+
+      if (i % every == 0) {
+        final l = layout(b.label);
+        l.paint(
+          canvas,
+          Offset(centre - l.width / 2, size.height - labelBand + 3),
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BarsPainter old) =>
+      old.bars != bars ||
+      old.callsInk != callsInk ||
+      old.missedInk != missedInk ||
+      old.text != text;
 }
 
 @immutable

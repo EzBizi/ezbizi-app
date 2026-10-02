@@ -54,6 +54,111 @@ void main() {
     expect(find.text('2026-09-27'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+
+  // Tiles over a table (Mia, 2026-10-02). Incoming narrows by the Direction
+  // filter the run endpoint has; the tiles keep counting the whole period,
+  // so Outgoing still says 1 while Incoming is picked. Missed has no filter
+  // behind it and must not pretend to.
+  testWidgets('the Incoming tile counts the whole and narrows by direction', (
+    tester,
+  ) async {
+    final runs = <Uri>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) return _json({'data': _me});
+        if (path.endsWith('/phone/reports/run')) {
+          runs.add(request.url);
+          final inbound = request.url.query.contains('direction=inbound');
+          return _json({
+            'data': {
+              'totals': inbound
+                  ? {'calls': 2, 'inbound': 2, 'outbound': 0, 'missed': 1}
+                  : {
+                      'calls': 3,
+                      'inbound': 2,
+                      'outbound': 1,
+                      'missed': 1,
+                      'missed_rate': 33.3,
+                      'average_seconds': 90,
+                      'total_seconds': 270,
+                    },
+              'rows': [
+                {'bucket': 'inbound', 'calls': 2, 'missed': 1},
+                if (!inbound) {'bucket': 'outbound', 'calls': 1, 'missed': 0},
+              ],
+              'labels': <Object>[],
+            },
+          });
+        }
+        if (path.endsWith('/phone/reports')) {
+          return _json({
+            'data': [
+              {
+                'id': 'r-1',
+                'name': 'Missed by line',
+                'period': 'last_7',
+                'group_by': 'line',
+                'direction': 'inbound',
+                'number_ids': <String>[],
+                'tag_ids': <String>[],
+              },
+            ],
+            'meta': <String, Object>{},
+          });
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ReportsTab(api: api, session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder inTile(String key, String text) => find.descendant(
+      of: find.byKey(Key('reports-tile-$key')),
+      matching: find.text(text),
+    );
+
+    expect(inTile('all', '3'), findsOneWidget);
+    expect(inTile('inbound', '2'), findsOneWidget);
+    expect(inTile('outbound', '1'), findsOneWidget);
+    expect(inTile('missed', '33.3% of calls'), findsOneWidget);
+    expect(inTile('average', '1m'), findsOneWidget);
+    expect(find.byKey(const ValueKey('report-chart')), findsOneWidget);
+    expect(find.byKey(const ValueKey('report-row:outbound')), findsOneWidget);
+    expect(find.text('Last 7 days · By line · Incoming'), findsOneWidget);
+
+    // Missed filters nothing: tapping it asks the server nothing new.
+    final before = runs.length;
+    await tester.tap(find.byKey(const Key('reports-tile-missed')));
+    await tester.pumpAndSettle();
+    expect(runs.length, before);
+
+    await tester.tap(find.byKey(const Key('reports-tile-inbound')));
+    await tester.pumpAndSettle();
+
+    expect(runs.any((u) => u.query.contains('direction=inbound')), isTrue);
+    expect(find.byKey(const ValueKey('report-row:outbound')), findsNothing);
+    expect(inTile('outbound', '1'), findsOneWidget);
+    expect(inTile('all', '3'), findsOneWidget);
+
+    // Tapping it again clears the filter.
+    await tester.tap(find.byKey(const Key('reports-tile-inbound')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('report-row:outbound')), findsOneWidget);
+  });
 }
 
 http.Response _json(Object body) => http.Response(
