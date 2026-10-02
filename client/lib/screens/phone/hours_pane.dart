@@ -4,9 +4,13 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 
 /// Phone › Settings › Hours — when a line is open, in its own wall clock.
 ///
@@ -230,38 +234,112 @@ class _HoursPaneState extends State<HoursPane> {
             style: theme.textTheme.bodySmall,
           )
         else
-          for (final schedule in _schedules)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                key: ValueKey('hours:${schedule.id}'),
-                title: Text(schedule.name),
-                subtitle: Text(
-                  '${_summarise(schedule)} · ${_zoneLabel(schedule.timezone)}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                trailing: _canEdit
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextButton(
-                            onPressed: () => setState(() {
-                              _draft = _Draft.of(schedule);
-                              _formError = null;
-                            }),
-                            child: const Text('Edit'),
-                          ),
-                          TextButton(
-                            onPressed: () => _delete(schedule),
-                            child: const Text('Remove'),
-                          ),
-                        ],
-                      )
-                    : null,
-              ),
-            ),
+          _table(theme),
       ],
     );
+  }
+
+  DisplayFormats get _formats =>
+      widget.session.me?.display ?? DisplayFormats.fallback;
+
+  /// Name, timezone, open today, and the next closed day (layout A, Mia,
+  /// 2026-10-02). "Today" is the schedule's own date, which the server sends:
+  /// the reader's date is a day off for part of every evening on a coast.
+  Widget _table(ThemeData theme) {
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return ListTable(
+      columns: const [
+        ListColumn('Hours', flex: 3),
+        ListColumn('Timezone', flex: 3),
+        ListColumn('Today', flex: 3),
+        ListColumn('Closed next', flex: 2),
+        ListColumn('', flex: 3, end: true),
+      ],
+      rowKey: (i) => ValueKey('hours:${_schedules[i].id}'),
+      rows: [
+        for (final schedule in _schedules)
+          [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  schedule.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(_summarise(schedule), style: small),
+              ],
+            ),
+            Text(
+              _zoneLabel(schedule.timezone),
+              overflow: TextOverflow.ellipsis,
+            ),
+            _today(schedule),
+            Text(_nextClosed(schedule), style: small),
+            _canEdit
+                ? Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _draft = _Draft.of(schedule);
+                          _formError = null;
+                        }),
+                        child: const Text('Edit'),
+                      ),
+                      TextButton(
+                        onPressed: () => _delete(schedule),
+                        child: const Text('Remove'),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ],
+      ],
+    );
+  }
+
+  /// "Open 9:00 AM – 5:00 PM", or Closed when the day has no hours or is one
+  /// of the closed dates — the same two checks HoursClock makes on a call. A
+  /// dash when the server did not say what today is there.
+  Widget _today(_Schedule schedule) {
+    final today = DateTime.tryParse(schedule.today ?? '');
+    if (today == null) return const Text('—');
+
+    if (schedule.closedDates.contains(schedule.today)) {
+      return const StatusPill('Closed today');
+    }
+
+    // DateTime.weekday is 1 (Monday) to 7 (Sunday); _days starts on Sunday.
+    final intervals = schedule.weeks[_days[today.weekday % 7].$1] ?? const [];
+    if (intervals.isEmpty) return const StatusPill('Closed');
+
+    final hours = intervals
+        .map(
+          (i) =>
+              '${_formats.formatWallClock(i.$1)} – '
+              '${_formats.formatWallClock(i.$2)}',
+        )
+        .join(', ');
+
+    return StatusPill('Open $hours', tone: Tone.ok);
+  }
+
+  /// The first closed date from today on, or a dash.
+  String _nextClosed(_Schedule schedule) {
+    final today = schedule.today;
+    final next = schedule.closedDates
+        .where((d) => today == null || d.compareTo(today) >= 0)
+        .firstOrNull;
+    final at = next == null ? null : DateTime.tryParse(next);
+
+    return at == null ? '—' : _formats.formatDate(at);
   }
 
   /// "Open Mon–Fri" rather than a grid nobody reads in a list row.
@@ -717,12 +795,17 @@ class _Schedule {
     required this.timezone,
     required this.weeks,
     required this.closedDates,
+    this.today,
   });
 
   final String id;
   final String connectionId;
   final String name;
   final String timezone;
+
+  /// `Y-m-d` on the schedule's own clock, from the server; null on an older
+  /// one.
+  final String? today;
 
   /// day key → list of (from, to)
   final Map<String, List<(String, String)>> weeks;
@@ -766,6 +849,7 @@ class _Schedule {
         timezone: row['timezone']?.toString() ?? 'UTC',
         weeks: weeks,
         closedDates: closed..sort(),
+        today: row['today'] as String?,
       );
     }).toList(growable: false);
   }

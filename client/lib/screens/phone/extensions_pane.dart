@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 import 'settings_pane.dart';
 
@@ -42,6 +44,10 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
   String? _connectionId;
 
   List<_Extension> _rows = const [];
+
+  /// The tile picked: `user`, `ring_group`, or null for every extension. The
+  /// directory comes back whole, so the tiles count it here (Mia, 2026-10-02).
+  String? _kindShown;
   List<_Target> _people = const [];
   List<_Target> _groups = const [];
 
@@ -87,10 +93,12 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
     setState(() {
       _loading = false;
       _connectionId = body['connection_id'] as String?;
+      // Sorted by the digits, because the digits are what somebody looks
+      // up here: "who is 0300?" (layout A, Mia, 2026-10-02).
       _rows = [
         for (final row in (body['data'] as List? ?? const []))
           if (row is Map<String, dynamic>) _Extension.fromJson(row),
-      ];
+      ]..sort((a, b) => a.extension.compareTo(b.extension));
       _people = _targetsFrom(body['people']);
       _groups = _targetsFrom(body['ring_groups']);
       _targetId = null;
@@ -186,7 +194,35 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
               ),
             ),
 
-          for (final row in _rows) _row(row, theme),
+          if (_rows.isNotEmpty) ...[
+            FilterTiles(
+              prefix: 'extensions',
+              picked: _kindShown,
+              onPick: (key) => setState(() => _kindShown = key),
+              tiles: [
+                FilterTile(
+                  key: null,
+                  label: 'Extensions',
+                  count: _rows.length,
+                  note: 'in use',
+                ),
+                FilterTile(
+                  key: 'user',
+                  label: 'People',
+                  count: _rows.where((r) => r.kind == 'user').length,
+                  note: 'ring one person',
+                ),
+                FilterTile(
+                  key: 'ring_group',
+                  label: 'Teams',
+                  count: _rows.where((r) => r.kind == 'ring_group').length,
+                  note: 'ring a group',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _table(theme),
+          ],
 
           if (_canEdit) ...[const Divider(height: 32), _addRow(theme)],
 
@@ -205,39 +241,71 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
     );
   }
 
-  Widget _row(_Extension row, ThemeData theme) {
+  Widget _table(ThemeData theme) {
+    final shown = _kindShown == null
+        ? _rows
+        : _rows.where((r) => r.kind == _kindShown).toList();
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No extensions of this kind.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Extension', flex: 2),
+        ListColumn('Who', flex: 4),
+        ListColumn('Kind', flex: 3),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => Key('extension:${shown[i].id}'),
+      rows: [for (final row in shown) _cells(row, theme)],
+    );
+  }
+
+  List<Widget> _cells(_Extension row, ThemeData theme) {
     // An extension whose team was deleted keeps its digits — somebody told
     // customers to dial them — so it is shown as needing a destination rather
     // than hidden, which is the only way anybody finds out.
     final orphan = row.targetName == null;
+    final bad = ToneColours.of(context, Tone.bad).ink;
 
-    return ListTile(
-      key: Key('extension:${row.id}'),
-      contentPadding: EdgeInsets.zero,
-      leading: Text(row.extension, style: theme.textTheme.titleMedium),
-      title: Text(
-        orphan ? 'Reaches nothing' : row.targetName!,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: orphan ? theme.colorScheme.error : null,
+    return [
+      Text(
+        row.extension,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
       ),
-      subtitle: Text(
-        orphan
+      Text(
+        orphan ? 'Reaches nothing' : row.targetName!,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: orphan ? bad : null,
+        ),
+      ),
+      Tooltip(
+        message: orphan
             ? 'What this pointed at has been deleted. A caller dialling it is '
                   'told it is not set up.'
-            : row.kindLabel,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: orphan ? theme.colorScheme.error : null,
+            : row.kindDetail,
+        child: Text(
+          row.kindLabel,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: orphan ? bad : theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
-      trailing: _canEdit
-          ? IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Retire this extension',
+      _canEdit
+          ? TextButton(
               onPressed: () => _remove(row),
+              child: const Text('Retire'),
             )
-          : null,
-    );
+          : const SizedBox.shrink(),
+    ];
   }
 
   Widget _addRow(ThemeData theme) {
@@ -328,6 +396,12 @@ class _Extension {
   final String? targetName;
 
   String get kindLabel => switch (kind) {
+    'user' => 'A person',
+    'ring_group' => 'A team',
+    _ => 'Not set up',
+  };
+
+  String get kindDetail => switch (kind) {
     'user' => 'Rings this person on every device they have signed in.',
     'ring_group' => 'Rings this team.',
     _ => 'Reaches nothing.',

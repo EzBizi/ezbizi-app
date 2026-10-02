@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 
 /// Phone › Settings › IVR menus — the menu a caller hears.
 ///
@@ -295,62 +298,127 @@ class _FlowsPaneState extends State<FlowsPane> {
             style: theme.textTheme.bodySmall,
           )
         else
-          for (final flow in _flows)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                key: ValueKey('flow:${flow.id}'),
-                title: Text(flow.name),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${flow.options.length} '
-                      '${flow.options.length == 1 ? 'key' : 'keys'}'
-                      '${flow.numberIds.isEmpty ? ' · not on any line yet' : ' · on ${flow.numberIds.length} line(s)'}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-
-                    // The menu that is configured and never heard.
-                    //
-                    // Everything above reads as healthy while this is true —
-                    // it has keys, it is on a line — and no caller has ever
-                    // heard it. Nobody reports it either: the caller does not
-                    // know they missed a menu, and the owner does not know
-                    // theirs is skipped.
-                    if (!flow.plays)
-                      Text(
-                        'No caller ever hears this. It has no step that plays, '
-                        'so calls go straight past it to whoever answers.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
-                        ),
-                      ),
-                  ],
-                ),
-                trailing: _canEdit
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextButton(
-                            onPressed: () => setState(() {
-                              _draft = _Draft.of(flow);
-                              _formError = null;
-                            }),
-                            child: const Text('Edit'),
-                          ),
-                          TextButton(
-                            onPressed: () => _delete(flow),
-                            child: const Text('Remove'),
-                          ),
-                        ],
-                      )
-                    : null,
-              ),
-            ),
+          _table(theme),
       ],
     );
+  }
+
+  /// Name, the keys set, and the lines using it (layout A, Mia, 2026-10-02).
+  /// The server sends the ids of the lines, not their names, so the column
+  /// counts them.
+  Widget _table(ThemeData theme) {
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final bad = ToneColours.of(context, Tone.bad).ink;
+
+    return ListTable(
+      columns: const [
+        ListColumn('Menu', flex: 3),
+        ListColumn('Keys', flex: 5),
+        ListColumn('Used by', flex: 2),
+        ListColumn('', flex: 3, end: true),
+      ],
+      rowKey: (i) => ValueKey('flow:${_flows[i].id}'),
+      rows: [
+        for (final flow in _flows)
+          [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  flow.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+
+                // The menu that is configured and never heard.
+                //
+                // Everything else on the row reads as healthy while this is
+                // true — it has keys, it is on a line — and no caller has
+                // ever heard it. Nobody reports it either: the caller does
+                // not know they missed a menu, and the owner does not know
+                // theirs is skipped.
+                if (!flow.plays)
+                  Text(
+                    'No caller ever hears this. It has no step that plays, '
+                    'so calls go straight past it to whoever answers.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: bad),
+                  ),
+              ],
+            ),
+            Text(
+              flow.options.isEmpty
+                  ? 'No keys'
+                  : [for (final option in flow.options) _keyLabel(option)]
+                        .join(' · '),
+              style: small,
+            ),
+            flow.numberIds.isEmpty
+                ? const StatusPill('Not used', tone: Tone.caution)
+                : Text(
+                    'On ${flow.numberIds.length} '
+                    '${flow.numberIds.length == 1 ? 'line' : 'lines'}',
+                  ),
+            _canEdit
+                ? Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _draft = _Draft.of(flow);
+                          _formError = null;
+                        }),
+                        child: const Text('Edit'),
+                      ),
+                      TextButton(
+                        onPressed: () => _delete(flow),
+                        child: const Text('Remove'),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ],
+      ],
+    );
+  }
+
+  /// One key, in a few words: "1 Sales", "0 Ring 0102", "9 Repeat". Named
+  /// after where it goes when that is known, so the row reads like the menu.
+  String _keyLabel(Map<String, dynamic> option) {
+    final digit = option['digit']?.toString() ?? '?';
+    final action = option['action']?.toString();
+
+    String? groupName() {
+      final id = option['ring_group_id']?.toString();
+      for (final group in _groups) {
+        if (group.id == id) return group.name;
+      }
+      return null;
+    }
+
+    String? holder() {
+      final ext = option['extension']?.toString();
+      for (final e in _extensions) {
+        if (e.extension == ext) return e.name;
+      }
+      return ext == null || ext.isEmpty ? null : 'extension $ext';
+    }
+
+    final what = switch (action) {
+      'ring_group' => groupName() ?? 'Ring a group',
+      'extension' => holder() ?? 'Ring one person',
+      'voicemail' => 'Message',
+      'forward' => 'Forward',
+      'hangup' => 'Hang up',
+      'repeat' => 'Repeat',
+      _ => 'Not set',
+    };
+
+    return '$digit $what';
   }
 
   Widget _form(ThemeData theme) {

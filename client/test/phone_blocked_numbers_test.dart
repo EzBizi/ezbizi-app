@@ -101,15 +101,52 @@ void main() {
     await _pump(tester, rows: [_row], onDelete: deleted.add);
 
     expect(find.text('+13055550911'), findsOneWidget);
-    // The exact subtitle, not a substring: the reason field's own hint text
-    // is 'Robocall, four times this week', so a contains-match finds the empty
-    // form as readily as the row it is meant to be about.
-    expect(find.text('Robocall · Blocked by Jose Silva'), findsOneWidget);
+    // Exact cells, not a substring: the reason field's own hint text is
+    // 'Robocall, four times this week', so a contains-match finds the empty
+    // form as readily as the row it is meant to be about. The reason and who
+    // blocked it are their own columns now (layout A, Mia, 2026-10-02).
+    expect(find.text('Robocall'), findsOneWidget);
+    expect(find.text('Jose Silva'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(TextButton, 'Unblock'));
     await tester.pumpAndSettle();
 
     expect(deleted, ['/phone/blocked-numbers/bn-1']);
+  });
+
+  // Layout A (Mia, 2026-10-02): the list comes back whole, so the tiles count
+  // it here, and "Added this month" reads the real created_at.
+  testWidgets('the this-month tile counts recent blocks and filters to them', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    await _pump(
+      tester,
+      rows: [
+        {..._row, 'created_at': now.toIso8601String()},
+        {
+          ..._row,
+          'id': 'bn-2',
+          'e164': '+13055550922',
+          'created_at': DateTime.utc(now.year - 1, now.month, 2)
+              .toIso8601String(),
+        },
+      ],
+    );
+
+    Finder count(String key, String text) => find.descendant(
+      of: find.byKey(Key('blocked-tile-$key')),
+      matching: find.text(text),
+    );
+
+    expect(count('all', '2'), findsOneWidget);
+    expect(count('month', '1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('blocked-tile-month')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('+13055550911'), findsOneWidget);
+    expect(find.text('+13055550922'), findsNothing);
   });
 }
 
