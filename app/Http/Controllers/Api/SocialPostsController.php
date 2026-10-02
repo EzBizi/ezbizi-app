@@ -63,6 +63,9 @@ class SocialPostsController extends Controller
      */
     private const MAX_BODY = 5000;
 
+    /** The Posts tiles, in the order the screen draws them. */
+    private const TILES = ['scheduled', 'sent', 'failed'];
+
     public function __construct(
         private readonly SocialConnectionAccess $access,
         private readonly FileStore $files,
@@ -96,17 +99,33 @@ class SocialPostsController extends Controller
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
             ->keyBy(fn (SocialConnection $c) => $c->getKey());
 
-        $posts = SocialPost::query()
+        $query = SocialPost::query()
+            ->whereHas('targets', fn ($q) => $q->whereIn('social_connection_id', $visible->keys()));
+
+        // The Posts tiles count every post this view can see, not the twenty
+        // drawn, so a tile can never say fewer than the list it filters
+        // (Mia, 2026-10-02, Posts layout A). Counted before `status` narrows.
+        $tiles = [];
+        foreach (self::TILES as $status) {
+            $tiles[$status] = $this->inStatus(clone $query, $status, $visible->keys()->all())->count();
+        }
+
+        $status = $request->query('status');
+        if (in_array($status, self::TILES, true)) {
+            $this->inStatus($query, $status, $visible->keys()->all());
+        }
+
+        $posts = $query
             ->with(['targets', 'author:id,name'])
-            ->whereHas('targets', fn ($q) => $q->whereIn('social_connection_id', $visible->keys()))
             ->latest()
             // ponytail: the twenty most recent, no paging. This is the "did it
-            // send" list under the composer, not an archive; when Marketing
-            // grows a real queue screen that screen brings its own paging.
+            // send" list under the composer, not an archive; the tiles above
+            // carry the whole count and filter on the server.
             ->limit(20)
             ->get();
 
         return response()->json([
+            'meta' => ['tiles' => $tiles],
             'data' => $posts->map(fn (SocialPost $post) => [
                 'id' => $post->getKey(),
                 'body' => $post->body,
@@ -439,6 +458,34 @@ class SocialPostsController extends Controller
                 throw ValidationException::withMessages(['connections' => $because]);
             }
         }
+    }
+
+    /**
+     * Narrow to posts in one tile, judged on the targets THIS view can see -
+     * the same targets the list shows, so the pill and the tile agree.
+     *
+     * The same reading as the screen's colour for a post: any failed account
+     * makes it failed; every account waiting for its time makes it scheduled;
+     * otherwise, once nothing is still queued, it went out. A post still in
+     * the queue is in no tile: it is neither out nor refused yet.
+     *
+     * @param  list<string>  $visible
+     */
+    private function inStatus($query, string $status, array $visible)
+    {
+        $targets = fn ($q) => $q->whereIn('social_connection_id', $visible);
+
+        return match ($status) {
+            'failed' => $query->whereHas('targets', fn ($q) => $targets($q)
+                ->where('status', SocialPostTarget::STATUS_FAILED)),
+            'scheduled' => $query->whereDoesntHave('targets', fn ($q) => $targets($q)
+                ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
+            'sent' => $query
+                ->whereDoesntHave('targets', fn ($q) => $targets($q)
+                    ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED]))
+                ->whereHas('targets', fn ($q) => $targets($q)
+                    ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
+        };
     }
 
     private function presentTarget(SocialPostTarget $target, ?SocialConnection $connection): array
