@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Leads\AddressCheck;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
@@ -62,7 +63,25 @@ class SchedulingAvailabilityController extends Controller
             'franchise_id' => ['nullable', 'uuid'],
             // "All areas" (Jose, 2026-09-28): every area in view.
             'all' => ['nullable', 'boolean'],
+            // A street address a customer wrote ("86 Jerusalem hill
+            // Trumbull"): its zip is looked up and searched (Mia, 2026-10-02).
+            'address' => ['nullable', 'string', 'max:300'],
         ]);
+
+        $resolved = null;
+
+        if (($data['address'] ?? null) !== null && trim($data['address']) !== '') {
+            $resolved = AddressCheck::check(trim($data['address']));
+
+            if ($resolved === null || $resolved['zip'] === null) {
+                throw ValidationException::withMessages([
+                    'address' => 'Could not find a zip code for that address. Add the town or '
+                        .'state, or search by the zip code.',
+                ]);
+            }
+
+            $data['zip'] = $resolved['zip'];
+        }
 
         $searched = $data['zip']
             ?? $data['city']
@@ -121,6 +140,9 @@ class SchedulingAvailabilityController extends Controller
             'data' => [
                 'searched' => $searched,
                 'by' => $by,
+                // The address as Google placed it, so the reader can see which
+                // house the zip came from before telling a customer anything.
+                'resolved' => $resolved,
                 'basis' => 'remaining',
                 'from' => $from->toDateString(),
                 'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises) {

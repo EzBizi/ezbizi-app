@@ -18,6 +18,44 @@ import 'package:http/testing.dart';
 /// full — not only on the words. A chip that read "1 Spot Left" in green would
 /// pass every text assertion and tell a dispatcher the opposite of the truth.
 void main() {
+  // Mia, 2026-10-02: a customer writes "86 Jerusalem hill Trumbull", not a
+  // zip. The pane asks by address and says which address the zip came from.
+  testWidgets('an address is asked as an address and shows where it landed', (
+    tester,
+  ) async {
+    Uri? asked;
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (!r.url.path.endsWith('/scheduling/availability')) return null;
+        asked = r.url;
+        return _json({
+          'data': {
+            ..._dallas,
+            'resolved': {
+              'address': '86 Jerusalem Hill Rd, Trumbull, CT 06611, USA',
+              'zip': '06611',
+              'exact': true,
+            },
+          },
+        });
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '86 Jerusalem hill Trumbull',
+    );
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+
+    expect(asked?.queryParameters['address'], '86 Jerusalem hill Trumbull');
+    expect(
+      find.text('86 Jerusalem Hill Rd, Trumbull, CT 06611, USA — zip 06611'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'a zip answers with the first day and colours each window by what is left',
     (tester) async {

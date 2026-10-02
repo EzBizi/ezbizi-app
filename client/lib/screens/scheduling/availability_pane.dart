@@ -72,6 +72,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   /// null before the first search; an empty list is "nothing covers that".
   List<Map<String, dynamic>>? _areas;
 
+  /// The address a search was looked up as, so the reader sees which house
+  /// the zip came from (Mia, 2026-10-02). Null for any other search.
+  Map<String, dynamic>? _resolved;
+
   List<Map<String, dynamic>> _franchises = [];
   String? _franchiseId;
 
@@ -153,6 +157,13 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     if (q.isEmpty) return;
     setState(() => _suggestions = []);
 
+    // A house number then words is a street address ("86 Jerusalem hill
+    // Trumbull"): the server finds its zip (Mia, 2026-10-02).
+    if (_looksLikeAddress(q)) {
+      await _run({'address': q});
+      return;
+    }
+
     // Digits are a zip; anything else is most likely an area name somebody
     // typed without waiting for the suggestion.
     if (!RegExp(r'^[\d\s-]+$').hasMatch(q)) {
@@ -172,6 +183,9 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
     await _run({'zip': q});
   }
+
+  static bool _looksLikeAddress(String q) =>
+      RegExp(r'^\d+[A-Za-z]?\s+[A-Za-z]').hasMatch(q);
 
   /// 5 digits, zip+4, or a New England zip that lost its leading zero.
   static const _zipLengths = {4, 5, 9};
@@ -200,11 +214,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
     setState(() {
       _loading = false;
+      _resolved = null;
       if (!response.ok) {
-        _error = response.message;
+        _error = response.reason;
         _areas = null;
         return;
       }
+      final resolved = response.body['data']?['resolved'];
+      _resolved = resolved is Map ? resolved.cast<String, dynamic>() : null;
       _areas = (response.body['data']?['areas'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
     });
@@ -244,7 +261,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Search by zip code, pick an area, or see a month.',
+                  'Search by zip code or address, pick an area, or see a month.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
@@ -305,6 +322,24 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 },
                 const SizedBox(height: 20),
                 if (_error != null) ErrorNote(_error!),
+                if (_resolved != null && !_loading)
+                  Padding(
+                    key: const Key('availability-resolved'),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 18, color: muted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${_resolved!['address']} — zip ${_resolved!['zip']}'
+                            '${_resolved!['exact'] == true ? '' : ' (approximate: check the street with the customer)'}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.all(24),
@@ -369,7 +404,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 controller: _search,
                 textInputAction: TextInputAction.search,
                 decoration: const InputDecoration(
-                  hintText: 'Zip code, city or area',
+                  hintText: 'Zip code, address, city or area',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: _suggest,

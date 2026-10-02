@@ -12,6 +12,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -162,6 +163,46 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([2, 1], array_column($area['first']['windows'], 'remaining'));
         $this->assertCount(5, $area['after']);
         $this->assertSame('2026-10-12', $area['after'][0]['date']);
+    }
+
+    /**
+     * An address a customer wrote is searched by the zip Google gives it
+     * (Mia, 2026-10-02: "86 Jerusalem hill Trumbull"), and the answer says
+     * which address the zip came from.
+     */
+    public function test_an_address_is_searched_by_its_zip(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        config(['services.google_maps.server_key' => 'maps-key']);
+        Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'OK', 'results' => [[
+            'formatted_address' => '1500 Marilla St, Dallas, TX 75201, USA',
+            'address_components' => [['short_name' => '75201', 'types' => ['postal_code']]],
+            'geometry' => ['location_type' => 'ROOFTOP'],
+        ]]])]);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?address='.urlencode('1500 Marilla St Dallas'))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('zip', $body['by']);
+        $this->assertSame('75201', $body['resolved']['zip']);
+        $this->assertSame('Dallas', $body['areas'][0]['area_name']);
+    }
+
+    public function test_an_address_with_no_zip_says_so(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        config(['services.google_maps.server_key' => 'maps-key']);
+        Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'ZERO_RESULTS', 'results' => []])]);
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?address=nowhere')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('address');
     }
 
     /**

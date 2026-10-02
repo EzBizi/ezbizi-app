@@ -1484,7 +1484,8 @@ class _LeadThreadState extends State<LeadThread> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               key: const ValueKey('check-availability'),
-              onPressed: () => _openAvailability(zip),
+              // No zip yet: the address they wrote, which the pane looks up.
+              onPressed: () => _openAvailability(zip ?? address),
               icon: const Icon(Icons.event_available_outlined, size: 18),
               label: Text(zip == null ? 'Check availability' : 'Check availability for $zip'),
             ),
