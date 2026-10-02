@@ -183,20 +183,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _header(context, canBuildHere: canBuildHere),
-              const SizedBox(height: 12),
-              TabBarLike(
-                labels: _chipLabels(
-                  canBuildHere: canBuildHere,
-                  canExperiment: canExperiment,
-                ),
-                selected: _chip,
-                onSelected: (i) => setState(() {
-                  _chip = i;
-                  _open = null;
-                  _openHours = null;
-                  _confirming = null;
-                }),
+              // The heading row only while a report is open: with nothing
+              // in it, its button's height stood as a gap between the title
+              // and the chips (Mia, 2026-10-02). New report sits beside the
+              // chips instead.
+              if (_open != null) ...[
+                _header(context, canBuildHere: canBuildHere),
+                const SizedBox(height: 12),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: TabBarLike(
+                      labels: _chipLabels(
+                        canBuildHere: canBuildHere,
+                        canExperiment: canExperiment,
+                      ),
+                      selected: _chip,
+                      onSelected: (i) => setState(() {
+                        _chip = i;
+                        _open = null;
+                        _openHours = null;
+                        _confirming = null;
+                      }),
+                    ),
+                  ),
+                  ?_newReport(canBuildHere: canBuildHere),
+                ],
               ),
               const SizedBox(height: 12),
               Expanded(child: _body(context, constraints)),
@@ -348,23 +361,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
         ),
-        // canExperiment: canBuildHere already implies reports.build.
-        if (_indexOf('Builder', canBuildHere: canBuildHere, canExperiment: true)
-            case final builder?
-            when _open == null &&
-                _chipName(canBuildHere: canBuildHere, canExperiment: true) ==
-                    'Reports')
-          FilledButton.icon(
-            // To the Builder by NAME. `_chip = 1` was the Builder only while
-            // the library sat at 0 (deploy desk audit, 2026-09-29).
-            onPressed: () => setState(() {
-              _chip = builder;
-              _open = null;
-            }),
-            icon: const Icon(Icons.add),
-            label: const Text('New report'),
-          ),
       ],
+    );
+  }
+
+  /// New report, beside the chips on the library (Mia, 2026-10-02).
+  Widget? _newReport({required bool canBuildHere}) {
+    // canExperiment: canBuildHere already implies reports.build.
+    final builder = _indexOf(
+      'Builder',
+      canBuildHere: canBuildHere,
+      canExperiment: true,
+    );
+    if (builder == null ||
+        _open != null ||
+        _chipName(canBuildHere: canBuildHere, canExperiment: true) !=
+            'Reports') {
+      return null;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 12),
+      child: FilledButton.icon(
+        // To the Builder by NAME. `_chip = 1` was the Builder only while the
+        // library sat at 0 (deploy desk audit, 2026-09-29).
+        onPressed: () => setState(() {
+          _chip = builder;
+          _open = null;
+        }),
+        icon: const Icon(Icons.add),
+        label: const Text('New report'),
+      ),
     );
   }
 
