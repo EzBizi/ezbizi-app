@@ -376,10 +376,32 @@ class HrPeopleController extends Controller
             // Until this, nothing could record a start date that had already
             // happened: both writers of that event stamp today.
             'started_on' => ['sometimes', 'required', 'date', 'after:1900-01-01'],
+
+            // Where they work (Mia, 2026-10-02: "assigning andy to A1-Group
+            // instead so she has full access"). The invitation's pair, and the
+            // same reach rule: only a place the editor reaches themselves.
+            'scope_type' => ['sometimes', 'required', Rule::in(ScopeReach::TYPES)],
+            'scope_id'   => ['required_with:scope_type', 'uuid'],
         ]);
 
         $startedOn = $input['started_on'] ?? null;
         unset($input['started_on']);
+
+        $place = isset($input['scope_type']) ? [$input['scope_type'], $input['scope_id']] : null;
+        unset($input['scope_type'], $input['scope_id']);
+
+        if ($place !== null) {
+            $this->reach->assertCovers($actor, $place[0], $place[1]);
+
+            // Moving replaces where they work. A place of theirs the editor
+            // cannot see would be deleted unseen, so that is refused instead.
+            if ($user->assignments()->get()->contains(fn (Assignment $a) => ! $this->reach->coversAssignment($actor, $a))) {
+                throw ValidationException::withMessages(['scope_id' =>
+                    'They also work somewhere you cannot reach, so moving them would remove a place '
+                    .'you cannot see. Ask somebody who reaches all of it.',
+                ]);
+            }
+        }
 
         $deactivating = array_key_exists('is_active', $input)
             && $input['is_active'] === false
@@ -423,9 +445,13 @@ class HrPeopleController extends Controller
             $this->administrators->assertNotTheLast($user, 'is_active');
         }
 
-        DB::transaction(function () use ($user, $input, $actor, $startedOn) {
+        DB::transaction(function () use ($user, $input, $actor, $startedOn, $place) {
             if ($startedOn !== null) {
                 $this->recordStartDate($user, $startedOn, $actor);
+            }
+
+            if ($place !== null) {
+                $this->moveTo($user, $place[0], $place[1], $actor);
             }
 
             $onFile = $user->addressParts();
@@ -529,6 +555,36 @@ class HrPeopleController extends Controller
         return response()->json([
             'data' => $this->present($user->fresh()->load('role', 'assignments'), $actor),
         ]);
+    }
+
+    /**
+     * One assignment where there were any, so §4's "everything beneath it comes
+     * with it" is the whole answer to what they reach. Nothing is written when
+     * they already work exactly there.
+     */
+    private function moveTo(User $user, string $type, string $id, User $actor): void
+    {
+        $current = $user->assignments()->get();
+
+        if ($current->count() === 1 && $current->first()->scopeType() === $type && $current->first()->scopeId() === $id) {
+            return;
+        }
+
+        $user->assignments()->delete();
+
+        Assignment::create([
+            'organization_id' => $user->organization_id,
+            'user_id' => $user->getKey(),
+            'assigned_organization_id' => $type === Assignment::SCOPE_ORGANIZATION ? $id : null,
+            'assigned_company_id' => $type === Assignment::SCOPE_COMPANY ? $id : null,
+            'assigned_franchise_id' => $type === Assignment::SCOPE_FRANCHISE ? $id : null,
+        ]);
+
+        $this->audit->log('user.assignment_moved', $user, metadata: [
+            'from' => $current->map(fn (Assignment $a) => ['type' => $a->scopeType(), 'id' => $a->scopeId()])->values()->all(),
+            'to' => ['type' => $type, 'id' => $id],
+            'because' => 'records',
+        ], actor: $actor);
     }
 
     /**

@@ -30,6 +30,13 @@ analyzer:
     # actually checked. Undo both before any release build.
     - integration_test/**
     - test_driver/**
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   # The lint rules applied to this project can be customized in the

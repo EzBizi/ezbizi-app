@@ -671,6 +671,24 @@ void main() {
     expect(patched, {'role_id': 'role-2'});
   });
 
+  // Mia, 2026-10-02: "assigning andy to A1-Group instead so she has full
+  // access to all companies and franchises".
+  testWidgets('Works at moves somebody, and saves the place as a pair', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+
+    await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
+
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Employment'));
+    await _choose(tester, 'Works at', 'Everdoors');
+    await _tap(tester, find.text('Save employment'));
+
+    expect(patched, {'scope_type': 'organization', 'scope_id': 'org-1'});
+  });
+
   testWidgets('deactivating asks first, and says the record survives it', (
     tester,
   ) async {
