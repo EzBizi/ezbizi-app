@@ -6,10 +6,12 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
+import 'package:ezbizi_client/widgets/month_calendar.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
@@ -1537,9 +1539,14 @@ void main() {
         ),
       );
 
-      // Both halves, at once. Layout 3 is the preview never hiding.
+      // The email is never out of sight: drawn from the blocks by default
+      // (layout A, 2026-10-02), the server's own HTML one switch away.
       expect(find.text('Newsletter'), findsWidgets);
       expect(find.text('What they will get'), findsOneWidget);
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
+      await tester.pumpAndSettle();
 
       // And it is the SERVER's HTML in the viewer the Email module uses, not
       // markup this screen built. A Dart renderer would drift from the one
@@ -1611,6 +1618,9 @@ void main() {
           previewHtml: '<h1>Autumn sweeps</h1>',
         ),
       );
+
+      await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
+      await tester.pumpAndSettle();
 
       final box = tester.renderObject<RenderBox>(find.byType(MessageHtmlView));
 
@@ -1704,7 +1714,7 @@ void main() {
         _handler(canEdit: true, newsletters: const [_draft]),
       );
 
-      await tester.tap(find.text('HTML'));
+      await tester.tap(find.text('Write HTML'));
       await tester.pumpAndSettle();
 
       // Two sources of truth for one email is how somebody edits the markup,
@@ -1765,14 +1775,23 @@ void main() {
       // The server's counts, not a count of the fifty rows the list carries.
       // Scoped to the stats card: a bare `find.text('7')` also matches the
       // calendar's seventh day, which is what this assertion tripped on first.
-      final statsCard = find.widgetWithText(DashboardCard, 'Mailings in Everdoors');
-      expect(statsCard, findsOneWidget);
-      expect(find.descendant(of: statsCard, matching: find.text('7')), findsOneWidget);
-      expect(find.descendant(of: statsCard, matching: find.text('1240')), findsOneWidget);
+      // Scoped to the tiles (layout A, 2026-10-02): a bare `find.text('7')`
+      // also matches the calendar's seventh day.
+      expect(
+        find.descendant(of: find.byKey(const Key('newsletters-tile-sent')), matching: find.text('7')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('newsletters-fact-reached')),
+          matching: find.text('1240'),
+        ),
+        findsOneWidget,
+      );
 
       // Named honestly. EzBizi knows what the provider ACCEPTED; "delivered"
       // would be a claim it cannot stand behind.
-      expect(find.text('Addresses reached'), findsOneWidget);
+      expect(find.text('ADDRESSES REACHED'), findsOneWidget);
       expect(find.textContaining('delivered'), findsNothing);
     });
 
@@ -1805,11 +1824,12 @@ void main() {
 
       // On the calendar, in the current month, by subject.
       expect(find.text('Scheduled'), findsWidgets);
-      expect(find.text('Autumn sweeps'), findsOneWidget);
+      // In the calendar; the table beside it carries the subject too.
+      expect(_inCalendar('Autumn sweeps'), findsOneWidget);
 
       // "Review them or edit them" — tapping it lands in the composer with
       // that mailing open. A date with no way in is a poster.
-      await tester.tap(find.text('Autumn sweeps'));
+      await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
       expect(find.text('What they will get'), findsOneWidget);
@@ -1869,7 +1889,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Autumn sweeps'));
+      await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
       expect(
@@ -1909,7 +1929,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Send it later'));
+      await tester.tap(find.text('Later'));
       await tester.pumpAndSettle();
 
       expect(
@@ -1961,6 +1981,160 @@ void main() {
       expect(find.widgetWithText(TextButton, 'Disconnect'), findsOneWidget);
       // No second Connect form beside a live connection.
       expect(find.text('Mailchimp API key'), findsNothing);
+    });
+  });
+
+  /// Layout A (Mia, 2026-10-02): tiles over a table on the dashboard, and the
+  /// email itself as the editor in the composer.
+  group('newsletter layout A', () {
+    const sent = {
+      'id': 'n-5',
+      'subject': 'September specials',
+      'status': 'sent',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'last_send': {'status': 'sent', 'recipients': 412, 'sent_at': '2026-09-03T14:00:00Z'},
+      'blocks': [
+        {'type': 'heading', 'text': 'September specials', 'align': 'left'},
+      ],
+    };
+    const scheduled = {
+      'id': 'n-9',
+      'subject': 'Fall chimney tips',
+      'status': 'scheduled',
+      'scheduled_for': '2099-10-08 09:00',
+      'audience': null,
+      'blocks': [],
+    };
+
+    testWidgets('a dashboard tile counts and filters the table', (tester) async {
+      final asked = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        newsletters: const [_draft, sent, scheduled],
+        stats: const {
+          'drafts': 1,
+          'scheduled': 1,
+          'sent': 1,
+          'recipients': 412,
+          'last_sent_at': '2026-09-03T14:00:00Z',
+        },
+      );
+      await _pumpNewsletter(tester, (request) {
+        final status = request.url.queryParameters['status'];
+        if (status != null) {
+          asked.add(status);
+          return Future.value(_json({
+            'data': [
+              for (final n in const [_draft, sent, scheduled])
+                if (n['status'] == status) n,
+            ],
+            'sending': {'refused_because': null},
+            'stats': const {},
+          }));
+        }
+        return inner(request);
+      });
+
+      // Every newsletter, with what each row carries.
+      for (final id in ['n-1', 'n-5', 'n-9']) {
+        expect(find.byKey(ValueKey('newsletter-$id')), findsOneWidget);
+      }
+      final sentRow = find.byKey(const ValueKey('newsletter-n-5'));
+      expect(find.descendant(of: sentRow, matching: find.text('412')), findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.text('Customers · built from your customers')),
+          findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.text('View')), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const Key('newsletters-tile-sent')), matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('newsletters-tile-sent')));
+      await tester.pumpAndSettle();
+
+      // Asked of the server: the list is capped at fifty, the tile is not.
+      expect(asked, ['sent']);
+      expect(find.byKey(const ValueKey('newsletter-n-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-n-1')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-n-9')), findsNothing);
+
+      // Tapping it again clears it.
+      await tester.tap(find.byKey(const Key('newsletters-tile-sent')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-n-1')), findsOneWidget);
+    });
+
+    testWidgets('clicking a block edits it in place, and the edit autosaves', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draft}));
+        }
+        return inner(request);
+      });
+
+      final block = find.byKey(const Key('newsletter-block-0'));
+      expect(find.descendant(of: block, matching: find.byType(TextFormField)), findsNothing);
+
+      await tester.tap(block);
+      await tester.pumpAndSettle();
+
+      // The fields replace the block, where it was, with the moves beside them.
+      final field = find.descendant(of: block, matching: find.widgetWithText(TextFormField, 'Heading'));
+      expect(field, findsOneWidget);
+      expect(find.descendant(of: block, matching: find.text('Remove')), findsOneWidget);
+      expect(find.descendant(of: block, matching: find.text('Move down')), findsOneWidget);
+
+      await tester.enterText(field, 'Winter sweeps');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'Typing in place must autosave.');
+      expect((saved.last['blocks'] as List).first['text'], 'Winter sweeps');
+
+      // Done puts the drawn block back, showing the new words.
+      await tester.tap(find.descendant(of: block, matching: find.text('Done')));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
+    });
+
+    testWidgets('the dashboard lays out on a 375-point window', (tester) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft, sent, scheduled]),
+        size: const Size(375, 2400),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('newsletter-n-5')), findsOneWidget);
+      expect(find.text('New newsletter'), findsOneWidget);
+    });
+
+    testWidgets('the Desktop / Phone switch narrows the email', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      final email = find.byKey(const Key('newsletter-email'));
+      expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
+
+      await tester.tap(find.text('Phone'));
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(email).width, NewsletterEmail.phoneWidth);
+    });
+
+    testWidgets('a sent newsletter is read-only', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [sent]));
+
+      expect(find.textContaining('has gone out, so it cannot be changed'), findsWidgets);
+
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, 'Heading'), findsNothing);
+
+      final add = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Heading'));
+      expect(add.onPressed, isNull);
     });
   });
 
@@ -2032,6 +2206,11 @@ Future<void> _pumpComposer(
   await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
   await tester.pumpAndSettle();
 }
+
+/// A calendar entry by its subject: the dashboard's table carries the same
+/// subject, so a bare find.text is ambiguous since layout A.
+Finder _inCalendar(String subject) =>
+    find.descendant(of: find.byType(MonthCalendar), matching: find.text(subject));
 
 /// The sentence on a disabled button, or null when it may be pressed.
 String? _refusalOn(WidgetTester tester, String label) => tester
