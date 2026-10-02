@@ -57,6 +57,8 @@ class Role extends Model
             // The roles this role's holders may offer, or null for the rule
             // by reach (PermissionCatalogue::mayAssignRole).
             'invitable_role_ids' => 'array',
+            // Its holders are never named as viewing a lead (LeadPresence).
+            'hidden_on_leads' => 'boolean',
         ];
     }
 

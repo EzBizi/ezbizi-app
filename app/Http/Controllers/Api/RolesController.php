@@ -98,6 +98,7 @@ class RolesController extends Controller
                 // Which roles its holders may offer when they invite, or null
                 // for "any role reaching no further than theirs".
                 'invitable_roles'  => $role->invitable_role_ids,
+                'hidden_on_leads'  => (bool) $role->hidden_on_leads,
 
                 // Administrator holds everything implicitly and owns no rows, so
                 // reporting its stored (empty) set would draw an editor with
@@ -319,6 +320,15 @@ class RolesController extends Controller
                 }
             }
 
+            if (array_key_exists('hidden_on_leads', $input)) {
+                $role->hidden_on_leads = (bool) $input['hidden_on_leads'];
+
+                if ($role->isDirty('hidden_on_leads')) {
+                    $this->audit->logChange('role.updated', $role);
+                    $role->save();
+                }
+            }
+
             if (array_key_exists('phone_numbers', $input)) {
                 $this->phoneNumbers->assertGrantable($actor, $input['phone_numbers']);
 
@@ -477,6 +487,9 @@ class RolesController extends Controller
             'invitable_roles'   => ['sometimes', 'nullable', 'array'],
             'invitable_roles.*' => ['uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $request->user()->organization_id)],
+
+            // Whether its holders are left off "X is viewing this lead".
+            'hidden_on_leads' => ['sometimes', 'boolean'],
         ]);
     }
 
@@ -491,6 +504,7 @@ class RolesController extends Controller
             'inspections'      => $this->inspections->heldBy($role),
             'phone_numbers'    => $this->phoneNumbers->heldBy($role),
             'invitable_roles'  => $role->invitable_role_ids,
+            'hidden_on_leads'  => (bool) $role->hidden_on_leads,
         ];
     }
 }
