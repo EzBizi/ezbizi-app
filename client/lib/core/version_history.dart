@@ -14,6 +14,26 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0349',
+      date: '2 Oct 2026',
+      items: [
+        'Automations: {{company_name}}, {{source_name}} and {{thank_you}} are offered as chips with a live example, and a franchise lead\'s message signs with its company\'s name, not the organization\'s.',
+        'Automations: Where it applies names each franchise with its company (Connecticut — A-1 Chimney), and Make a copy duplicates any rule, switched off.',
+        'Roles: a Seen on leads switch; a role switched off, such as Marketing, is never shown as viewing a lead.',
+        'Leads: the conversation says Customer instead of They, and an unnamed lead reads Customer is typing…',
+        'Inventory and Fleet open on a new General tab, the module\'s dashboard. Fleet\'s shows vehicles by status, warnings (service due or overdue, insurance expired, expiring or missing, out of service) and, for those who see financials, spending by category. The Fleet register becomes the Vehicles tab.',
+        'Human Resources: the tabs read Dashboard, Records, Contracts, Invitations, Onboarding; Works at can be changed on a person\'s record, within your own reach; Invitations, Onboarding and Contracts show count tiles that filter a table.',
+        'Onboarding: Download PDF gives the signed contract with the signatures, and the uploaded photos at the back.',
+        'Scheduling, Availability: search by street address (its ZIP is looked up) and see the address it matched. An area closed every day shows Closed, and closed dates such as holidays show Closed that day in the list.',
+        'Communication: Records, Messages, Team, Voicemail, Users, Reports (with a real bar chart) and every Settings tab (Connection, Numbers, Porting, Ring groups, Voicemail boxes, IVR menus, Hours, Extensions, Blocked callers, Tags, Cost) show tiles over a table. Tags can be renamed, and on a phone Team shows the roster instead of the dial pad.',
+        'Marketing, Social Posts: a composer with a live preview and character counters for each network (over the limit blocks publishing), a Posts table with Scheduled, Sent and Failed tiles, and the calendars behind a Compose and Calendar switch.',
+        'Marketing, Newsletter: the dashboard shows tiles, a table of every newsletter and a calendar. The composer edits blocks directly on the email, with Desktop and Phone views and a server preview.',
+        'Newsletter fixes: saving no longer drops the text of every block (emails went out nearly empty), column blocks show their content, and a block\'s links and pictures only accept web, email and phone addresses.',
+        'Reports: New report sits beside the tabs.',
+        'Windows app: Download and Export buttons open a Save dialog; they did nothing before. That covers the onboarding PDF, the Settings export, Inspection reports, Fleet papers and CSV exports.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0348',
       date: '2 Oct 2026',
       items: [
