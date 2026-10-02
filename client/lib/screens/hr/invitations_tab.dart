@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import '../../core/api_client.dart';
 import '../../core/hr.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
@@ -74,6 +76,13 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
   List<Map<String, dynamic>> _invitations = const [];
   int _total = 0;
+
+  /// The tile picked: sent, opened, completed, abandoned or revoked; null is
+  /// every invitation. The server filters, so the count and the rows agree.
+  String? _status;
+
+  /// Each tile's count, across every page — the server's, never this page's.
+  Map<String, int>? _tiles;
   int _page = 1;
   int _lastPage = 1;
 
@@ -115,7 +124,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     });
 
     final answers = await Future.wait([
-      widget.api.get('/hr/invitations', {'page': '$page'}),
+      widget.api.get('/hr/invitations', {
+        'page': '$page',
+        'status': ?_status,
+      }),
       // Asked again on every load rather than once: a role can be created, and
       // an administrator can widen or narrow somebody's reach, while this
       // screen is open. It is the same request the form depends on being right.
@@ -148,6 +160,13 @@ class _InvitationsTabState extends State<InvitationsTab> {
       _total = meta?['total'] as int? ?? _invitations.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
+      final tiles = meta?['tiles'];
+      _tiles = tiles is Map
+          ? {
+              for (final e in tiles.entries)
+                '${e.key}': (e.value as num?)?.toInt() ?? 0,
+            }
+          : null;
 
       _options = options.ok && options.data is Map
           ? AssignmentOptions.fromJson(
@@ -216,7 +235,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _invitations.isEmpty
+            child: _invitations.isEmpty && _status == null
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32),
@@ -229,20 +248,93 @@ class _InvitationsTabState extends State<InvitationsTab> {
                       ),
                     ),
                   )
-                : ListView.separated(
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount:
-                        _invitations.length + (_page < _lastPage ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => i == _invitations.length
-                        ? LoadMore(
-                            shown: _invitations.length,
-                            total: _total,
-                            busy: _fetching,
-                            error: _pageError,
-                            onMore: () => _load(page: _page + 1),
-                          )
-                        : _row(context, _invitations[i]),
+                    children: [
+                      FilterTiles(
+                        prefix: 'invitations',
+                        picked: _status,
+                        onPick: (key) {
+                          setState(() => _status = key);
+                          _load();
+                        },
+                        tiles: [
+                          FilterTile(
+                            key: null,
+                            label: 'All',
+                            count: _tiles?.values.fold<int>(0, (a, b) => a + b),
+                            note: 'invitations',
+                          ),
+                          FilterTile(
+                            key: 'sent',
+                            label: 'Sent',
+                            count: _tiles?['sent'],
+                            note: 'not opened yet',
+                          ),
+                          FilterTile(
+                            key: 'opened',
+                            label: 'Opened',
+                            count: _tiles?['opened'],
+                            note: 'not finished yet',
+                          ),
+                          FilterTile(
+                            key: 'completed',
+                            label: 'Completed',
+                            count: _tiles?['completed'],
+                            note: 'have an account',
+                          ),
+                          FilterTile(
+                            key: 'abandoned',
+                            label: 'Expired',
+                            count: _tiles?['abandoned'],
+                            note: 'worth a resend',
+                            tone: Tone.caution,
+                          ),
+                          FilterTile(
+                            key: 'revoked',
+                            label: 'Revoked',
+                            count: _tiles?['revoked'],
+                            note: 'taken back',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_invitations.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No invitations in this state.',
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      else
+                        ListTable(
+                          columns: const [
+                            ListColumn('Person', flex: 4),
+                            ListColumn('Role', flex: 2),
+                            ListColumn('Works at', flex: 2),
+                            ListColumn('Status', flex: 2),
+                            ListColumn('Invited by', flex: 2),
+                            ListColumn('When', flex: 3),
+                            ListColumn('', flex: 2, end: true),
+                          ],
+                          rowKey: (i) =>
+                              ValueKey('invitation-${_invitations[i]['id']}'),
+                          rows: [
+                            for (final invitation in _invitations)
+                              _cells(context, invitation),
+                          ],
+                          footer: _page < _lastPage
+                              ? LoadMore(
+                                  shown: _invitations.length,
+                                  total: _total,
+                                  busy: _fetching,
+                                  error: _pageError,
+                                  onMore: () => _load(page: _page + 1),
+                                )
+                              : null,
+                        ),
+                    ],
                   ),
           ),
         ),
@@ -250,112 +342,75 @@ class _InvitationsTabState extends State<InvitationsTab> {
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> invitation) {
+  /// The cells of one table row (layout A, Mia 2026-10-02): the person, the
+  /// role, where they will work, where it got to, who sent it, when, and what
+  /// can still be done to it.
+  List<Widget> _cells(BuildContext context, Map<String, dynamic> invitation) {
+    final theme = Theme.of(context);
     final status = invitation['status'] as String? ?? '';
     final role = invitation['role'] as Map<String, dynamic>?;
     final scope = invitation['scope'] as Map<String, dynamic>?;
     final invitedBy = invitation['invited_by'] as Map<String, dynamic>?;
+    final email = invitation['email'] as String? ?? '';
 
     final name = [
       invitation['first_name'],
       invitation['last_name'],
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
-    // Two ends, and neither has anything left to do to it.
-    //
-    // An accepted invitation is a person now, and the Records tab is where they
-    // live. Resending would mint a fresh token for an account that already
-    // exists; revoking would take back something already spent.
-    //
-    // A revoked one is a decision somebody here made. The server refuses to
-    // resend it — "send a new one if you have changed your mind, so the record
-    // still shows what was decided and when" — so the button was a control that
-    // could only ever answer an error, and Revoke on it does nothing at all.
-    // This row could not tell revoked from expired until `revoked` became a
-    // status of its own; now it can, so it stops offering both.
-    //
-    // Expired is deliberately NOT settled: chasing one that lapsed is the single
-    // most useful thing Resend does.
-    //
-    // The row stays either way, because how somebody got here — or did not — is
-    // worth being able to read.
+    // Two ends, and neither has anything left to do to it. An accepted one is
+    // a person now (Records is where they live); a revoked one is a decision
+    // somebody made, and the server refuses to resend it. Expired is NOT
+    // settled: chasing one that lapsed is the most useful thing Resend does.
     final settled = status == 'completed' || status == 'revoked';
+    final mayAct = widget.session.me?.can('hr.create') == true;
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return [
+      PersonCell(name: name.isEmpty ? email : name, sub: name.isEmpty ? null : email),
+      Text(role?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
+      Text(scope?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
+      Tag(
+        invitationStatusLabel(status),
+        warn: invitationStatusNeedsAttention(status),
+        good: status == 'completed',
+      ),
+      Text(
+        invitedBy?['name'] as String? ?? '—',
+        overflow: TextOverflow.ellipsis,
+        style: small,
+      ),
+      Text(_outcome(invitation, status), style: small),
+      settled
+          ? const SizedBox.shrink()
+          : Wrap(
+              alignment: WrapAlignment.end,
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          invitation['email'] as String? ?? '',
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      Tag(
-                        invitationStatusLabel(status),
-                        warn: invitationStatusNeedsAttention(status),
-                      ),
-                    ],
+                Refused(
+                  reason: widget.session.me?.refusal(
+                    'hr.create',
+                    'resend invitations',
+                  ),
+                  child: TextButton(
+                    onPressed: mayAct ? () => _resend(invitation) : null,
+                    child: const Text('Resend'),
                   ),
                 ),
-                if (!settled) ...[
-                  Refused(
-                    reason: widget.session.me?.refusal(
-                      'hr.create',
-                      'resend invitations',
-                    ),
-                    child: TextButton(
-                      onPressed: widget.session.me?.can('hr.create') == true
-                          ? () => _resend(invitation)
-                          : null,
-                      child: const Text('Resend'),
-                    ),
+                Refused(
+                  reason: widget.session.me?.refusal(
+                    'hr.create',
+                    'withdraw invitations',
                   ),
-                  Refused(
-                    reason: widget.session.me?.refusal(
-                      'hr.create',
-                      'withdraw invitations',
-                    ),
-                    child: TextButton(
-                      onPressed: widget.session.me?.can('hr.create') == true
-                          ? () => _revoke(invitation)
-                          : null,
-                      child: const Text('Revoke'),
-                    ),
+                  child: TextButton(
+                    onPressed: mayAct ? () => _revoke(invitation) : null,
+                    child: const Text('Revoke'),
                   ),
-                ],
+                ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (name.isNotEmpty) name,
-                if (role?['name'] != null) role!['name'] as String,
-                if (scope?['name'] != null) scope!['name'] as String,
-              ].join(' · '),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (invitedBy?['name'] != null)
-                  'Invited by ${invitedBy!['name']}',
-                _outcome(invitation, status),
-              ].join(' · '),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
+    ];
   }
 
   /// What became of it, in a phrase.

@@ -84,7 +84,9 @@ void main() {
 
     await _tap(tester, _tab('Invitations'));
 
-    expect(find.text('Jose Silva'), findsNothing);
+    // Jose is named on Invitations too now, as who sent them (the Invited by
+    // column), so the Records list is what must have gone.
+    expect(find.byType(RecordsTab), findsNothing);
     expect(find.text('bea@example.com'), findsOneWidget);
 
     await _tap(tester, _tab('Records'));
@@ -687,6 +689,27 @@ void main() {
     await _tap(tester, find.text('Save employment'));
 
     expect(patched, {'scope_type': 'organization', 'scope_id': 'org-1'});
+  });
+
+  // Layout A (Mia, 2026-10-02): the tiles are the server's counts, and one
+  // asks the server for its slice rather than filtering a page.
+  testWidgets('an Invitations tile shows its count and asks for its slice', (
+    tester,
+  ) async {
+    final asked = <Map<String, String>>[];
+    await _pump(tester, _handler(onInvitationsQuery: asked.add));
+
+    await _tap(tester, _tab('Invitations'));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('invitations-tile-abandoned')),
+        matching: find.text('2'),
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.byKey(const Key('invitations-tile-abandoned')));
+    expect(asked.last['status'], 'abandoned');
   });
 
   testWidgets('deactivating asks first, and says the record survives it', (
@@ -1533,6 +1556,7 @@ MockClientHandler _handler({
   List<Map<String, Object?>> invitations = _invitations,
   List<Map<String, Object?>> contracts = const [],
   void Function(Map<String, String> query)? onPeopleQuery,
+  void Function(Map<String, String> query)? onInvitationsQuery,
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
   int revokeStatus = 200,
@@ -1729,9 +1753,17 @@ MockClientHandler _handler({
         }, 201);
       }
 
+      onInvitationsQuery?.call(request.url.queryParameters);
       return _json({
         'data': invitations,
         'meta': {
+          'tiles': const {
+            'sent': 1,
+            'opened': 0,
+            'completed': 0,
+            'abandoned': 2,
+            'revoked': 0,
+          },
           'total': invitations.length,
           'per_page': 50,
           'current_page': 1,

@@ -572,7 +572,8 @@ void main() {
 
     expect(find.text('Bea Okafor'), findsOneWidget);
     expect(find.text('In progress'), findsOneWidget);
-    expect(find.text('Version 3'), findsOneWidget);
+    // The version rides beside the contract's name in its column now.
+    expect(find.textContaining('v3'), findsOneWidget);
 
     // How far along, and then both sides' counts rather than one verdict word,
     // in the server's names for the sides: an onboarding stuck because nobody
@@ -600,8 +601,15 @@ void main() {
     await _pumpTab(tester, _handler(onList: asked.add));
     expect(asked.last['state'], 'open');
 
-    await _tap(tester, find.byKey(const ValueKey('onboardings-finished')));
-    expect(asked.last['state'], 'finished');
+    // The archive is the Completed and Cancelled tiles now (layout A, Mia
+    // 2026-10-02): one status each, and the ongoing list is still the default.
+    await _tap(tester, find.byKey(const Key('onboardings-tile-completed')));
+    expect(asked.last['status'], 'completed');
+    expect(asked.last.containsKey('state'), isFalse);
+
+    // Tapping the picked tile again goes back to what is still under way.
+    await _tap(tester, find.byKey(const Key('onboardings-tile-completed')));
+    expect(asked.last['state'], 'open');
   });
 
   testWidgets('an in-progress onboarding can be cancelled', (tester) async {
