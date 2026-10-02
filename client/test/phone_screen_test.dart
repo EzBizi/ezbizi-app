@@ -1636,16 +1636,19 @@ void main() {
       // The roster lives on the Team sub-tab now.
       await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
 
+      // The roster is a table now (Mia, 2026-10-02): the count is a "2 new"
+      // pill on Ana's row, where it was a bare "2" badge.
       final ana = find.ancestor(
         of: find.text('Ana'),
-        matching: find.byType(Row),
+        matching: find.byKey(const ValueKey('teammate-u-ana')),
       );
 
       expect(
-        find.descendant(of: ana.first, matching: find.text('2')),
+        find.descendant(of: ana, matching: find.text('2 new')),
         findsOneWidget,
         reason: 'the count was not shown against the person who is waiting',
       );
+      expect(find.text('2 new'), findsOneWidget, reason: 'Bar has sent nothing');
     });
 
     /// Sent and seen, and nothing else — no delivered, no typing indicator.

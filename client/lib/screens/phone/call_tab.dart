@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../customers/customer_detail_panel.dart';
@@ -989,23 +990,6 @@ class _CallTabState extends State<CallTab> {
     _lookUp();
   }
 
-  Widget _badge(ThemeData theme, int count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Text(
-        '$count',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onPrimary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   Future<void> _loadUnread() async {
     final response = await widget.api.get('/staff-messages/unread');
     if (!mounted || !response.ok) return;
@@ -1373,6 +1357,10 @@ class _CallTabState extends State<CallTab> {
       );
 
   Widget _narrow() {
+    // The Team tab is the roster at every width; its table stacks its rows
+    // below 720 on its own, so a phone needs no second layout of it.
+    if (widget.view == CallView.team) return _teammatesPane();
+
     // A call ringing or connected shows the pad, whatever was open: its
     // controls live there.
     final pane =
@@ -1423,6 +1411,18 @@ class _CallTabState extends State<CallTab> {
     };
   }
 
+  /// Which tile is picked on the Team roster: `available`, `on_call`, `dnd`,
+  /// `unread`, or null for everyone.
+  String? _teamFilter;
+
+  /// The tile a presence state falls under. The same three words the row
+  /// prints, so a tile and the pills under it can never disagree.
+  static String _stateKey(String state) => switch (state) {
+    'on_call' => 'on_call',
+    'dnd' => 'dnd',
+    _ => 'available',
+  };
+
   Widget _teammatesPane() {
     final theme = Theme.of(context);
     final chat = _chatWith;
@@ -1441,140 +1441,164 @@ class _CallTabState extends State<CallTab> {
       );
     }
 
-    final waiting = _unread.values.fold<int>(0, (sum, n) => sum + n);
+    // Tiles over a table (Mia, 2026-10-02, the `team` mockup). Presence comes
+    // back whole, never paged, so every count is taken here over the full
+    // roster rather than asked of the server.
+    int inState(String key) =>
+        _teammates.where((row) => _stateKey(row.state) == key).length;
+    int unreadFrom(_Teammate row) => _unread[row.userId] ?? 0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final waiting = _teammates.fold<int>(0, (sum, row) => sum + unreadFrom(row));
+    final shown = [
+      for (final row in _teammates)
+        if (switch (_teamFilter) {
+          null => true,
+          'unread' => unreadFrom(row) > 0,
+          final key => _stateKey(row.state) == key,
+        })
+          row,
+    ];
+
+    return ListView(
+      key: const Key('phone-call-teammates'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: Row(
-            children: [
-              Expanded(child: Text('Team', style: theme.textTheme.titleSmall)),
-              if (waiting > 0) _badge(theme, waiting),
-            ],
-          ),
+        FilterTiles(
+          prefix: 'team',
+          picked: _teamFilter,
+          onPick: (key) => setState(() => _teamFilter = key),
+          tiles: [
+            FilterTile(
+              key: null,
+              label: 'Everyone',
+              count: _teammates.length,
+              note: 'at this desk',
+            ),
+            FilterTile(
+              key: 'available',
+              label: 'Available',
+              count: inState('available'),
+              note: 'can take a call',
+              tone: Tone.ok,
+            ),
+            FilterTile(
+              key: 'on_call',
+              label: 'On a call',
+              count: inState('on_call'),
+              note: 'busy now',
+            ),
+            FilterTile(
+              key: 'dnd',
+              label: 'Do not disturb',
+              count: inState('dnd'),
+              note: 'not taking calls',
+            ),
+            // The sum of messages, not of people: it is the number the old
+            // header badge showed, and the one somebody clears by reading.
+            FilterTile(
+              key: 'unread',
+              label: 'Unread',
+              count: waiting,
+              note: 'staff messages',
+              tone: Tone.caution,
+            ),
+          ],
         ),
-        Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-            children: [
-              for (final row in _teammates)
-                Material(
-                  color: row.userId == _teammateId
-                      ? theme.colorScheme.primaryContainer
-                      : theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => setState(() {
-                      _teammateId = row.userId;
-                      _pane = _CallPane.pad;
-                    }),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 44),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
+        const SizedBox(height: 12),
+        if (_teammates.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              'Nobody is at this desk yet.',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        else if (shown.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Nobody in this state.', textAlign: TextAlign.center),
+          )
+        else
+          ListTable(
+            columns: const [
+              ListColumn('Person', flex: 4),
+              ListColumn('Status', flex: 3),
+              ListColumn('Unread', flex: 2),
+              ListColumn('', flex: 3, end: true),
+            ],
+            rowKey: (i) => ValueKey('teammate-${shown[i].userId}'),
+            // The row still picks the person, as it did: the pad's internal
+            // call goes to whoever was picked last.
+            onTap: (i) => setState(() {
+              _teammateId = shown[i].userId;
+              _pane = _CallPane.pad;
+            }),
+            rows: [
+              for (final row in shown)
+                [
+                  PersonCell(name: row.name),
+
+                  // RED for Do not disturb, asked for by Jose: the one state
+                  // that means "this person will not be rung" must not read
+                  // as switched off. Tone.bad follows the theme into dark
+                  // mode, as the error-coloured dot it replaces did.
+                  StatusPill(
+                    _stateLabel(row.state),
+                    tone: switch (_stateKey(row.state)) {
+                      'dnd' => Tone.bad,
+                      'on_call' => Tone.info,
+                      _ => Tone.ok,
+                    },
+                  ),
+                  unreadFrom(row) > 0
+                      ? StatusPill(
+                          '${unreadFrom(row)} new',
+                          tone: Tone.caution,
+                        )
+                      : Text(
+                          '—',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              size: 8,
-
-                              // RED for Do not disturb, asked for by Jose.
-                              //
-                              // It was `onSurfaceVariant`, which is the colour
-                              // of secondary TEXT — so the one state that
-                              // means "this person will not be rung" was drawn
-                              // in the palette's quietest ink, and read as
-                              // switched off rather than as unavailable.
-                              //
-                              // `error` rather than a literal red, so it
-                              // follows the theme into dark mode instead of
-                              // becoming the one hard-coded colour on the
-                              // screen.
-                              color: row.state == 'dnd'
-                                  ? theme.colorScheme.error
-                                  : theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    row.name,
-                                    style: theme.textTheme.bodyMedium,
-                                  ),
-                                  Text(
-                                    _stateLabel(row.state),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Messaging is its own control rather than the
-                            // row's tap, because the row already means "call
-                            // this person" and a colleague who is mid-job
-                            // wants the other one.
-                            if ((_unread[row.userId] ?? 0) > 0)
-                              _badge(theme, _unread[row.userId]!),
-                            IconButton(
-                              tooltip: 'Message ${row.name}',
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(
-                                Icons.chat_bubble_outline,
-                                size: 18,
-                              ),
-                              onPressed: () => setState(() => _chatWith = row),
-                            ),
-
-                            // Calling a colleague belongs ON the colleague,
-                            // not on the dial pad.
-                            //
-                            // It used to be an "Internal" button beside Call,
-                            // disabled until a row had been selected — so the
-                            // control for reaching a PERSON sat next to a
-                            // keypad for reaching a NUMBER, and did nothing
-                            // until you had already picked the person
-                            // somewhere else. Two steps, and the first was
-                            // invisible: nothing on the pad said what
-                            // "Internal" would dial, or why it was grey.
-                            IconButton(
-                              tooltip: 'Call ${row.name}',
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.phone_outlined, size: 18),
-                              onPressed: _onCall
-                                  ? null
-                                  : () {
-                                      setState(() => _teammateId = row.userId);
-                                      _placeCall(internal: true);
-                                    },
-                            ),
-                          ],
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
+                      // Messaging is its own control rather than the row's
+                      // tap, because the row already means "call this
+                      // person" and a colleague who is mid-job wants the
+                      // other one.
+                      Tooltip(
+                        message: 'Message ${row.name}',
+                        child: TextButton(
+                          key: Key('teammate-message-${row.userId}'),
+                          onPressed: () => setState(() => _chatWith = row),
+                          child: const Text('Message'),
                         ),
                       ),
-                    ),
+
+                      // Calling a colleague belongs ON the colleague, not on
+                      // the dial pad: the old "Internal" button beside Call
+                      // did nothing until a row had been picked somewhere
+                      // else.
+                      Tooltip(
+                        message: 'Call ${row.name}',
+                        child: TextButton(
+                          key: Key('teammate-call-${row.userId}'),
+                          onPressed: _onCall
+                              ? null
+                              : () {
+                                  setState(() => _teammateId = row.userId);
+                                  _placeCall(internal: true);
+                                },
+                          child: const Text('Call'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              if (_teammates.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    'Nobody is at this desk yet.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
+                ],
             ],
           ),
-        ),
       ],
     );
   }
