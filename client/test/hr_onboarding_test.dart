@@ -486,6 +486,26 @@ void main() {
 
   // ── the finished record ────────────────────────────────────────
 
+  // Mia, 2026-10-02: Eve finished a technician's onboarding and could not
+  // download the signed contract.
+  testWidgets('a signed contract can be fetched as a PDF to download', (
+    tester,
+  ) async {
+    var asked = 0;
+    await _pumpForm(
+      tester,
+      _handler(form: _asRecord, onSignedPdf: () => asked++),
+    );
+
+    final button = find.byKey(const Key('onboarding-download-pdf'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(asked, 1);
+    expect(find.byKey(const Key('onboarding-save-pdf')), findsOneWidget);
+  });
+
   testWidgets('a finished record reads as one, signature and all', (
     tester,
   ) async {
@@ -1586,6 +1606,8 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onPreviewBody,
   /// The draft PDF `POST …/preview?format=pdf` answers with.
   Uint8List Function(Map<String, dynamic> body)? onPdf,
+  /// `GET …/document/pdf`, the signed copy: called with nothing, counts asks.
+  void Function()? onSignedPdf,
   /// The signer's saved signature, `GET /me/signature`; null when none.
   String? savedSignature,
   void Function(Map<String, dynamic> body)? onSaveSignature,
@@ -1667,6 +1689,15 @@ MockClientHandler _handler({
             if (county.toLowerCase().startsWith(q)) county,
         ],
       });
+    }
+
+    if (path.endsWith('/hr/onboardings/o-1/document/pdf')) {
+      onSignedPdf?.call();
+      return http.Response.bytes(
+        utf8.encode('%PDF-1.4 signed'),
+        200,
+        headers: {'content-type': 'application/pdf'},
+      );
     }
 
     if (path.endsWith('/hr/onboardings/o-1/document')) {

@@ -314,7 +314,47 @@ class OnboardingDocuments
             // `created_at` is written once and never updated on this model.
             sourceStoredAt: $document->created_at ?? $onboarding->started_at ?? now(),
             signatures: $this->signatureBlocks($onboarding),
+            attachments: $this->attachmentPages($onboarding),
         );
+    }
+
+    /**
+     * Every file answered on the form, for the copy's Attachments pages: the
+     * question, the file's name, and the picture itself when it is one the
+     * converter can draw (JPEG, PNG, GIF). Anything else is named only.
+     *
+     * @return list<array{label: string, name: string, mime: string, data: ?string}>
+     */
+    private function attachmentPages(Onboarding $onboarding): array
+    {
+        $answers = $onboarding->answers()->get()->keyBy('field_key');
+        $pages = [];
+
+        foreach ($onboarding->fields() as $field) {
+            if ($field->type !== \App\Support\Contracts\FieldType::FILE) {
+                continue;
+            }
+
+            $id = (string) ($answers->get($field->key)?->value ?? '');
+            $file = $id === '' ? null : Attachment::query()->whereKey($id)->first();
+
+            if ($file === null) {
+                continue;
+            }
+
+            $mime = (string) $file->mime;
+            $drawable = in_array($mime, ['image/jpeg', 'image/png'], true);
+            $bytes = $drawable ? $this->files->contents($file->path, $file->disk) : null;
+
+            $pages[] = [
+                'label' => (string) $field->label,
+                'name' => (string) $file->original_name,
+                'mime' => $mime,
+                'data' => $bytes === null ? null : base64_encode($bytes),
+            ];
+        }
+
+        return $pages;
     }
 
     /**
