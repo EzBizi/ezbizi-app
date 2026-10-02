@@ -98,10 +98,10 @@
             "parent": null,
             "tabs": [
                 "Dashboard",
-                "Onboarding",
                 "Records",
+                "Contracts",
                 "Invitations",
-                "Contracts"
+                "Onboarding"
             ]
         },
         "inspection": {

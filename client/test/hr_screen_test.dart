@@ -57,10 +57,10 @@ void main() {
 
     expect(_chips(tester), [
       'Dashboard',
-      'Onboarding',
       'Records',
-      'Invitations',
       'Contracts',
+      'Invitations',
+      'Onboarding',
     ]);
 
     // It opens on tab zero now, and the rule that put it there has not changed:

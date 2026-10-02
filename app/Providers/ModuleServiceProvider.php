@@ -509,10 +509,12 @@ class ModuleServiceProvider extends ServiceProvider
                     // Work Hours and Paid time off moved to the `work_hours`
                     // module on 2026-09-24 (Jose: "separate it from human
                     // resources and make a new main tab called Work Hours").
-                    new TabDefinition('onboarding', 'Onboarding'),
+                    // Order is Mia's, 2026-10-02: Records, Contracts,
+                    // Invitations, Onboarding.
                     new TabDefinition('records', 'Records'),
-                    new TabDefinition('invitations', 'Invitations'),
                     new TabDefinition('contracts', 'Contracts'),
+                    new TabDefinition('invitations', 'Invitations'),
+                    new TabDefinition('onboarding', 'Onboarding'),
                 ],
                 triggers: [
                     /*
