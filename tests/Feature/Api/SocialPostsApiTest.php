@@ -487,6 +487,72 @@ class SocialPostsApiTest extends TestCase
         $this->assertSame(['From A-1 Chimney'], $bodies);
     }
 
+    /**
+     * The tiles count every post this view can see, not the twenty drawn, and
+     * `status` filters on the server (Mia, 2026-10-02, Posts layout A). A
+     * sibling's failure is in no tile here.
+     */
+    public function test_the_tiles_count_past_the_twenty_drawn_and_filter_by_status(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name' => 'Premier Garage Repair',
+        ]));
+        $mine = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
+        $other = $this->connection($t, 'company', $t['company']->id, 'A-1 Boards', 'pin-c');
+        $theirs = $this->connection($t, 'company', $premier->id, 'Premier', 'pin-b');
+
+        $this->inTenant($t['org'], function () use ($t, $mine, $other, $theirs) {
+            $post = function (array $targets) use ($t) {
+                $row = SocialPost::create(['body' => 'x', 'created_by' => $t['admin']->id]);
+                foreach ($targets as [$connection, $status]) {
+                    $row->targets()->create([
+                        'social_connection_id' => $connection->getKey(),
+                        'status' => $status,
+                    ]);
+                }
+            };
+
+            for ($i = 0; $i < 22; $i++) {
+                $post([[$mine, 'sent']]);
+            }
+            $post([[$mine, 'scheduled'], [$other, 'scheduled']]);
+            $post([[$mine, 'sent'], [$other, 'failed']]);
+            $post([[$mine, 'queued']]);
+            // Failed only at the sibling: here it reads as sent.
+            $post([[$mine, 'sent'], [$theirs, 'failed']]);
+            $post([[$theirs, 'failed']]);
+        });
+
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $admin = $t['admin']->fresh();
+
+        $this->signedInAs($admin)
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.tiles', ['scheduled' => 1, 'sent' => 23, 'failed' => 1]);
+
+        $failed = $this->signedInAs($admin)
+            ->getJson(self::ENDPOINT.'?status=failed')
+            ->assertOk()
+            ->assertJsonPath('meta.tiles.sent', 23)
+            ->json('data');
+        $this->assertCount(1, $failed);
+        $this->assertEqualsCanonicalizing(['sent', 'failed'], array_column($failed[0]['targets'], 'status'));
+
+        $this->signedInAs($admin)
+            ->getJson(self::ENDPOINT.'?status=scheduled')
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.targets.0.status', 'scheduled');
+
+        // An unknown status is ignored rather than emptying the list.
+        $this->signedInAs($admin)
+            ->getJson(self::ENDPOINT.'?status=nonsense')
+            ->assertJsonCount(20, 'data');
+    }
+
     public function test_the_account_list_says_which_accounts_can_be_posted_to(): void
     {
         $t = $this->provisionTenant('A1-Group');

@@ -14,9 +14,11 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../email/consent_window.dart';
 
@@ -97,6 +99,21 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// The calendar or the agenda, to scroll to when the layout is stacked.
   final GlobalKey _calendarKey = GlobalKey();
 
+  /// Compose or Calendar, the switch at the top of Posts (Mia, 2026-10-02,
+  /// layout A): the calendars moved behind it so writing a post and seeing
+  /// how it will look share the screen.
+  bool _calendar = false;
+
+  /// The Posts tiles as the server counted them, across every post this view
+  /// can see — the list itself is the twenty newest. Null from a server that
+  /// does not count yet; the tiles then count the list they have.
+  Map<String, int>? _tiles;
+
+  /// The picked tile, and the server's answer for it. Null [_filtered] while
+  /// that answer is on its way.
+  String? _filter;
+  List<_SentPost>? _filtered;
+
   String get _viewName =>
       widget.session.me?.scope.label ??
       widget.session.me?.organization.name ??
@@ -145,15 +162,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       // out is the least important thing on the tab, and losing the whole
       // screen — Connect included — because a list could not be read would be
       // the wrong trade.
-      _posts = posts == null || !posts.ok
-          ? const []
-          : ((posts.body['data'] as List<dynamic>?) ?? const [])
-              .whereType<Map<String, dynamic>>()
-              .map(_SentPost.fromJson)
-              .toList();
+      _posts = posts == null || !posts.ok ? const [] : _readPosts(posts);
+      _tiles = posts == null || !posts.ok ? null : _readTiles(posts);
     });
 
     _watchPending();
+    await _loadFiltered();
   }
 
   /// Just the Sent list. Used by the poll below, which has no business
@@ -165,11 +179,79 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     if (!mounted || !posts.ok) return;
 
     setState(() {
-      _posts = ((posts.body['data'] as List<dynamic>?) ?? const [])
+      _posts = _readPosts(posts);
+      _tiles = _readTiles(posts);
+    });
+
+    await _loadFiltered();
+  }
+
+  /// The picked tile's posts, from the server: the list is capped at twenty,
+  /// so filtering those twenty here would hide the older ones the tile counts.
+  Future<void> _loadFiltered() async {
+    final filter = _filter;
+    if (filter == null || !_mayOpen('posts')) return;
+
+    final posts = await widget.api.get('/social/posts', {'status': filter});
+    if (!mounted || filter != _filter || !posts.ok) return;
+
+    setState(() {
+      _filtered = _readPosts(posts);
+      _tiles = _readTiles(posts) ?? _tiles;
+    });
+  }
+
+  void _pickFilter(String? filter) {
+    setState(() {
+      _filter = filter;
+      _filtered = null;
+    });
+    _loadFiltered();
+  }
+
+  static List<_SentPost> _readPosts(ApiResponse response) =>
+      ((response.body['data'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_SentPost.fromJson)
           .toList();
-    });
+
+  static Map<String, int>? _readTiles(ApiResponse response) {
+    final meta = response.body['meta'];
+    final tiles = meta is Map<String, dynamic> ? meta['tiles'] : null;
+    if (tiles is! Map<String, dynamic>) return null;
+
+    return {
+      for (final entry in tiles.entries)
+        if (entry.value is num) entry.key: (entry.value as num).toInt(),
+    };
+  }
+
+  /// Every tile's count: the server's, or the list's own when it gave none.
+  Map<String, int> get _tileCounts =>
+      _tiles ??
+      {
+        for (final key in const ['scheduled', 'sent', 'failed'])
+          key: _shown.where((p) => p.tile == key).length,
+      };
+
+  /// The table's rows: everything, or the picked tile — the list's own
+  /// matches until the server's answer arrives, rather than an empty table.
+  List<_SentPost> get _rows {
+    final filter = _filter;
+    if (filter == null) return _shown;
+
+    return _filtered ?? [for (final p in _shown) if (p.tile == filter) p];
+  }
+
+  /// Retry from the table: one failed account is retried there and then;
+  /// several open the post, where each has its own Try again.
+  void _retryPost(_SentPost post) {
+    final failed = [
+      for (final t in post.targets)
+        if (t.status == 'failed' && t.id != null) t,
+    ];
+
+    failed.length == 1 ? _retry(post, failed.single) : _openPost(post);
   }
 
   /// Only `queued` starts the poll. A `scheduled` target is waiting for a
@@ -217,6 +299,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     final when = _landing?.when;
 
     setState(() {
+      _calendar = true;
       if (when != null) _focusDay = when;
       if (leave) _justPosted = null;
     });
@@ -275,9 +358,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       )?.showSnackBar(SnackBar(content: Text(response.reason)));
     }
 
+    // Back to Compose when it came from the calendar: that is where the
+    // result is drawn.
     setState(() {
       _justPosted = post.id;
       _gaveUpWaiting = false;
+      _calendar = false;
     });
 
     await _load();
@@ -366,6 +452,13 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   viewName: _viewName,
                   connections: _connections,
                   posts: _shown,
+                  rows: _rows,
+                  tiles: _tileCounts,
+                  filter: _filter,
+                  onFilter: _pickFilter,
+                  calendar: _calendar,
+                  onCalendar: (on) => setState(() => _calendar = on),
+                  onRetryPost: _canPost ? _retryPost : null,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
                   landing: _landing,
@@ -481,6 +574,12 @@ class _PostsPane extends StatelessWidget {
     required this.viewName,
     required this.connections,
     required this.posts,
+    required this.rows,
+    required this.tiles,
+    required this.filter,
+    required this.onFilter,
+    required this.calendar,
+    required this.onCalendar,
     required this.stillWaiting,
     required this.pickMedia,
     required this.landing,
@@ -495,19 +594,35 @@ class _PostsPane extends StatelessWidget {
     required this.onOpen,
     required this.onConnect,
     this.onRetry,
+    this.onRetryPost,
   });
 
   final ApiClient api;
   final Session session;
   final String viewName;
   final List<_SocialConnection> connections;
+
+  /// Every post the list carries, for the calendars.
   final List<_SentPost> posts;
+
+  /// The table's rows: [posts], or the picked tile's.
+  final List<_SentPost> rows;
+  final Map<String, int> tiles;
+  final String? filter;
+  final ValueChanged<String?> onFilter;
+
+  /// Calendar showing rather than Compose.
+  final bool calendar;
+  final ValueChanged<bool> onCalendar;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
   final _SentPost? landing;
 
   /// Try again on a failed account; null without the right to post.
   final void Function(_SentPost, _SentTarget)? onRetry;
+
+  /// The table's Retry; null without the right to post.
+  final void Function(_SentPost)? onRetryPost;
   final String? outlined;
   final DateTime? focusDay;
   final GlobalKey calendarKey;
@@ -553,165 +668,214 @@ class _PostsPane extends StatelessWidget {
           );
         }
 
-        final pages = _PagesColumn(
-          viewName: viewName,
-          connections: connections,
-          onConnect: onConnect,
-        );
-        final compose = _ComposeColumn(
-          api: api,
-          session: session,
-          viewName: viewName,
-          connections: connections,
-          posts: posts,
-          stillWaiting: stillWaiting,
-          pickMedia: pickMedia,
-          landing: landing,
-          formats: formats,
-          onSent: onSent,
-          onWriteAnother: onWriteAnother,
-          onSeeCalendar: onSeeCalendar,
-          onRetry: onRetry,
-        );
-        final Widget calendar = phone
-            ? _Agenda(
-                key: calendarKey,
-                posts: posts,
-                outlined: outlined,
+        final compose = SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ComposeColumn(
+                api: api,
+                session: session,
+                viewName: viewName,
+                connections: connections,
+                stillWaiting: stillWaiting,
+                pickMedia: pickMedia,
+                landing: landing,
+                formats: formats,
+                onSent: onSent,
+                onWriteAnother: onWriteAnother,
+                onSeeCalendar: onSeeCalendar,
+                onRetry: onRetry,
+              ),
+              const SizedBox(height: 20),
+              _PostsTable(
+                rows: rows,
+                tiles: tiles,
+                filter: filter,
+                onFilter: onFilter,
+                stillWaiting: stillWaiting,
                 formats: formats,
                 onOpen: onOpen,
-              )
-            : _CalendarsColumn(
-                key: calendarKey,
-                fill: !stack,
-                posts: posts,
-                outlined: outlined,
-                focusDay: focusDay,
-                formats: formats,
-                onOpen: onOpen,
-              );
+                onRetry: onRetryPost,
+              ),
+            ],
+          ),
+        );
 
-        if (stack) {
-          // Not a ListView: that builds lazily, so the calendar at the bottom
-          // had no context yet when Done asked to scroll to it.
-          return SingleChildScrollView(
+        final Widget calendarView;
+        if (phone) {
+          calendarView = SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                pages,
-                const SizedBox(height: 12),
-                compose,
-                const SizedBox(height: 12),
-                calendar,
-              ],
+            child: _Agenda(
+              key: calendarKey,
+              posts: posts,
+              outlined: outlined,
+              formats: formats,
+              onOpen: onOpen,
+            ),
+          );
+        } else if (stack) {
+          // Not a ListView: that builds lazily, so the calendar had no
+          // context yet when Done asked to scroll to it.
+          calendarView = SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _CalendarsColumn(
+              key: calendarKey,
+              posts: posts,
+              outlined: outlined,
+              focusDay: focusDay,
+              formats: formats,
+              onOpen: onOpen,
+            ),
+          );
+        } else {
+          calendarView = Padding(
+            padding: const EdgeInsets.all(12),
+            child: _CalendarsColumn(
+              key: calendarKey,
+              fill: true,
+              posts: posts,
+              outlined: outlined,
+              focusDay: focusDay,
+              formats: formats,
+              onOpen: onOpen,
             ),
           );
         }
 
-        return Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(width: 220, child: pages),
-              const SizedBox(width: 10),
-              // Scrolls on its own, at least as tall as the column: twenty
-              // posts in the Sent list below the form are taller than a
-              // laptop screen.
-              Expanded(
-                flex: 4,
-                child: LayoutBuilder(
-                  builder: (context, column) => SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: column.maxHeight),
-                      child: compose,
-                    ),
-                  ),
-                ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _PostsBar(
+                calendar: calendar,
+                onCalendar: onCalendar,
+                viewName: viewName,
+                connections: connections,
+                onConnect: onConnect,
               ),
-              const SizedBox(width: 10),
-              Expanded(flex: 7, child: calendar),
-            ],
-          ),
+            ),
+            // Both kept: switching to look at the calendar must not throw
+            // away a post half written.
+            Expanded(
+              child: IndexedStack(
+                index: calendar ? 1 : 0,
+                sizing: StackFit.expand,
+                children: [compose, calendarView],
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _PagesColumn extends StatelessWidget {
-  const _PagesColumn({
+/// Compose / Calendar, and the pages this view may post as.
+///
+/// The Pages card, compacted to one line (Mia, 2026-10-02, layout A): how
+/// many are connected, each one's mark with its name on hover, and Connect.
+/// The full list with Disconnect is the Accounts pane.
+class _PostsBar extends StatelessWidget {
+  const _PostsBar({
+    required this.calendar,
+    required this.onCalendar,
     required this.viewName,
     required this.connections,
     required this.onConnect,
   });
 
+  final bool calendar;
+  final ValueChanged<bool> onCalendar;
   final String viewName;
   final List<_SocialConnection> connections;
   final VoidCallback onConnect;
 
   @override
   Widget build(BuildContext context) {
-    return DashboardCard(
-      title: 'Pages',
-      icon: Icons.web_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (connections.isEmpty)
-            DashboardNote(
-              'Only pages this view may use. None are connected in $viewName yet.',
-            )
-          else
-            for (final page in connections)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: SocialNetworkMark(network: page.provider, size: 24),
-                // A network that gives us no display name leaves its own opaque
-                // id here. One line with an ellipsis, never three wrapped lines
-                // of base64 pushing the Connect button off the card.
-                title: Text(
-                  page.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(page.providerLabel),
-              ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton(
-              onPressed: onConnect,
-              child: const Text('Connect'),
+    final theme = Theme.of(context);
+    final count = connections.length;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      alignment: WrapAlignment.spaceBetween,
+      children: [
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Compose'),
+              selected: !calendar,
+              onSelected: (_) => onCalendar(false),
             ),
-          ),
-        ],
-      ),
+            ChoiceChip(
+              label: const Text('Calendar'),
+              selected: calendar,
+              onSelected: (_) => onCalendar(true),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              count == 0
+                  ? 'No pages connected in $viewName yet'
+                  : count == 1
+                  ? '1 page connected'
+                  : '$count pages connected',
+              style: theme.textTheme.bodySmall,
+            ),
+            for (final page in connections)
+              Tooltip(
+                message: '${page.displayName} · ${page.providerLabel}',
+                child: SocialNetworkMark(network: page.provider, size: 16),
+              ),
+            TextButton(onPressed: onConnect, child: const Text('Connect')),
+          ],
+        ),
+      ],
     );
   }
 }
 
-/// Write once, tick the accounts, send.
+/// Longest post each network takes, in characters (Mia, 2026-10-02). One map
+/// so a network's change is one line here.
 ///
-/// ── Why the accounts are ticked here and not in the Pages column ─
+/// Client-side only, and deliberately so: the server checks one 5,000 ceiling
+/// (SocialPostsController::MAX_BODY) because most of these networks have no
+/// publisher yet. This is the warning before Publish, in the network's own
+/// number. A network missing here is counted without a limit.
+const Map<String, int> _bodyLimits = {
+  'x': 280,
+  'bluesky': 300,
+  'linkedin': 3000,
+  'instagram_professional': 2200,
+  'google_business_profile': 1500,
+  'facebook_page': 63206,
+};
+
+/// Characters as a person counts them: an emoji is one, not two code units.
+int _lengthOf(String text) => text.characters.length;
+
+/// Write once, tick the accounts, send — and beside it, how it will look.
 ///
-/// Pages answers "what may this view post as". This answers "where is THIS post
-/// going", which changes per post — the same three accounts are the right
-/// answer today and the wrong one tomorrow. Putting the ticks in the other
-/// column would make a per-post choice look like a property of the account.
+/// ── Why the accounts are ticked here and not in the bar above ───
 ///
-/// Scheduling is not here yet: the button would be a control that does not
-/// work, so it is not drawn. The calendar beside this says what it is waiting
-/// for.
+/// The bar answers "what may this view post as". This answers "where is THIS
+/// post going", which changes per post — the same three accounts are the right
+/// answer today and the wrong one tomorrow. Putting the ticks up there would
+/// make a per-post choice look like a property of the account.
 class _ComposeColumn extends StatefulWidget {
   const _ComposeColumn({
     required this.api,
     required this.session,
     required this.viewName,
     required this.connections,
-    required this.posts,
     required this.stillWaiting,
     required this.pickMedia,
     required this.landing,
@@ -726,7 +890,6 @@ class _ComposeColumn extends StatefulWidget {
   final Session session;
   final String viewName;
   final List<_SocialConnection> connections;
-  final List<_SentPost> posts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
   final void Function(_SentPost, _SentTarget)? onRetry;
@@ -758,6 +921,39 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// Wall clock in this view's timezone, `YYYY-MM-DD HH:MM`, empty for "now".
   final TextEditingController _when = TextEditingController();
   bool _scheduling = false;
+
+  /// The network the preview draws; the first ticked one when unset or
+  /// unticked since.
+  String? _previewNet;
+
+  /// The ticked accounts, one per network: the counter and the preview are
+  /// about the network's rules, which two pages on it share.
+  List<_SocialConnection> get _tickedNetworks {
+    final seen = <String>{};
+
+    return [
+      for (final c in widget.connections)
+        if (_picked.contains(c.id) && seen.add(c.provider)) c,
+    ];
+  }
+
+  String get _words => _body.text.trim();
+
+  /// The first ticked network this post is too long for, said with its
+  /// number and the two ways out.
+  String? get _overLimit {
+    final length = _lengthOf(_words);
+
+    for (final account in _tickedNetworks) {
+      final limit = _bodyLimits[account.provider];
+      if (limit != null && length > limit) {
+        return '${account.providerLabel} takes $limit characters at most and '
+            'this is $length. Shorten it, or untick ${account.providerLabel}.';
+      }
+    }
+
+    return null;
+  }
 
   @override
   void dispose() {
@@ -809,6 +1005,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     if (_body.text.trim().isEmpty && _media == null) {
       return 'Write something, or attach a picture or a video.';
     }
+    final over = _overLimit;
+    if (over != null) return over;
     if (_sending) return 'Sending.';
 
     return null;
@@ -829,21 +1027,30 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _sending
-                ? null
-                : () => setState(() {
-                    _scheduling = !_scheduling;
-                    if (!_scheduling) _when.clear();
-                  }),
-            icon: Icon(
-              _scheduling ? Icons.schedule : Icons.schedule_outlined,
-              size: 18,
+        // Now / Later as two chips (Mia, 2026-10-02, layout A). Later
+        // opens the time; Now forgets it, so a time typed and abandoned is
+        // never sent.
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Now'),
+              selected: !_scheduling,
+              onSelected: _sending
+                  ? null
+                  : (_) => setState(() {
+                      _scheduling = false;
+                      _when.clear();
+                    }),
             ),
-            label: Text(_scheduling ? 'Send it now instead' : 'Send it later'),
-          ),
+            ChoiceChip(
+              label: const Text('Later'),
+              selected: _scheduling,
+              onSelected: _sending
+                  ? null
+                  : (_) => setState(() => _scheduling = true),
+            ),
+          ],
         ),
         if (_scheduling) ...[
           const SizedBox(height: 8),
@@ -993,7 +1200,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     final landing = widget.landing;
     if (landing != null) {
       return DashboardCard(
-        title: 'Compose',
+        title: 'New post',
         icon: Icons.edit_outlined,
         child: _PostOutcome(
           post: landing,
@@ -1011,15 +1218,91 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     }
 
     final refusal = _refusal;
+    final theme = Theme.of(context);
+    final networks = _tickedNetworks;
+    final unable = [
+      for (final c in widget.connections)
+        if (!c.canPublish && c.cannotPublishBecause != null) c,
+    ];
+    final when = _when.text.trim();
 
-    return DashboardCard(
-      title: 'Compose',
+    Widget label(String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text,
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
+    final composer = DashboardCard(
+      title: 'New post',
       icon: Icons.edit_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const DashboardNote('One post, every ticked account.'),
-          const SizedBox(height: 12),
+          if (widget.connections.isNotEmpty) ...[
+            label('Post to'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final account in widget.connections)
+                  Refused(
+                    reason: account.cannotPublishBecause,
+                    child: FilterChip(
+                      key: ValueKey('social-account-${account.id}'),
+                      showCheckmark: false,
+                      avatar: SocialNetworkMark(
+                        network: account.provider,
+                        size: 16,
+                      ),
+                      label: Text(
+                        account.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: _picked.contains(account.id),
+                      onSelected: !account.canPublish || _sending
+                          ? null
+                          : (on) => setState(() {
+                              on
+                                  ? _picked.add(account.id)
+                                  : _picked.remove(account.id);
+                            }),
+                    ),
+                  ),
+              ],
+            ),
+            // A dead chip says why on the screen, not only on a long press.
+            for (final account in unable)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${account.displayName}: ${account.cannotPublishBecause}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            // The note goes here, by the account, BEFORE anybody presses
+            // Publish. "Sent" and "sent, but you must go and finish it in
+            // TikTok" are different enough that learning it afterwards is
+            // learning it too late.
+            for (final account in widget.connections)
+              if (account.postingNote != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '${account.displayName}: ${account.postingNote}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+            const SizedBox(height: 14),
+          ],
+          label('Words'),
           TextField(
             controller: _body,
             enabled: !_sending,
@@ -1031,51 +1314,19 @@ class _ComposeColumnState extends State<_ComposeColumn> {
               alignLabelWithHint: true,
             ),
           ),
-          const SizedBox(height: 12),
-          _attachment(context),
-          const SizedBox(height: 12),
-          if (widget.connections.isNotEmpty) ...[
-            for (final account in widget.connections)
-              Refused(
-                reason: account.cannotPublishBecause,
-                child: CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: _picked.contains(account.id),
-                  onChanged: !account.canPublish || _sending
-                      ? null
-                      : (on) => setState(() {
-                          on == true
-                              ? _picked.add(account.id)
-                              : _picked.remove(account.id);
-                        }),
-                  secondary: SocialNetworkMark(
-                    network: account.provider,
-                    size: 22,
-                  ),
-                  title: Text(
-                    account.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  // The note goes here, under the account, BEFORE anybody
-                  // presses Publish. "Sent" and "sent, but you must go and
-                  // finish it in TikTok" are different enough that learning it
-                  // afterwards is learning it too late.
-                  subtitle: Text(
-                    account.postingNote == null
-                        ? account.providerLabel
-                        : '${account.providerLabel} · ${account.postingNote}',
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
+          if (networks.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _counter(context, networks),
           ],
+          const SizedBox(height: 14),
+          label('Picture or video'),
+          _attachment(context),
+          const SizedBox(height: 14),
+          label('When'),
           _scheduleRow(context),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.centerRight,
             child: Refused(
               reason: refusal,
               child: FilledButton(
@@ -1088,17 +1339,70 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             const SizedBox(height: 10),
             DashboardNote(_error!),
           ],
-          if (widget.posts.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-            _RecentPosts(
-              posts: widget.posts,
-              stillWaiting: widget.stillWaiting,
-            ),
-          ],
         ],
       ),
+    );
+
+    final preview = _PreviewCard(
+      networks: networks,
+      picked: _previewNet,
+      onPick: (provider) => setState(() => _previewNet = provider),
+      body: _words,
+      media: _media,
+      when: _scheduling && when.isNotEmpty ? 'Scheduled $when' : 'Now',
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxWidth < _PostsPane._stackBelow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [composer, const SizedBox(height: 12), preview],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: composer),
+            const SizedBox(width: 12),
+            Expanded(flex: 2, child: preview),
+          ],
+        );
+      },
+    );
+  }
+
+  /// "X 212/280 · LinkedIn 212/3000" for the ticked networks, a network over
+  /// its limit in red. Publish carries the sentence; this is where to look.
+  Widget _counter(BuildContext context, List<_SocialConnection> networks) {
+    final theme = Theme.of(context);
+    final length = _lengthOf(_words);
+    final bad = ToneColours.of(context, Tone.bad).ink;
+
+    return Wrap(
+      spacing: 14,
+      runSpacing: 4,
+      children: [
+        for (final account in networks)
+          Builder(
+            builder: (context) {
+              final limit = _bodyLimits[account.provider];
+              final over = limit != null && length > limit;
+
+              return Text(
+                limit == null
+                    ? '${account.providerLabel} $length'
+                    : '${account.providerLabel} $length/$limit',
+                key: ValueKey('social-count-${account.provider}'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: over ? bad : null,
+                  fontWeight: over ? FontWeight.w700 : null,
+                ),
+              );
+            },
+          ),
+      ],
     );
   }
 
@@ -1165,6 +1469,10 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+            ),
+            TextButton(
+              onPressed: _sending ? null : _attach,
+              child: const Text('Replace'),
             ),
             TextButton(
               onPressed: _sending
@@ -1267,20 +1575,281 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       : '${(bytes / 1024).round()} KB';
 }
 
-/// What went out, and what each account said back.
+/// "How it will look": the post drawn as each ticked network would show it.
 ///
-/// Under the composer rather than on a screen of its own, because the question
-/// this answers is "did the thing I just pressed work" and the answer is worth
-/// nothing three clicks away. A real queue with paging and filters is a later
-/// piece; this is the receipt.
-class _RecentPosts extends StatelessWidget {
-  const _RecentPosts({required this.posts, required this.stillWaiting});
+/// A likeness, said so on the card (Mia, 2026-10-02, layout A). Each network
+/// crops, folds and decorates in its own way and changes it without notice;
+/// this answers "is the text too long, is it the right picture, does it read
+/// as us" before it goes out, which is what it is for.
+class _PreviewCard extends StatelessWidget {
+  const _PreviewCard({
+    required this.networks,
+    required this.picked,
+    required this.onPick,
+    required this.body,
+    required this.media,
+    required this.when,
+  });
 
-  final List<_SentPost> posts;
+  /// One ticked account per network.
+  final List<_SocialConnection> networks;
+  final String? picked;
+  final ValueChanged<String> onPick;
+  final String body;
+  final PickedBytes? media;
+  final String when;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = networks.isEmpty
+        ? null
+        : networks.firstWhere(
+            (n) => n.provider == picked,
+            orElse: () => networks.first,
+          );
+
+    return DashboardCard(
+      title: 'How it will look',
+      icon: Icons.visibility_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (current == null)
+            const DashboardNote(
+              'Tick an account to see the post the way it will look there.',
+            )
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final network in networks)
+                  ChoiceChip(
+                    key: ValueKey('social-preview-${network.provider}'),
+                    showCheckmark: false,
+                    avatar: SocialNetworkMark(
+                      network: network.provider,
+                      size: 16,
+                    ),
+                    label: Text(network.providerLabel),
+                    selected: network == current,
+                    onSelected: (_) => onPick(network.provider),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _PostLikeness(
+              account: current,
+              body: body,
+              media: media,
+              when: when,
+            ),
+          ],
+          const SizedBox(height: 10),
+          const DashboardNote(
+            'A close likeness drawn here; each network has the last word on '
+            'how it looks.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One network's post: who it is from, the words, the picture, the count.
+class _PostLikeness extends StatelessWidget {
+  const _PostLikeness({
+    required this.account,
+    required this.body,
+    required this.media,
+    required this.when,
+  });
+
+  final _SocialConnection account;
+  final String body;
+  final PickedBytes? media;
+  final String when;
+
+  /// Networks that lead with the picture and put the words under it, after
+  /// the account's name.
+  static const _pictureFirst = {
+    'instagram_professional',
+    'pinterest',
+    'tiktok',
+    'youtube',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final limit = _bodyLimits[account.provider];
+    final length = _lengthOf(body);
+    final over = limit != null && length > limit;
+    final pictureFirst = _pictureFirst.contains(account.provider);
+    final media = this.media;
+
+    final header = Row(
+      children: [
+        SocialNetworkMark(network: account.provider, size: 32),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                account.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                '${account.providerLabel} · $when',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final Widget? picture = media == null
+        ? null
+        : ClipRRect(
+            key: const ValueKey('social-preview-media'),
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 150,
+              width: double.infinity,
+              child: _ComposeColumnState._looksLikeImage(media.name)
+                  ? Image.memory(
+                      Uint8List.fromList(media.bytes),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, _, _) => _thumbnailLabel(
+                        theme,
+                        Icons.broken_image_outlined,
+                        media.name,
+                      ),
+                    )
+                  : _thumbnailLabel(theme, Icons.movie_outlined, media.name),
+            ),
+          );
+
+    final Widget words = body.isEmpty
+        ? Text(
+            media == null ? 'Nothing written yet.' : 'No words, just the file.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontStyle: FontStyle.italic,
+            ),
+          )
+        : pictureFirst
+        ? Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '${account.handle ?? account.displayName} ',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(text: body),
+              ],
+            ),
+            style: theme.textTheme.bodyMedium,
+          )
+        : Text(body, style: theme.textTheme.bodyMedium);
+
+    return Container(
+      key: ValueKey('social-likeness-${account.provider}'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          const SizedBox(height: 10),
+          if (pictureFirst && picture != null) ...[
+            picture,
+            const SizedBox(height: 10),
+          ],
+          words,
+          if (!pictureFirst && picture != null) ...[
+            const SizedBox(height: 10),
+            picture,
+          ],
+          const SizedBox(height: 10),
+          Text(
+            limit == null
+                ? '$length characters'
+                : '$length / $limit characters',
+            key: const ValueKey('social-preview-count'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: over ? ToneColours.of(context, Tone.bad).ink : null,
+              fontWeight: over ? FontWeight.w700 : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _thumbnailLabel(ThemeData theme, IconData icon, String name) {
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 28, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(height: 4),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Every post, under tiles that count and filter it (Mia, 2026-10-02,
+/// layout A) — what was the "Sent" receipt under the composer.
+///
+/// The tiles are the server's counts across everything this view can see;
+/// the rows are the twenty newest, or the picked tile's twenty newest.
+class _PostsTable extends StatelessWidget {
+  const _PostsTable({
+    required this.rows,
+    required this.tiles,
+    required this.filter,
+    required this.onFilter,
+    required this.stillWaiting,
+    required this.formats,
+    required this.onOpen,
+    this.onRetry,
+  });
+
+  final List<_SentPost> rows;
+  final Map<String, int> tiles;
+  final String? filter;
+  final ValueChanged<String?> onFilter;
 
   /// The queue stopped answering before anything left `queued`. Said out loud
   /// rather than drawn as an indefinite wait — see `_watchPending`.
   final bool stillWaiting;
+  final DisplayFormats formats;
+  final void Function(_SentPost) onOpen;
+
+  /// Null without the right to post: a failure then offers Open only.
+  final void Function(_SentPost)? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -1289,87 +1858,166 @@ class _RecentPosts extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Sent', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
+        Text('Posts', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 10),
         if (stillWaiting) ...[
           const DashboardNote(
             'Something is still waiting to send and the queue has stopped '
             'answering. Nothing is lost — but nothing is going out either '
             'until somebody looks at the send queue.',
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
-        for (final post in posts)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  post.body.isEmpty
-                      ? (post.hasMedia ? 'A picture or video' : 'A post')
-                      : post.body,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                if (post.scheduledFor != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Goes out ${post.scheduledFor}'
-                    '${clockSuffix(post.scheduledTimezone)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-                const SizedBox(height: 4),
-                for (final target in post.targets)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      children: [
-                        Text(
-                          // The failure sentence is the server's, shown whole.
-                          // A status word on its own ("failed") tells somebody
-                          // that something is wrong and nothing about what to do.
-                          target.failure != null
-                              ? '${target.account} · ${target.failure}'
-                              : '${target.account} · ${_statusWord(target.status)}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        if (target.url != null)
-                          InkWell(
-                            onTap: () => launchUrl(
-                              Uri.parse(target.url!),
-                              mode: LaunchMode.externalApplication,
-                            ),
-                            child: Text(
-                              'View post',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
+        FilterTiles(
+          prefix: 'social-posts',
+          picked: filter,
+          onPick: onFilter,
+          tiles: [
+            FilterTile(
+              key: 'scheduled',
+              label: 'Scheduled',
+              count: tiles['scheduled'],
+              note: 'waiting for their time',
+              tone: Tone.info,
             ),
+            FilterTile(
+              key: 'sent',
+              label: 'Sent',
+              count: tiles['sent'],
+              note: 'went out',
+              tone: Tone.ok,
+            ),
+            FilterTile(
+              key: 'failed',
+              label: 'Failed',
+              count: tiles['failed'],
+              note: 'an account refused it',
+              tone: Tone.bad,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          DashboardNote(
+            filter == null
+                ? 'Nothing posted or scheduled yet. What you publish is '
+                      'listed here.'
+                : 'No posts here.',
+          )
+        else
+          ListTable(
+            columns: const [
+              ListColumn('Post', flex: 5),
+              ListColumn('Accounts', flex: 2),
+              ListColumn('When', flex: 3),
+              ListColumn('Status', flex: 2),
+              ListColumn('', flex: 2, end: true),
+            ],
+            rowKey: (i) => ValueKey('social-post-${rows[i].id}'),
+            onTap: (i) => onOpen(rows[i]),
+            rows: [for (final post in rows) _cells(context, post)],
           ),
       ],
     );
   }
 
-  static String _statusWord(String status) => switch (status) {
-    'sent' => 'sent',
-    'failed' => 'did not send',
-    // Distinct from "waiting to send", which means the queue has it now. A
-    // post due next Tuesday is not waiting on anything that could go wrong.
-    'scheduled' => 'scheduled',
-    _ => 'waiting to send',
+  List<Widget> _cells(BuildContext context, _SentPost post) {
+    final theme = Theme.of(context);
+    final bad = ToneColours.of(context, Tone.bad).ink;
+    final (status, tone) = _statusOf(post);
+    final failed = [
+      for (final t in post.targets)
+        if (t.status == 'failed') t,
+    ];
+    final networks = <String, List<String>>{};
+    for (final t in post.targets) {
+      final provider = t.provider;
+      if (provider == null) continue;
+      networks.putIfAbsent(provider, () => []).add(t.account);
+    }
+    final retry = onRetry;
+
+    return [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            post.preview,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          // The failure sentence is the server's, shown whole. A status word
+          // on its own tells somebody something is wrong and nothing about
+          // what to do.
+          for (final target in failed)
+            if (target.failure != null)
+              Text(
+                '${target.account.isEmpty ? target.providerLabel : target.account}'
+                    ' · ${target.failure}',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: bad),
+              ),
+        ],
+      ),
+      Wrap(
+        spacing: 4,
+        children: [
+          for (final entry in networks.entries)
+            Tooltip(
+              message: entry.value.join(', '),
+              child: SocialNetworkMark(network: entry.key, size: 14),
+            ),
+        ],
+      ),
+      Text(_whenLabel(post, formats), style: theme.textTheme.bodySmall),
+      StatusPill(status, tone: tone),
+      if (failed.any((t) => t.id != null) && retry != null)
+        TextButton(
+          key: ValueKey('social-retry-${post.id}'),
+          onPressed: () => retry(post),
+          child: const Text('Retry'),
+        )
+      else
+        TextButton(onPressed: () => onOpen(post), child: const Text('Open')),
+    ];
+  }
+}
+
+/// A post's pill: "Failed", or "1 failed" when others took it.
+(String, Tone) _statusOf(_SentPost post) {
+  final failed = post.targets.where((t) => t.status == 'failed').length;
+  if (failed > 0) {
+    final label = failed == post.targets.length ? 'Failed' : '$failed failed';
+    return (label, Tone.bad);
+  }
+
+  return switch (post.tone) {
+    Tone.neutral => ('Sending', Tone.neutral),
+    Tone.info => ('Scheduled', Tone.info),
+    _ => ('Sent', Tone.ok),
   };
+}
+
+/// When, for the table: a promise names its clock; otherwise the day it went.
+String _whenLabel(_SentPost post, DisplayFormats formats) {
+  final wall = post.scheduledFor;
+  if (wall != null) {
+    final zone = clockSuffix(post.scheduledTimezone);
+    return post.tile == 'scheduled' ? 'Goes out $wall$zone' : '$wall$zone';
+  }
+
+  final when = post.when;
+  if (when == null) return '';
+
+  final day = _dayWord(when);
+
+  return '${day[0].toUpperCase()}${day.substring(1)} '
+      '${formats.formatTime(when.hour, when.minute)}';
 }
 
 class _CalendarsColumn extends StatefulWidget {
@@ -2134,6 +2782,15 @@ class _SentPost {
 
     return Tone.ok;
   }
+
+  /// The Posts tile it counts under, read as the server reads it
+  /// (SocialPostsController::inStatus); null while it is still sending.
+  String? get tile => switch (tone) {
+    Tone.bad => 'failed',
+    Tone.info => 'scheduled',
+    Tone.neutral => null,
+    _ => 'sent',
+  };
 
   /// Its first line, or what it carries when it has no words.
   String get preview {
