@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 import 'settings_pane.dart';
 
 /// Phone › Settings › Voicemail — the greeting, not the messages.
@@ -48,6 +51,18 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   bool _transcribe = false;
   String? _connectionId;
 
+  /// The tile picked (tiles over a table, Mia 2026-10-02): `unused` or
+  /// `transcribed`; null is every mailbox. Counted here - the endpoint is
+  /// every mailbox in one answer.
+  String? _tile;
+
+  /// The boxes an account sends voicemail to when a line names none
+  /// (`default_voicemail_box_id`). Such a box with no line of its own is not
+  /// unused: every line without a box lands in it.
+  Set<String> _defaults = const {};
+
+  bool _unused(_Box box) => box.lineCount == 0 && !_defaults.contains(box.id);
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +102,10 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _loading = false;
       _boxes = results[0].ok ? _Box.listFrom(results[0].body) : const [];
       _connections = results[1].ok ? _Conn.listFrom(results[1].body) : const [];
+      _defaults = {
+        for (final c in _connections)
+          if (c.defaultBoxId != null) c.defaultBoxId!,
+      };
       _error = results[0].ok ? null : results[0].reason;
       _connectionId ??= _connections.isEmpty ? null : _connections.first.id;
     });
@@ -247,61 +266,130 @@ class _VoicemailPaneState extends State<VoicemailPane> {
             'sentence until one is made and chosen on General.',
             style: theme.textTheme.bodySmall,
           )
-        else
-          for (final box in _boxes) _row(box, theme),
+        else ...[
+          _tiles(),
+          const SizedBox(height: 12),
+          _table(theme),
+        ],
       ],
     );
   }
 
-  Widget _row(_Box box, ThemeData theme) {
-    return Card(
-      key: ValueKey('vm:${box.id}'),
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(box.name, style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Up to ${box.maxSeconds}s'
-                    '${box.notifyEmails.isEmpty ? '' : ' · tells ${box.notifyEmails.length}'}'
-                    '${box.transcribe ? ' · transcribed' : ''}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 6),
+  Widget _tiles() {
+    return FilterTiles(
+      prefix: 'voicemail-boxes',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'Mailboxes',
+          count: _boxes.length,
+          note: 'all',
+        ),
+        FilterTile(
+          key: 'unused',
+          label: 'Not used',
+          count: _boxes.where(_unused).length,
+          note: 'no line sends to it',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'transcribed',
+          label: 'Written down',
+          count: _boxes.where((b) => b.transcribe).length,
+          note: 'transcribed',
+        ),
+      ],
+    );
+  }
 
-                  // The sentence the caller actually gets, as the server
-                  // computes it — not re-derived here, so the preview cannot
-                  // disagree with the call.
-                  Text(
-                    '“${box.spokenGreeting}”',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
+  Widget _table(ThemeData theme) {
+    final shown = switch (_tile) {
+      'unused' => _boxes.where(_unused).toList(),
+      'transcribed' => _boxes.where((b) => b.transcribe).toList(),
+      _ => _boxes,
+    };
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No mailboxes like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Mailbox', flex: 5),
+        ListColumn('Belongs to', flex: 3),
+        ListColumn('Lines', flex: 2),
+        ListColumn('Written down', flex: 2),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('vm:${shown[i].id}'),
+      rows: [
+        for (final box in shown)
+          [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  box.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                // The sentence the caller actually gets, as the server
+                // computes it - not re-derived here, so the preview cannot
+                // disagree with the call.
+                Text(
+                  '“${box.spokenGreeting}”',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: small?.copyWith(fontStyle: FontStyle.italic),
+                ),
+              ],
+            ),
+            Text(box.belongsTo, style: small),
+            _lines(box),
+            Text(box.transcribe ? 'Yes' : 'No', style: small),
+            if (_canEdit)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: () => _open(box),
+                    child: const Text('Edit'),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete this mailbox',
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: _saving ? null : () => _delete(box),
                   ),
                 ],
-              ),
-            ),
-            if (_canEdit) ...[
-              TextButton(
-                onPressed: () => _open(box),
-                child: const Text('Edit'),
-              ),
-              IconButton(
-                tooltip: 'Delete this mailbox',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: _saving ? null : () => _delete(box),
-              ),
-            ],
+              )
+            else
+              const SizedBox.shrink(),
           ],
-        ),
-      ),
+      ],
     );
+  }
+
+  Widget _lines(_Box box) {
+    final count = box.lineCount;
+    final fallback = _defaults.contains(box.id);
+
+    if (count == null) return const Text('—');
+    if (count == 0 && !fallback) {
+      return const StatusPill('None', tone: Tone.caution);
+    }
+
+    return Text(fallback ? '$count + account default' : '$count');
   }
 
   Widget _form(ThemeData theme) {
@@ -511,10 +599,11 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 }
 
 class _Conn {
-  const _Conn(this.id, this.label);
+  const _Conn(this.id, this.label, [this.defaultBoxId]);
 
   final String id;
   final String label;
+  final String? defaultBoxId;
 
   static List<_Conn> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
@@ -525,6 +614,7 @@ class _Conn {
         _Conn(
           row['id'].toString(),
           (row['label'] ?? row['account_sid'] ?? 'Phone account').toString(),
+          row['default_voicemail_box_id'] as String?,
         ),
     ];
   }
@@ -540,6 +630,9 @@ class _Box {
     required this.maxSeconds,
     required this.transcribe,
     required this.notifyEmails,
+    this.ownerType,
+    this.ownerName,
+    this.lineCount,
   });
 
   const _Box.blank()
@@ -550,7 +643,10 @@ class _Box {
       spokenGreeting = '',
       maxSeconds = 300,
       transcribe = false,
-      notifyEmails = const [];
+      notifyEmails = const [],
+      ownerType = null,
+      ownerName = null,
+      lineCount = null;
 
   final String id;
   final String connectionId;
@@ -562,6 +658,28 @@ class _Box {
   final int maxSeconds;
   final bool transcribe;
   final List<String> notifyEmails;
+  final String? ownerType;
+  final String? ownerName;
+
+  /// How many lines send voicemail here; null from a server that does not say.
+  final int? lineCount;
+
+  /// "A person · Ana Ruiz" - the kind from `owner_type`, the name from
+  /// `owner_name`, both the server's.
+  String get belongsTo {
+    final kind = switch (ownerType) {
+      'user' => 'A person',
+      'ring_group' => 'A ring group',
+      'number' => 'A number',
+      'company' => 'The company',
+      _ => '',
+    };
+    final name = ownerName?.trim() ?? '';
+
+    if (kind.isEmpty) return name.isEmpty ? '—' : name;
+
+    return name.isEmpty ? kind : '$kind · $name';
+  }
 
   static List<_Box> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
@@ -581,6 +699,9 @@ class _Box {
             for (final e in (row['notify_emails'] as List? ?? const []))
               e.toString(),
           ],
+          ownerType: row['owner_type'] as String?,
+          ownerName: row['owner_name'] as String?,
+          lineCount: (row['line_count'] as num?)?.toInt(),
         ),
     ];
   }

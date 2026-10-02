@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 
 /// Phone › Settings › Ring groups — who a line rings, and what happens when
 /// nobody picks up.
@@ -44,6 +47,11 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
   _Draft? _draft;
   bool _saving = false;
   String? _formError;
+
+  /// The tile picked (tiles over a table, Mia 2026-10-02): `free` or `none`;
+  /// null is every group. Counted here - `/phone/ring-groups` is every group
+  /// in one answer.
+  String? _tile;
 
   @override
   void initState() {
@@ -329,7 +337,11 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             style: theme.textTheme.bodyMedium,
           )
         else ...[
-          for (final group in _groups) _groupCard(group, theme),
+          if (_groups.isNotEmpty) ...[
+            _tiles(),
+            const SizedBox(height: 12),
+            _table(theme),
+          ],
           if (_groups.isEmpty && _draft == null)
             Text(
               'No groups yet. Without one, a call goes straight to voicemail.',
@@ -375,62 +387,151 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     ),
   );
 
-  Widget _groupCard(_Group group, ThemeData theme) {
-    final answering = _lines.where((l) => l.ringGroupId == group.id).toList();
-    final editing = _draft?.id == group.id;
+  // Nobody free is the group the old card painted red: everybody in it is on
+  // Do not disturb, on a call, or has never opened Phone - or there is nobody
+  // in it at all - so a call goes straight to what happens after.
+  static bool _someoneFree(_Group group) => group.reachableCount > 0;
 
-    final reachable = group.reachableCount;
-    final listed = group.members.length;
+  Widget _tiles() {
+    final free = _groups.where(_someoneFree).length;
 
-    // The number that matters is not how many are IN the group.
-    //
-    // The pane said, once and as prose, that somebody only rings if they are
-    // signed in with Phone open and not on Do not disturb — and then listed
-    // "4 people". A group of four where all four are at Do not disturb rings
-    // NOBODY and looked identical to a working one. The rule was stated and
-    // never applied to the thing it was about.
-    final silent = listed > 0 && reachable == 0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: silent ? theme.colorScheme.errorContainer : null,
-      child: ListTile(
-        title: Text(group.name),
-        subtitle: Text(
-          [
-            listed == 0
-                ? 'nobody in it'
-                : silent
-                ? 'none of $listed can be rung'
-                : '$reachable of $listed can be rung',
-            group.mode == 'sequential' ? 'one at a time' : 'all at once',
-            // LABELS, not E.164. Six raw numbers on one line is a string
-            // nobody reads to the end, and the labels are what the same fact
-            // is called everywhere else on this screen — the editor below
-            // already says "General Use, Jose, Toula".
-            //
-            // "no line yet" also read as a leftover from the control that
-            // used to live here, so it says the thing that is actually true
-            // and stays short enough for a summary row.
-            answering.isEmpty
-                ? 'no number rings it yet'
-                : 'rings for ${answering.map((l) => l.label).join(", ")}',
-          ].join(' · '),
+    return FilterTiles(
+      prefix: 'ring-groups',
+      picked: _tile,
+      onPick: (key) => setState(() => _tile = key),
+      tiles: [
+        FilterTile(
+          key: null,
+          label: 'Ring groups',
+          count: _groups.length,
+          note: 'all',
         ),
-        trailing: editing
-            ? null
-            : Refused(
-                reason: _canEdit ? null : _editRefusal,
-                child: TextButton(
-                  onPressed: _canEdit && !_saving
-                      ? () => _editGroup(group)
-                      : null,
-                  child: const Text('Edit'),
-                ),
-              ),
-      ),
+        FilterTile(
+          key: 'free',
+          label: 'Someone free',
+          count: free,
+          note: 'can answer now',
+          tone: Tone.ok,
+        ),
+        FilterTile(
+          key: 'none',
+          label: 'Nobody free',
+          count: _groups.length - free,
+          note: 'calls go to what happens after',
+          tone: Tone.bad,
+        ),
+      ],
     );
   }
+
+  Widget _table(ThemeData theme) {
+    final shown = switch (_tile) {
+      'free' => _groups.where(_someoneFree).toList(),
+      'none' => _groups.where((g) => !_someoneFree(g)).toList(),
+      _ => _groups,
+    };
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    if (shown.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('No groups like that.', textAlign: TextAlign.center),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Group', flex: 4),
+        ListColumn('Rings', flex: 2),
+        ListColumn('Members', flex: 4),
+        ListColumn('Free now', flex: 2),
+        ListColumn('Waits', flex: 1),
+        ListColumn('Then', flex: 3),
+        ListColumn('', flex: 2, end: true),
+      ],
+      rowKey: (i) => ValueKey('ring-group-${shown[i].id}'),
+      rows: [
+        for (final group in shown)
+          [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  group.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                // LABELS, not E.164, and kept from the old card: a group no
+                // line points at rings nobody, and this is where that shows.
+                Text(
+                  _reachedBy(group.id).isEmpty
+                      ? 'no number rings it yet'
+                      : 'rings for ${_reachedBy(group.id)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: small,
+                ),
+              ],
+            ),
+            Text(_modeLabel(group.mode)),
+            Text(
+              group.members.isEmpty
+                  ? 'nobody in it'
+                  : group.members.map((m) => m.name).join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: small,
+            ),
+            // The number that matters is not how many are IN the group but how
+            // many a call reaches now - four people all on Do not disturb ring
+            // nobody.
+            StatusPill(
+              '${group.reachableCount} of ${group.members.length}',
+              tone: _someoneFree(group) ? Tone.ok : Tone.bad,
+            ),
+            Text('${group.timeoutSeconds}s'),
+            Text(_overflowLabel(group), style: small),
+            _draft?.id == group.id
+                ? const SizedBox.shrink()
+                : Refused(
+                    reason: _canEdit ? null : _editRefusal,
+                    child: TextButton(
+                      onPressed: _canEdit && !_saving
+                          ? () => _editGroup(group)
+                          : null,
+                      child: const Text('Edit'),
+                    ),
+                  ),
+          ],
+      ],
+    );
+  }
+
+  static String _modeLabel(String mode) => switch (mode) {
+    'sequential' => 'In order',
+    'longest_idle' => 'Least busy first',
+    _ => 'Everyone at once',
+  };
+
+  String _overflowLabel(_Group group) => switch (group.overflow) {
+    'queue' => 'Hold in a queue',
+    'forward' =>
+      group.overflowNumber == null || group.overflowNumber!.isEmpty
+          ? 'Forward'
+          : 'Forward to ${group.overflowNumber}',
+    'group' => () {
+      final other = _groups.where((g) => g.id == group.overflowGroupId);
+      return other.isEmpty
+          ? 'Ring another group'
+          : 'Ring ${other.first.name}';
+    }(),
+    _ => 'Voicemail',
+  };
 
   Widget _form(ThemeData theme) {
     final draft = _draft!;

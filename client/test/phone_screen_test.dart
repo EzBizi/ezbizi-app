@@ -674,11 +674,9 @@ void main() {
 
       // Loud, not a caption. All five production lines sat in exactly this
       // state for hours reading as grey secondary text, and every caller went
-      // to voicemail without anyone noticing.
-      expect(
-        find.textContaining('Nobody answers this line'),
-        findsOneWidget,
-      );
+      // to voicemail without anyone noticing. A red pill in the "What answers
+      // it" column now (tiles over a table, Mia 2026-10-02).
+      expect(find.text('Nobody answers'), findsOneWidget);
       expect(find.textContaining('1 line is not reaching anybody'), findsNothing);
       expect(find.textContaining('One line is not reaching anybody'), findsOneWidget);
     });
@@ -1859,7 +1857,8 @@ void main() {
       await _tap(tester, find.text('Settings'));
       await _tap(tester, find.text('Ring groups'));
 
-      expect(find.textContaining('none of 2'), findsOneWidget);
+      // "0 of 2" in the Free now column (tiles over a table, Mia 2026-10-02).
+      expect(find.text('0 of 2'), findsOneWidget);
       expect(
         find.textContaining('2 people'),
         findsNothing,
@@ -1884,7 +1883,7 @@ void main() {
       await _tap(tester, find.text('Settings'));
       await _tap(tester, find.text('Ring groups'));
 
-      expect(find.textContaining('1 of 1 can be rung'), findsOneWidget);
+      expect(find.text('1 of 1'), findsOneWidget);
       expect(find.textContaining('It is not live'), findsOneWidget);
     });
   });
@@ -2238,20 +2237,9 @@ void main() {
     await _tap(tester, _tab('Settings'));
     await _tap(tester, find.text('Ring groups'));
 
-    // Edit on Dispatch — the card is a summary; the two lists live in its
-    // form. Dispatch is the second card, and Marketing holds the line.
-    await _tap(
-      tester,
-      find
-          .descendant(
-            of: find.ancestor(
-              of: find.text('Dispatch'),
-              matching: find.byType(Card),
-            ),
-            matching: find.widgetWithText(TextButton, 'Edit'),
-          )
-          .first,
-    );
+    // Edit on Dispatch — the row is a summary; the two lists live in its
+    // form. Dispatch is the second row, and Marketing holds the line.
+    await _tap(tester, _editOn(tester, 'Dispatch'));
 
     // Dispatch has no line pointing at it, and says so rather than looking
     // like a working group.
@@ -2275,18 +2263,7 @@ void main() {
 
     // And the group that IS reached names what reaches it.
     await _tap(tester, find.widgetWithText(TextButton, 'Cancel'));
-    await _tap(
-      tester,
-      find
-          .descendant(
-            of: find.ancestor(
-              of: find.text('Marketing'),
-              matching: find.byType(Card),
-            ),
-            matching: find.widgetWithText(TextButton, 'Edit'),
-          )
-          .first,
-    );
+    await _tap(tester, _editOn(tester, 'Marketing'));
 
     expect(
       find.textContaining('Rings when a call comes to General Use'),
@@ -2399,10 +2376,17 @@ void main() {
   });
 }
 
-/// The Edit button on one ring group's card.
+/// The Edit button on one ring group's row (a table row since tiles over a
+/// table, Mia 2026-10-02; it was a card).
 Finder _editOn(WidgetTester tester, String group) => find
     .descendant(
-      of: find.ancestor(of: find.text(group), matching: find.byType(Card)),
+      of: find.ancestor(
+        of: find.text(group),
+        matching: find.byWidgetPredicate(
+          (w) => w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('ring-group-'),
+        ),
+      ),
       matching: find.widgetWithText(TextButton, 'Edit'),
     )
     .first;
