@@ -166,6 +166,46 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * Mia, 2026-10-02: San Antonio is set up closed every day, and Availability
+     * said "check Workiz" as if nobody had set it up. A week saved with every
+     * day closed is set up, and closed.
+     */
+    public function test_an_area_saved_closed_every_day_is_closed_not_unknown(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => []])
+            ->assertOk();
+
+        $body = $this->first($tenant, 'zip=75201');
+        $this->assertTrue($body['configured']);
+        $this->assertNull($body['first']);
+        $this->assertSame('closed', $body['none_because']);
+
+        $listed = $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/areas')->assertOk()->json('data');
+        $this->assertTrue(collect($listed)->firstWhere('id', $area->id)['configured']);
+    }
+
+    /** A date closed on its own (a holiday) is listed as closed, in place. */
+    public function test_a_closed_date_is_listed_between_the_openings(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        // Mondays are Oct 5, 12, 19 ...: close the 12th.
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-12", ['closed' => true])
+            ->assertOk();
+
+        $body = $this->first($tenant, 'zip=75201');
+        $this->assertSame('2026-10-05', $body['first']['date']);
+        $this->assertSame([['date' => '2026-10-12', 'reason' => 'date']], $body['closed']);
+        $this->assertNotContains('2026-10-12', array_column($body['after'], 'date'));
+    }
+
+    /**
      * An address a customer wrote is searched by the zip Google gives it
      * (Mia, 2026-10-02: "86 Jerusalem hill Trumbull"), and the answer says
      * which address the zip came from.

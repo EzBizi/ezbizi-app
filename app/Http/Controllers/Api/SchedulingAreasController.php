@@ -82,6 +82,9 @@ class SchedulingAreasController extends Controller
                 // the storage deliberately cannot express — the whole module
                 // rests on that distinction.
                 'week' => $this->week($a->slots),
+                // Set up, even when every day is closed (Mia, 2026-10-02): the
+                // Overview says "Not set up" only for an area nobody saved.
+                'configured' => $a->capacity_set_at !== null || $a->slots->isNotEmpty(),
                 // The area's own daily limit, weekday => jobs; the Overview's
                 // totals take the lower of this and the week above.
                 'daily_limits' => (object) ($areaLimits[$a->id] ?? collect())->pluck('max_jobs', 'weekday')->all(),
@@ -247,6 +250,8 @@ class SchedulingAreasController extends Controller
 
         DB::transaction(function () use ($row, $data) {
             ServiceAreaSlot::where('service_area_id', $row->id)->delete();
+            // Saved, even with every day closed: see Openings::hasCapacity.
+            $row->forceFill(['capacity_set_at' => now()])->save();
 
             foreach ($data['slots'] as $slot) {
                 ServiceAreaSlot::create([

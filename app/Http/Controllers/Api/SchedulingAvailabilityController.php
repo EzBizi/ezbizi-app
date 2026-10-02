@@ -160,6 +160,8 @@ class SchedulingAvailabilityController extends Controller
                         'configured' => $configured,
                         'first' => $next['first'] ?? null,
                         'after' => $next['after'] ?? [],
+                        'closed' => $next['closed'] ?? [],
+                        'none_because' => $next['none_because'] ?? null,
                     ];
                 })->values()->all(),
             ],

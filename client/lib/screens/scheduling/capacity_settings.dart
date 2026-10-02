@@ -1587,7 +1587,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     int? jobs(Map<String, dynamic> area, int weekday) =>
         ((area['week'] as Map?)?['$weekday'] as num?)?.toInt();
 
+    // The server's word when it sends one: a week saved closed every day is
+    // set up, closed (Mia, 2026-10-02). An older server: any open day.
     bool setUp(Map<String, dynamic> area) =>
+        area['configured'] as bool? ??
         _week.any((d) => jobs(area, d.$1) != null);
 
     final groups = _groupedAreas(shownAreas);
