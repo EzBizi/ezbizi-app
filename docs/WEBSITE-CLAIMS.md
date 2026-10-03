@@ -2411,3 +2411,24 @@ Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-03: nothing shipped, and yesterday's privacy edit is unpublished
+
+**Production is still `0.0.0349` at `f2b575e1`** (`/download/windows.json`); the
+only commits since are this file's and `d3165650`. No desk asked:
+`send_message` is unavailable to a scheduled run.
+
+**`/privacy/` and `sitemap.xml` differ from production, and it is a stale
+deploy, not a hand edit:** live `/privacy/` matches `9dc00d74` exactly
+(`Last-Modified` 2026-10-02 19:04 UTC, before `d3165650` at 23:06 UTC). No
+release has run since, so `0089` (still in the inbox, unanswered) rides the
+next one. The other six pages and `robots.txt` are byte-identical.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0318; WordPress
+directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
