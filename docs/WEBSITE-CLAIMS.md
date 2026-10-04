@@ -2432,3 +2432,23 @@ directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-04: nothing shipped, and the privacy edit is ~48h unpublished
+
+**Production is still `0.0.0349` at `f2b575e1`** (`/download/windows.json`); no
+commits since 10-03's entry. No desk asked: `send_message` is unavailable to a
+scheduled run. `0089` is still in the inbox, unanswered.
+
+**`/privacy/` and `sitemap.xml` still differ, still a stale deploy:** live
+`/privacy/` matches `9dc00d74` exactly (`Last-Modified` 2026-10-02 19:04 UTC).
+No release since, so the 10-02 edit (Monitoring Files, Scheduling geocode) rides
+the next one. The other six pages and `robots.txt` are byte-identical.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version **0.0.0347** (was 0.0.0318);
+WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
