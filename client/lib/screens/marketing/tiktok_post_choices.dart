@@ -151,7 +151,6 @@ class TikTokPostChoices extends StatelessWidget {
           key: ValueKey('tiktok-privacy-$account'),
           value: choice.privacy,
           label: 'Who can see this video',
-          hint: 'Choose',
           options: [
             for (final o in creator.privacyOptions)
               SearchOption<String>(
