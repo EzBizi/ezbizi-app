@@ -184,7 +184,9 @@ class SyncWorkizTeam extends Command
             'link_confirmed_at' => $old->link_confirmed_at,
             'auto_matched' => $old->auto_matched,
         ]);
-        $old->forceFill(['is_active' => false])->save();
+        // `succeeded_by` is how the board takes an old payload's v1 id to the
+        // person's live row (Scheduling, d458d49f).
+        $old->forceFill(['is_active' => false, 'payload' => ['succeeded_by' => $row->remote_id] + (array) $old->payload])->save();
     }
 
     private function nameOf(SocialConnection $connection): string

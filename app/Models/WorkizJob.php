@@ -113,7 +113,8 @@ class WorkizJob extends Model implements StatesRetention
      *    account (null where v1 still named one): kept.
      *  - A finished job Workiz marks unscheduled has no date in v2 (009OCC:
      *    Done, v1 2026-07-16 08:00, v2 null). Its visit date is history and is
-     *    kept. An OPEN unscheduled job does lose it: it is waiting for a date.
+     *    kept; "done pending approval" is finished too. An OPEN unscheduled job
+     *    does lose it: it is waiting for a date.
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
@@ -135,7 +136,7 @@ class WorkizJob extends Model implements StatesRetention
             }
         }
 
-        if ($attributes['scheduled_for'] === null && in_array($attributes['status'], ['Done', 'Canceled'], true)) {
+        if ($attributes['scheduled_for'] === null && in_array($attributes['status'], ['Done', 'Canceled', 'done pending approval'], true)) {
             unset($attributes['scheduled_for'], $attributes['scheduled_end']);
         }
 

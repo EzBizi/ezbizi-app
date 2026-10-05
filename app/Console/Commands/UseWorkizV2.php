@@ -36,8 +36,8 @@ use RuntimeException;
  * ── THEN, UNDER THE PROJECTION'S LOCK ───────────────────────────
  *
  * The credentials, keeping the v1 pair beside the key so the branch can move
- * back, and at once the team (SyncWorkizTeam carries each person's link from
- * their v1 row to the USR- one). Held so that no projection follows a v2
+ * back; at once the team (SyncWorkizTeam carries each person's link from their
+ * v1 row to the USR- one); then the branch's upcoming jobs, re-read through v2. Held so that no projection follows a v2
  * payload naming a technician EzBizi does not yet know under that id: it
  * would read as the job losing its technician.
  */
@@ -147,6 +147,12 @@ class UseWorkizV2 extends Command
             });
 
             Artisan::call('ezbizi:sync-workiz-team', ['--connection' => $connection->getKey()]);
+            $this->info(trim(Artisan::output()));
+
+            // And the upcoming jobs at once, still under the lock: every
+            // payload the board can show then names its technicians by the
+            // USR- ids the team now holds (Scheduling's catch, 2026-10-05).
+            Artisan::call('ezbizi:sync-workiz', ['--connection' => $connection->getKey(), '--reconcile' => 0, '--verify' => 0]);
             $this->info(trim(Artisan::output()));
         } finally {
             $lock->release();

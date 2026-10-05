@@ -119,7 +119,7 @@ class WorkizV2Test extends TestCase
         [$tenant, $connection] = $this->branch();
 
         $this->inTenant($tenant['org'], function () use ($connection) {
-            foreach ([['DONE01', 'Done'], ['OPEN01', 'Submitted']] as [$uuid, $status]) {
+            foreach ([['DONE01', 'Done'], ['DPA001', 'done pending approval'], ['OPEN01', 'Submitted']] as [$uuid, $status]) {
                 WorkizJob::create([
                     'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => $uuid,
                     'status' => $status, 'job_type' => 'Chimney Inspection', 'address' => '7 Bolton Road', 'city' => 'Bolton',
@@ -136,6 +136,8 @@ class WorkizV2Test extends TestCase
             $this->assertSame(['7 Bolton Road', 'Bolton', '06043'], [$done->address, $done->city, $done->postal_code], "the job's own place");
             $this->assertSame('Chimney Inspection', $done->job_type);
             $this->assertSame('2026-07-16 08:00:00', $done->scheduled_for?->format('Y-m-d H:i:s'), 'a finished visit keeps its date');
+
+            $this->assertNotNull(WorkizJob::query()->where('remote_id', 'DPA001')->value('scheduled_for'), 'pending approval is finished work too');
 
             $open = WorkizJob::query()->where('remote_id', 'OPEN01')->sole();
             $this->assertNull($open->scheduled_for, 'an open job Workiz unscheduled is waiting for a date');
@@ -195,7 +197,9 @@ class WorkizV2Test extends TestCase
             $new = WorkizTeamMember::query()->where('remote_id', 'USR-ap8XB7Vm8PqogDWq')->sole();
             $this->assertSame($user->id, $new->user_id);
             $this->assertSame(['Boston South'], $new->service_areas);
-            $this->assertFalse((bool) WorkizTeamMember::query()->where('remote_id', '436274')->value('is_active'), 'one person, one seat');
+            $old = WorkizTeamMember::query()->where('remote_id', '436274')->sole();
+            $this->assertFalse($old->is_active, 'one person, one seat');
+            $this->assertSame('USR-ap8XB7Vm8PqogDWq', $old->payload['succeeded_by'], "the board's way from an old payload to the person");
         });
     }
 
@@ -359,6 +363,7 @@ class WorkizV2Test extends TestCase
             $this->assertSame(['v2key_MA', 'v2'], [$credentials['api_token'], $credentials['api_version']]);
             $this->assertSame('api_MA', $credentials['v1']['api_token']);
             $this->assertTrue(WorkizTeamMember::query()->where('remote_id', 'USR-1')->exists(), 'the team came with it');
+            $this->assertSame('JOB-8ApvxXebm23oQV4E', WorkizJob::query()->where('remote_id', 'NYCZ7W')->sole()->payload['v2']['id'], 'and the upcoming jobs, re-read through v2');
         });
         $this->assertSame(1, DB::table('audit_events')->where('action', 'workiz.moved_to_v2')->count());
         $this->assertFalse(Cache::lock(ProjectWorkizRecords::LOCK, 1)->get() === false, 'the lock is let go');
