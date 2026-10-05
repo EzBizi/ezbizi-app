@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -58,7 +59,10 @@ class MembershipsPublicController extends Controller
 
         $this->tenant->run($organization, function () use ($input, $site) {
             $customer = $this->identify($input);
-            if ($customer === null) {
+            // One a day per customer: a public key is in every page's source,
+            // so a typed phone must not let a stranger message someone at will.
+            if ($customer === null || AutomationEvent::query()->where('event_key', 'customer.reviewed')
+                ->where('subject_id', $customer->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
                 return;
             }
 
@@ -66,6 +70,8 @@ class MembershipsPublicController extends Controller
                 'rating'              => $input['rating'],
                 'comment'             => $input['comment'] ?? null,
                 'source'              => isset($input['c']) ? 'review_link' : 'asked',
+                // Only the token proves who it was; a typed phone or email is a claim.
+                'verified'            => isset($input['c']),
                 'site'                => $site->host,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
             ]]);
@@ -111,17 +117,22 @@ class MembershipsPublicController extends Controller
         }
 
         $digits = substr(preg_replace('/\D/', '', (string) ($input['phone'] ?? '')), -10);
+        if (strlen($digits) !== 10 && blank($input['email'] ?? null)) {
+            return null;
+        }
 
-        return Customer::query()
+        $matches = Customer::query()
             ->where(function ($q) use ($input, $digits) {
                 $q->when(strlen($digits) === 10, fn ($w) => $w->orWhereRaw("REGEXP_REPLACE(phone, '[^0-9]', '') LIKE ?", ['%'.$digits]))
                     ->when(filled($input['email'] ?? null), fn ($w) => $w->orWhere('email', $input['email']));
             })
-            ->when(strlen($digits) !== 10 && blank($input['email'] ?? null), fn ($q) => $q->whereRaw('1 = 0'))
-            // ponytail: a shared household line names several customers; the
-            // most recently touched one gets the offer.
-            ->latest('updated_at')
-            ->first();
+            ->limit(2)
+            ->get();
+
+        // A booker's or household's phone sits on many customers (A-1's staff
+        // bookers stay on their houses, Jose's ruling): more than one match
+        // names nobody, rather than thanking a random house.
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function asCustomer(string $id, \Closure $then): HttpResponse

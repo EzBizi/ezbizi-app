@@ -60,6 +60,7 @@ class MembershipsPublicTest extends TestCase
 
         $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->first();
         $this->assertSame($this->customer->id, $event->subject_id);
+        $this->assertTrue($event->payload['after']['verified']);
         $this->assertStringContainsString('/memberships/join/', $event->payload['after']['membership_join_url']);
     }
 
@@ -70,14 +71,29 @@ class MembershipsPublicTest extends TestCase
         $this->assertSame(0, $this->reviewed());
     }
 
-    public function test_without_a_token_the_typed_phone_or_email_finds_them(): void
+    public function test_without_a_token_the_typed_phone_finds_them_unverified_once_a_day(): void
     {
-        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'phone' => '+1 555-201-3344'])->assertOk();
-        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'sad', 'email' => 'marta@example.test', 'comment' => 'Late'])->assertOk();
-        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'phone' => '555 000 0000'])->assertOk();
-        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy'])->assertOk();
+        $key = $this->site->public_key;
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'happy', 'phone' => '555 000 0000'])->assertOk();
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'happy'])->assertOk();
+        $this->assertSame(0, $this->reviewed(), 'A stranger and nothing typed match nobody.');
 
-        $this->assertSame(2, $this->reviewed(), 'Two matches; a stranger and nothing typed match nobody.');
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'happy', 'phone' => '+1 555-201-3344'])->assertOk();
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'sad', 'email' => 'marta@example.test', 'comment' => 'Late'])->assertOk();
+
+        $this->assertSame(1, $this->reviewed(), 'Once a day per customer.');
+        $this->assertFalse(AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->first()->payload['after']['verified']);
+    }
+
+    public function test_a_phone_on_two_customers_names_nobody(): void
+    {
+        $this->inTenant($this->t['org'], fn () => Customer::create([
+            'owning_franchise_id' => $this->t['franchise']->id, 'number' => 'C-2',
+            'name' => 'Another House', 'phone' => '555-201-3344',
+        ]));
+
+        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'phone' => '5552013344'])->assertOk();
+        $this->assertSame(0, $this->reviewed());
     }
 
     public function test_the_join_link_signs_them_up_once(): void

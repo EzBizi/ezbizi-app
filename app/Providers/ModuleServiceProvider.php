@@ -952,10 +952,6 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Destructive. A customer was deleted — only possible when '
                             .'they have no jobs — and they leave every list.',
                     ),
-                    // Its own trigger rather than a field-change on updated:
-                    // moving accountability between franchises is the kind of
-                    // thing a manager wants to be told about, and burying it in
-                    // "a field changed" means nobody ever builds that rule.
                     // Memberships (Jose, 2026-10-05): the review faces, told who
                     // smiled — by the customer's own review link, or by the
                     // phone or email the faces asked for. A happy one is when
@@ -964,8 +960,14 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'customer.reviewed',
                         label: 'Left a review on the website',
                         description: 'A known customer tapped a face on the review widget on the website. '
-                            .'"rating" is happy or sad; a sad one may carry a "comment".',
+                            .'"rating" is happy or sad; a sad one may carry a "comment". '
+                            .'"verified" is true only for their personal review link; a typed '
+                            .'phone or email is unverified. At most once a day per customer.',
                     ),
+                    // Its own trigger rather than a field-change on updated:
+                    // moving accountability between franchises is the kind of
+                    // thing a manager wants to be told about, and burying it in
+                    // "a field changed" means nobody ever builds that rule.
                     new TriggerDefinition(
                         key: 'customer.owner_reassigned',
                         label: 'Owner reassigned',
