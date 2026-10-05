@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/screens/phone/general_pane.dart';
+import 'package:ezbizi_client/screens/phone/call_flow_pane.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +25,10 @@ import 'package:http/testing.dart';
 ///
 /// So these assert the two halves that matter: what the screen SAVES TO, and
 /// that a single company is stated rather than offered as a choice of one.
+///
+/// Since UI queue 51 (Jose, 2026-10-05) General is the top of Call flow and a
+/// pick saves on the spot, so the save below is a pick rather than a button.
+/// What it saves to is unchanged, and so is every assertion.
 void main() {
   testWidgets('saving writes the company account, not a phone number', (
     tester,
@@ -34,22 +38,10 @@ void main() {
 
     await _pump(tester, seen: seen, bodies: bodies);
 
-    // SCROLLED TO, not merely made visible.
-    //
-    // The pane is a ListView and Save sits under the whole form, so it starts
-    // below the fold at any realistic height. `ensureVisible` was enough until
-    // the form grew by one switch: a ListView only builds children near the
-    // viewport, so Save stopped existing as an element at all and the call
-    // threw "Bad state: No element" rather than failing an assertion.
-    //
-    // `scrollUntilVisible` drags the list until the finder matches, so this
-    // test measures what it is about — where the save goes — instead of how
-    // tall the form happens to be that week. The assertions below are
-    // unchanged; only the way the button is reached is.
-    final save = find.widgetWithText(FilledButton, 'Save');
-    await tester.scrollUntilVisible(save, 200, scrollable: find.byType(Scrollable).first);
+    // The ring group box's own fix: nobody rings, so it offers somebody.
+    await tester.tap(find.widgetWithText(FilledButton, 'Pick who rings'));
     await tester.pumpAndSettle();
-    await tester.tap(save);
+    await tester.tap(find.text('Office team'));
     await tester.pumpAndSettle();
 
     final patched = seen.where((r) => r.method == 'PATCH').toList();
@@ -135,6 +127,14 @@ Future<void> _pump(
         return _json({'data': _connection('cx-1', 'A-1 Chimney')});
       }
 
+      if (path.endsWith('/phone/ring-groups')) {
+        return _json({
+          'data': [
+            {'id': 'g-1', 'name': 'Office team'},
+          ],
+        });
+      }
+
       return _json({'data': const []});
     }),
   );
@@ -145,7 +145,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: GeneralPane(api: api, session: session)),
+      home: Scaffold(body: CallFlowPane(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();

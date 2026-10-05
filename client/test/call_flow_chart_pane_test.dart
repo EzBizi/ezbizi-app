@@ -745,6 +745,35 @@ void main() {
 
       expect(find.textContaining('Settings › Phone ›'), findsNothing);
     });
+
+    /// Containment (Jose: "u broke the containment rule"): on a phone the
+    /// editor used to be a screen PUSHED over the module. It draws in the
+    /// chart's own place now, so it is a descendant of the chart pane, and its
+    /// back arrow puts the flow back.
+    testWidgets('on a phone the editor takes the flow’s place, and back returns '
+        'to it', (tester) async {
+      await _pump(tester, width: 390, graph: graphWith(
+        {'pane': 'ring-groups', 'id': 'rg-1'},
+      ));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byType(CallFlowChartPane),
+          matching: find.text('Settings › Phone › Ring groups'),
+        ),
+        findsOneWidget,
+        reason: 'The editor is not inside the chart pane: it was pushed.',
+      );
+
+      await tester.tap(find.byTooltip('Back to the call flow'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Settings › Phone ›'), findsNothing);
+      expect(find.text('Ring Appointment'), findsOneWidget);
+    });
   });
 
   _pickerGroup();

@@ -67,6 +67,7 @@ class CallFlowEditDrawer extends StatelessWidget {
     required this.session,
     required this.onClose,
     this.width = 380,
+    this.asPage = false,
   });
 
   final FlowNode node;
@@ -74,6 +75,11 @@ class CallFlowEditDrawer extends StatelessWidget {
   final Session session;
   final VoidCallback onClose;
   final double width;
+
+  /// Drawn in the chart's place on a narrow pane rather than beside it: no
+  /// rule down its left, and a back arrow where the drawer has its close
+  /// button, because on a phone this IS the screen until somebody goes back.
+  final bool asPage;
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +95,9 @@ class CallFlowEditDrawer extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: scheme.surface,
-          border: Border(left: BorderSide(color: scheme.outlineVariant)),
+          border: asPage
+              ? null
+              : Border(left: BorderSide(color: scheme.outlineVariant)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,12 +132,18 @@ class CallFlowEditDrawer extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      padding: EdgeInsets.fromLTRB(asPage ? 4 : 16, 12, 8, 12),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
         children: [
+          if (asPage)
+            IconButton(
+              onPressed: onClose,
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back to the call flow',
+            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,12 +161,13 @@ class CallFlowEditDrawer extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close),
-            iconSize: 18,
-            tooltip: 'Close',
-          ),
+          if (!asPage)
+            IconButton(
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
+              iconSize: 18,
+              tooltip: 'Close',
+            ),
         ],
       ),
     );
@@ -176,44 +191,6 @@ class CallFlowEditDrawer extends StatelessWidget {
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
-      ),
-    );
-  }
-}
-
-/// The phone answer: a whole screen with a way back.
-///
-/// Mobile 5 rather than the inline expansion I first recommended, and the
-/// reason is the desktop decision rather than a change of taste. Once the
-/// drawer hosts the REAL settings panes, those panes need the width they
-/// already have in Settings — expanding one inside a 380px list row would mean
-/// redrawing every pane to fit a place none of them were built for, which is
-/// the cost the hosting decision was supposed to avoid.
-class CallFlowEditScreen extends StatelessWidget {
-  const CallFlowEditScreen({
-    super.key,
-    required this.node,
-    required this.api,
-    required this.session,
-  });
-
-  final FlowNode node;
-  final ApiClient api;
-  final Session session;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(node.title),
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
-      ),
-      body: CallFlowEditDrawer(
-        node: node,
-        api: api,
-        session: session,
-        onClose: () => Navigator.of(context).pop(),
-        width: double.infinity,
       ),
     );
   }

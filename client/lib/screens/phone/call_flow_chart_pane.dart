@@ -43,6 +43,8 @@ class CallFlowChartPane extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.lineId,
+    this.leading,
   });
 
   final ApiClient api;
@@ -51,6 +53,15 @@ class CallFlowChartPane extends StatefulWidget {
   /// it. Threading it here rather than giving the drawer its own is the point:
   /// one pane, one session, one editor.
   final Session session;
+
+  /// The line to draw first: the one a Call flow row was opened on (UI queue
+  /// 51). Null draws the first line, as this pane always has.
+  final String? lineId;
+
+  /// Drawn at the start of the header — Call flow's way back to its list. In
+  /// the header rather than above it, so the line named on screen is always
+  /// the picker's, whichever line somebody switches to from here.
+  final Widget? leading;
 
   @override
   State<CallFlowChartPane> createState() => _CallFlowChartPaneState();
@@ -83,6 +94,7 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   @override
   void initState() {
     super.initState();
+    _lineId = widget.lineId;
     _load();
   }
 
@@ -241,9 +253,10 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          padding: EdgeInsets.fromLTRB(widget.leading == null ? 24 : 8, 24, 24, 0),
           child: Row(
             children: [
+              ?widget.leading,
               Expanded(
                 child: Text('Call flow', style: theme.textTheme.titleMedium),
               ),
@@ -273,6 +286,23 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
               // so the window being wide says nothing about the room here.
               builder: (context, box) {
                 if (box.maxWidth < 720) {
+                  // The editor takes the ribbon's place, with a way back:
+                  // containment (Jose: "u broke the containment rule"), not a
+                  // screen pushed over the module.
+                  if (_editing != null) {
+                    return CallFlowEditDrawer(
+                      node: _editing!,
+                      api: widget.api,
+                      session: widget.session,
+                      width: double.infinity,
+                      asPage: true,
+                      onClose: () {
+                        setState(() => _editing = null);
+                        _refreshGraph();
+                      },
+                    );
+                  }
+
                   return FlowChartRibbon(
                     graph: graph,
                     look: _phoneLook(_live),
@@ -322,33 +352,17 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   /// every line and its whole graph, so `deadCount` and `skippedCount` are
   /// there for all thirteen — I had told Jose this option was blocked on Phone
   /// sending a summary, and that was wrong: I had not read the payload.
-  /// Wide opens the drawer beside the chart; narrow pushes a screen.
+  /// Wide draws the drawer beside the chart; narrow draws it in the chart's
+  /// place, full width, with a way back.
   ///
-  /// Mobile 5 rather than the inline expansion I first recommended, and the
-  /// reason is the desktop decision rather than a change of taste: once the
+  /// Full width rather than the inline expansion first recommended: once the
   /// drawer hosts the REAL settings panes, they need the width they already
-  /// have in Settings. Expanding one inside a 380px list row would mean
-  /// redrawing every pane for a place none of them were built for, which is
-  /// exactly the cost that hosting them was meant to avoid.
-  void _openEditor(FlowNode node) {
-    final wide = MediaQuery.of(context).size.width >= 720;
-
-    if (wide) {
-      setState(() => _editing = node);
-
-      return;
-    }
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => CallFlowEditScreen(
-          node: node,
-          api: widget.api,
-          session: widget.session,
-        ),
-      ),
-    );
-  }
+  /// have in Settings. Narrow used to PUSH a screen for that width, which the
+  /// containment rule forbids; the pane's own width is the same room without
+  /// leaving the module. Which of the two is decided by the layout, from the
+  /// pane's width — this used to ask the window, and a wide window around a
+  /// narrow pane set an editor that nothing drew.
+  void _openEditor(FlowNode node) => setState(() => _editing = node);
 
   Widget _picker(ThemeData theme) => TextButton.icon(
     onPressed: _openPicker,

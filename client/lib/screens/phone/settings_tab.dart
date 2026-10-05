@@ -9,11 +9,9 @@ import '../../widgets/refused.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'blocked_numbers_pane.dart';
-import 'call_flow_chart_pane.dart';
 import 'call_flow_pane.dart';
 import 'extensions_pane.dart';
 import 'flows_pane.dart';
-import 'general_pane.dart';
 import 'hours_pane.dart';
 import 'numbers_pane.dart';
 import 'porting_pane.dart';
@@ -56,13 +54,14 @@ Widget? phoneSettingsPane(
   required ApiClient api,
   required Session session,
 }) => switch (id) {
-  'general' => GeneralPane(api: api, session: session),
   // No `onOpen` from the shared factory: navigating means SELECTING a
   // section, and only the tab that owns the section list can do that. The tab
-  // passes its own below; every other door gets a pane whose steps are plain
-  // text rather than buttons that go nowhere.
-  'call-flow' => CallFlowPane(api: api),
-  'call-flow-chart' => CallFlowChartPane(api: api, session: session),
+  // passes its own below; every other door gets a pane without the links to
+  // other sections rather than links that go nowhere.
+  //
+  // General and the chart are in here too since UI queue 51: the company's
+  // answer is the top of Call flow, and a line's chart opens from its row.
+  'call-flow' => CallFlowPane(api: api, session: session),
   'numbers' => NumbersPane(api: api, session: session),
   'porting' => PortingPane(api: api, session: session),
   'flows' => FlowsPane(api: api, session: session),
@@ -133,13 +132,8 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// somebody stop reading once they know which group they want.
   static const _sections =
       <({String id, String label, IconData icon, String group})>[
-    // Getting calls to arrive at all.
-    (
-      id: 'general',
-      label: 'General',
-      icon: Icons.tune_outlined,
-      group: 'Connect',
-    ),
+    // Getting calls to arrive at all. Call flow is also where the company's
+    // answer is set: General folded into it (UI queue 51, Jose 2026-10-05).
     (
       id: 'call-flow',
       label: 'Call flow',
@@ -245,19 +239,9 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       icon: Icons.sms_outlined,
       group: 'Running it',
     ),
-    // Appended rather than slotted beside "Call flow", deliberately:
-    // `_section` is an INDEX into this list, so inserting in the middle
-    // renumbers every entry after it and any stored index then names a
-    // different pane. Same shape as the NavigationRail bug in the sidebar.
-    // The picture, beside the list. Two panes because they answer different
-    // questions: the list says what every line does, this says what ONE line
-    // does and where a caller falls off it (Jose, 2026-09-15).
-    (
-      id: 'call-flow-chart',
-      label: 'Call flow chart',
-      icon: Icons.schema_outlined,
-      group: 'Connect',
-    ),
+    // No "Call flow chart" entry any more: it hung under a second CONNECT
+    // heading at the bottom of the rail, and a line's chart now opens from its
+    // row on Call flow (UI queue 51).
   ];
 
   /// Connection, not Call flow.
@@ -267,7 +251,10 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// phone account exists, and landing a brand new organization on "no lines
   /// yet" would be answering a question they have not asked. Connection is
   /// where somebody with nothing set up actually needs to start.
-  int _section = 2;
+  ///
+  /// Found by its id rather than written as a position, which was 2 and named
+  /// Connection only while General sat above Call flow.
+  int _section = _sections.indexWhere((section) => section.id == 'connection');
 
   bool _paneOpen = false;
 
@@ -567,15 +554,15 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     // below a move.
     final id = _sections[_section].id;
 
-    // The shared list first — see [phoneSettingsPane]. General leads and Call
-    // flow follows it there, because they answer the same question, one as the
-    // form you fill in and one as the report of what that did, and the form
-    // comes first because that is the order somebody works in.
     // The one pane the tab builds itself, because it needs a way back into
     // the tab. Jose, 2026-09-23: clicking a step on Call flow should "direct
     // me to the screen where that can be changed".
     if (id == 'call-flow') {
-      return CallFlowPane(api: widget.api, onOpen: _openSection);
+      return CallFlowPane(
+        api: widget.api,
+        session: widget.session,
+        onOpen: _openSection,
+      );
     }
 
     return phoneSettingsPane(id, api: widget.api, session: widget.session) ??
