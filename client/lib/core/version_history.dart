@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0351',
+      date: '5 Oct 2026',
+      items: [
+        'Onboarding: the signed contract\'s PDF shows tools and equipment as tables, includes the signed W-4 or W-9, ends with the copy statement, and every contract has the cover; both sides must draw their signature.',
+        'Onboarding: a signed W-4 or W-9 opens as the picture of the signed page.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0350, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0350',
       date: '5 Oct 2026',
       items: [
