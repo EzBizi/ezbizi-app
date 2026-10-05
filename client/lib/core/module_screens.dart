@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/ai_assistance_screen.dart';
 import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
-import '../screens/customers_screen.dart';
+import '../screens/customers/memberships_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
@@ -65,7 +65,7 @@ final Map<String, ModuleScreen> moduleScreens = {
   ),
   'customers': ModuleScreen(
     Icons.people_outline,
-    (api, session) => CustomersScreen(api: api, session: session),
+    (api, session) => CustomersWithMemberships(api: api, session: session),
   ),
   'jobs': ModuleScreen(
     Icons.construction_outlined,

@@ -9,6 +9,7 @@ use App\Models\AdsAccountState;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Estimate;
+use App\Models\Membership;
 use App\Models\FieldAlert;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
@@ -955,6 +956,16 @@ class ModuleServiceProvider extends ServiceProvider
                     // moving accountability between franchises is the kind of
                     // thing a manager wants to be told about, and burying it in
                     // "a field changed" means nobody ever builds that rule.
+                    // Memberships (Jose, 2026-10-05): the review faces, told who
+                    // smiled — by the customer's own review link, or by the
+                    // phone or email the faces asked for. A happy one is when
+                    // to offer the membership: {{ membership_join_url }}.
+                    new TriggerDefinition(
+                        key: 'customer.reviewed',
+                        label: 'Left a review on the website',
+                        description: 'A known customer tapped a face on the review widget on the website. '
+                            .'"rating" is happy or sad; a sad one may carry a "comment".',
+                    ),
                     new TriggerDefinition(
                         key: 'customer.owner_reassigned',
                         label: 'Owner reassigned',
@@ -981,6 +992,42 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Deactivate the customer',
                         description: 'Marks a customer inactive without deleting anything. '
                             .'"Update a field" can already do this by setting Active to false.',
+                    ),
+                ],
+            ),
+
+            /*
+             * Membership program, drawn inside Customers (Jose, 2026-10-05: "a
+             * sub tab in Customers, with its own sub tabs of Dashboard - Members
+             * - Settings"). A yearly maintenance plan: one `memberships` row per
+             * year, reminded a month before it ends. Amounts need
+             * `jobs.financials`, as every other amount does. Spec:
+             * docs/superpowers/specs/2026-10-05-memberships-design.md.
+             */
+            new ModuleDefinition(
+                key: 'memberships',
+                label: 'Memberships',
+                parent: 'customers',
+                sidebar: false,
+                subject: new AutomationSubject(Membership::class, 'Membership'),
+                emits: [Membership::class],
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('members', 'Members'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'membership.created',
+                        label: 'Member joined',
+                        description: 'A customer joined a membership plan, new or renewing. '
+                            .'"The customer" as a recipient is the member.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'membership.renewal_due',
+                        label: 'Renewal due in a month',
+                        description: 'Once, a month before a membership year ends: the time to '
+                            .'remind the customer to book their next yearly visit.',
                     ),
                 ],
             ),

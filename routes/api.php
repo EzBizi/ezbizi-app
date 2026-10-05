@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\EstimatesController;
+use App\Http\Controllers\Api\MembershipsController;
 use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
@@ -539,6 +540,17 @@ Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
 
+// Membership program, customer side (spec 2026-10-05). The review faces say who
+// smiled by the site's public key; the join page's signed link is its permission.
+Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.review');
+Route::get('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'joinPage'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('memberships.join');
+Route::post('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'join'])
+    ->middleware(['signed', 'throttle:20,1']);
+
 Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.challenge');
@@ -751,6 +763,12 @@ Route::prefix('v1')
         // Estimates live inside Jobs (spec 2026-09-29 §4); EstimatePolicy asks for
         // Jobs' Financials toggle on every one of these.
         Route::apiResource('estimates', EstimatesController::class);
+
+        // Customers › Memberships (spec 2026-10-05). Plans before {membership}.
+        Route::get('memberships/plans', [MembershipsController::class, 'plans']);
+        Route::post('memberships/plans', [MembershipsController::class, 'storePlan']);
+        Route::patch('memberships/plans/{plan}', [MembershipsController::class, 'updatePlan']);
+        Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);
