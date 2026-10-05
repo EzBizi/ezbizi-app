@@ -1,0 +1,467 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Customers · Memberships</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every customer, plan, amount and the company are invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every customer, plan, amount and the company are invented. */
+.strip2{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--paper);flex:0 0 auto}
+.pane{flex:1;min-width:0;padding:12px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.pt{font-size:15px;font-weight:800}
+.tiles.t4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.tiles.t5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.money{color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.rt{text-align:right}
+.st-act{color:var(--ok);font-weight:700}.st-exp{color:var(--bad);font-weight:700}.st-up{color:var(--info);font-weight:700}.st-can{color:var(--muted);font-weight:700}
+.bk2{display:flex;align-items:center;gap:8px}
+.kv{display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 12px;font-size:12px}
+.kv span{color:var(--muted)}
+.yr{display:grid;grid-template-columns:90px 120px 1fr 90px 90px;gap:8px;font-size:12px;padding:6px 0;border-top:1px solid var(--line2);align-items:center}
+.yr:first-child{border-top:0}
+.side{width:330px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;box-shadow:-6px 0 18px rgba(6,8,8,.06)}
+.side .sh2{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:800}
+.side .sb{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.lab{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.inp{border:1px solid #b9c7cd;border-radius:var(--r);height:32px;display:flex;align-items:center;padding:0 10px;font-size:12px;justify-content:space-between;background:var(--paper)}
+.month{font:800 11px Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:2px 0 -2px}
+.mcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.mc b{font-size:12.5px}
+.mc .tiny{display:flex;justify-content:space-between}
+.split{display:flex;flex:1;min-height:0;gap:0}
+.split .list{flex:1;min-width:0;padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.split .dock2{width:380px;flex:0 0 auto;border-left:1px solid var(--line);background:var(--paper);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.plan{display:grid;grid-template-columns:minmax(0,1fr) 110px 90px 80px 60px;gap:10px;align-items:center;padding:0 12px;height:44px;border-top:1px solid var(--line2);font-size:12.5px}
+.plan:first-child{border-top:0}
+.hint2{background:var(--infoc);color:var(--info);border-radius:var(--r);padding:8px 11px;font-size:12px}
+.bars2{display:flex;flex-direction:column;gap:6px}
+.bars2 .r{display:grid;grid-template-columns:110px minmax(0,1fr) 40px;gap:8px;align-items:center;font-size:11.5px}
+.bars2 .t{height:10px;border-radius:5px;background:#e3e9ec;overflow:hidden}
+.bars2 .t i{display:block;height:100%;background:var(--pri)}
+.prow3{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line2)}
+.prow3:first-child{border-top:0}
+.prow3 b{display:block;font-size:12.5px}
+.prow3 i{display:block;font-style:normal;font-size:10.5px;color:var(--muted)}
+.prow3 .r2{text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.tg{display:inline-block;border-radius:999px;background:#c9d4d9;position:relative}
+.tg::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tg.on{background:var(--pri)}
+.tg.on::after{left:14px}
+</style>
+
+<div class="wrap">
+<h1>Customers · Memberships · Dashboard, Members and Settings</h1>
+<p class="sub">Jose, 2026-10-05: a yearly maintenance program, <i>"a sub tab in Customers, with its own sub tabs of Dashboard - Members - Settings"</i>, and on Members <i>"customer list, enrollment type, plan type, amount due, state, zip, estimate gross for client, amount paid so far"</i>. His word for the pick, the same day: <i>"go with ur recommended options as usual"</i>.</p>
+<p class="need"><b>Data:</b> all of it is served on the Membership branch (<code>19240797</code>): <code>GET /memberships</code> rows (customer, enrollment, plan, billing, due, state, zip, estimated gross, paid, status, starts and ends), <code>POST</code>/<code>PATCH</code>/<code>DELETE</code>, and the plans. Amounts come back empty without <code>jobs.financials</code>, and then their columns and tiles are not drawn at all, rather than drawn as dashes. Dashboard figures are counted from the same rows.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>Tiles over the members table, a member opened in place <span class="rec">Recommended</span></h2>
+<p class="cap"><b>Members</b> is Jose's columns, in his order, under four tiles that are also the filters: active, renewing in the next 30 days, lapsed, and amount due (money only for financials). A row opens the member in place with a ← back: this year, what has been paid (changed right there), every earlier year, and Cancel. <b>Add a member</b> opens a side panel: customer, plan, start date. <b>Dashboard</b> is the same figures with what is coming up: renewals in the next 30 days by name, and members by plan. <b>Settings</b> is the plans, each changed in its row, plus where the renewal reminder is set. <span class="why">Why: it is the shape of every other list in the app (Inventory, Connection), the columns are the ones Jose named, and nothing opens over the module.</span></p>
+<div class="win" style="height:560px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Customers</div></div>
+  <div class="strip2"><span class="tab">Customers</span><span class="tab on">Memberships</span></div>
+  <div class="tabs" style="padding-top:8px"><span class="tab">Dashboard</span><span class="tab on">Members</span><span class="tab">Settings</span></div>
+  <div class="pane">
+   <div class="tiles t4">
+    <div class="tile on"><span class="k">Active</span><span class="v">212</span><span class="d">members this year</span></div>
+    <div class="tile"><span class="k">Renewing soon</span><span class="v cau">14</span><span class="d">in the next 30 days</span></div>
+    <div class="tile"><span class="k">Lapsed</span><span class="v bad">9</span><span class="d">year ended, not renewed</span></div>
+    <div class="tile"><span class="k">Amount due</span><span class="v">$4,180</span><span class="d">across 31 members</span></div>
+   </div>
+   <div class="prow"><span class="srch" style="width:280px">⌕ Search members</span><span class="sp"></span><span class="btn f">+ Add a member</span></div>
+   <div class="tbl" style="--g:minmax(0,1.6fr) 84px minmax(0,1fr) 90px 50px 62px 96px 90px 84px">
+    <div class="tr hd"><span>Customer</span><span>Enrollment</span><span>Plan</span><span class="rt">Amount due</span><span>State</span><span>Zip</span><span class="rt">Est. gross</span><span class="rt">Paid so far</span><span>Renews</span></div>
+    <div class="tr"><b>Morgan Ellis</b><span class="pill p-info">New</span><span>Yearly sweep · yearly</span><span class="money">$0</span><span>FL</span><span>33901</span><span class="money">$489</span><span class="money">$199</span><span>Mar 2027</span></div>
+    <div class="tr"><b>Riley Park</b><span class="pill p-neu">Renewal</span><span>Chimney care · monthly</span><span class="money">$54</span><span>FL</span><span>34102</span><span class="money">$612</span><span class="money">$162</span><span class="st-up">Nov 2026</span></div>
+    <div class="tr"><b>Quinn Avery</b><span class="pill p-neu">Renewal</span><span>Yearly sweep · yearly</span><span class="money">$199</span><span>GA</span><span>30303</span><span class="money">$455</span><span class="money">$0</span><span class="st-up">Oct 2026</span></div>
+    <div class="tr"><b>Jordan Blake</b><span class="pill p-info">New</span><span>Chimney care · monthly</span><span class="money">$18</span><span>FL</span><span>33139</span><span class="money">$570</span><span class="money">$90</span><span>Jun 2027</span></div>
+    <div class="tr"><b>Sam Ortega</b><span class="pill p-neu">Renewal</span><span>Yearly sweep · yearly</span><span class="money">$0</span><span>TX</span><span>75201</span><span class="money">$520</span><span class="money">$199</span><span class="st-exp">Ended Sep 30</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px"><b>A member, opened in place</b>, and <b>Add a member</b> in a side panel:</p>
+<div class="win" style="height:330px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod" style="flex-direction:row">
+  <div class="pane">
+   <div class="bk2"><span class="ib">←</span><div><div class="pt">Riley Park</div><div class="tiny">Chimney care, billed monthly · renewal · member since 2024</div></div><span class="sp"></span><span class="btn">Cancel membership</span></div>
+   <div class="box" style="gap:8px">
+    <div class="kv"><span>This year</span><b>Nov 15, 2025 – Nov 14, 2026</b><span>Paid so far</span><b>$162 <span class="more" style="margin-left:6px">Change</span></b><span>Amount due</span><b>$54</b><span>Reminder</span><b class="muted">Sent Oct 15 · waiting for a visit date</b></div>
+   </div>
+   <div class="box"><div class="lab">Every year</div>
+    <div class="yr"><b>2025–26</b><span>Chimney care</span><span class="muted">Renewal</span><span class="money">$162</span><span class="st-act">Active</span></div>
+    <div class="yr"><b>2024–25</b><span>Yearly sweep</span><span class="muted">New</span><span class="money">$199</span><span class="st-can">Ended</span></div>
+   </div>
+  </div>
+  <div class="side">
+   <div class="sh2">Add a member <span class="sp"></span><span class="ib">✕</span></div>
+   <div class="sb">
+    <div><div class="lab">Customer</div><div class="inp">Search customers <span>⌕</span></div></div>
+    <div><div class="lab">Plan</div><div class="inp">Yearly sweep · $199 a year <span>⌄</span></div></div>
+    <div><div class="lab">Starts</div><div class="inp">Today, Oct 5, 2026 <span>📅</span></div></div>
+    <div><div class="lab">Paid so far</div><div class="inp">$0</div></div>
+    <span class="btn f">Add member</span>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px"><b>Dashboard</b> and <b>Settings</b>, the same option:</p>
+<div class="win" style="height:330px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod" style="flex-direction:row;gap:0">
+  <div class="pane">
+   <div class="tiles t4">
+    <div class="tile"><span class="k">Active</span><span class="v">212</span><span class="d">168 renewals · 44 new</span></div>
+    <div class="tile"><span class="k">Renewing soon</span><span class="v cau">14</span><span class="d">next 30 days</span></div>
+    <div class="tile"><span class="k">Paid this year</span><span class="v">$38,410</span><span class="d">of $42,590</span></div>
+    <div class="tile"><span class="k">Est. gross</span><span class="v">$104.7K</span><span class="d">plans + average job</span></div>
+   </div>
+   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
+    <div class="box"><div class="lab">Renewing in the next 30 days</div>
+     <div class="lr"><span class="av a3">QA</span><div class="g"><b>Quinn Avery</b><span>Yearly sweep · Oct 22 · reminder sent</span></div><span class="money">$199 due</span></div>
+     <div class="lr"><span class="av a5">RP</span><div class="g"><b>Riley Park</b><span>Chimney care · Nov 14 · not sent yet</span></div><span class="money">$54 due</span></div>
+    </div>
+    <div class="box"><div class="lab">Members by plan</div>
+     <div class="bars2"><div class="r"><span>Yearly sweep</span><span class="t"><i style="width:72%"></i></span><b>153</b></div><div class="r"><span>Chimney care</span><span class="t"><i style="width:28%"></i></span><b>59</b></div></div>
+    </div>
+   </div>
+  </div>
+  <div class="pane" style="border-left:1px solid var(--line);background:var(--ground)">
+   <div class="pt">Settings · Plans</div>
+   <div class="tbl">
+    <div class="plan" style="font-weight:800;color:var(--muted);font-size:10.5px;height:34px;background:#f7f9fa"><span>Plan</span><span>Price</span><span>Billed</span><span>Members</span><span>On</span></div>
+    <div class="plan"><b>Yearly sweep</b><span>$199</span><span>Yearly</span><span>153</span><span class="tg on" style="width:30px;height:18px"></span></div>
+    <div class="plan"><b>Chimney care</b><span>$18 a month</span><span>Monthly</span><span>59</span><span class="tg on" style="width:30px;height:18px"></span></div>
+   </div>
+   <span class="btn" style="align-self:flex-start">+ Add a plan</span>
+   <div class="hint2">A month before a member's year ends, <b>Renewal due in a month</b> fires once. What it sends (text, WhatsApp or email) is set in <b>Automations →</b></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>Members grouped by the month they renew</h2>
+<p class="cap">Members as cards under the month their year ends, nearest first, so the work coming up is what you read first. Money sits on each card (financials only). Jose's columns are on the cards rather than in columns, so the list cannot be sorted by zip or amount.</p>
+<div class="win" style="height:420px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="tabs" style="padding-top:8px"><span class="tab">Dashboard</span><span class="tab on">Members</span><span class="tab">Settings</span></div>
+  <div class="pane">
+   <div class="prow"><span class="srch" style="width:280px">⌕ Search members</span><span class="chip on">Renewing</span><span class="chip">All</span><span class="chip">Lapsed</span><span class="sp"></span><span class="btn f">+ Add a member</span></div>
+   <div class="month">October 2026 · 3</div>
+   <div class="mcards">
+    <div class="mc"><b>Quinn Avery</b><span class="tiny"><span>Yearly sweep · renewal</span><span>GA 30303</span></span><span class="tiny"><span>Due $199</span><span>Paid $0</span></span></div>
+    <div class="mc"><b>Dana Reyes</b><span class="tiny"><span>Chimney care · new</span><span>FL 33901</span></span><span class="tiny"><span>Due $36</span><span>Paid $180</span></span></div>
+    <div class="mc"><b>Avery Cole</b><span class="tiny"><span>Yearly sweep · renewal</span><span>FL 34102</span></span><span class="tiny"><span>Due $0</span><span>Paid $199</span></span></div>
+   </div>
+   <div class="month">November 2026 · 11</div>
+   <div class="mcards">
+    <div class="mc"><b>Riley Park</b><span class="tiny"><span>Chimney care · renewal</span><span>FL 34102</span></span><span class="tiny"><span>Due $54</span><span>Paid $162</span></span></div>
+    <div class="mc"><b>Taylor Lin</b><span class="tiny"><span>Yearly sweep · new</span><span>TX 75201</span></span><span class="tiny"><span>Due $199</span><span>Paid $0</span></span></div>
+    <div class="mc"><b>Casey Moore</b><span class="tiny"><span>Yearly sweep · renewal</span><span>FL 33139</span></span><span class="tiny"><span>Due $0</span><span>Paid $199</span></span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>The list on the left, the member docked on the right</h2>
+<p class="cap">Like Customers: a narrow list of members, and the chosen one open beside it, with the year, the payments and the history. Quick to walk through members one by one; the columns Jose named have to fit a narrower list, so state, zip and the amounts move into the docked side.</p>
+<div class="win" style="height:400px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="tabs" style="padding-top:8px"><span class="tab">Dashboard</span><span class="tab on">Members</span><span class="tab">Settings</span></div>
+  <div class="split">
+   <div class="list">
+    <span class="srch" style="width:100%">⌕ Search members</span>
+    <div class="card">
+     <div class="prow3"><div><b>Morgan Ellis</b><i>Yearly sweep · new · FL 33901</i></div><span class="st-act">Active</span></div>
+     <div class="prow3" style="background:var(--pric)"><div><b>Riley Park</b><i>Chimney care · renewal · FL 34102</i></div><span class="st-up">Renews Nov</span></div>
+     <div class="prow3"><div><b>Quinn Avery</b><i>Yearly sweep · renewal · GA 30303</i></div><span class="st-up">Renews Oct</span></div>
+     <div class="prow3"><div><b>Sam Ortega</b><i>Yearly sweep · renewal · TX 75201</i></div><span class="st-exp">Lapsed</span></div>
+    </div>
+   </div>
+   <div class="dock2">
+    <div class="pt">Riley Park</div>
+    <div class="kv"><span>Plan</span><b>Chimney care · monthly</b><span>Enrollment</span><b>Renewal</b><span>This year</span><b>Nov 15, 2025 – Nov 14, 2026</b><span>Amount due</span><b>$54</b><span>Est. gross</span><b>$612</b><span>Paid so far</span><b>$162</b><span>State · zip</span><b>FL 34102</b></div>
+    <span class="btn" style="align-self:flex-start">Cancel membership</span>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · Tiles two by two, rows, a member in place <span class="rec">Recommended</span></p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Memberships</span></div>
+  <div class="tabs" style="background:var(--paper)"><span class="tab">Dashboard</span><span class="tab on">Members</span><span class="tab">Settings</span></div>
+  <div class="pb">
+   <div class="tiles t2">
+    <div class="tile on"><span class="k">Active</span><span class="v">212</span></div>
+    <div class="tile"><span class="k">Renewing soon</span><span class="v cau">14</span></div>
+    <div class="tile"><span class="k">Lapsed</span><span class="v bad">9</span></div>
+    <div class="tile"><span class="k">Amount due</span><span class="v">$4,180</span></div>
+   </div>
+   <div class="srch">⌕ Search members</div>
+   <div class="card">
+    <div class="prow3"><div><b>Morgan Ellis</b><i>Yearly sweep · new · FL 33901</i></div><div class="r2">$0 due<br><span class="tiny">paid $199</span></div></div>
+    <div class="prow3"><div><b>Riley Park</b><i>Chimney care · renewal · FL 34102</i></div><div class="r2">$54 due<br><span class="tiny">paid $162</span></div></div>
+    <div class="prow3"><div><b>Quinn Avery</b><i>Yearly sweep · renewal · GA 30303</i></div><div class="r2">$199 due<br><span class="tiny">paid $0</span></div></div>
+    <div class="prow3"><div><b>Jordan Blake</b><i>Chimney care · new · FL 33139</i></div><div class="r2">$18 due<br><span class="tiny">paid $90</span></div></div>
+   </div>
+   <span class="btn f">+ Add a member</span>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · By the month they renew</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Memberships</span></div>
+  <div class="pb">
+   <div class="month">October 2026 · 3</div>
+   <div class="mc"><b>Quinn Avery</b><span class="tiny"><span>Yearly sweep · renewal</span><span>Due $199</span></span></div>
+   <div class="mc"><b>Dana Reyes</b><span class="tiny"><span>Chimney care · new</span><span>Due $36</span></span></div>
+   <div class="month">November 2026 · 11</div>
+   <div class="mc"><b>Riley Park</b><span class="tiny"><span>Chimney care · renewal</span><span>Due $54</span></span></div>
+   <div class="mc"><b>Taylor Lin</b><span class="tiny"><span>Yearly sweep · new</span><span>Due $199</span></span></div>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · The member first, the list behind it</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Riley Park</span></div>
+  <div class="pb">
+   <div class="box"><div class="kv"><span>Plan</span><b>Chimney care</b><span>This year</span><b>to Nov 14, 2026</b><span>Amount due</span><b>$54</b><span>Paid so far</span><b>$162</b><span>Est. gross</span><b>$612</b></div></div>
+   <div class="box"><div class="lab">Every year</div><div class="yr" style="grid-template-columns:70px 1fr 60px"><b>2025–26</b><span>Chimney care</span><span class="st-act">Active</span></div><div class="yr" style="grid-template-columns:70px 1fr 60px"><b>2024–25</b><span>Yearly sweep</span><span class="st-can">Ended</span></div></div>
+   <span class="btn">Cancel membership</span>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:22px">Every customer, plan, amount and the company are invented. Without <code>jobs.financials</code> the Amount due, Est. gross and Paid so far columns, and the money tiles, are not drawn; the rest of each screen is the same.</p>
+</div>

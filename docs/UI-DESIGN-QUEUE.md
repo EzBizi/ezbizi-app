@@ -2961,6 +2961,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — building (`docs/previews/customers-memberships-layouts.html`)
+
+From the Membership Program session (`local_9b8c5aa9…`), backend on `session/memberships` @ `19240797`, spec
+`docs/superpowers/specs/2026-10-05-memberships-design.md`. Jose, 2026-10-05, on Members: *"customer list, enrollment
+type, plan type, amount due, state, zip, estimate gross for client, amount paid so far"*; and to me, before the
+gallery existed: *"go with ur recommended options as usual"* — so the recommended pair is built and the gallery is
+the record. Desktop **1** four tiles that filter (active, renewing in 30 days, lapsed, amount due) over Jose's
+columns in his order, a member opened in place with ← (this year, paid changed in its row, every earlier year,
+Cancel), Add a member in a side panel; Dashboard the same figures with renewals in the next 30 days and members by
+plan; Settings the plans changed in their rows and where the renewal reminder is set (recommended). **2** cards
+under the month they renew. **3** a list with the member docked beside it. Phone **4** (recommended) – **6**.
+Money (due, gross, paid) only with `jobs.financials`; without it those columns and tiles are not drawn.
+
 ### 51 · Communication · Settings: General and Call flow, drawn together — **Jose: "go with ur recommendaitonms as usual" — 1 and 4** — building (`docs/previews/communication-call-flow-layouts.html`)
 
 Jose, 2026-10-05, with screenshots: *"I feel we can also improve this screen on communication - settings - call
