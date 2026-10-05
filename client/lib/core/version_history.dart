@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0356',
+      date: '5 Oct 2026',
+      items: [
+        'Dashboard › Jobs: for roles with Jobs Financials, the box shows what was earned in the period, per currency, against the period before. Others see no amounts.',
+        'Voicemail boxes can belong to a team or a person (Settings › Voicemail › Belongs to). A team\'s or person\'s missed calls leave their messages in that box, and the box lists them. Fixed: a caller who picks a team from the menu and gets no answer now reaches that team\'s overflow or voicemail, not the line\'s. Fixed: a line set to ring one person now goes to voicemail after one round instead of ringing them again.',
+        'Recent calls and Records show what the caller pressed in the menu (\'pressed 2\', \'dialed ext 0101\').',
+        'Settings › Numbers: tick several lines and change what rings them, their business hours or recording, all at once.',
+        'Settings › Numbers has two new filters: \'Not in use\' (no calls in 30 days) and \'Not assigned\' (no one\'s extension holds the line).',
+        'Port-in asks for the current carrier\'s account (name, account number, who signs, service address) and the port PIN that US mobile numbers need. The port list shows the PIN and the account number in full to whoever can start a port and only their last two digits to everyone else, and who was sent the letter of authorization to sign.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0355',
       date: '5 Oct 2026',
       items: [
