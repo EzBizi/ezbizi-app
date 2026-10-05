@@ -292,6 +292,11 @@ void main() {
 
         expect(find.text('Yearly sweep'), findsOneWidget);
 
+        // The stored price is the year's; a monthly plan shows a twelfth of
+        // it a month, and never the year's price as a monthly one.
+        expect(find.text(r'$18 a month ($216 a year)'), findsOneWidget);
+        expect(find.text(r'$216 a month'), findsNothing);
+
         await tester.tap(find.byKey(const Key('plans-add')));
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -472,7 +477,7 @@ class _Server {
           {
             'id': 'p-2',
             'name': 'Chimney care',
-            'price_minor': 1800,
+            'price_minor': 21600,
             'currency': 'USD',
             'billing': 'monthly',
             'is_active': true,
