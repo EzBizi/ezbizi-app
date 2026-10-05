@@ -82,7 +82,7 @@ class MergeWorkizTwins extends Command
      * whether they stay at all is Jose's to decide. The postal guard cannot see
      * them: they all share 33009. Compared normalised, see street().
      */
-    private const PLACEHOLDER_STREETS = ['800 se 4th ave'];
+    public const PLACEHOLDER_STREETS = ['800 se 4th ave'];
 
     public function handle(TenantContext $tenant, AuditLogger $audit): int
     {
@@ -147,7 +147,7 @@ class MergeWorkizTwins extends Command
             ->whereExists(fn ($q) => $q->from('workiz_clients')->whereColumn('workiz_clients.customer_id', 'customers.id'))
             ->get();
 
-        $named = $this->namedElsewhere($twins->modelKeys());
+        $named = self::namedElsewhere($twins->modelKeys(), ['jobs.customer_id', 'workiz_clients.customer_id']);
         $pairs = [];
         $report = ['several' => [], 'address' => 0, 'placeholder' => 0, 'touched' => [], 'named' => []];
 
@@ -235,16 +235,8 @@ class MergeWorkizTwins extends Command
         $this->info('Merged '.count($listed).". Manifest: {$path} on the local disk.");
     }
 
-    /**
-     * Which of these customers some row names apart from their own jobs and
-     * Workiz keys, which this moves: every `…_id` column in the schema, deleted
-     * rows included (RemoveWorkizDuplicates::named, less the two it re-points).
-     *
-     * @param  list<string>  $ids
-     * @return array<string, true>
-     */
     /** "800 Southeast 4th Avenue" and "800 SE 4th Ave." alike: lower case, no punctuation, the usual short forms. */
-    private static function street(?string $line): string
+    public static function street(?string $line): string
     {
         $s = mb_strtolower(preg_replace('/[^a-z0-9 ]+/i', ' ', (string) $line));
         $s = preg_replace(['/\bsouth\s*east\b/', '/\bavenue\b/', '/\bav\b/', '/\bfourth\b/'], ['se', 'ave', 'ave', '4th'], $s);
@@ -252,14 +244,27 @@ class MergeWorkizTwins extends Command
         return trim(preg_replace('/\s+/', ' ', $s));
     }
 
-    private function namedElsewhere(array $ids): array
+    /**
+     * Which of these ids some row names: every `…_id` column in the schema,
+     * deleted rows included (RemoveWorkizDuplicates::named), less the columns
+     * the caller is about to re-point or remove itself.
+     *
+     * @param  list<string>  $ids
+     * @param  list<string>  $except  'table.column'
+     * @return array<string, true>
+     */
+    public static function namedElsewhere(array $ids, array $except): array
     {
+        if ($ids === []) {
+            return [];
+        }
+
         $columns = DB::table('information_schema.COLUMNS')
             ->where('TABLE_SCHEMA', DB::getDatabaseName())
             ->where('COLUMN_NAME', 'like', '%\_id')
             ->whereIn('DATA_TYPE', ['char', 'varchar'])
             ->get(['TABLE_NAME', 'COLUMN_NAME'])
-            ->reject(fn ($c) => in_array($c->TABLE_NAME.'.'.$c->COLUMN_NAME, ['jobs.customer_id', 'workiz_clients.customer_id'], true));
+            ->reject(fn ($c) => in_array($c->TABLE_NAME.'.'.$c->COLUMN_NAME, $except, true));
 
         $named = [];
 

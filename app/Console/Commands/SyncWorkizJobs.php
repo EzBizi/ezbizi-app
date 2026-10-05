@@ -2,14 +2,17 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Job;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
+use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -90,7 +93,7 @@ class SyncWorkizJobs extends Command
      * nothing else changed. `handle()` is resolved when the command RUNS, so
      * the same injection here costs nothing at boot.
      */
-    public function handle(WorkizJobs $workiz, TenantContext $tenant): int
+    public function handle(WorkizJobs $workiz, TenantContext $tenant, AuditLogger $audit): int
     {
         /*
          * Unscoped to FIND the work, then into each tenant to DO it.
@@ -158,7 +161,9 @@ class SyncWorkizJobs extends Command
                 return $count;
             });
 
-            $reread = $tenant->run($organization, fn () => $this->reconcile($workiz, $connection, $runStarted));
+            // Only a complete listing can say a job is missing from it.
+            $listed = $result['failed'] === null ? $since : null;
+            $reread = $tenant->run($organization, fn () => $this->reconcile($workiz, $connection, $runStarted, $listed, $audit));
 
             $refreshed += $reread['refreshed'];
 
@@ -221,7 +226,7 @@ class SyncWorkizJobs extends Command
      *
      * @return array{refreshed: int, failed: ?string}
      */
-    private function reconcile(WorkizJobs $workiz, SocialConnection $connection, CarbonInterface $runStarted): array
+    private function reconcile(WorkizJobs $workiz, SocialConnection $connection, CarbonInterface $runStarted, ?string $listedSince, AuditLogger $audit): array
     {
         $budget = max(0, (int) $this->option('reconcile'));
 
@@ -234,7 +239,7 @@ class SyncWorkizJobs extends Command
             ->orderByRaw("CASE WHEN status IN ('Done', 'Canceled') THEN 1 ELSE 0 END")
             ->orderBy('synced_at')
             ->limit($budget)
-            ->get(['id', 'remote_id']);
+            ->get();
 
         /*
          * "SETTLED" HISTORY IS NOT SETTLED. Measured 2026-09-25 against Workiz's
@@ -256,21 +261,32 @@ class SyncWorkizJobs extends Command
             ->whereNotIn('id', $stale->modelKeys())
             ->orderBy('synced_at')
             ->limit($verify)
-            ->get(['id', 'remote_id']);
+            ->get();
 
         $refreshed = 0;
+        $failed = null;
+        $gone = [];
 
         foreach ($stale->concat($oldest) as $row) {
             $result = $workiz->find($connection, (string) $row->remote_id);
 
             if ($result['failed'] !== null) {
-                return ['refreshed' => $refreshed, 'failed' => $result['failed']];
+                $failed = $result['failed'];
+
+                break;
             }
 
             if ($result['job'] === null) {
-                // Workiz answered but holds no such job. Moved to the back of
-                // the queue rather than asked about again next minute.
-                WorkizJob::query()->whereKey($row->id)->update(['synced_at' => now()]);
+                // Workiz holds no such job (it answers 204). Deleted there when
+                // it was still open and the complete listing this run just read
+                // did not hold it either: retired. Otherwise moved to the back
+                // of the queue rather than asked about again next minute.
+                if ($listedSince !== null && ! in_array($row->status, self::CLOSED, true)
+                    && $row->scheduled_for !== null && $row->scheduled_for->gte($listedSince)) {
+                    $gone[] = $row;
+                } else {
+                    WorkizJob::query()->whereKey($row->id)->update(['synced_at' => now()]);
+                }
 
                 continue;
             }
@@ -278,7 +294,62 @@ class SyncWorkizJobs extends Command
             $refreshed += WorkizJob::land($connection, $result['job']) ? 1 : 0;
         }
 
-        return ['refreshed' => $refreshed, 'failed' => null];
+        $this->retire($gone, $audit);
+
+        return ['refreshed' => $refreshed, 'failed' => $failed];
+    }
+
+    /**
+     * A job Workiz deleted: missing from the branch's complete listing, and
+     * asked for by its id, 204.
+     *
+     * A-1 moved Massachusetts into its own Workiz account on 2026-10-05 by
+     * deleting 56 upcoming jobs from Nationwide's, and the mirror kept every
+     * one: the board, the openings and the jobs list showed visits nobody was
+     * going to make, beside the copies in the new account. The mirror row goes,
+     * because those readers read this table directly. Its EzBizi job is
+     * soft-deleted only when it is still exactly what the projection wrote and
+     * nothing in EzBizi names it -- a priced line, an estimate, a payment, an
+     * event, a person's edit (Customers, 2026-10-05: money must never be left
+     * hanging off a deleted job). Otherwise it stays, and the audit row says why.
+     *
+     * @param  list<WorkizJob>  $rows
+     */
+    private function retire(array $rows, AuditLogger $audit): void
+    {
+        $named = MergeWorkizTwins::namedElsewhere(
+            array_values(array_filter(array_map(fn (WorkizJob $row) => $row->job_id, $rows))),
+            ['workiz_jobs.job_id'],
+        );
+
+        foreach ($rows as $row) {
+            DB::transaction(function () use ($row, $audit, $named) {
+                $job = $row->job_id === null ? null : Job::query()->find($row->job_id);
+                $untouched = $job !== null && collect(ProjectWorkizRecords::followedValues($job))
+                    ->every(fn ($value, $field) => (string) ($value ?? '') === (string) ($row->projected[$field] ?? ''));
+
+                $verdict = match (true) {
+                    $job === null => 'none',
+                    ! $untouched => 'kept: changed in EzBizi',
+                    isset($named[$job->getKey()]) => 'kept: something in EzBizi names it',
+                    default => 'deleted',
+                };
+
+                if ($verdict === 'deleted') {
+                    $job->delete();
+                }
+
+                $audit->log('workiz.job_gone', $job, metadata: [
+                    'remote_id' => $row->remote_id,
+                    'serial_id' => $row->serial_id,
+                    'status' => $row->status,
+                    'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
+                    'ezbizi_job' => $verdict,
+                ]);
+
+                $row->delete();
+            });
+        }
     }
 
     /**
