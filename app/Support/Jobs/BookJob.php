@@ -26,8 +26,9 @@ use RuntimeException;
  * Placed by the customer's zip, as the Workiz projection places its jobs,
  * with `service_area_chosen_at` left null because no person chose.
  *
- * It does NOT reach Workiz: WorkizJobWriter changes Workiz jobs but creates
- * none, so a job booked here is EzBizi's alone.
+ * It does NOT reach Workiz itself. A caller that wants the job in its branch's
+ * Workiz too calls WorkizJobWriter::create() once this has committed
+ * (Memberships, for a member's visit).
  */
 final class BookJob
 {

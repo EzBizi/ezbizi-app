@@ -500,11 +500,29 @@ final class WorkizJobs
      */
     public function post(SocialConnection $connection, string $path, array $body): ?string
     {
+        return $this->send($connection, $path, $body)['refused'];
+    }
+
+    public const UNANSWERED = 'Workiz could not be reached.';
+
+    /**
+     * post(), plus Workiz's `data` when it accepts: a create's answer is the
+     * only place the new job's UUID is given.
+     *
+     * UNANSWERED is the one refusal that does not mean "nothing changed": a
+     * timeout is a ConnectionException too, and Workiz may have done the work
+     * before the answer was lost.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{data: mixed, refused: ?string}
+     */
+    public function send(SocialConnection $connection, string $path, array $body): array
+    {
         $token = (string) ($connection->credentials['api_token'] ?? '');
         $secret = (string) ($connection->credentials['auth_secret'] ?? '');
 
         if ($token === '' || $secret === '') {
-            return 'This branch has no Workiz write key, so EzBizi cannot change its jobs.';
+            return ['data' => null, 'refused' => 'This branch has no Workiz write key, so EzBizi cannot change its jobs.'];
         }
 
         try {
@@ -513,14 +531,24 @@ final class WorkizJobs
                 ['auth_secret' => $secret] + $body,
             );
         } catch (ConnectionException) {
-            return 'Workiz could not be reached.';
+            return ['data' => null, 'refused' => self::UNANSWERED];
         }
 
         if ($response->successful()) {
-            return null;
+            return ['data' => $response->json('data'), 'refused' => null];
         }
 
-        return (string) ($response->json('details.error') ?: $response->json('msg') ?: 'Workiz refused the change ('.$response->status().').');
+        // A validation refusal names its fields under `details`, measured by
+        // A1 Tools: {"msg":"Error Validating Fields","details":{"Comments":"Invalid
+        // Field"}}. The message alone would not say which one.
+        $details = $response->json('details');
+        $fields = is_array($details) && ! isset($details['error'])
+            ? implode('; ', array_map(fn ($field, $why) => $field.': '.(is_scalar($why) ? $why : json_encode($why)), array_keys($details), $details))
+            : '';
+
+        $said = (string) ($response->json('msg') ?: 'Workiz refused the change ('.$response->status().').');
+
+        return ['data' => null, 'refused' => (string) ($response->json('details.error') ?: ($fields === '' ? $said : rtrim($said, '.').': '.$fields))];
     }
 
     /**
