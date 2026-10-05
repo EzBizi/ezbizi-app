@@ -186,8 +186,7 @@ class HrOnboardingsController extends Controller
             );
 
         $onboardings = $query
-            ->withExists(['documents', 'answers as imported_pdf_exists' => fn (Builder $a) => $a
-                ->where('field_key', OnboardingDocuments::IMPORTED_CONTRACT)->whereNotNull('value')])
+            ->withExists('documents')
             // Newest first: the list exists to be acted on, and the thing most
             // likely to need chasing is the thing just started.
             ->orderByDesc('started_at')
@@ -607,8 +606,10 @@ class HrOnboardingsController extends Controller
 
         // Signed elsewhere and imported: the original PDF is the download.
         if ($document === null && $revision === null
-            && ($imported = $this->documents->importedPdf($onboarding)) !== null) {
-            $imported = $this->documents->importedWithRecord($onboarding, $imported);
+            && $onboarding->status === Onboarding::COMPLETED
+            && ($imported = $this->documents->importedWithRecord(
+                $onboarding, $this->documents->importedPdf($onboarding),
+            )) !== null) {
             $this->audit->log('onboarding.document_copied', $onboarding, metadata: [
                 'format' => PdfRenderer::MIME,
                 'source' => 'imported',
@@ -1787,9 +1788,10 @@ class HrOnboardingsController extends Controller
             'invitation_id' => $onboarding->invitation_id,
             // Whether there is a signed PDF to download: its own document, or
             // the contract an import brought (Jose, 2026-10-05).
-            'downloadable' => (bool) ($onboarding->documents_exists ?? $onboarding->documents()->exists())
-                || (bool) ($onboarding->imported_pdf_exists ?? $onboarding->answers()
-                    ->where('field_key', OnboardingDocuments::IMPORTED_CONTRACT)->whereNotNull('value')->exists()),
+            // A completed one with none of its own was imported: its download
+            // is what the import brought, with the record (Jose, 2026-10-05).
+            'downloadable' => $onboarding->status === Onboarding::COMPLETED
+                || (bool) ($onboarding->documents_exists ?? $onboarding->documents()->exists()),
             'started_at'    => $onboarding->started_at?->toIso8601String(),
             'submitted_at'  => $onboarding->submitted_at?->toIso8601String(),
             'completed_at'  => $onboarding->completed_at?->toIso8601String(),

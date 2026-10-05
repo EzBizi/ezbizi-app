@@ -396,7 +396,7 @@ class OnboardingDocuments
      * ponytail: qpdf on the host, because the A1 PDFs use xref streams no
      * free PHP parser reads; a pure-PHP merge if qpdf ever cannot be had.
      */
-    public function importedWithRecord(Onboarding $onboarding, string $original): string
+    public function importedWithRecord(Onboarding $onboarding, ?string $original): ?string
     {
         $record = $this->recordRows($onboarding);
         // Pictures are drawn into the record; other PDFs they uploaded (a W-4)
@@ -425,22 +425,36 @@ class OnboardingDocuments
             $attachments,
         );
 
-        $dir = storage_path('app/tmp/'.Str::uuid());
-        @mkdir($dir, 0700, true);
-        try {
-            $parts = [];
-            foreach ([$original, $extra, ...$pdfs] as $i => $bytes) {
-                file_put_contents($parts[] = "{$dir}/{$i}.pdf", $bytes);
-            }
-            $run = \Illuminate\Support\Facades\Process::run(['qpdf', '--empty', '--pages', ...$parts, '--', "{$dir}/out.pdf"]);
+        // Imported with no signed contract: the record is the whole download.
+        $parts = array_values(array_filter([$original, $extra, ...$pdfs], fn ($p) => $p !== null));
+        if (count($parts) === 1) {
+            return $extra;
+        }
 
-            return $run->successful() && is_file("{$dir}/out.pdf")
-                ? (string) file_get_contents("{$dir}/out.pdf")
-                : $original;
+        $dir = sys_get_temp_dir().'/ezbizi-record-'.Str::uuid();
+        try {
+            // The system temp dir: a release's storage/app/tmp could not be
+            // made on the box, and the record was silently left off (Jose,
+            // 2026-10-05: "it just shows the contract").
+            if (! is_dir($dir) && ! mkdir($dir, 0700, true)) {
+                throw new RuntimeException("Could not make {$dir} to join the record to the imported contract.");
+            }
+            $files = [];
+            foreach ($parts as $i => $bytes) {
+                file_put_contents($files[] = "{$dir}/{$i}.pdf", $bytes);
+            }
+            $run = \Illuminate\Support\Facades\Process::run(['qpdf', '--empty', '--pages', ...$files, '--', "{$dir}/out.pdf"]);
+
+            // qpdf exits 3 when it succeeded with warnings, which a PDF made
+            // elsewhere often earns.
+            if (in_array($run->exitCode(), [0, 3], true) && is_file("{$dir}/out.pdf")) {
+                return (string) file_get_contents("{$dir}/out.pdf");
+            }
+            throw new RuntimeException('qpdf could not join the record: exit '.$run->exitCode().' '.mb_substr($run->errorOutput(), 0, 300));
         } catch (\Throwable $e) {
             report($e);
 
-            return $original;
+            return $original ?? $extra;
         } finally {
             foreach (glob("{$dir}/*") ?: [] as $file) {
                 @unlink($file);
