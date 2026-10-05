@@ -1,0 +1,367 @@
+<?php
+
+namespace Tests\Feature\Workiz;
+
+use App\Console\Commands\ProjectWorkizRecords;
+use App\Models\Customer;
+use App\Models\Job;
+use App\Models\SocialConnection;
+use App\Models\User;
+use App\Models\WorkizClient;
+use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
+use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Social\SocialProvider;
+use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Workiz\WorkizLeads;
+use App\Support\Workiz\WorkizV2;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Workiz v2 (Jose, 2026-10-05: every branch moves to its v2 key). Every v2
+ * answer faked here has the shape measured live that day on Massachusetts'
+ * key; tests/Fixtures/workiz/v2_job.php is one job of it.
+ */
+class WorkizV2Test extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private function v2Job(array $overrides = []): array
+    {
+        return array_replace_recursive(require base_path('tests/Fixtures/workiz/v2_job.php'), $overrides);
+    }
+
+    /** @return array{0: array, 1: SocialConnection} */
+    private function branch(string $version = 'v2'): array
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $connection = $this->inTenant($tenant['org'], function () use ($tenant, $version) {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $tenant['franchise']->id,
+                'provider' => SocialProvider::Workiz->value,
+                'remote_id' => $tenant['franchise']->id,
+                'display_name' => 'Massachusetts',
+            ]);
+            $c->connect($version === 'v2'
+                ? ['api_token' => 'v2key_MA', 'refresh_token' => 'v2key_MA', 'api_version' => 'v2']
+                : ['api_token' => 'api_MA', 'refresh_token' => 'api_MA', 'auth_secret' => 'sec_MA']);
+            $c->save();
+
+            return $c;
+        });
+
+        return [$tenant, $connection];
+    }
+
+    private function page(array $jobs, bool $more = false): array
+    {
+        return ['pageSize' => 100, 'page' => 1, 'totalResults' => count($jobs), 'hasMore' => $more, 'data' => $jobs];
+    }
+
+    public function test_a_v2_job_reads_as_the_v1_payload_every_reader_knows(): void
+    {
+        $p = WorkizV2::job($this->v2Job());
+
+        $this->assertSame('NYCZ7W', $p['UUID']);
+        $this->assertSame(11008, $p['SerialId']);
+        $this->assertSame(1008, $p['ClientId'], "the client's serial is v1's ClientId");
+        $this->assertSame('2026-10-07 08:00:00', $p['JobDateTime']);
+        $this->assertSame('Chimney Sweep', $p['JobType']);
+        $this->assertSame('LS Ads', $p['JobSource'], 'v2 calls the source an ad group');
+        $this->assertSame('Boston South', $p['ServiceArea']);
+        $this->assertSame(['02760', 'North Attleborough', 'Massachusetts'], [$p['PostalCode'], $p['City'], $p['State']]);
+        $this->assertSame(['5085550142', 'Pat', 'Rivera'], [$p['Phone'], $p['FirstName'], $p['LastName']]);
+        $this->assertSame([0, 0, 0], [$p['JobTotalPrice'], $p['JobAmountDue'], $p['SubTotal']], 'v2 null is v1 0');
+        $this->assertSame([['id' => 'USR-ap8XB7Vm8PqogDWq', 'Name' => 'Chaim Perez']], $p['Team']);
+        $this->assertSame(['Membership'], $p['Tags']);
+        $this->assertSame('Chimney Sweep', $p['LineItems'][0]['Name']);
+        $this->assertSame(189, $p['LineItems'][0]['Price']);
+        $this->assertSame('JOB-8ApvxXebm23oQV4E', $p['v2']['id']);
+        $this->assertSame('CL-xzA4NAKqzXW76XQp', $p['v2']['client_id']);
+    }
+
+    public function test_the_sweep_reads_a_v2_branch_through_v2(): void
+    {
+        [$tenant] = $this->branch();
+        Http::fake(['api.workiz.com/crm/api/v2/jobs*' => Http::response($this->page([$this->v2Job()]))]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 0, '--verify' => 0])->assertSuccessful();
+
+        Http::assertSent(fn (Request $r) => str_starts_with($r->url(), WorkizV2::BASE.'/jobs')
+            && $r->hasHeader('Authorization', 'Bearer v2key_MA')
+            && $r['page'] == 1 && $r['pageSize'] == 100 && $r['dateProperty'] === 'date' && $r['dateOperator'] === 'next');
+
+        $row = $this->inTenant($tenant['org'], fn () => WorkizJob::query()->sole());
+        $this->assertSame('NYCZ7W', $row->remote_id);
+        $this->assertSame(1008, (int) $row->client_id);
+        $this->assertSame('JOB-8ApvxXebm23oQV4E', $row->payload['v2']['id']);
+    }
+
+    /**
+     * Measured live on Connecticut: v2's address is the client's, not the
+     * job's (0T933A: v1 Bolton CT, v2 Avon IN); a finished job Workiz marks
+     * unscheduled has no date in v2 (009OCC); a removed job type reads null.
+     */
+    public function test_v2_never_blanks_or_moves_what_v1_knew(): void
+    {
+        [$tenant, $connection] = $this->branch();
+
+        $this->inTenant($tenant['org'], function () use ($connection) {
+            foreach ([['DONE01', 'Done'], ['OPEN01', 'Submitted']] as [$uuid, $status]) {
+                WorkizJob::create([
+                    'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => $uuid,
+                    'status' => $status, 'job_type' => 'Chimney Inspection', 'address' => '7 Bolton Road', 'city' => 'Bolton',
+                    'postal_code' => '06043', 'scheduled_for' => '2026-07-16 08:00:00', 'payload' => [], 'synced_at' => now(),
+                ]);
+
+                WorkizJob::land($connection, WorkizV2::job($this->v2Job([
+                    'uuid' => $uuid, 'status' => $status, 'date' => null, 'endDate' => null, 'isScheduled' => false, 'jobType' => null,
+                    'clientInfo' => ['addressDetails' => ['address' => '1 Avon Way', 'city' => 'Avon', 'zipCode' => '46123', 'state' => 'Indiana']],
+                ])));
+            }
+
+            $done = WorkizJob::query()->where('remote_id', 'DONE01')->sole();
+            $this->assertSame(['7 Bolton Road', 'Bolton', '06043'], [$done->address, $done->city, $done->postal_code], "the job's own place");
+            $this->assertSame('Chimney Inspection', $done->job_type);
+            $this->assertSame('2026-07-16 08:00:00', $done->scheduled_for?->format('Y-m-d H:i:s'), 'a finished visit keeps its date');
+
+            $open = WorkizJob::query()->where('remote_id', 'OPEN01')->sole();
+            $this->assertNull($open->scheduled_for, 'an open job Workiz unscheduled is waiting for a date');
+
+            // A job EzBizi has never held takes what v2 says.
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job(['uuid' => 'NEW001'])));
+            $this->assertSame('North Attleborough', WorkizJob::query()->where('remote_id', 'NEW001')->value('city'));
+        });
+    }
+
+    public function test_one_job_is_read_by_its_job_id_and_a_404_is_gone(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::land($connection, WorkizV2::job($this->v2Job())));
+
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobs/JOB-8ApvxXebm23oQV4E' => Http::sequence()
+                ->push($this->v2Job(['status' => 'Done']))
+                ->push(['message' => 'Invalid Job Id', 'error' => 'Not Found', 'statusCode' => 404], 404),
+        ]);
+
+        $workiz = app(WorkizJobs::class);
+        $this->assertSame('Done', $workiz->find($connection, 'NYCZ7W')['job']['Status'], 'by the uuid EzBizi keys on');
+        $this->assertSame(['job' => null, 'failed' => null], $workiz->find($connection, 'NYCZ7W'), 'Workiz holds no such job');
+    }
+
+    public function test_a_key_says_which_version_it_speaks(): void
+    {
+        Http::fake([
+            'api.workiz.com/api/v1/v2key/*' => Http::response(['error' => 'Forbidden', 'message' => 'Invalid API path or malformed API key.'], 403),
+            'api.workiz.com/api/v1/api_ok/*' => Http::response(['flag' => true, 'data' => []]),
+            'api.workiz.com/crm/api/v2/*' => Http::response($this->page([])),
+        ]);
+
+        $this->assertSame('v2', app(WorkizJobs::class)->verify('v2key'));
+        $this->assertSame('v1', app(WorkizJobs::class)->verify('api_ok'));
+    }
+
+    /** New York, measured: 11 people, all matched by email and name, 10 of 10 agreeing through shared jobs. */
+    public function test_a_v2_team_member_takes_over_the_v1_rows_link(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $user = $this->inTenant($tenant['org'], fn () => User::factory()->create(['organization_id' => $tenant['org']->id]));
+        $this->inTenant($tenant['org'], fn () => WorkizTeamMember::create([
+            'franchise_id' => $connection->scope_id, 'remote_id' => '436274', 'name' => 'Chaim Perez', 'email' => 'chaim@example.test',
+            'is_active' => true, 'is_field_tech' => true, 'user_id' => $user->id, 'payload' => [], 'synced_at' => now(),
+        ]));
+
+        Http::fake(['api.workiz.com/crm/api/v2/users*' => Http::response($this->page([[
+            'id' => 'USR-ap8XB7Vm8PqogDWq', 'name' => 'Chaim Perez', 'emailAddress' => 'Chaim@Example.test', 'role' => 'admin',
+            'fieldTech' => true, 'active' => true, 'serviceAreas' => [['id' => 'SA-1', 'name' => 'Boston South']], 'jobTypes' => [],
+        ]]))]);
+
+        $this->artisan('ezbizi:sync-workiz-team')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($user) {
+            $new = WorkizTeamMember::query()->where('remote_id', 'USR-ap8XB7Vm8PqogDWq')->sole();
+            $this->assertSame($user->id, $new->user_id);
+            $this->assertSame(['Boston South'], $new->service_areas);
+            $this->assertFalse((bool) WorkizTeamMember::query()->where('remote_id', '436274')->value('is_active'), 'one person, one seat');
+        });
+    }
+
+    public function test_connecting_a_v2_key_keeps_the_v1_pair_beside_it(): void
+    {
+        [$tenant, $connection] = $this->branch('v1');
+        Http::fake([
+            'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
+            'api.workiz.com/crm/api/v2/*' => Http::response($this->page([])),
+        ]);
+
+        $admin = $this->inTenant($tenant['org'], function () use ($tenant, $connection) {
+            $tenant['admin']->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$connection->scope_id]])->save();
+
+            return $tenant['admin']->fresh();
+        });
+
+        $this->signedInAs($admin)->postJson('/api/v1/social/workiz', ['api_token' => 'v2key_MA'])->assertCreated();
+
+        $credentials = $this->inTenant($tenant['org'], fn () => $connection->fresh()->credentials);
+        $this->assertSame('v2', $credentials['api_version']);
+        $this->assertSame('v2key_MA', $credentials['api_token']);
+        $this->assertArrayNotHasKey('auth_secret', $credentials);
+        $this->assertSame(['api_token' => 'api_MA', 'auth_secret' => 'sec_MA'], $credentials['v1']);
+    }
+
+    public function test_dispatch_writes_go_through_v2(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        [$job, $member] = $this->inTenant($tenant['org'], function () use ($connection) {
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job()));
+            $member = WorkizTeamMember::create([
+                'franchise_id' => $connection->scope_id, 'remote_id' => 'USR-ap8XB7Vm8PqogDWq', 'name' => 'Chaim Perez',
+                'is_active' => true, 'is_field_tech' => true, 'payload' => [], 'synced_at' => now(),
+            ]);
+
+            return [WorkizJob::query()->sole(), $member];
+        });
+
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobs/JOB-8ApvxXebm23oQV4E/team*' => Http::response(['id' => 'USR-ap8XB7Vm8PqogDWq', 'name' => 'Chaim Perez', 'isPrimary' => true], 201),
+            'api.workiz.com/crm/api/v2/jobs/JOB-8ApvxXebm23oQV4E' => Http::response($this->v2Job(['date' => '2026-10-08 09:00:00', 'endDate' => '2026-10-08 11:00:00'])),
+        ]);
+
+        $writer = app(WorkizJobWriter::class);
+        $moved = $this->inTenant($tenant['org'], fn () => $writer->reschedule($job, '2026-10-08 09:00:00', '2026-10-08 11:00:00'));
+        $this->inTenant($tenant['org'], fn () => $writer->assign($job, $member));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/jobs/JOB-8ApvxXebm23oQV4E')
+            && $r['date'] === '2026-10-08 09:00:00' && $r['endDate'] === '2026-10-08 11:00:00');
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/team') && $r['technitionId'] === 'USR-ap8XB7Vm8PqogDWq');
+        $this->assertNull($moved['refused']);
+        $this->assertSame('2026-10-08 09:00:00', $moved['job']->scheduled_for->format('Y-m-d H:i:s'), "the update's own answer, landed");
+    }
+
+    public function test_a_visit_is_created_through_v2_by_type_id_and_client_id(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $visit = $this->inTenant($tenant['org'], function () use ($connection) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+            WorkizClient::create(['franchise_id' => $connection->scope_id, 'client_id' => 1008, 'customer_id' => $customer->id, 'synced_at' => now()]);
+            // An earlier job of theirs, through v2, is where their CL- id is known.
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job(['uuid' => 'OLD001'])));
+
+            return Job::create([
+                'franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Membership visit',
+                'status' => 'Submitted', 'scheduled_for' => '2026-11-10 09:00:00', 'duration_minutes' => 90, 'currency' => 'USD',
+            ]);
+        });
+
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Inspection']])),
+            'api.workiz.com/crm/api/v2/jobs' => Http::response($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009, 'date' => '2026-11-10 09:00:00']), 201),
+        ]);
+
+        $made = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'chimney inspection'));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/v2/jobs')
+            && $r['jobTypeId'] === 'JT-x1' && $r['clientInfo'] === ['clientId' => 'CL-xzA4NAKqzXW76XQp']
+            && $r['date'] === '2026-11-10 09:00:00' && $r['endDate'] === '2026-11-10 10:30:00');
+        $this->assertNull($made['refused']);
+        $this->assertSame('NEW001', $made['job']->remote_id);
+        $this->assertSame($visit->id, $made['job']->job_id);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Job::query()->where('title', '!=', 'Chimney sweep #1')->count()), 'not projected a second time');
+    }
+
+    public function test_a_type_the_branch_does_not_have_is_refused_by_name(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $visit = $this->inTenant($tenant['org'], fn () => Job::create([
+            'franchise_id' => $connection->scope_id, 'number' => 'J-1', 'title' => 'Visit', 'status' => 'Submitted', 'currency' => 'USD',
+            'customer_id' => Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true])->id,
+        ]));
+        Http::fake(['api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Sweep']]))]);
+
+        $made = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Dryer Vent'));
+
+        $this->assertStringContainsString('no job type "Dryer Vent"', (string) $made['refused']);
+        Http::assertNotSent(fn (Request $r) => $r->method() === 'POST');
+    }
+
+    public function test_leads_are_read_through_v2_by_when_they_were_made(): void
+    {
+        [, $connection] = $this->branch();
+        Http::fake(['api.workiz.com/crm/api/v2/leads*' => Http::response($this->page([$this->v2Job(['uuid' => 'LEAD01', 'description' => 'Wants a quote'])]))]);
+
+        $read = app(WorkizLeads::class)->raw($connection, since: '2026-10-01');
+
+        Http::assertSent(fn (Request $r) => $r['dateProperty'] === 'created' && $r['date'] === '2026-10-01');
+        $this->assertSame('LEAD01', $read['leads'][0]['UUID']);
+        $this->assertSame('Wants a quote', $read['leads'][0]['LeadNotes']);
+    }
+
+    /** A key saved under the wrong branch's name would put one book on another. */
+    public function test_switching_refuses_a_key_that_reads_another_branchs_jobs(): void
+    {
+        [$tenant, $connection] = $this->branch('v1');
+        $other = $this->extraFranchise($tenant, 'Nationwide');
+        $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $other->id, 'connection_id' => (string) Str::uuid(), 'remote_id' => 'NYCZ7W',
+            'status' => 'Submitted', 'payload' => [], 'synced_at' => now(),
+        ]));
+        $file = tempnam(sys_get_temp_dir(), 'wz');
+        file_put_contents($file, "v2key_MA\n");
+        Http::fake([
+            'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
+            'api.workiz.com/crm/api/v2/jobs*' => Http::response($this->page([$this->v2Job()])),
+        ]);
+
+        $this->artisan('ezbizi:workiz-use-v2', ['franchise' => $connection->scope_id, '--key-file' => $file])
+            ->expectsOutputToContain("reads another account's jobs")->assertFailed();
+
+        $this->assertSame('api_MA', $this->inTenant($tenant['org'], fn () => $connection->fresh()->credentials['api_token']), 'nothing changed');
+        @unlink($file);
+    }
+
+    public function test_switching_moves_the_branch_and_brings_its_team_along(): void
+    {
+        [$tenant, $connection] = $this->branch('v1');
+        $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => 'NYCZ7W',
+            'status' => 'Submitted', 'payload' => [], 'synced_at' => now(),
+        ]));
+        $file = tempnam(sys_get_temp_dir(), 'wz');
+        file_put_contents($file, "v2key_MA\n");
+        Http::fake([
+            'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
+            'api.workiz.com/crm/api/v2/jobs*' => Http::response($this->page([$this->v2Job()])),
+            'api.workiz.com/crm/api/v2/users*' => Http::response($this->page([['id' => 'USR-1', 'name' => 'Chaim Perez', 'emailAddress' => 'c@example.test', 'active' => true, 'fieldTech' => true]])),
+        ]);
+
+        $this->artisan('ezbizi:workiz-use-v2', ['franchise' => $connection->scope_id, '--key-file' => $file, '--dry-run' => true])->assertSuccessful();
+        $this->assertSame('api_MA', $this->inTenant($tenant['org'], fn () => $connection->fresh()->credentials['api_token']), 'a dry run changes nothing');
+
+        $this->artisan('ezbizi:workiz-use-v2', ['franchise' => $connection->scope_id, '--key-file' => $file])->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($connection) {
+            $credentials = $connection->fresh()->credentials;
+            $this->assertSame(['v2key_MA', 'v2'], [$credentials['api_token'], $credentials['api_version']]);
+            $this->assertSame('api_MA', $credentials['v1']['api_token']);
+            $this->assertTrue(WorkizTeamMember::query()->where('remote_id', 'USR-1')->exists(), 'the team came with it');
+        });
+        $this->assertSame(1, DB::table('audit_events')->where('action', 'workiz.moved_to_v2')->count());
+        $this->assertFalse(Cache::lock(ProjectWorkizRecords::LOCK, 1)->get() === false, 'the lock is let go');
+        @unlink($file);
+    }
+}

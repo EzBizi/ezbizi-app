@@ -75,6 +75,10 @@ class WorkizJob extends Model implements StatesRetention
             return false;
         }
 
+        if (isset($payload['v2'])) {
+            $attributes = self::keepWhatV2CannotSay($connection, $attributes);
+        }
+
         static::query()->updateOrCreate(
             [
                 // The FRANCHISE, not the connection. Disconnect deletes the
@@ -96,6 +100,46 @@ class WorkizJob extends Model implements StatesRetention
         );
 
         return true;
+    }
+
+    /**
+     * A v2 job landing on a row EzBizi already holds, measured against v1 on
+     * all ten accounts (2026-10-05) and read live on Connecticut:
+     *
+     *  - v2 has no address of the job's own. Its address is the CLIENT's (job
+     *    0T933A: v1 Bolton CT, the house; v2 Avon IN, the client), so a row
+     *    keeps the place v1 gave it.
+     *  - v2 cannot name a job type, source or area that is gone from the
+     *    account (null where v1 still named one): kept.
+     *  - A finished job Workiz marks unscheduled has no date in v2 (009OCC:
+     *    Done, v1 2026-07-16 08:00, v2 null). Its visit date is history and is
+     *    kept. An OPEN unscheduled job does lose it: it is waiting for a date.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private static function keepWhatV2CannotSay(SocialConnection $connection, array $attributes): array
+    {
+        $held = static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->exists();
+
+        if (! $held) {
+            return $attributes;
+        }
+
+        unset($attributes['address'], $attributes['unit'], $attributes['city'], $attributes['state'],
+            $attributes['postal_code'], $attributes['country'], $attributes['latitude'], $attributes['longitude']);
+
+        foreach (['job_type', 'job_source', 'service_area'] as $named) {
+            if ($attributes[$named] === null) {
+                unset($attributes[$named]);
+            }
+        }
+
+        if ($attributes['scheduled_for'] === null && in_array($attributes['status'], ['Done', 'Canceled'], true)) {
+            unset($attributes['scheduled_for'], $attributes['scheduled_end']);
+        }
+
+        return $attributes;
     }
 
     public static function retention(): RetentionPolicy

@@ -4,8 +4,10 @@ namespace App\Support\Reports\Experimental;
 
 use App\Models\SocialConnection;
 use App\Models\User;
+use App\Models\WorkizJob;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
+use App\Support\Workiz\WorkizV2;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
@@ -145,10 +147,16 @@ final class WorkizJobs
      * to ask "are you there", and an empty page is a valid answer for a new
      * account, so this proves the CREDENTIAL rather than the data.
      *
+     * A key from the v2 tab is refused by v1 (403, measured 2026-10-05) and
+     * answered by v2, so the answer is which API the key speaks: what the
+     * connection then records, and what every reader and writer branches on.
+     *
+     * @return 'v1'|'v2'
+     *
      * @throws RuntimeException with a status and never a URL — the token is in
      *                          the path
      */
-    public function verify(string $token): void
+    public function verify(string $token): string
     {
         try {
             $response = Http::acceptJson()
@@ -158,13 +166,21 @@ final class WorkizJobs
                     'records' => 1,
                     'only_open' => 'false',
                 ]);
+
+            if ($response->successful()) {
+                return 'v1';
+            }
+
+            $v2 = WorkizV2::http($token)->get(WorkizV2::BASE.'/jobs', ['pageSize' => 1]);
         } catch (ConnectionException $e) {
             throw new RuntimeException('Workiz could not be reached.');
         }
 
-        if ($response->failed()) {
-            throw new RuntimeException('Workiz refused this token ('.$response->status().').');
+        if ($v2->successful()) {
+            return 'v2';
         }
+
+        throw new RuntimeException('Workiz refused this token ('.$response->status().').');
     }
 
     /**
@@ -237,6 +253,7 @@ final class WorkizJobs
         $jobs = [];
         $failed = [];
         $pending = [];
+        $v2 = [];
 
         foreach ($this->connections($user) as $connection) {
             $account = (string) $connection->display_name;
@@ -253,6 +270,7 @@ final class WorkizJobs
             }
 
             $pending[$account] = $token;
+            $v2[$account] = WorkizV2::uses($connection);
         }
 
         /*
@@ -267,12 +285,20 @@ final class WorkizJobs
          * change the page size and move where page N starts.
          */
         for ($pageNumber = 0; $pageNumber * self::PAGE < $limit && $pending !== []; $pageNumber++) {
-            $responses = Http::pool(function (Pool $pool) use ($pending, $pageNumber, $since) {
+            $responses = Http::pool(function (Pool $pool) use ($pending, $pageNumber, $since, $v2) {
                 foreach ($pending as $account => $token) {
+                    $from = $since ?? now()->subYear()->toDateString();
+
+                    if ($v2[$account]) {
+                        $pool->as($account)->acceptJson()->withToken($token)->get(WorkizV2::BASE.'/jobs', self::v2Page($from, $pageNumber));
+
+                        continue;
+                    }
+
                     $pool->as($account)->acceptJson()->get(
                         'https://api.workiz.com/api/v1/'.$token.'/job/all/',
                         [
-                            'start_date' => $since ?? now()->subYear()->toDateString(),
+                            'start_date' => $from,
                             'offset' => $pageNumber,
                             'records' => self::PAGE,
                             'only_open' => 'false',
@@ -309,7 +335,11 @@ final class WorkizJobs
                     continue;
                 }
 
-                $page = $response->json('data') ?? [];
+                $page = array_values(array_filter($response->json('data') ?? [], 'is_array'));
+
+                if ($v2[$account]) {
+                    $page = array_map([WorkizV2::class, 'job'], $page);
+                }
 
                 foreach ($this->shape($page) as $job) {
                     $jobs[] = ['account' => $account] + $job;
@@ -408,6 +438,16 @@ final class WorkizJobs
             return ['jobs' => [], 'failed' => 'This branch has no stored token.'];
         }
 
+        if (WorkizV2::uses($connection)) {
+            $read = WorkizV2::send($connection, 'GET', '/jobs', self::v2Page($since, $page), $timeout);
+
+            if ($read['refused'] !== null) {
+                return ['jobs' => [], 'failed' => $read['refused'] === self::UNANSWERED ? self::UNANSWERED : 'Workiz refused the job list ('.$read['refused'].').'];
+            }
+
+            return ['jobs' => array_map([WorkizV2::class, 'job'], array_values(array_filter($read['data']['data'] ?? [], 'is_array'))), 'failed' => null];
+        }
+
         try {
             $response = Http::acceptJson()->timeout($timeout)->get(
                 'https://api.workiz.com/api/v1/'.$token.'/job/all/',
@@ -434,6 +474,23 @@ final class WorkizJobs
     }
 
     /**
+     * v1's page `$page` (from 0) of the jobs dated `$since` or later, asked of
+     * v2: pages from 1, the same lower bound on the job's own date, and the
+     * oldest-made first, so a page a resumed backfill has read stays read while
+     * new jobs land at the end.
+     *
+     * @return array<string, mixed>
+     */
+    private static function v2Page(string $since, int $page): array
+    {
+        return [
+            'page' => $page + 1, 'pageSize' => self::PAGE,
+            'dateProperty' => 'date', 'dateOperator' => 'next', 'date' => $since,
+            'field' => 'created', 'order' => 'ASC',
+        ];
+    }
+
+    /**
      * One job, by its Workiz id, as Workiz holds it NOW.
      *
      * ── WHY THE SWEEP ALONE CANNOT KEEP THE MIRROR TRUE ─────────
@@ -456,6 +513,26 @@ final class WorkizJobs
      */
     public function find(SocialConnection $connection, string $uuid): array
     {
+        if (WorkizV2::uses($connection)) {
+            // v2 answers 404 to the six-character uuid (measured): it reads a
+            // job by its JOB- id, which the mirror keeps under `v2`.
+            // The payload itself: Eloquent's value() cannot read a JSON path.
+            $id = str_starts_with($uuid, 'JOB-') ? $uuid : (WorkizJob::query()->withoutGlobalScopes()
+                ->where('franchise_id', $connection->scope_id)->where('remote_id', $uuid)->first(['payload'])?->payload['v2']['id'] ?? null);
+
+            if (! is_string($id) || $id === '') {
+                return ['job' => null, 'failed' => 'EzBizi holds no Workiz v2 id for job '.$uuid.'.'];
+            }
+
+            $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+
+            return match (true) {
+                $read['missing'] => ['job' => null, 'failed' => null],
+                $read['refused'] !== null => ['job' => null, 'failed' => $read['refused']],
+                default => ['job' => WorkizV2::job((array) $read['data']), 'failed' => null],
+            };
+        }
+
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
         if ($token === '') {

@@ -45,6 +45,10 @@ final class WorkizLeads
      */
     public function raw(SocialConnection $connection, int $limit = 1000, ?string $since = null): array
     {
+        if (WorkizV2::uses($connection)) {
+            return $this->v2($connection, $limit, $since);
+        }
+
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
         if ($token === '') {
@@ -86,6 +90,40 @@ final class WorkizLeads
             }
 
             if (count($rows) < WorkizJobs::PAGE) {
+                break;
+            }
+        }
+
+        return ['leads' => array_slice($leads, 0, $limit), 'failed' => null];
+    }
+
+    /**
+     * v2's leads made since `$since`, in v1's shape. v1's `start_date` reads
+     * as when the lead was made, the importer's own watermark; v2 says so in
+     * `dateProperty=created`.
+     *
+     * @return array{leads: list<array<string, mixed>>, failed: ?string}
+     */
+    private function v2(SocialConnection $connection, int $limit, ?string $since): array
+    {
+        $leads = [];
+
+        for ($page = 1; count($leads) < $limit; $page++) {
+            $read = WorkizV2::send($connection, 'GET', '/leads', [
+                'page' => $page, 'pageSize' => WorkizJobs::PAGE,
+                'dateProperty' => 'created', 'dateOperator' => 'next', 'date' => $since ?? now()->subYears(5)->toDateString(),
+                'field' => 'created', 'order' => 'ASC',
+            ]);
+
+            if ($read['refused'] !== null) {
+                return ['leads' => $leads, 'failed' => $read['refused'] === WorkizJobs::UNANSWERED ? WorkizJobs::UNANSWERED : 'Workiz refused the lead list ('.$read['refused'].').'];
+            }
+
+            foreach (array_filter($read['data']['data'] ?? [], 'is_array') as $lead) {
+                $leads[] = WorkizV2::lead($lead);
+            }
+
+            if (! ($read['data']['hasMore'] ?? false)) {
                 break;
             }
         }

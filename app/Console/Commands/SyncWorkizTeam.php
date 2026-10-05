@@ -111,6 +111,10 @@ class SyncWorkizTeam extends Command
                     $row->connection_id = $connection->getKey();
                     $row->synced_at = now();
 
+                    if (! $row->exists && str_starts_with($attributes['remote_id'], 'USR-')) {
+                        $this->succeed($row, $attributes);
+                    }
+
                     // PROPOSE ONLY INTO AN EMPTY COLUMN. A row that already
                     // names a user keeps it, whether somebody confirmed it or
                     // an earlier run guessed it; a row a person unlinked stays
@@ -145,6 +149,42 @@ class SyncWorkizTeam extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * A BRANCH MOVED TO ITS V2 KEY (Jose, 2026-10-05) meets each person again
+     * under a USR- id. Their v1 row holds the link to the EzBizi user, so the
+     * new row takes it over, and the old row leaves the pickers and the seat
+     * count. Past jobs, whose payloads still name the v1 id, keep finding the
+     * same person through it.
+     *
+     * Matched by email, else by name, and only when exactly one v1 row in the
+     * branch answers: measured on New York, all 11 people matched both ways,
+     * and the jobs they share agreed 10 of 10.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function succeed(WorkizTeamMember $row, array $attributes): void
+    {
+        $v1 = WorkizTeamMember::query()
+            ->where('franchise_id', $row->franchise_id)
+            ->where('remote_id', 'not like', 'USR-%')
+            ->get();
+
+        $old = $v1->filter(fn ($m) => $attributes['email'] !== null && mb_strtolower((string) $m->email) === $attributes['email']);
+        $old = $old->count() === 1 ? $old : $v1->filter(fn ($m) => mb_strtolower(trim((string) $m->name)) === mb_strtolower(trim((string) $attributes['name'])));
+
+        if ($old->count() !== 1) {
+            return;
+        }
+
+        $old = $old->first();
+        $row->forceFill([
+            'user_id' => $old->user_id,
+            'link_confirmed_at' => $old->link_confirmed_at,
+            'auto_matched' => $old->auto_matched,
+        ]);
+        $old->forceFill(['is_active' => false])->save();
     }
 
     private function nameOf(SocialConnection $connection): string

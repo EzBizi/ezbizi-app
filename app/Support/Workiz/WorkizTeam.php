@@ -3,6 +3,7 @@
 namespace App\Support\Workiz;
 
 use App\Models\SocialConnection;
+use App\Support\Reports\Experimental\WorkizJobs;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -39,6 +40,10 @@ final class WorkizTeam
      */
     public function raw(SocialConnection $connection): array
     {
+        if (WorkizV2::uses($connection)) {
+            return $this->v2($connection);
+        }
+
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
         if ($token === '') {
@@ -61,6 +66,36 @@ final class WorkizTeam
         foreach ($response->json('data') ?? [] as $member) {
             if (is_array($member)) {
                 $members[] = $member;
+            }
+        }
+
+        return ['members' => $members, 'failed' => null];
+    }
+
+    /**
+     * v2's users, every page, in v1's team shape. `/users` pages where
+     * `/team/all/` did not; it carries each person's service areas and job
+     * types as objects, which WorkizV2::member() names.
+     *
+     * @return array{members: list<array<string, mixed>>, failed: ?string}
+     */
+    private function v2(SocialConnection $connection): array
+    {
+        $members = [];
+
+        for ($page = 1; $page <= 50; $page++) {
+            $read = WorkizV2::send($connection, 'GET', '/users', ['page' => $page, 'pageSize' => WorkizJobs::PAGE]);
+
+            if ($read['refused'] !== null) {
+                return ['members' => $members, 'failed' => 'Workiz refused the team list ('.$read['refused'].').'];
+            }
+
+            foreach (array_filter($read['data']['data'] ?? [], 'is_array') as $user) {
+                $members[] = WorkizV2::member($user);
+            }
+
+            if (! ($read['data']['hasMore'] ?? false)) {
+                break;
             }
         }
 

@@ -179,7 +179,9 @@ final class WorkizJobWriter
                 return ['job' => $made, 'refused' => null];
             }
 
-            $sent = $this->workiz->send($connection, '/job/create/', $body);
+            $sent = WorkizV2::uses($connection)
+                ? $this->createV2($connection, $job, $body, $jobType, $jobSource)
+                : $this->workiz->send($connection, '/job/create/', $body);
 
             if ($sent['refused'] === WorkizJobs::UNANSWERED) {
                 return ['job' => null, 'refused' => 'Workiz did not answer, so it may have made the job anyway: look for it in Workiz before entering it.'];
@@ -250,6 +252,10 @@ final class WorkizJobWriter
             return ['job' => null, 'refused' => 'This branch has no Workiz connection.'];
         }
 
+        if (WorkizV2::uses($connection)) {
+            return $this->writeV2($connection, $job, $path, $fields, $action, $member);
+        }
+
         $refused = $this->workiz->post($connection, $path, ['UUID' => (string) $job->remote_id] + $fields);
 
         if ($refused !== null) {
@@ -266,5 +272,112 @@ final class WorkizJobWriter
         }
 
         return ['job' => $job->fresh(), 'refused' => null];
+    }
+
+    /**
+     * The same three writes through v2: the job by its JOB- id, a technician
+     * by their USR- id. An update answers with the whole job; the team calls
+     * answer with the technician, so those are re-read.
+     *
+     * @param  array<string, string>  $fields
+     * @return array{job: ?WorkizJob, refused: ?string}
+     */
+    private function writeV2(SocialConnection $connection, WorkizJob $job, string $path, array $fields, string $action, ?WorkizTeamMember $member): array
+    {
+        $id = $job->payload['v2']['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            return ['job' => null, 'refused' => 'EzBizi has not read this job through Workiz v2 yet; try again after the next sync.'];
+        }
+
+        [$method, $call, $body] = match ($path) {
+            '/job/update/' => ['PUT', '/jobs/'.$id, ['date' => $fields['JobDateTime'], 'endDate' => $fields['JobEndDateTime']]],
+            '/job/assign/' => ['POST', '/jobs/'.$id.'/team', ['technitionId' => (string) $member?->remote_id]],
+            '/job/unassign/' => ['DELETE', '/jobs/'.$id.'/team/'.rawurlencode((string) $member?->remote_id), []],
+        };
+
+        $sent = WorkizV2::send($connection, $method, $call, $body);
+
+        if ($sent['refused'] !== null) {
+            return ['job' => null, 'refused' => $sent['refused']];
+        }
+
+        $this->audit->log($action, $job, metadata: $fields);
+
+        $read = $method === 'PUT' && is_array($sent['data'])
+            ? WorkizV2::job($sent['data'])
+            : $this->workiz->find($connection, $id)['job'];
+
+        if ($read !== null) {
+            WorkizJob::land($connection, $read);
+        }
+
+        return ['job' => $job->fresh(), 'refused' => null];
+    }
+
+    /**
+     * POST /v2/jobs: v1's create body in v2's words. v2 requires a job type BY
+     * ID, so the plan's type name is looked up in the branch's own list; the
+     * member's Workiz client goes by its CL- id when the mirror holds it, and
+     * by name, phone and email otherwise.
+     *
+     * @param  array<string, mixed>  $body  v1's create body
+     * @return array{data: mixed, refused: ?string}
+     */
+    private function createV2(SocialConnection $connection, Job $job, array $body, ?string $jobType, ?string $jobSource): array
+    {
+        $typeId = $this->v2Id($connection, '/jobtypes', $jobType);
+
+        if ($typeId === null) {
+            return ['data' => null, 'refused' => $jobType === null
+                ? 'Workiz needs a job type for this branch: set one on the plan.'
+                : 'This branch\'s Workiz has no job type "'.$jobType.'".'];
+        }
+
+        $clientId = isset($body['ClientId']) ? WorkizJob::query()->where('franchise_id', $job->franchise_id)
+            ->where('client_id', $body['ClientId'])->whereNotNull('payload->v2->client_id')->latest('synced_at')
+            ->first(['payload'])?->payload['v2']['client_id'] ?? null : null;
+
+        $sent = WorkizV2::send($connection, 'POST', '/jobs', array_filter([
+            'jobTypeId' => $typeId,
+            'adGroupId' => $this->v2Id($connection, '/adgroups', $jobSource),
+            'date' => $body['JobDateTime'] ?? null,
+            'endDate' => $body['JobEndDateTime'] ?? null,
+            'clientInfo' => is_string($clientId) ? ['clientId' => $clientId] : array_filter([
+                'firstName' => $body['FirstName'] ?? null,
+                'lastName' => $body['LastName'] ?? null,
+                'email' => $body['Email'] ?? null,
+                'primaryPhone' => $body['Phone'] ?? null,
+                'addressDetails' => array_filter([
+                    'address' => $body['Address'] ?? null,
+                    'unit' => $body['Unit'] ?? null,
+                    'city' => $body['City'] ?? null,
+                    'state' => $body['State'] ?? null,
+                    'zipCode' => $body['PostalCode'] ?? null,
+                ]),
+            ]),
+        ], fn ($value) => $value !== null && $value !== []));
+
+        return $sent['refused'] !== null
+            ? ['data' => null, 'refused' => $sent['refused']]
+            : ['data' => is_array($sent['data']) ? WorkizV2::job($sent['data']) : null, 'refused' => null];
+    }
+
+    /** A job type's or source's id by its name, from the branch's own v2 list; null when it has none by that name. */
+    private function v2Id(SocialConnection $connection, string $list, ?string $name): ?string
+    {
+        if ($name === null || trim($name) === '') {
+            return null;
+        }
+
+        $read = WorkizV2::send($connection, 'GET', $list, ['pageSize' => 300, 'disabled' => 'false']);
+
+        foreach ($read['data']['data'] ?? [] as $row) {
+            if (is_array($row) && mb_strtolower(trim((string) ($row['name'] ?? ''))) === mb_strtolower(trim($name))) {
+                return (string) $row['id'];
+            }
+        }
+
+        return null;
     }
 }

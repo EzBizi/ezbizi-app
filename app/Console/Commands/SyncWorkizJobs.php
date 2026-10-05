@@ -273,6 +273,11 @@ class SyncWorkizJobs extends Command
             if ($result['failed'] !== null) {
                 $failed = $result['failed'];
 
+                // Moved back as well: a job Workiz cannot answer for (v2 answers
+                // 500 for one New Jersey job, measured 2026-10-05) would
+                // otherwise stop this branch's re-reads on the same row for ever.
+                WorkizJob::query()->whereKey($row->id)->update(['synced_at' => now()]);
+
                 break;
             }
 
