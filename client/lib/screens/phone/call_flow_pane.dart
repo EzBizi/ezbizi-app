@@ -372,6 +372,11 @@ class _CallFlowPaneState extends State<CallFlowPane> {
         .where((l) => !l.reaches && l.answerFrom == 'company')
         .length;
 
+    // Nobody set, or a group set that the dial plan cannot ring: the server's
+    // own judgement (`default_reaches`, DialPlan::batches, as a line's answer
+    // step uses), so a group with nobody available reads as nobody too.
+    final silentGroup = group == null || company.reaches == false;
+
     return [
       _Box(
         key: 'arrival',
@@ -416,17 +421,19 @@ class _CallFlowPaneState extends State<CallFlowPane> {
       ),
       _Box(
         key: 'answer',
-        icon: group == null ? Icons.warning_amber_rounded : Icons.groups_outlined,
+        icon: silentGroup ? Icons.warning_amber_rounded : Icons.groups_outlined,
         label: 'Rings',
         value: group?.name ?? 'Nobody',
-        bad: group == null,
-        detail: group != null
+        bad: silentGroup,
+        detail: !silentGroup
             ? 'Whoever is on duty in that group is dialled.'
             : known && silent > 0
             ? '${silent == 1 ? '1 line goes' : '$silent lines go'} straight '
                   'to voicemail.'
+            : group != null
+            ? 'Nobody in it can be rung, so calls go straight to voicemail.'
             : 'Every call goes straight to voicemail.',
-        fix: group == null ? 'Pick who rings' : null,
+        fix: silentGroup ? 'Pick who rings' : null,
         onPick: () => _pick(
           title: 'Who rings',
           field: 'default_ring_group_id',
@@ -616,22 +623,20 @@ class _CallFlowPaneState extends State<CallFlowPane> {
     );
   }
 
-  /// Change, and the way to the screen that edits the thing itself.
+  /// Change (or the fix, on a wrong box), and the way to the screen that
+  /// edits the thing itself: a group with nobody available is mended there.
   Widget _boxActions(ThemeData theme, _Box box, bool tappable) {
-    if (box.fix != null && _canEdit) {
-      return FilledButton(
-        onPressed: tappable ? box.onPick : null,
-        child: Text(box.fix!),
-      );
-    }
-
     final link = box.link;
     final open = widget.onOpen;
+    final fix = _canEdit ? box.fix : null;
 
     return Wrap(
       spacing: 4,
+      runSpacing: 4,
       children: [
-        if (tappable)
+        if (fix != null)
+          FilledButton(onPressed: tappable ? box.onPick : null, child: Text(fix))
+        else if (tappable)
           TextButton(onPressed: box.onPick, child: const Text('Change')),
         if (link != null && open != null)
           TextButton(onPressed: () => open(link.$2), child: Text(link.$1)),
@@ -1134,6 +1139,7 @@ class _Company {
     required this.record,
     required this.transcribe,
     required this.voicemailTranscribe,
+    this.reaches,
     this.ringGroupId,
     this.hoursScheduleId,
     this.flowId,
@@ -1149,6 +1155,10 @@ class _Company {
   final bool record;
   final bool transcribe;
   final bool voicemailTranscribe;
+
+  /// Whether the company's own ring group can ring anybody. Null from a
+  /// server that does not say, and then only "nobody set" is red.
+  final bool? reaches;
   final String? ringGroupId;
   final String? hoursScheduleId;
   final String? flowId;
@@ -1189,6 +1199,7 @@ class _Company {
           record: row['default_record'] == true,
           transcribe: row['default_transcribe'] == true,
           voicemailTranscribe: row['default_voicemail_transcribe'] == true,
+          reaches: row['default_reaches'] as bool?,
           ringGroupId: row['default_ring_group_id'] as String?,
           hoursScheduleId: row['default_hours_schedule_id'] as String?,
           flowId: row['default_flow_id'] as String?,

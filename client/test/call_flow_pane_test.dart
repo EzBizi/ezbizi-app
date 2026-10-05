@@ -61,6 +61,31 @@ void main() {
     expect(server.traces, 2);
   });
 
+  testWidgets('a group that can ring nobody is red too, with its fix and '
+      'the way to the group', (tester) async {
+    final opened = <String>[];
+    await _pump(
+      tester,
+      server: _Server(lines: [_line('n-1', 'Main')], ringGroup: 'g-1', reaches: false),
+      onOpen: opened.add,
+    );
+
+    expect(find.text('Nobody in it can be rung, so calls go straight to voicemail.'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Pick who rings'), findsOneWidget);
+
+    await tester.tap(find.text('Edit the group'));
+    await tester.pumpAndSettle();
+    expect(opened, ['ring-groups']);
+
+    // Control: the same group, ringing somebody, is not a fault.
+    await _pump(
+      tester,
+      server: _Server(lines: [_line('n-1', 'Main')], ringGroup: 'g-1', reaches: true),
+    );
+    expect(find.widgetWithText(FilledButton, 'Pick who rings'), findsNothing);
+    expect(find.text('Whoever is on duty in that group is dialled.'), findsOneWidget);
+  });
+
   testWidgets('dismissing a picker saves nothing', (tester) async {
     final server = _Server(lines: [_line('n-1', 'Main')]);
     await _pump(tester, server: server);
@@ -235,12 +260,14 @@ class _Server {
     required this.lines,
     this.companies = 1,
     this.ringGroup,
+    this.reaches,
     this.permissions = const ['phone.view', 'phone.edit'],
   });
 
   final List<Map<String, dynamic>> lines;
   final int companies;
   final String? ringGroup;
+  final bool? reaches;
   final List<String> permissions;
 
   final patches = <(String, Map<String, dynamic>)>[];
@@ -254,6 +281,7 @@ class _Server {
     'default_flow_id': 'f-1',
     'default_hours_schedule_id': null,
     'default_ring_group_id': ringGroup,
+    'default_reaches': ?reaches,
     'default_voicemail_box_id': 'b-1',
     'default_fallback_number': null,
     'default_recording_notice': null,
