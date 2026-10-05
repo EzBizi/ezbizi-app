@@ -706,6 +706,14 @@ class AutomationsController extends Controller
             }
         }
 
+        // Fields the subject works out for itself (a lead's office_open): no
+        // payload carries them, and ConditionEvaluator falls back to the model.
+        foreach ($recent->pluck('subject_type')->filter()->unique() as $class) {
+            if (is_string($class) && class_exists($class) && method_exists($class, 'automationConditionFields')) {
+                $fields += array_fill_keys($class::automationConditionFields(), true);
+            }
+        }
+
         $fields = array_keys($fields);
         sort($fields);
 

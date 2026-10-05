@@ -4,11 +4,13 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Automations\CarriesAutomationScope;
+use App\Support\Leads\LeadOfficeHours;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -580,7 +582,102 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public static function automationMessageFields(): array
     {
-        return ['company_name', 'source_name', 'thank_you'];
+        return ['company_name', 'office_note', 'office_opens', 'photos_email', 'source_name', 'thank_you'];
+    }
+
+    /**
+     * Worked out from the lead like the message fields, but for a rule's
+     * conditions: the closed-office and photos auto replies (Jose, 2026-10-05).
+     *
+     * @return list<string>
+     */
+    public static function automationConditionFields(): array
+    {
+        return ['closed_reply_due', 'office_open', 'photos_email_due'];
+    }
+
+    /** Only a message this fresh is answered automatically; older ones were imported late. */
+    private const AUTO_ANSWER_WITHIN_MINUTES = 60;
+
+    private const MENTIONS_PHOTOS = '/\b(photos?|pictures?|pics?|images?|videos?|attach\w*|documents?|reports?|files?)\b/i';
+
+    public function getOfficeOpenAttribute(): bool
+    {
+        return app(LeadOfficeHours::class)->isOpen($this);
+    }
+
+    /** `{{office_opens}}`: "tomorrow at 8:00 AM", "on Monday at 8:00 AM". */
+    public function getOfficeOpensAttribute(): string
+    {
+        return app(LeadOfficeHours::class)->nextOpening($this) ?? 'as soon as we can';
+    }
+
+    /** `{{office_note}}`: nothing while open, the closed sentence when not. */
+    public function getOfficeNoteAttribute(): string
+    {
+        return $this->office_open
+            ? ''
+            : "\n\nOur office is closed right now; a dispatcher will get back to you {$this->office_opens}.";
+    }
+
+    public function getPhotosEmailAttribute(): string
+    {
+        $scope = $this->franchise ?? $this->company ?? $this->organization;
+
+        return trim((string) app(SettingsResolver::class)->get('leads.photos_email', $scope));
+    }
+
+    /**
+     * The customer just wrote while the office is closed, and nothing from our
+     * side has gone to them since it closed: one "we got it" per closed
+     * period, never one per message. Not when the photos reply is about to
+     * answer the same message.
+     */
+    public function getClosedReplyDueAttribute(): bool
+    {
+        if ($this->office_open || $this->freshCustomerMessage() === null || $this->photos_email_due) {
+            return false;
+        }
+
+        return ! $this->conversations()
+            ->reorder()
+            ->where('participant', '!=', LeadConversation::FROM_CONSUMER)
+            ->where('occurred_at', '>=', app(LeadOfficeHours::class)->closedSince($this))
+            ->exists();
+    }
+
+    /**
+     * The customer's newest message mentions pictures or documents, did not
+     * carry any, the branch has an address for them, and we have not given
+     * it on this lead yet.
+     */
+    public function getPhotosEmailDueAttribute(): bool
+    {
+        $message = $this->freshCustomerMessage();
+        $email = $this->photos_email;
+
+        return $message !== null
+            && $email !== ''
+            && empty($message->attachments)
+            && preg_match(self::MENTIONS_PHOTOS, (string) $message->text) === 1
+            && ! $this->conversations()
+                ->reorder()
+                ->where('participant', '!=', LeadConversation::FROM_CONSUMER)
+                ->where('text', 'like', '%'.$email.'%')
+                ->exists();
+    }
+
+    private function freshCustomerMessage(): ?LeadConversation
+    {
+        $latest = $this->conversations()
+            ->reorder()
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->orderByDesc('occurred_at')
+            ->first();
+
+        return $latest !== null && $latest->occurred_at?->gte(now()->subMinutes(self::AUTO_ANSWER_WITHIN_MINUTES))
+            ? $latest
+            : null;
     }
 
     public function getSourceNameAttribute(): string

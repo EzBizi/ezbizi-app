@@ -1,0 +1,111 @@
+<?php
+
+namespace App\Support\Leads;
+
+use App\Models\Lead;
+use App\Support\Settings\SettingsResolver;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * When the office answering a lead is open, from `leads.office_hours` at the
+ * lead's branch (franchise, then company, then organization) in that scope's
+ * timezone.
+ *
+ * Exists for the closed-office auto replies (Jose, 2026-10-05): the first
+ * reply promised "a dispatcher will follow up shortly" at 11 PM on a Saturday,
+ * and a customer who wrote again overnight heard nothing at all.
+ */
+class LeadOfficeHours
+{
+    private const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    public function __construct(private readonly SettingsResolver $settings) {}
+
+    public function isOpen(Lead $lead, ?\DateTimeInterface $now = null): bool
+    {
+        $local = $this->local($lead, $now);
+        $hours = $this->hoursOn($lead, $local);
+
+        return $hours !== null
+            && $local->format('H:i') >= $hours['open']
+            && $local->format('H:i') < $hours['close'];
+    }
+
+    /**
+     * "today at 8:00 AM", "tomorrow at 8:00 AM", "on Monday at 8:00 AM" -
+     * the words after "a dispatcher will get back to you". Null when the
+     * office has no open day at all.
+     */
+    public function nextOpening(Lead $lead, ?\DateTimeInterface $now = null): ?string
+    {
+        $local = $this->local($lead, $now);
+        $format = $this->settings->get('time_format', $this->scope($lead)) === '24h' ? 'H:i' : 'g:i A';
+
+        for ($d = 0; $d <= 7; $d++) {
+            $day = $local->addDays($d);
+            $hours = $this->hoursOn($lead, $day);
+
+            if ($hours === null || ($d === 0 && $local->format('H:i') >= $hours['open'])) {
+                continue;
+            }
+
+            $at = $day->setTimeFromTimeString($hours['open'])->format($format);
+
+            return match ($d) {
+                0 => "today at {$at}",
+                1 => "tomorrow at {$at}",
+                default => 'on '.$day->format('l')." at {$at}",
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * When the office last closed, so "once per closed period" has a start.
+     * A week back when nothing in the last week was open.
+     */
+    public function closedSince(Lead $lead, ?\DateTimeInterface $now = null): CarbonImmutable
+    {
+        $local = $this->local($lead, $now);
+
+        for ($d = 0; $d <= 7; $d++) {
+            $day = $local->subDays($d);
+            $hours = $this->hoursOn($lead, $day);
+
+            if ($hours === null) {
+                continue;
+            }
+
+            $close = $day->setTimeFromTimeString($hours['close']);
+
+            if ($close->lte($local)) {
+                return $close->utc();
+            }
+        }
+
+        return $local->subDays(7)->utc();
+    }
+
+    /** @return array{open: string, close: string}|null */
+    private function hoursOn(Lead $lead, CarbonImmutable $day): ?array
+    {
+        $week = (array) $this->settings->get('leads.office_hours', $this->scope($lead));
+        $hours = $week[self::DAYS[$day->dayOfWeek]] ?? null;
+
+        return is_array($hours) && isset($hours['open'], $hours['close']) ? $hours : null;
+    }
+
+    private function local(Lead $lead, ?\DateTimeInterface $now): CarbonImmutable
+    {
+        $zone = (string) ($this->settings->get('timezone', $this->scope($lead)) ?: 'UTC');
+
+        return CarbonImmutable::instance($now ?? now())->setTimezone($zone);
+    }
+
+    private function scope(Lead $lead): Model
+    {
+        return $lead->franchise ?? $lead->company ?? $lead->organization;
+    }
+}
