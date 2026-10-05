@@ -19,8 +19,9 @@ class VersionHistory {
       items: [
         'HR: contracts imported from A1 Tools can be downloaded as the PDF signed in A1 Tools.',
         'HR: a download button for the signed PDF on the Onboarding list and on Records › Onboarding.',
-        'Customers › Memberships: a yearly maintenance program with its own Dashboard, a Members list (plan, amount due, state, zip, estimated gross and paid so far) and the plans under Settings, billed yearly or monthly. A reminder trigger fires a month before each year ends, and customers can join from a link sent after a good review.',
-        'Dashboard › Work Hours counts only the people in the company or branch you are viewing.',
+        'Customers › Memberships: a yearly maintenance program with its own Dashboard, a Members list (plan, amount due, state, zip, estimated gross and paid so far) and the plans under Settings, billed yearly or monthly. A reminder trigger fires a month before each year ends, and customers can join from a link sent after a good review. Monthly plans show both their monthly and yearly price.',
+        'Work Hours, and its box on the dashboard, list only the people in the company or branch you are viewing.',
+        'Onboarding: the technician now fills in the tools and equipment checklists. Tick what you received, set a quantity, or add an item that isn\'t listed.',
       ],
     ),
     VersionRelease(
