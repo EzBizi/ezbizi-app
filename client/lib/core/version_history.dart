@@ -23,6 +23,7 @@ class VersionHistory {
         'Work Hours, and its box on the dashboard, list only the people in the company or branch you are viewing.',
         'Onboarding: the technician now fills in the tools and equipment checklists. Tick what you received, set a quantity, or add an item that isn\'t listed.',
         'Membership plans can say what they include, shown to customers on the join page, which shows your company\'s name.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0356, which reached the web first.',
       ],
     ),
     VersionRelease(
