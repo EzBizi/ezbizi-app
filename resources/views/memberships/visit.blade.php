@@ -45,7 +45,8 @@ button:focus-visible,input:focus-visible{outline:3px solid #00B4D8;outline-offse
   <p>Hi {{ $customer?->name }}, your {{ $membership->plan->name }} year runs until {{ $membership->ends_on->format('F j, Y') }}. Pick the day that suits you for your next visit.</p>
   @if ($error)<p class="error">{{ $error }}</p>@endif
   <form method="post">
-    <input type="date" name="date" required min="{{ now()->addDay()->toDateString() }}" value="{{ max($membership->ends_on->toDateString(), now()->addDay()->toDateString()) }}">
+    <label for="visit-date">Day of your visit</label>
+    <input type="date" id="visit-date" name="date" required min="{{ now()->addDay()->toDateString() }}" max="{{ $membership->ends_on->addMonths(\App\Http\Controllers\Api\MembershipsPublicController::VISIT_MONTHS_AFTER)->toDateString() }}" value="{{ max($membership->ends_on->toDateString(), now()->addDay()->toDateString()) }}">
     <button type="submit">Book this day</button>
   </form>
 @endif
