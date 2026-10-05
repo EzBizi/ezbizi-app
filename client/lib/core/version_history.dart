@@ -18,6 +18,7 @@ class VersionHistory {
       date: '5 Oct 2026',
       items: [
         'Marketing › Posts: the TikTok privacy choice no longer shows its hint over its label.',
+        'Pickers that show a hint no longer draw their label on top of it.',
       ],
     ),
     VersionRelease(
