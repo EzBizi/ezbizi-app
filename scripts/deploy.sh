@@ -121,7 +121,29 @@ WIPE=$(git ls-tree --name-only "$GATED_SHA" | grep -vx storage | tr '
 # Do NOT fix this by setting core.autocrlf in the repo config. That changes every
 # checkout for every session on this machine and shows the whole tree as modified.
 # The conversion is only wrong for what we SHIP, so it is turned off only here.
-BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "WIPE='$WIPE'"'
+# The gate runs DETACHED on the box and is polled, not streamed (2026-10-05).
+#
+# It used to run inside one SSH session for its whole ~25 minutes. Three times in
+# one afternoon that session died ("client_loop: send disconnect: Connection reset
+# by peer"; sshd and the kernel logged nothing) while phpunit kept going on the
+# box, orphaned and holding the lock, and the deploy failed for a reason that had
+# nothing to do with the code. Each cost a full rerun.
+#
+# So the archive and the script are uploaded, the script is started with setsid
+# so no disconnect can reach it, and short SSH calls ask for its exit status. A
+# dropped poll is simply retried; the gate never notices. GATE_RUN names this
+# run's files, so a rerun of the same SHA can never read an earlier run's result.
+# `.gate-runs` sits inside the sandbox but is not a top-level entry of the
+# archive, so $WIPE never touches it; files older than a week are removed.
+GATE_RUNS=/opt/ezbizi-test/.gate-runs
+GATE_RUN="${GATED_SHA}-$(date +%s)-$$"
+GATE_LOCAL=$(mktemp -d)
+{
+  printf 'WIPE=%q\nGATE_RUNS=%q\nGATE_RUN=%q\n' "$WIPE" "$GATE_RUNS" "$GATE_RUN"
+  # The exit status lands in $GATE_RUN.status whatever happens: that file is
+  # what deploy.sh polls for, so a gate that dies early still answers.
+  echo 'trap '"'"'rc=$?; echo "$rc" > "$GATE_RUNS/$GATE_RUN.status.tmp"; mv "$GATE_RUNS/$GATE_RUN.status.tmp" "$GATE_RUNS/$GATE_RUN.status"'"'"' EXIT'
+  cat <<'GATE'
   set -e
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall
@@ -160,13 +182,50 @@ BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "W
   # Untracked, so $WIPE cannot reach it, and it is a documented way to lose a
   # run: it grows until phpunit dies inside DefaultResultCache on a 128M limit.
   rm -f .phpunit.result.cache
-  tar -x
+  tar -x -f "$GATE_RUNS/$GATE_RUN.tar"
+  rm -f "$GATE_RUNS/$GATE_RUN.tar"
   # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
   # its own .env and its own test database.
   composer install --no-interaction -q
   php8.4 -d memory_limit=1G vendor/bin/phpunit --colors=never --log-junit /opt/ezbizi-test/backend-junit.xml
   php8.4 scripts/phpunit-count.php /opt/ezbizi-test/backend-junit.xml
-' 2>&1) || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
+GATE
+} > "$GATE_LOCAL/gate.sh"
+git -c core.autocrlf=false archive "$GATED_SHA" > "$GATE_LOCAL/tree.tar"
+gate_ssh() {  # a short call to the box, retried: a dropped connection is not a failed gate
+  local try
+  for try in 1 2 3 4 5 6; do
+    ssh -o ConnectTimeout=20 "$REMOTE" "$@" < /dev/null && return 0
+    sleep 10
+  done
+  return 1
+}
+gate_put() {  # gate_put <local file> <remote path>: re-opened on every try, and the size checked
+  local try size
+  size=$(wc -c < "$1" | tr -d ' ')
+  for try in 1 2 3 4 5 6; do
+    ssh -o ConnectTimeout=20 "$REMOTE" "cat > '$2.part' && [ \$(stat -c %s '$2.part') = $size ] && mv '$2.part' '$2'" < "$1" && return 0
+    sleep 10
+  done
+  return 1
+}
+if ! { gate_ssh "mkdir -p '$GATE_RUNS' && find '$GATE_RUNS' -type f -mtime +7 -delete" \
+    && gate_put "$GATE_LOCAL/tree.tar" "$GATE_RUNS/$GATE_RUN.tar" \
+    && gate_put "$GATE_LOCAL/gate.sh" "$GATE_RUNS/$GATE_RUN.sh" \
+    && gate_ssh "setsid nohup bash '$GATE_RUNS/$GATE_RUN.sh' > '$GATE_RUNS/$GATE_RUN.log' 2>&1 < /dev/null &"; }; then
+  rm -rf "$GATE_LOCAL"; echo "✗ could not start the gate on the box — nothing deployed"; exit 1
+fi
+rm -rf "$GATE_LOCAL"
+echo "   gate running on the box: $GATE_RUNS/$GATE_RUN.log"
+GATE_STATUS=""
+for ((poll = 1; poll <= 450; poll++)); do   # 450 x 20 s = 2.5 h: an hour's lock wait, then the run
+  sleep 20
+  GATE_STATUS=$(ssh -o ConnectTimeout=20 "$REMOTE" "cat '$GATE_RUNS/$GATE_RUN.status' 2>/dev/null" 2>/dev/null || true)
+  [ -n "$GATE_STATUS" ] && break
+done
+BACKEND_OUT=$(gate_ssh "cat '$GATE_RUNS/$GATE_RUN.log'" 2>&1 || echo "(could not read $GATE_RUNS/$GATE_RUN.log)")
+[ -n "$GATE_STATUS" ] || { echo "$BACKEND_OUT" | tail -20; echo "✗ the gate did not answer within 2.5 hours — nothing deployed ($GATE_RUNS/$GATE_RUN.log)"; exit 1; }
+[ "$GATE_STATUS" = "0" ] || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | sed -n 's/^EZBIZI_BACKEND_TESTS=\([0-9][0-9]*\)$/\1/p' | tail -1)
 [ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; exit 1; }
