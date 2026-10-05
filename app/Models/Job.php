@@ -339,4 +339,16 @@ class Job extends Model implements StatesRetention
 
         return number_format($this->amount_minor / 100, 2);
     }
+
+    /**
+     * `{{ review_link }}` on a job's automation: the customer's own reviews
+     * link (Memberships, 2026-10-05), so the thank-you after a job lets the
+     * review faces know who smiled.
+     */
+    public function getReviewLinkAttribute(): ?string
+    {
+        $customer = Customer::query()->find($this->customer_id);
+
+        return $customer === null ? null : \App\Support\Memberships\CustomerLinks::reviewLink($customer);
+    }
 }
