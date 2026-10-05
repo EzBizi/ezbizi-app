@@ -590,8 +590,9 @@ void main() {
   });
 
   /// An accepted invitation is a person now. Resending would mint a token for
-  /// an account that already exists.
-  testWidgets('a completed invitation offers neither resend nor revoke', (
+  /// an account that already exists; revoking still works (Jose, 2026-10-05:
+  /// "she should be able to still revoke it. regardless of anything").
+  testWidgets('a completed invitation offers revoke but not resend', (
     tester,
   ) async {
     await _pump(tester, _handler(invitations: _completedOnly));
@@ -600,7 +601,7 @@ void main() {
 
     expect(find.text('Completed'), findsOneWidget);
     expect(find.text('Resend'), findsNothing);
-    expect(find.text('Revoke'), findsNothing);
+    expect(find.text('Revoke'), findsOneWidget);
   });
 
   testWidgets('somebody with no role is marked as such on the row', (

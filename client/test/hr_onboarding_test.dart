@@ -609,8 +609,9 @@ void main() {
     // And the one that is done says so instead of counting to zero.
     expect(find.textContaining('Completed'), findsWidgets);
 
-    // In flight can be stopped; a signed agreement cannot.
-    expect(find.text('Cancel'), findsOneWidget);
+    // Either can be stopped, signed or not (Jose, 2026-10-05: "regardless of
+    // anything").
+    expect(find.text('Cancel'), findsNWidgets(2));
   });
 
   // Andy's Suggestion, built on Jose's word (2026-10-01): "a seperate
@@ -652,10 +653,11 @@ void main() {
   ) async {
     await _pumpTab(tester, _handler(), permissions: const ['hr.view']);
 
-    final cancel = tester.widget<TextButton>(
+    for (final cancel in tester.widgetList<TextButton>(
       find.widgetWithText(TextButton, 'Cancel'),
-    );
-    expect(cancel.onPressed, isNull);
+    )) {
+      expect(cancel.onPressed, isNull);
+    }
   });
 
   // Ana's Suggestion, on Jose's word (2026-10-01): starting one can choose the
@@ -852,7 +854,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(asked.single, {'state': 'Florida', 'q': 'pa'});
-    expect(find.text('Pick the county from the list to answer.'), findsOneWidget);
 
     await _tap(tester, find.byKey(const Key('county-Palm Beach')));
     expect(_countyBox(tester).controller!.text, 'Palm Beach');
@@ -867,6 +868,32 @@ void main() {
     });
   });
 
+  // Jose, 2026-10-05: Eve typed Cook, the search found nothing, and "she
+  // should be able to just save, even if the finder does not find anything".
+  testWidgets('a county the search cannot find is saved as typed', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pumpForm(
+      tester,
+      _handler(form: _catalogForm, onSave: (body) => saved = body),
+    );
+
+    await _type(tester, 'county', 'Cook');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Not in the list. What you typed is saved as the county.'),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'county': 'Cook'},
+    });
+  });
+
   testWidgets('one schedule answers the work days and the work hours', (
     tester,
   ) async {
@@ -877,11 +904,14 @@ void main() {
       _handler(form: _catalogForm, onSave: (body) => saved = body),
     );
 
-    // What was typed before the picker cannot be read as a week, and says so.
+    // What was typed before the picker cannot be read as a week, so it opens
+    // as typed availability.
     expect(find.text('Work days and work hours'), findsOneWidget);
     expect(find.byKey(answerKey('work_days')), findsNothing);
-    expect(find.textContaining('which is not a schedule'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-schedule-typed')), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-schedule')), findsNothing);
 
+    await _tap(tester, find.text('Set days and hours'));
     await _tap(tester, find.byKey(const Key('onboarding-schedule')));
     // Saturday and Sunday on, as the panel starts a day: 8 to 5.
     await _tap(tester, find.byType(Switch).at(5));
@@ -895,6 +925,35 @@ void main() {
       'answers': {
         'work_hours': 'Saturday to Sunday 8:00 AM to 5:00 PM',
         'work_days': 'Saturday to Sunday',
+      },
+    });
+  });
+
+  // Jose, 2026-10-05: some technicians have availability rather than set
+  // hours; "it should be one or the other, never both".
+  testWidgets('availability can be typed instead, and the days then do not apply', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pumpForm(
+      tester,
+      _handler(form: _catalogForm, onSave: (body) => saved = body),
+    );
+
+    await _tap(tester, find.text('Set days and hours'));
+    await _tap(tester, find.text('Type availability'));
+    await tester.enterText(
+      find.byKey(const Key('onboarding-schedule-typed')),
+      'Mornings, Monday to Thursday',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'work_hours': 'Mornings, Monday to Thursday',
+        'work_days': 'N/A',
       },
     });
   });

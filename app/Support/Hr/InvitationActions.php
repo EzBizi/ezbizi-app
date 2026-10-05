@@ -8,11 +8,13 @@ use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\User;
 use App\Services\Hr\Invitations;
+use App\Support\Access\AdministratorFloor;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Resending, withdrawing and starting paperwork — the one implementation.
@@ -128,9 +130,16 @@ class InvitationActions
      * otherwise fail noisily every day after the first, filling a run log with
      * refusals that describe success.
      */
-    public function revoke(Invitation $invitation): void
+    /**
+     * A person may withdraw one already accepted (Jose, 2026-10-05: "she
+     * should be able to still revoke it. regardless of anything"): its
+     * paperwork is cancelled whatever its state and the account it opened is
+     * switched off, which Records can undo. A rule ($by null) still may not,
+     * so no rule switches somebody off as a side effect of tidying.
+     */
+    public function revoke(Invitation $invitation, ?User $by = null): void
     {
-        if ($invitation->accepted_at !== null) {
+        if ($invitation->accepted_at !== null && $by === null) {
             throw new CannotActOnInvitation(
                 'That invitation has already been accepted, so there is nothing left to '
                 .'withdraw. Switch the person’s access off instead if that is what you mean.'
@@ -141,17 +150,40 @@ class InvitationActions
             return;
         }
 
+        $account = $invitation->accepted_at !== null ? $invitation->acceptedUser : null;
+        if ($account !== null && $account->is($by)) {
+            throw new CannotActOnInvitation('That invitation opened your own account, so withdrawing '
+                .'it would switch you off. Ask a colleague to do it if you mean it.');
+        }
+        if ($account !== null && $account->is_active) {
+            try {
+                app(AdministratorFloor::class)->assertNotTheLast($account, 'is_active');
+            } catch (ValidationException $refusal) {
+                throw new CannotActOnInvitation((string) collect($refusal->errors())->flatten()->first());
+            }
+        }
+
         // Read before the write, so the event can say what it was withdrawn
         // FROM — one somebody had opened and one nobody ever looked at are
         // different things to withdraw, and `changed_from` is how a rule tells
         // them apart.
         $before = $invitation->status();
 
-        DB::transaction(function () use ($invitation, $before) {
+        DB::transaction(function () use ($invitation, $before, $account, $by) {
             $invitation->forceFill(['revoked_at' => now()])->save();
+
+            Onboarding::query()->where('invitation_id', $invitation->getKey())
+                ->where('status', '!=', Onboarding::CANCELLED)->get()
+                ->each(fn (Onboarding $onboarding) => $this->cancelOnboarding($onboarding, $by));
+
+            $switchedOff = $account !== null && $account->is_active;
+            if ($switchedOff) {
+                $account->forceFill(['is_active' => false])->save();
+            }
 
             $this->audit->log('invitation.revoked', $invitation, metadata: [
                 'email' => $invitation->email,
+                'account_switched_off' => $switchedOff,
             ]);
 
             // Inside the transaction, like every emit: the outbox row and the
@@ -167,6 +199,37 @@ class InvitationActions
                     'revoked_at' => $invitation->revoked_at->toIso8601String(),
                 ],
             ]);
+        });
+    }
+
+    /**
+     * Stop an onboarding, whatever its state (Jose, 2026-10-05: "regardless
+     * of anything"). The row, its answers, documents and signatures stay:
+     * `cancelled` records that the organization changed its mind.
+     */
+    public function cancelOnboarding(Onboarding $onboarding, ?User $actor): void
+    {
+        $before = $onboarding->status;
+
+        DB::transaction(function () use ($onboarding, $before, $actor) {
+            $onboarding->forceFill([
+                'status'       => Onboarding::CANCELLED,
+                'cancelled_at' => now(),
+            ])->save();
+
+            $this->audit->log('onboarding.cancelled', $onboarding, metadata: [
+                'from'     => $before,
+                'contract' => $onboarding->contractVersion?->contract?->name,
+            ]);
+
+            $this->events->emit('onboarding.cancelled', $onboarding, [
+                'before' => ['status' => $before],
+                'after'  => [
+                    'status'       => $onboarding->status,
+                    'cancelled_at' => $onboarding->cancelled_at?->toIso8601String(),
+                    'contract'     => $onboarding->contractVersion?->contract?->name,
+                ],
+            ], actor: $actor);
         });
     }
 

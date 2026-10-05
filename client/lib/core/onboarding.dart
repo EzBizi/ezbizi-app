@@ -190,10 +190,20 @@ class Onboarding {
     required this.submittedAt,
     required this.completedAt,
     this.cancelledAt,
+    this.employerAddress,
+    this.employerAddressDefault,
+    this.employerAddressEditable = false,
   });
 
   final String id;
   final String status;
+
+  /// The company address typed on this form, which the contract prints in
+  /// place of [employerAddressDefault] (Jose, 2026-10-05). Only the employer
+  /// may type it, and only before signing: [employerAddressEditable].
+  final String? employerAddress;
+  final String? employerAddressDefault;
+  final bool employerAddressEditable;
 
   final String personName;
   final String personEmail;
@@ -301,6 +311,7 @@ class Onboarding {
     final person = json['person'] as Map<String, dynamic>?;
     final contract = json['contract'] as Map<String, dynamic>?;
     final ceremony = json['ceremony'] as Map<String, dynamic>?;
+    final employer = json['employer_address'] as Map<String, dynamic>?;
 
     // What has actually been signed, keyed so the fields below can find their
     // own. `signature_fields` says what the version asks for; `signatures` says
@@ -347,6 +358,9 @@ class Onboarding {
       submittedAt: json['submitted_at'] as String?,
       completedAt: json['completed_at'] as String?,
       cancelledAt: json['cancelled_at'] as String?,
+      employerAddress: employer?['typed'] as String?,
+      employerAddressDefault: employer?['default'] as String?,
+      employerAddressEditable: employer?['editable'] == true,
     );
   }
 }
@@ -510,6 +524,10 @@ class OnboardingQuestion {
 
 /// The answer that voids a term: the server drops every paragraph naming it.
 const notApplicable = 'N/A';
+
+/// Sent among the answers, but not a question: the company address typed on
+/// the form (`Onboarding::EMPLOYER_ADDRESS`).
+const employerAddressKey = 'employer_address';
 
 /// The rendered document, and the fingerprint of exactly these bytes.
 ///

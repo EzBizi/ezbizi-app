@@ -70,6 +70,12 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public const CANCELLED = 'cancelled';
 
+    /**
+     * The company address typed on the form, sent among the answers but not a
+     * contract question: it overrides the address employer() reads.
+     */
+    public const EMPLOYER_ADDRESS = 'employer_address';
+
     public const STATUSES = [
         self::IN_PROGRESS, self::SUBMITTED, self::COMPLETED, self::CANCELLED,
     ];
@@ -182,18 +188,21 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      *
      * @return array{name: string, address: string}
      */
-    public function employer(): array
+    public function employer(bool $typed = true): array
     {
+        // Typed on this onboarding, it wins (Jose, 2026-10-05).
+        $override = $typed ? trim((string) $this->employer_address) : '';
         $company = $this->company;
         if ($company === null) {
-            return ['name' => (string) $this->organization->name, 'address' => (string) ($this->organization->address ?? '')];
+            return ['name' => (string) $this->organization->name,
+                'address' => $override !== '' ? $override : (string) ($this->organization->address ?? '')];
         }
 
         $region = trim(($company->state ?? '').' '.($company->postal_code ?? ''));
 
         return [
             'name' => (string) $company->name,
-            'address' => implode(', ', array_filter([
+            'address' => $override !== '' ? $override : implode(', ', array_filter([
                 $company->address_line1, $company->address_line2, $company->city, $region,
             ], fn ($part) => trim((string) $part) !== '')),
         ];

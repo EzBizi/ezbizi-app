@@ -461,8 +461,9 @@ class _OnboardingTabState extends State<OnboardingTab> {
     await _load();
   }
 
+  // Whatever its state (Jose, 2026-10-05: "regardless of anything").
   bool _canCancel(OnboardingSummary row) =>
-      row.status == 'in_progress' || row.status == 'submitted';
+      row.status != 'cancelled' && row.cancelledAt == null;
 
   Future<void> _cancel(OnboardingSummary row) async {
     final who = row.personName.isEmpty ? row.personEmail : row.personName;
@@ -485,9 +486,9 @@ class _OnboardingTabState extends State<OnboardingTab> {
           ),
         ],
         child: const Text(
-          'The form stops. Answers already given stay on the record, and you '
-          'can start a new onboarding for them if that is still needed. A '
-          'fully signed agreement cannot be cancelled — amend it instead.',
+          'The form stops. Answers, signatures and documents stay on the '
+          'record, and you can start a new onboarding for them if that is '
+          'still needed.',
         ),
       ),
     );

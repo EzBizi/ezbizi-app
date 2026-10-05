@@ -1390,7 +1390,8 @@ class HrOnboardingTest extends TestCase
         $this->assertSame('in_progress', $this->form($alpha['admin'], $next)['status']);
     }
 
-    public function test_a_fully_signed_onboarding_cannot_be_cancelled(): void
+    /** Whatever its state (Jose, 2026-10-05: "regardless of anything"); what was signed stays. */
+    public function test_a_fully_signed_onboarding_can_still_be_cancelled(): void
     {
         [$alpha, $employee, $id] = $this->completeForm();
 
@@ -1400,8 +1401,77 @@ class HrOnboardingTest extends TestCase
         $this->assertSame('completed', $this->form($alpha['admin'], $id)['status']);
 
         $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$id}")
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('onboarding');
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled');
+        $this->assertCount(2, $this->form($alpha['admin'], $id)['signatures']);
+    }
+
+    /**
+     * Revoked after it was accepted (Jose, 2026-10-05: "she should be able to
+     * still revoke it. regardless of anything"): the paperwork is cancelled
+     * and the account it opened is switched off. A rule still may not.
+     */
+    public function test_an_accepted_invitation_can_still_be_revoked_by_a_person(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario();
+        $invitationId = $this->form($alpha['admin'], $id)['invitation_id'];
+
+        $this->expectException(\App\Support\Hr\CannotActOnInvitation::class);
+        try {
+            $this->inTenant($alpha['org'], fn () => app(\App\Support\Hr\InvitationActions::class)
+                ->revoke(Invitation::findOrFail($invitationId)));
+        } finally {
+            $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
+
+            $this->as($alpha['admin'])->deleteJson("/api/v1/hr/invitations/{$invitationId}")
+                ->assertOk()
+                ->assertJsonPath('data.status', 'revoked');
+
+            $this->assertSame('cancelled', $this->form($alpha['admin'], $id)['status']);
+            $this->assertFalse((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
+        }
+    }
+
+    /**
+     * A company address typed on the form replaces the company's on the
+     * contract (Jose, 2026-10-05: "if it's typed it overrides whatever is in
+     * place"); empty, the company's own comes back. Only the employer types it.
+     */
+    public function test_a_typed_company_address_replaces_the_one_on_the_contract(): void
+    {
+        [$alpha, $employee, $first] = $this->scenario();
+        $contract = $this->as($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Office', 'fields' => $this->defaultFields(),
+            'body' => "Company Address: {{organization.address}}\n\nWage: {{wage}}",
+        ])->assertCreated()->json('data.id');
+        $invitation = $this->form($alpha['admin'], $first)['invitation_id'];
+        $this->as($alpha['admin'])->deleteJson("/api/v1/hr/onboardings/{$first}")->assertOk();
+        $id = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $invitation, 'contract_id' => $contract,
+        ])->assertCreated()->json('data.id');
+        $preview = fn (array $answers) => $this->as($alpha['admin'])
+            ->postJson("/api/v1/hr/onboardings/{$id}/preview", ['answers' => $answers])
+            ->assertOk()->json('data.content');
+        $typed = '1 Typed Street, Miami FL 33101';
+
+        $this->assertStringContainsString($typed, $preview(['employer_address' => $typed]));
+        $this->assertStringNotContainsString($typed, $preview([]));
+
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['employer_address' => $typed],
+        ])->assertStatus(422);
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['employer_address' => $typed],
+        ])->assertOk()
+            ->assertJsonPath('data.employer_address.typed', $typed)
+            ->assertJsonPath('data.employer_address.editable', true);
+        $this->assertStringContainsString($typed, $preview([]));
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['employer_address' => ''],
+        ])->assertOk()->assertJsonPath('data.employer_address.typed', null);
+        $this->assertStringNotContainsString($typed, $preview([]));
     }
 
     /**

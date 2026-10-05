@@ -97,6 +97,11 @@ class OnboardingDocuments
      */
     public function preview(Onboarding $onboarding, array $draft, array $highlight = []): string
     {
+        // Not a question: the company address typed on the form, in memory only.
+        if (array_key_exists(Onboarding::EMPLOYER_ADDRESS, $draft)) {
+            $onboarding->employer_address = trim((string) $draft[Onboarding::EMPLOYER_ADDRESS]) ?: null;
+        }
+
         $answers = $onboarding->answers()->get()->keyBy('field_key');
 
         foreach ($onboarding->fields() as $field) {

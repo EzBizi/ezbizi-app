@@ -305,10 +305,9 @@ class HrOnboardingsController extends Controller
      * that is a different fact from never starting it. Deleting instead would
      * erase that somebody was taken through a form at all.
      *
-     * A fully signed agreement cannot be cancelled. That record is the
-     * contract; correcting it is an amendment. Anything short of that — still
-     * filling in, or signed on one side only — can be stopped, and the
-     * invitation is then free for a new start.
+     * Whatever its state, signed included (Jose, 2026-10-05: "regardless of
+     * anything"). What was signed stays on the row; the invitation is then
+     * free for a new start.
      */
     public function destroy(Request $request, Onboarding $onboarding): JsonResponse
     {
@@ -320,36 +319,8 @@ class HrOnboardingsController extends Controller
             ]);
         }
 
-        if ($onboarding->status === Onboarding::COMPLETED || $onboarding->isFullySigned()) {
-            throw ValidationException::withMessages(['onboarding' =>
-                'That onboarding is fully signed, so it is an agreement — it cannot be '
-                .'cancelled. Correct it with an amendment if what was signed is wrong.',
-            ]);
-        }
-
-        $before = $onboarding->status;
-        $actor  = $request->user();
-
-        DB::transaction(function () use ($onboarding, $before, $actor) {
-            $onboarding->forceFill([
-                'status'       => Onboarding::CANCELLED,
-                'cancelled_at' => now(),
-            ])->save();
-
-            $this->audit->log('onboarding.cancelled', $onboarding, metadata: [
-                'from'     => $before,
-                'contract' => $onboarding->contractVersion?->contract?->name,
-            ]);
-
-            $this->events->emit('onboarding.cancelled', $onboarding, [
-                'before' => ['status' => $before],
-                'after'  => [
-                    'status'       => $onboarding->status,
-                    'cancelled_at' => $onboarding->cancelled_at?->toIso8601String(),
-                    'contract'     => $onboarding->contractVersion?->contract?->name,
-                ],
-            ], actor: $actor);
-        });
+        $actor = $request->user();
+        $this->actions->cancelOnboarding($onboarding, $actor);
 
         return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
     }
@@ -371,6 +342,7 @@ class HrOnboardingsController extends Controller
 
         $request->validate([
             'answers' => ['required', 'array'],
+            'answers.'.Onboarding::EMPLOYER_ADDRESS => ['sometimes', 'nullable', 'string', 'max:500'],
         ], [
             'answers.required' => 'Send the answers you are saving as an object of field key '
                 .'to value. An empty save is not an error, but it is also not a request worth '
@@ -389,6 +361,18 @@ class HrOnboardingsController extends Controller
 
         $parties = $this->partiesFor($actor, $onboarding);
 
+        // The company address typed here (Jose, 2026-10-05): the employer's,
+        // and fixed by the employer's signature like the rest of their side.
+        $answers = (array) $request->input('answers');
+        $typedAddress = array_key_exists(Onboarding::EMPLOYER_ADDRESS, $answers);
+        $address = trim((string) ($answers[Onboarding::EMPLOYER_ADDRESS] ?? '')) ?: null;
+        unset($answers[Onboarding::EMPLOYER_ADDRESS]);
+        if ($typedAddress && (! in_array(FilledBy::EMPLOYER, $parties, true) || $this->employerSigned($onboarding))) {
+            throw ValidationException::withMessages(['answers' =>
+                'Only the employer can set the company address, and only before signing.',
+            ]);
+        }
+
         // The employer signs first and the rest is the employee's (Jose,
         // 2026-10-01). From that signature the employer's answers are what
         // was signed, so only the employee's own questions still move.
@@ -406,8 +390,13 @@ class HrOnboardingsController extends Controller
             }
         }
 
-        $changed = DB::transaction(function () use ($onboarding, $actor, $parties, $request) {
-            $changed = $this->form->save($onboarding, $actor, $parties, (array) $request->input('answers'));
+        $changed = DB::transaction(function () use ($onboarding, $actor, $parties, $answers, $typedAddress, $address) {
+            $changed = $this->form->save($onboarding, $actor, $parties, $answers);
+
+            if ($typedAddress && $onboarding->employer_address !== $address) {
+                $onboarding->forceFill([Onboarding::EMPLOYER_ADDRESS => $address])->save();
+                $changed['answers'][] = Onboarding::EMPLOYER_ADDRESS;
+            }
 
             if (array_intersect(['work_days', 'work_hours'], $changed['answers']) !== []) {
                 app(OnboardingToRecord::class)->saveSchedule($onboarding);
@@ -749,7 +738,7 @@ class HrOnboardingsController extends Controller
         $parts = $user->addressParts();
         $street = trim(implode(' ', array_filter([$parts['address_line1'], $parts['address_line2']])));
         $cityLine = trim(implode(', ', array_filter([$parts['city'], trim(($parts['state'] ?? '').' '.($parts['postal_code'] ?? ''))])));
-        $employer = trim($onboarding->organization->name."\n".$answer('employer_address'));
+        $employer = trim(implode("\n", $onboarding->employer()));
         $ssn = $given('ssn') !== '' ? $given('ssn') : $answer('ssn');
         $zone = (string) ($this->tenantTimezone($onboarding) ?: config('app.timezone'));
         $hired = $answer('date_of_hire');
@@ -1730,6 +1719,14 @@ class HrOnboardingsController extends Controller
 
         return $this->summarise($onboarding) + [
             'parties'    => $parties,
+            // The company address typed on this form, what the contract
+            // prints without it, and whether this person may type it.
+            'employer_address' => [
+                'typed' => $onboarding->employer_address,
+                'default' => $onboarding->employer(false)['address'],
+                'editable' => in_array(FilledBy::EMPLOYER, $parties, true)
+                    && ! $onboarding->isFrozen() && ! $this->employerSigned($onboarding),
+            ],
             'started_by' => $onboarding->startedBy?->name,
             'fields'     => $this->form->present($onboarding, $answers, $parties),
             'missing'    => $this->form->missing($onboarding),
