@@ -48,8 +48,6 @@ final class JobsGlance extends DescribedGlance
             $byStatus = $this->jobsByStatus->resolve($user, ['include_finished' => true]);
             $total = (int) ($byStatus['total'] ?? 0);
 
-            $statusChoices = array_column($byStatus['rows'], 'status');
-
             if ($total === 0) {
                 return new GlancePayload(
                     key: $this->key(),
@@ -62,7 +60,6 @@ final class JobsGlance extends DescribedGlance
                     data: [
                         'empty' => true,
                         'sentence' => 'No jobs to show.',
-                        'status_choices' => $statusChoices,
                     ],
                 );
             }
@@ -75,7 +72,6 @@ final class JobsGlance extends DescribedGlance
             $data = [
                 'empty' => false,
                 'slices' => $slices,
-                'status_choices' => $statusChoices,
             ];
             $sentences = [];
 
@@ -87,10 +83,14 @@ final class JobsGlance extends DescribedGlance
             // permission, because the ruling names the surface, not a role.
 
             $today = 0;
+            $yesterday = 0;
             $upcoming = 0;
             foreach ($this->scheduledInReach($user) as $job) {
                 if ($this->isToday($job)) {
                     $today++;
+                }
+                if ($this->isToday($job, daysAgo: 1)) {
+                    $yesterday++;
                 }
                 if ($this->isUpcoming($job)) {
                     $upcoming++;
@@ -112,6 +112,14 @@ final class JobsGlance extends DescribedGlance
             if ($sentences !== []) {
                 $data['sentences'] = $sentences;
             }
+
+            // Today against yesterday whatever the chips say: the pie is a
+            // snapshot, and "jobs this quarter so far" is not a figure anybody
+            // dispatches by. Coming up has no earlier self to compare with.
+            $data['figures'] = [
+                GlancePayload::figure('today', 'today', $today, $yesterday),
+                GlancePayload::figure('upcoming', 'coming up', $upcoming),
+            ];
 
             return new GlancePayload(
                 key: $this->key(),
@@ -142,7 +150,7 @@ final class JobsGlance extends DescribedGlance
             ->get();
     }
 
-    private function isToday(Job $job): bool
+    private function isToday(Job $job, int $daysAgo = 0): bool
     {
         $tz = $job->franchise?->timezone ?: 'UTC';
         $wall = $job->scheduled_for;
@@ -150,7 +158,7 @@ final class JobsGlance extends DescribedGlance
         // Convert into the franchise TZ before taking the calendar date.
         // toDateString() alone is the date in $wall's own timezone.
         return $wall !== null
-            && $wall->copy()->timezone($tz)->toDateString() === now($tz)->toDateString();
+            && $wall->copy()->timezone($tz)->toDateString() === now($tz)->subDays($daysAgo)->toDateString();
     }
 
     private function isUpcoming(Job $job): bool

@@ -246,6 +246,36 @@ class CustomersGlanceTest extends TestCase
         $this->assertContains('2 new this week.', $payload['data']['sentences']);
     }
 
+    /**
+     * The headline figure for the sized dashboard: new today against
+     * yesterday TO THE SAME TIME. The 13:00 row yesterday is after "now"
+     * (12:00), so a whole-day comparison would say 3 and this says 2.
+     */
+    public function test_the_new_figure_compares_with_the_same_span_the_day_before(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-23 10:00:00', 'America/New_York'));
+        $this->customer($this->alpha['franchise'], 'Yesterday morning');
+        Carbon::setTestNow(Carbon::parse('2026-08-23 13:00:00', 'America/New_York'));
+        $this->customer($this->alpha['franchise'], 'Yesterday afternoon');
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $imported = $this->customer($this->alpha['franchise'], 'Became one yesterday');
+        $this->inTenant(fn () => Customer::query()->whereKey($imported->id)
+            ->update(['customer_since' => '2026-08-23']));
+        foreach (['A', 'B', 'C'] as $name) {
+            $this->customer($this->alpha['franchise'], $name);
+        }
+
+        $payload = app(CustomersGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'day'), []
+        )->toArray();
+
+        $this->assertSame([
+            ['key' => 'new', 'label' => 'new today', 'value' => 3, 'previous' => 2],
+            ['key' => 'listed', 'label' => 'listed', 'value' => 6, 'previous' => null],
+        ], $payload['data']['figures']);
+    }
+
     public function test_changing_period_changes_the_series(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));

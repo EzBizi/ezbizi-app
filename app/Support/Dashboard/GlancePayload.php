@@ -82,7 +82,14 @@ final class GlancePayload
      *   sentences        a list of them; both render in full
      *   slices           pie and bar, drawn when one total is above zero
      *   series           line and timeline, each with `points`
-     *   status_choices   the Jobs earned-status chips
+     *   figures          [{key, label, value, previous}] — the first is the
+     *                    box's headline; a Small box shows only it. `label`
+     *                    follows the number ("181 today"). `previous` is the
+     *                    same count over DashboardPeriod::previous(), or null
+     *                    where there is no history (a snapshot). Build each
+     *                    with self::figure().
+     *   attention        [{tone: caution|bad, text}], at most 3: what needs
+     *                    somebody. Build with self::attention().
      *
      * NO MONEY, under any key (Jose, 2026-09-29: "do not show any financial
      * info on the dashboard widgets" — a dispatcher who can open Jobs sees
@@ -145,6 +152,29 @@ final class GlancePayload
     ) {}
 
     /** @return array<string, mixed> */
+    /**
+     * One figure for the sized dashboard (Jose, 2026-10-05). A count, never
+     * money: the no-money guard reads every figure.
+     *
+     * @return array{key: string, label: string, value: int, previous: int|null}
+     */
+    public static function figure(string $key, string $label, int $value, ?int $previous = null): array
+    {
+        return ['key' => $key, 'label' => $label, 'value' => $value, 'previous' => $previous];
+    }
+
+    /**
+     * One row of what needs somebody. `bad` is broken or overdue; `caution`
+     * is about to be.
+     *
+     * @param  'caution'|'bad'  $tone
+     * @return array{tone: string, text: string}
+     */
+    public static function attention(string $tone, string $text): array
+    {
+        return ['tone' => $tone, 'text' => $text];
+    }
+
     public function toArray(): array
     {
         return [

@@ -149,10 +149,38 @@ final class CustomersGlance extends DescribedGlance
                     ],
                     'slices' => $slices,
                     'sentences' => $sentences,
+                    'figures' => [
+                        GlancePayload::figure('new', 'new '.$periodWord, $added, $this->addedIn($period->previous(), $reachable)),
+                        GlancePayload::figure('listed', 'listed', $book),
+                    ],
                     'organization_total' => $organizationTotal,
                 ],
             );
         });
+    }
+
+    /**
+     * How many became customers in a window, by the same two dates the series
+     * reads (customer_since where known, else created_at). Only a count: the
+     * figure's `previous` needs no buckets.
+     *
+     * @param  list<int|string>  $reachable
+     */
+    private function addedIn(DashboardPeriod $period, array $reachable): int
+    {
+        $since = Customer::query()
+            ->whereIn('owning_franchise_id', $reachable)
+            ->whereNotNull('customer_since')
+            ->whereBetween('customer_since', [$period->startsOn->toDateString(), $period->endsOn->toDateString()])
+            ->count();
+
+        $made = Customer::query()
+            ->whereIn('owning_franchise_id', $reachable)
+            ->whereNull('customer_since')
+            ->whereBetween('created_at', [$period->startsOn->copy()->utc(), $period->endsOn->copy()->utc()])
+            ->count();
+
+        return $since + $made;
     }
 
     /**

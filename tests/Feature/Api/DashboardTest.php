@@ -789,6 +789,43 @@ class DashboardTest extends TestCase
         $this->assertSame('large', $broken['size']);
     }
 
+    /**
+     * Every glance that sends figures or attention rows sends the shape the
+     * sized dashboard reads. Derived: the administrator reaches every glance,
+     * so a module that adds figures next month is checked without anybody
+     * listing it here. Jobs is the control — seeded so its figure is known,
+     * and with a previous value different from its value.
+     */
+    public function test_every_figure_and_attention_row_keeps_the_contract(): void
+    {
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDay()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDay()]);
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        $this->assertSame(
+            ['key' => 'today', 'label' => 'today', 'value' => 1, 'previous' => 2],
+            $glances['jobs']['data']['figures'][0],
+        );
+
+        foreach ($glances as $key => $glance) {
+            foreach ($glance['data']['figures'] ?? [] as $figure) {
+                $this->assertSame(['key', 'label', 'value', 'previous'], array_keys($figure), $key);
+                $this->assertIsString($figure['key'], $key);
+                $this->assertNotSame('', trim($figure['label']), $key);
+                $this->assertIsInt($figure['value'], $key);
+                $this->assertTrue($figure['previous'] === null || is_int($figure['previous']), $key);
+            }
+            $attention = $glance['data']['attention'] ?? [];
+            $this->assertLessThanOrEqual(3, count($attention), $key);
+            foreach ($attention as $row) {
+                $this->assertContains($row['tone'], ['caution', 'bad'], $key);
+                $this->assertNotSame('', trim($row['text']), $key);
+            }
+        }
+    }
+
     // ── size (Jose, 2026-10-05: "change the widget sizes") ─────────────
 
     public function test_a_box_is_its_glances_default_size_until_somebody_picks_one(): void
