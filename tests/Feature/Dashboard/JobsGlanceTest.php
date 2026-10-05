@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\ServiceArea;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
@@ -204,6 +205,72 @@ class JobsGlanceTest extends TestCase
         )->toArray();
 
         $this->assertContains('1 job today.', $payload['data']['sentences'] ?? []);
+    }
+
+    /**
+     * What needs somebody (Dashboard, 2026-10-05). A job dated in the past week
+     * and more than a day ago that is still in the first status of the
+     * organization's own list was booked and never started: `bad`, in the
+     * organization's word. The day of grace keeps today's late runners off;
+     * the week keeps never-closed history from drowning the row.
+     */
+    public function test_a_past_job_still_in_the_first_status_needs_somebody(): void
+    {
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDays(3)]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDays(4)]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDays(3), 'status' => 'completed']);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDays(10)]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subHours(2)]);
+
+        $this->assertSame([['tone' => 'bad', 'text' => '2 jobs from the past week are still Scheduled.']], $this->attention());
+    }
+
+    /** Scheduling counts a day's work by area, so a job from today on without one is about to be missed. */
+    public function test_an_upcoming_job_without_a_service_area_is_a_caution(): void
+    {
+        $area = $this->inTenant(fn () => ServiceArea::create([
+            'organization_id' => $this->alpha['org']->id, 'franchise_id' => $this->alpha['franchise']->id, 'name' => 'North',
+        ]));
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->addDay()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->addDay(), 'service_area_id' => $area->id]);
+
+        $this->assertSame([['tone' => 'caution', 'text' => '1 job from today on has no service area.']], $this->attention());
+    }
+
+    /** An organization with no service areas has nothing to place jobs into, and nothing is overdue: no rows at all. */
+    public function test_nothing_to_act_on_sends_no_attention(): void
+    {
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->addDay()]);
+
+        $this->assertNull($this->attention());
+    }
+
+    /**
+     * Yesterday's figure survives the load's lower bound in a zone far behind
+     * UTC: the last minute of today in Honolulu, against a job at the first
+     * minute of yesterday there. `scheduled_for` is stored as that wall time,
+     * so a bound set as a UTC instant two days back would cut it.
+     */
+    public function test_yesterday_counts_at_the_edge_of_the_window(): void
+    {
+        $tz = 'Pacific/Honolulu';
+        $this->inTenant(fn () => $this->alpha['franchise']->forceFill(['timezone' => $tz])->save());
+        Carbon::setTestNow(Carbon::parse('2026-10-05 23:59:00', $tz));
+        $this->job($this->alpha['franchise'], ['scheduled_for' => Carbon::parse('2026-10-04 00:01:00', $tz)]);
+
+        $figures = $this->payload()['data']['figures'];
+
+        $this->assertSame(['key' => 'today', 'label' => 'today', 'value' => 0, 'previous' => 1], $figures[0]);
+    }
+
+    private function payload(): array
+    {
+        return app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
+    }
+
+    private function attention(): ?array
+    {
+        return $this->payload()['data']['attention'] ?? null;
     }
 
     /**
