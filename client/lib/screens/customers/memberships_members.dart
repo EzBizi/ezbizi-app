@@ -678,6 +678,24 @@ class _MembershipDetailState extends State<MembershipDetail> {
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
+                if (row.visitLine(_formats) case final visit?)
+                  fact(
+                    'Next visit',
+                    Text(
+                      visit,
+                      key: const Key('member-visit'),
+                      // Reminded and not answered is the one that needs a
+                      // call (Jose: no answer leaves staff a follow-up).
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: row.visitOn == null
+                            ? ToneColours.of(context, Tone.caution).ink
+                            : null,
+                        fontWeight: row.visitOn == null
+                            ? FontWeight.w700
+                            : null,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1038,6 +1056,9 @@ class Membership {
     this.paidMinor,
     this.dueMinor,
     this.grossMinor,
+    this.knowsVisit = false,
+    this.visitOn,
+    this.visitJobNumber,
   });
 
   final String id;
@@ -1058,6 +1079,30 @@ class Membership {
   final int? paidMinor;
   final int? dueMinor;
   final int? grossMinor;
+
+  /// Whether the server says anything about the next visit at all. A server
+  /// from before it sends neither key, and then "no date picked yet" would be
+  /// a guess, so nothing is said.
+  final bool knowsVisit;
+
+  /// The day the customer picked for their next visit, as stored (no zone
+  /// shift), and the job it booked; both null while no day is picked.
+  final DateTime? visitOn;
+  final String? visitJobNumber;
+
+  /// "Visit booked for 10/26/2026 · job 1234", "No date picked yet" once the
+  /// reminder has gone, or null when there is nothing to say.
+  String? visitLine(DisplayFormats formats) {
+    if (!knowsVisit) return null;
+    final on = visitOn;
+    if (on != null) {
+      final job = visitJobNumber;
+      return 'Visit booked for ${formats.formatDate(on)}'
+          '${job == null || job.isEmpty ? '' : ' · job $job'}';
+    }
+
+    return remindedAt == null ? null : 'No date picked yet';
+  }
 
   String get planLabel =>
       '$planName · ${billing == 'monthly' ? 'monthly' : 'yearly'}';
@@ -1095,6 +1140,9 @@ class Membership {
     paidMinor: _int(row['paid_minor']),
     dueMinor: _int(row['due_minor']),
     grossMinor: _int(row['estimated_gross_minor']),
+    knowsVisit: row.containsKey('visit_on'),
+    visitOn: _day(row['visit_on']),
+    visitJobNumber: row['visit_job_number']?.toString(),
   );
 
   static List<Membership> listFrom(Map<String, dynamic> body) {

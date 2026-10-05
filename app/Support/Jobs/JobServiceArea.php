@@ -65,10 +65,20 @@ final class JobServiceArea
         // data fix that re-homes an area leaves its zips' copies behind (A1
         // Tools hit exactly that), and a job must not be placed by the stale
         // one. Scheduling's hardening, 2026-09-25.
-        return ServiceAreaZip::query()
+        $own = ServiceAreaZip::query()
             ->where('zip', $zip5)
             ->whereHas('serviceArea', fn ($q) => $q->where('franchise_id', $franchise->getKey()))
             ->value('service_area_id');
+
+        // A franchise's area that shares another's pool covers that pool's
+        // zips. Boston North, 2026-10-05: MA's row holds the zips and
+        // Nationwide's row shares MA's pool, so a Nationwide job in those zips
+        // tagged anything else ("Boston South", nothing: about 7% of them) is
+        // still Nationwide's Boston North rather than nowhere.
+        return $own ?? ServiceArea::query()
+            ->where('franchise_id', $franchise->getKey())
+            ->whereIn('shares_with_id', ServiceAreaZip::query()->where('zip', $zip5)->select('service_area_id'))
+            ->value('id');
     }
 
     /**
