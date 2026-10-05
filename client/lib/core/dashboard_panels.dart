@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'sidebar_order.dart';
+
 /// The label a dashboard row is drawn with.
 ///
 /// ── Why it is not just `row['title']` ────────────────────────────
@@ -108,6 +110,44 @@ IconData dashboardPanelIcon(String key) {
   return byModule[key] ??
       byModule[key.split('.').first] ??
       Icons.insights_outlined;
+}
+
+/// The main dashboard's sections: [keys] cut where this person's sidebar is.
+///
+/// Jose picked "sections like the menu" (UI queue 50, 2026-10-05), and the
+/// menu's groups are the person's own dividers in `navigation.order` — they
+/// have no names, so neither do the sections; a rule separates them, as in the
+/// sidebar. Sections run in the sidebar's order and boxes keep the
+/// dashboard's own order inside each. A box whose module the saved order does
+/// not name goes where the sidebar puts such a module: the last group, or a
+/// group of its own after a divider the order ends on. Nobody who never added
+/// a divider has more than one section.
+List<List<String>> dashboardSections(List<String> keys, List<String> order) {
+  final groupOf = <String, int>{};
+  var group = 0;
+  var opened = false;
+
+  for (final entry in order) {
+    if (entry == sidebarDivider) {
+      // A rule needs something above it, and two touching rules are one.
+      if (opened) {
+        group++;
+        opened = false;
+      }
+      continue;
+    }
+    groupOf.putIfAbsent(entry, () => group);
+    opened = true;
+  }
+
+  final sections = <int, List<String>>{};
+  for (final key in keys) {
+    (sections[groupOf[key] ?? group] ??= []).add(key);
+  }
+
+  return [
+    for (final at in sections.keys.toList()..sort()) sections[at]!,
+  ];
 }
 
 /// Where a user's panel order lives inside their preferences.

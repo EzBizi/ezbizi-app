@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/dashboard_panels.dart';
+import '../core/job_money.dart';
+import '../core/numbers.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/dashboard_chart.dart';
@@ -14,6 +17,10 @@ import '../widgets/tag.dart';
 /// a module you can open is a box, and a module that is not built yet still
 /// has one, tagged coming soon. A chart presentation draws the server's
 /// slices or series above the sentences; text is sentences only.
+///
+/// Jose's pick of UI queue 50 (2026-10-05, desktop 1 and phone 4): the boxes
+/// sit in sections cut where his sidebar is cut, on four columns, and each is
+/// Small, Medium or Large. Customize is where they are moved and sized.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, required this.api, required this.session});
 
@@ -40,6 +47,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// to be Day ( as in today ) instead of Week").
   String _period = 'day';
   List<Map<String, dynamic>> _glances = [];
+
+  /// Whether the boxes show their arranging controls.
+  bool _customizing = false;
+
+  /// Whether the server stores a size per box. Until it does there is nothing
+  /// to switch, and sending one would be a key it never reads back.
+  bool get _sized => _glances.any((glance) => glance['size'] is String);
 
   static const _periods = <(String, String)>[
     ('day', 'Day'),
@@ -110,6 +124,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ];
     });
 
+    await _saveLayout();
+  }
+
+  /// One section's new order, written back into the whole list. The other
+  /// sections' boxes keep their places; this one's take its places in turn.
+  List<String> _withSection(List<String> section) {
+    final members = section.toSet();
+    final next = section.iterator;
+
+    return [
+      for (final glance in _glances)
+        if (members.contains(glance['key']) && next.moveNext())
+          next.current
+        else
+          glance['key'] as String,
+    ];
+  }
+
+  /// Save every box as it now is. A failed save says why and reloads, which
+  /// puts the boxes back where the server still has them.
+  Future<void> _saveLayout() async {
     final response = await widget.api.put('/dashboard/layout', {
       'glances': [for (final glance in _glances) _entryFor(glance)],
     });
@@ -125,6 +160,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ).showSnackBar(SnackBar(content: Text(response.message)));
 
     _load();
+  }
+
+  /// Resize on this frame, like a drag, and save.
+  Future<void> _setSize(String key, String size) async {
+    if (!_glances.any((g) => g['key'] == key && g['size'] != size)) return;
+
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == key) {...glance, 'size': size} else glance,
+      ];
+    });
+
+    await _saveLayout();
   }
 
   Future<void> _setPeriod(String period) async {
@@ -175,21 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ];
     });
 
-    final response = await widget.api.put('/dashboard/layout', {
-      'glances': [for (final glance in _glances) _entryFor(glance)],
-    });
-
-    if (!mounted) return;
-    if (response.ok) {
-      _rememberLayout(response.body, fallback: _glances);
-      return;
-    }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(response.message)));
-
-    _load();
+    await _saveLayout();
   }
 
   /// Keep the stored layout in the session so the HR chip's first save does
@@ -208,12 +243,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ]);
   }
 
-  /// A glance as the layout stores it. Presentation and options travel with
-  /// it, or saving a new ORDER would quietly reset how every box was drawn.
+  /// A glance as the layout stores it. Presentation, options and size travel
+  /// with it, or saving a new ORDER would quietly reset how every box was
+  /// drawn. Size only once the server sends one.
   Map<String, dynamic> _entryFor(Map<String, dynamic> glance) => {
     'key': glance['key'],
     'presentation': glance['presentation'] ?? 'text',
     'options': glance['options'] ?? <String, dynamic>{},
+    if (glance['size'] is String) 'size': glance['size'],
   };
 
   /// Compact, because the header already holds three 48-point move/drag
@@ -281,6 +318,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final byKey = {for (final glance in _glances) glance['key'] as String: glance};
+    final sections = dashboardSections(
+      [for (final glance in _glances) glance['key'] as String],
+      widget.session.me?.navigationOrder ?? const [],
+    );
+
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -291,66 +334,161 @@ class _DashboardScreenState extends State<DashboardScreen> {
           MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
         ),
         children: [
-          // The title moved to the shell header. Refresh stays on the right,
-          // on the period chips' line: a line of its own was 60px holding one
-          // icon, which a phone cannot spare.
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: MediaQuery.sizeOf(context).width < 600 ? 6 : 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (key, label) in _periods)
-                      ChoiceChip(
-                        // The fill says which is chosen. The tick made the
-                        // four too wide to share a phone's line with Refresh;
-                        // Day made five, so a phone draws them tighter.
-                        showCheckmark: false,
-                        visualDensity: MediaQuery.sizeOf(context).width < 600
-                            ? VisualDensity.compact
-                            : null,
-                        labelPadding: MediaQuery.sizeOf(context).width < 600
-                            ? const EdgeInsets.symmetric(horizontal: 2)
-                            : null,
-                        padding: MediaQuery.sizeOf(context).width < 600
-                            ? const EdgeInsets.symmetric(horizontal: 6)
-                            : null,
-                        label: Text(label),
-                        selected: _period == key,
-                        onSelected: (on) {
-                          if (on) _setPeriod(key);
-                        },
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh',
-              ),
-            ],
-          ),
+          if (_customizing) _arrangeBar(context) else _periodRow(context),
           const SizedBox(height: 16),
-          DashboardGrid(
-            onReorder: _reorder,
-            panels: [
-              for (final glance in _glances)
-                DashboardPanel(
-                  key: glance['key'] as String,
-                  title: glance['label'] as String,
-                  icon: dashboardPanelIcon(glance['key'] as String),
-                  badge: glance['coming_soon'] == true
-                      ? const Tag('Coming soon', warn: true)
-                      : null,
-                  controls: _presentationMenu(glance),
-                  body: _GlanceBody(glance: glance),
-                ),
-            ],
+          for (final (i, section) in sections.indexed) ...[
+            // The sidebar's own rule between its groups.
+            if (i > 0) const Divider(height: 33),
+            DashboardGrid(
+              // By position, not by the first box: a box moved to the front of
+              // its section would otherwise make it a new grid and drop the
+              // focus the move buttons hand along.
+              key: ValueKey('dashboard-section-$i'),
+              customizing: _customizing,
+              onReorder: (keys) => _reorder(_withSection(keys)),
+              onResize: _sized ? _setSize : null,
+              panels: [for (final key in section) _panelFor(byKey[key]!)],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  DashboardPanel _panelFor(Map<String, dynamic> glance) {
+    final size = glance['size'] as String? ?? 'medium';
+    final compact = size == 'small' && _GlanceBody.figuresOf(glance).isNotEmpty;
+
+    return DashboardPanel(
+      key: glance['key'] as String,
+      title: glance['label'] as String,
+      icon: dashboardPanelIcon(glance['key'] as String),
+      badge: glance['coming_soon'] == true
+          ? const Tag('Coming soon', warn: true)
+          : null,
+      // A Small box with figures draws its headline and no chart, so a menu
+      // of charts would switch something that is not on screen.
+      controls: compact ? null : _presentationMenu(glance),
+      size: size,
+      body: _GlanceBody(glance: glance, size: size),
+    );
+  }
+
+  /// What Customize looks like: what to do, and the way out.
+  Widget _arrangeBar(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _sized
+                  ? 'Drag a box to move it, or pick its size.'
+                  : 'Drag a box to move it.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => setState(() => _customizing = false),
+            child: const Text('Done'),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _periodRow(BuildContext context) {
+    final phone = MediaQuery.sizeOf(context).width < 600;
+
+    // The title moved to the shell header. Refresh stays on the right, on the
+    // period chips' line: a line of its own was 60px holding one icon, which a
+    // phone cannot spare. Customize sits beside it.
+    //
+    // A phone has one period chip that opens the five (phone 4 of the gallery):
+    // five chips and Refresh filled a 390 phone's line exactly, and Customize
+    // pushed Year onto a second one.
+    return Row(
+      children: [
+        if (phone)
+          PopupMenuButton<String>(
+            tooltip: 'Period',
+            initialValue: _period,
+            onSelected: _setPeriod,
+            itemBuilder: (context) => [
+              for (final (key, label) in _periods)
+                PopupMenuItem(value: key, child: Text(label)),
+            ],
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.only(left: 12, right: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _periods
+                        .firstWhere(
+                          (p) => p.$1 == _period,
+                          orElse: () => _periods.first,
+                        )
+                        .$2,
+                  ),
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
+            ),
+          ),
+        if (phone)
+          const Spacer()
+        else
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (key, label) in _periods)
+                  ChoiceChip(
+                    // The fill says which is chosen; a tick as well is a
+                    // second way of saying it, and the width it takes.
+                    showCheckmark: false,
+                    label: Text(label),
+                    selected: _period == key,
+                    onSelected: (on) {
+                      if (on) _setPeriod(key);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        if (_glances.isNotEmpty)
+          phone
+              ? IconButton(
+                  onPressed: () => setState(() => _customizing = true),
+                  icon: const Icon(Icons.dashboard_customize_outlined),
+                  tooltip: 'Customize',
+                )
+              : TextButton.icon(
+                  onPressed: () => setState(() => _customizing = true),
+                  icon: const Icon(Icons.dashboard_customize_outlined),
+                  label: const Text('Customize'),
+                ),
+        IconButton(
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+        ),
+      ],
     );
   }
 }
@@ -361,10 +499,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
 /// the sentences. Text, empty, and coming soon are sentences only — an empty
 /// chart is not a sentence. The BOX around it is DashboardCard, through
 /// DashboardGrid.
+///
+/// A glance that sends `figures` is drawn by its size: Small is the headline
+/// figure, Medium every figure, the chart and the box's `notes`, Large adds
+/// what needs somebody. Its `sentences` are NOT drawn then: they say the same
+/// numbers for the installed builds that predate figures, and `notes` carries
+/// whatever is not a figure. A glance without figures draws as it always has,
+/// at every size.
 class _GlanceBody extends StatelessWidget {
-  const _GlanceBody({required this.glance});
+  const _GlanceBody({required this.glance, required this.size});
 
   final Map<String, dynamic> glance;
+  final String size;
+
+  /// The box's figures, the first its headline. Empty when it sends none, and
+  /// a figure this build cannot read is left out rather than drawn as a zero.
+  static List<Map<String, dynamic>> figuresOf(Map<String, dynamic> glance) {
+    final data = glance['data'];
+    final raw = data is Map ? data['figures'] : null;
+    if (raw is! List) return const [];
+
+    return [
+      for (final item in raw)
+        if (item is Map && item['value'] is int && item['label'] is String)
+          Map<String, dynamic>.from(item),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -374,6 +534,7 @@ class _GlanceBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: _body(
+        context,
         data,
         glance['coming_soon'] == true,
         glance['presentation'] as String? ?? 'text',
@@ -382,10 +543,35 @@ class _GlanceBody extends StatelessWidget {
   }
 
   List<Widget> _body(
+    BuildContext context,
     Map<String, dynamic> data,
     bool comingSoon,
     String presentation,
   ) {
+    // A box that could not load says so in the colour of a fault, not in the
+    // muted voice of a box with nothing in it: "nothing happened" and "we
+    // could not ask" are different facts.
+    if (glance['failed'] == true) {
+      final scheme = Theme.of(context).colorScheme;
+
+      return [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline, size: 18, color: scheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _sentencesOf(data).firstOrNull ??
+                    'This box could not load right now.',
+                style: TextStyle(color: scheme.error),
+              ),
+            ),
+          ],
+        ),
+      ];
+    }
+
     if (comingSoon || data['empty'] == true) {
       final notes = _sentencesOf(data);
 
@@ -417,24 +603,92 @@ class _GlanceBody extends StatelessWidget {
       ];
     }
 
-    final charted = DashboardChart.canDraw(presentation, data);
+    final figures = figuresOf(glance);
+    final small = size == 'small' && figures.isNotEmpty;
+    final charted = !small && DashboardChart.canDraw(presentation, data);
+    final chart = DashboardChart(
+      presentation: presentation,
+      slices: data['slices'] is List ? data['slices'] as List : null,
+      series: data['series'] is List ? data['series'] as List : null,
+    );
+
+    // Money is drawn only as a figure carrying `currency`, never from any
+    // other key. Jose, 2026-10-05: "its a role y permission things where (
+    // can see financials ) should be toggled" — the server sends an amount
+    // only to a person whose role holds that module's financials, so the
+    // response is the gate, not this screen (it can be read whether or not it
+    // is drawn). The old {amount_minor, currency} lists stay undrawn.
+    return [
+      if (figures.isNotEmpty) ...[
+        _Figures(figures: small ? figures.take(1).toList() : figures),
+        if (charted) ...[const SizedBox(height: 12), chart],
+        if (!small)
+          for (final note in _notesOf(data))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(note),
+            ),
+      ] else ...[
+        if (charted) chart,
+        ..._sentences(data, charted: charted),
+      ],
+      ..._attention(context, data),
+    ];
+  }
+
+  /// What needs somebody. Large lists it; a smaller box says how much there is
+  /// rather than dropping it, because a warning a size choice hides is a
+  /// warning nobody chose to hide.
+  List<Widget> _attention(BuildContext context, Map<String, dynamic> data) {
+    final raw = data['attention'];
+    final rows = [
+      if (raw is List)
+        for (final row in raw)
+          if (row is Map && row['text'] is String && '${row['text']}'.isNotEmpty)
+            (bad: row['tone'] == 'bad', text: row['text'] as String),
+    ];
+    if (rows.isEmpty) return const [];
+
+    final theme = Theme.of(context);
+    Widget line(bool bad, String text) {
+      final colours = ToneColours.of(context, bad ? Tone.bad : Tone.caution);
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              bad ? Icons.error_outline : Icons.warning_amber_rounded,
+              size: 16,
+              color: colours.ink,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+          ],
+        ),
+      );
+    }
+
+    if (size == 'large') {
+      return [for (final row in rows) line(row.bad, row.text)];
+    }
 
     return [
-      if (charted)
-        DashboardChart(
-          presentation: presentation,
-          slices: data['slices'] is List ? data['slices'] as List : null,
-          series: data['series'] is List ? data['series'] as List : null,
-        ),
-      ..._sentences(data, charted: charted),
-      // No money line, ever. Jose, 2026-09-29: "do not show any financial
-      // info on the dashboard widgets" — anybody who can open a module sees
-      // its box, dispatchers included. There used to be a renderer here that
-      // drew any {amount_minor, currency} list; it is deleted rather than
-      // left in place, so a glance that starts sending money again draws
-      // nothing instead of drawing it. The server test
-      // `test_no_glance_sends_money_to_the_dashboard` is the real guard,
-      // because the response is readable whether or not it is drawn.
+      line(
+        rows.any((row) => row.bad),
+        rows.length == 1 ? '1 needs attention' : '${rows.length} need attention',
+      ),
+    ];
+  }
+
+  static List<String> _notesOf(Map<String, dynamic> data) {
+    final notes = data['notes'];
+    if (notes is! List) return const [];
+
+    return [
+      for (final note in notes)
+        if ('$note'.isNotEmpty) '$note',
     ];
   }
 
@@ -495,5 +749,108 @@ class _GlanceBody extends StatelessWidget {
     }
 
     return null;
+  }
+}
+
+/// A box's figures: the headline large, the rest beside it, each with its
+/// change since the period before when there is one.
+class _Figures extends StatelessWidget {
+  const _Figures({required this.figures});
+
+  final List<Map<String, dynamic>> figures;
+
+  /// "▲ 12%", "▼ <1%", "= 0%", or "▲ +15" from nothing. Null without a
+  /// previous value: a snapshot has no earlier self, and that is not a zero.
+  static String? trendOf(int value, int? previous, String Function(int) show) {
+    if (previous == null || previous < 0 || value < 0) return null;
+    if (value == previous) return '= 0%';
+    if (previous == 0) return '▲ +${show(value)}';
+
+    final percent = (value - previous) * 100 / previous;
+    final arrow = percent > 0 ? '▲' : '▼';
+
+    // Never "0%" for a change: 1,000 against 999 moved, and a zero would say
+    // it did not.
+    return percent.abs() < 1
+        ? '$arrow <1%'
+        : '$arrow ${percent.abs().round()}%';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 24,
+      runSpacing: 8,
+      children: [
+        for (final (i, figure) in figures.indexed)
+          _figure(context, figure, headline: i == 0),
+      ],
+    );
+  }
+
+  Widget _figure(
+    BuildContext context,
+    Map<String, dynamic> figure, {
+    required bool headline,
+  }) {
+    final theme = Theme.of(context);
+    final currency = figure['currency'];
+    String show(int n) => currency is String
+        ? formatMoney(n, currency: currency, cents: false)
+        : formatCount(n);
+
+    final value = figure['value'] as int;
+    final previous = figure['previous'] is int
+        ? figure['previous'] as int
+        : null;
+    final trend = trendOf(value, previous, show);
+    final neutral = ToneColours.of(context, Tone.neutral);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // A Wrap, not a Row: a Small box on a phone is 130 points wide, and
+        // "43,968" beside its change does not always fit on one line.
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              show(value),
+              style:
+                  (headline
+                          ? theme.textTheme.headlineSmall
+                          : theme.textTheme.titleMedium)
+                      ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (trend != null)
+              Tooltip(
+                message: '${show(previous!)} the period before',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: neutral.fill,
+                    borderRadius: BorderRadius.circular(
+                      EzBiziTheme.controlRadius,
+                    ),
+                  ),
+                  child: Text(
+                    trend,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: neutral.ink,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        Text(figure['label'] as String, style: theme.textTheme.bodySmall),
+      ],
+    );
   }
 }

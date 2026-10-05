@@ -131,7 +131,7 @@ void main() {
         'all', (tester) async {
       final sent = <Map<String, dynamic>>[];
 
-      await _pumpDashboard(tester, _dashboard(record: sent));
+      await _pumpDashboard(tester, _dashboard(record: sent), customize: true);
 
       await tester.tap(find.byTooltip('Move “Jobs” later'));
       await tester.pumpAndSettle();
@@ -163,7 +163,7 @@ void main() {
       // the optimistic move and its undo are indistinguishable.
       final answered = Completer<void>();
 
-      await _pumpDashboard(tester, _dashboard(saveStatus: 500, held: answered));
+      await _pumpDashboard(tester, _dashboard(saveStatus: 500, held: answered), customize: true);
 
       expect(_cardTitles(tester).first, 'Jobs');
 
@@ -223,7 +223,7 @@ void main() {
     testWidgets('a finger swiping from the grip scrolls the page', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700), customize: true);
 
       // Controls. A page with nothing to scroll would pass the assertion below
       // by standing still, and so would a test that swiped a page already at
@@ -256,7 +256,7 @@ void main() {
     testWidgets('a finger held on the grip picks the card up', (tester) async {
       final sent = <Map<String, dynamic>>[];
 
-      await _pumpDashboard(tester, _dashboard(record: sent), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(record: sent), size: const Size(375, 700), customize: true);
 
       expect(_cardTitles(tester).first, 'Jobs');
 
@@ -315,7 +315,7 @@ void main() {
     testWidgets('the corner of the grip is grip, not decoration', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700), customize: true);
 
       final box = tester.getRect(_gripOf('Human Resources'));
 
@@ -347,7 +347,7 @@ void main() {
     ) async {
       final semantics = tester.ensureSemantics();
 
-      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700), customize: true);
 
       const said =
           'Drag “Jobs” onto the card whose place it should take';
@@ -379,7 +379,7 @@ void main() {
     ) async {
       final sent = <Map<String, dynamic>>[];
 
-      await _pumpDashboard(tester, _dashboard(record: sent));
+      await _pumpDashboard(tester, _dashboard(record: sent), customize: true);
 
       final grip = _gripOf('Customers');
 
@@ -408,7 +408,7 @@ void main() {
     /// as well as fingers: two recognizers would then be contesting one press,
     /// and the card would sit there until one of them won.
     testWidgets('a mouse has the card the moment it presses', (tester) async {
-      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700), customize: true);
 
       // Control: one of this title, drawn in the card's own header. The
       // assertion below is about a SECOND one appearing. Jobs is the first
@@ -449,7 +449,7 @@ void main() {
     testWidgets('a held stylus picks the card up and shows no caption', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700));
+      await _pumpDashboard(tester, _dashboard(), size: const Size(375, 700), customize: true);
 
       // Control, as in the mouse test above: one of this title to begin with,
       // drawn in the card's own header. Jobs is first, so the grip is on
@@ -498,7 +498,7 @@ void main() {
     testWidgets('pressing Enter on a focused move button moves the card', (
       tester,
     ) async {
-      await _pumpDashboard(tester, _dashboard());
+      await _pumpDashboard(tester, _dashboard(), customize: true);
 
       expect(_cardTitles(tester).first, 'Jobs');
 
@@ -525,7 +525,7 @@ void main() {
     /// same button several times. Focus dropped on the first press sends Tab
     /// back to the top of the document and the walk cannot be finished.
     testWidgets('focus follows the card it just moved', (tester) async {
-      await _pumpDashboard(tester, _dashboard());
+      await _pumpDashboard(tester, _dashboard(), customize: true);
 
       await tester.tap(find.byTooltip('Move “Inspection” earlier'));
       await tester.pumpAndSettle();
@@ -681,6 +681,7 @@ Future<void> _pumpDashboard(
   WidgetTester tester,
   MockClientHandler handler, {
   Size size = const Size(1400, 3000),
+  bool customize = false,
 }) async {
   await _pump(
     tester,
@@ -688,6 +689,13 @@ Future<void> _pumpDashboard(
     size,
     (api, session) => DashboardScreen(api: api, session: session),
   );
+
+  // The handles and move buttons are drawn only while arranging (UI queue 50,
+  // Jose 2026-10-05), so a test about them opens Customize first.
+  if (customize) {
+    await tester.tap(find.byIcon(Icons.dashboard_customize_outlined));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _pumpHr(

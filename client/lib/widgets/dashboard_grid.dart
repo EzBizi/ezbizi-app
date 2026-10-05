@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
+import '../core/theme.dart';
 import 'dashboard_card.dart';
 
 /// One panel handed to a [DashboardGrid].
@@ -18,6 +19,7 @@ class DashboardPanel {
     required this.body,
     this.badge,
     this.controls,
+    this.size = 'medium',
   });
 
   final String key;
@@ -31,9 +33,14 @@ class DashboardPanel {
   final Widget? badge;
 
   /// Controls that belong to this panel rather than to the grid — the
-  /// presentation switcher. Drawn in the header before the move / drag
-  /// buttons. Null when the glance has nothing to switch (coming soon).
+  /// presentation switcher. Drawn in the header. Null when the glance has
+  /// nothing to switch (coming soon).
   final Widget? controls;
+
+  /// How much of a row it takes (Jose, 2026-10-05): `small` one column of
+  /// four, `medium` two, `large` the whole row. Anything else is medium,
+  /// which is also how wide every panel was before sizes existed.
+  final String size;
 }
 
 /// Every dashboard's layout: equal-height rows of [DashboardCard], rearrangeable
@@ -52,18 +59,24 @@ class DashboardPanel {
 /// card beneath it into a new column. Some cards will have space at the bottom;
 /// that is the cost of a grid that lines up, and it was accepted.
 ///
-/// Two columns when there is room and one when there is not — a phone gets a
-/// single column, and a card that later wants to be double-width has a row
-/// structure to sit in. That vocabulary is not built, because nothing declares
-/// it yet.
+/// Four columns when there is room and two when there is not, and a panel
+/// takes as many as its size says: Small one, Medium two, Large the row. On a
+/// phone Small is half the width and the rest is all of it (UI queue 50, Jose
+/// 2026-10-05: "change the widget sizes between different available sizes").
+/// A panel that does not fit what is left of a row starts the next one, so
+/// columns line up on every row; the cost is a gap after a Small that a Large
+/// follows, and that is the person's own arrangement to change.
 ///
 /// ── Rearranging it without a mouse ───────────────────────────────
 ///
-/// Three ways in, because a dashboard that can only be rearranged by dragging
-/// is unusable to a keyboard user and unreliable on a phone:
+/// Only while [customizing]: the cards are plain until somebody asks to
+/// arrange them, and then each one carries its handle, its size and its two
+/// move buttons on a line above what it says. Three ways in, because a
+/// dashboard that can only be rearranged by dragging is unusable to a keyboard
+/// user and unreliable on a phone:
 ///
-///   - **Drag.** A handle in each card's header, dragged onto the card that
-///     should give up its place. A mouse picks the card up on the press
+///   - **Drag.** A handle on each card's arranging line, dragged onto the card
+///     that should give up its place. A mouse picks the card up on the press
 ///     itself, with no travel and no wait; a finger and a stylus have to hold
 ///     the grip for a moment first. That difference is not a preference — see
 ///     [_GripDrag]: the grip is a full-size touch target sitting inside a page
@@ -78,28 +91,43 @@ class DashboardPanel {
 ///     buttons are otherwise silent to a screen reader — the card moved, and
 ///     nothing said so.
 ///
-/// [onReorder] is handed the keys in their new order. Null means this dashboard
-/// cannot be rearranged, and then no controls are drawn at all — a disabled
-/// control invites somebody to work out why it does nothing.
+/// [onReorder] is handed the keys in their new order, and [onResize] a key and
+/// the size picked for it. Either may be null, and then its controls are not
+/// drawn at all — a disabled control invites somebody to work out why it does
+/// nothing.
 class DashboardGrid extends StatefulWidget {
   const DashboardGrid({
     super.key,
     required this.panels,
     this.onReorder,
+    this.onResize,
+    this.customizing = false,
     this.spacing = 16,
-    this.twoColumnsFrom = 900,
+    this.fourColumnsFrom = 900,
   });
 
   final List<DashboardPanel> panels;
 
   final void Function(List<String> keys)? onReorder;
 
+  final void Function(String key, String size)? onResize;
+
+  /// Whether the arranging controls are drawn. Off, the cards are only cards.
+  final bool customizing;
+
   /// Between cards, both ways. The same figure the screens pad with.
   final double spacing;
 
-  /// The width at which a second column fits. Not a breakpoint table — cards
-  /// are self-contained, and there is only ever one question to ask.
-  final double twoColumnsFrom;
+  /// The width at which four columns fit. Not a breakpoint table — cards are
+  /// self-contained, and there is only ever one question to ask.
+  final double fourColumnsFrom;
+
+  /// How many columns a panel of [size] takes out of [columns].
+  static int spanOf(String size, int columns) => switch (size) {
+    'small' => 1,
+    'large' => columns,
+    _ => columns >= 4 ? 2 : columns,
+  };
 
   @override
   State<DashboardGrid> createState() => _DashboardGridState();
@@ -143,39 +171,56 @@ class _DashboardGridState extends State<DashboardGrid> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= widget.twoColumnsFrom ? 2 : 1;
-        final rows = <Widget>[];
+        final columns = constraints.maxWidth >= widget.fourColumnsFrom ? 4 : 2;
 
-        for (var start = 0; start < widget.panels.length; start += columns) {
-          if (rows.isNotEmpty) rows.add(SizedBox(height: widget.spacing));
+        // Widths from the column, not from Expanded flex: a flex share
+        // divides what the row's OWN gaps leave, so a Medium beside two Smalls
+        // came out half a gap narrower than a Medium beside a Medium, and no
+        // column lined up with the row above it.
+        final column =
+            (constraints.maxWidth - (columns - 1) * widget.spacing) / columns;
+        double widthOf(int span) => span * column + (span - 1) * widget.spacing;
 
-          rows.add(
-            // Every card in the row is given the height of the tallest. This is
-            // the whole alignment fix, and it is one widget.
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var column = 0; column < columns; column++) ...[
-                    if (column > 0) SizedBox(width: widget.spacing),
-                    Expanded(
-                      // An empty slot on a short last row, so the column widths
-                      // are the same on every row rather than the final card
-                      // stretching across the screen.
-                      child: start + column < widget.panels.length
-                          ? _cardAt(start + column)
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
+        final rows = <List<int>>[];
+        var used = columns;
+        for (var i = 0; i < widget.panels.length; i++) {
+          final span = DashboardGrid.spanOf(widget.panels[i].size, columns);
+          if (used + span > columns) {
+            rows.add([]);
+            used = 0;
+          }
+          rows.last.add(i);
+          used += span;
         }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rows,
+          children: [
+            for (final (r, row) in rows.indexed) ...[
+              if (r > 0) SizedBox(height: widget.spacing),
+              // Every card in the row is given the height of the tallest. This
+              // is the whole alignment fix, and it is one widget.
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (j, index) in row.indexed) ...[
+                      if (j > 0) SizedBox(width: widget.spacing),
+                      SizedBox(
+                        width: widthOf(
+                          DashboardGrid.spanOf(
+                            widget.panels[index].size,
+                            columns,
+                          ),
+                        ),
+                        child: _cardAt(index),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
         );
       },
     );
@@ -183,24 +228,41 @@ class _DashboardGridState extends State<DashboardGrid> {
 
   Widget _cardAt(int index) {
     final panel = widget.panels[index];
+    final arranging =
+        widget.customizing &&
+        (widget.onReorder != null || widget.onResize != null);
 
     final card = DashboardCard(
       title: panel.title,
       icon: panel.icon,
       badge: panel.badge,
-      controls: _headerControls(index, panel),
-      child: panel.body,
+      controls: panel.controls,
+      child: arranging
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _controls(index, panel),
+                const SizedBox(height: 8),
+                panel.body,
+              ],
+            )
+          : panel.body,
     );
 
-    if (widget.onReorder == null) {
+    if (!widget.customizing || widget.onReorder == null) {
       return KeyedSubtree(key: ValueKey(panel.key), child: card);
     }
 
     return KeyedSubtree(
       key: ValueKey(panel.key),
-      child: DragTarget<int>(
-        onWillAcceptWithDetails: (details) => details.data != index,
-        onAcceptWithDetails: (details) => _move(details.data, index),
+      // The KEY travels, not the index: a dashboard is several grids (one per
+      // section), and an index picked up in one names a different card in the
+      // next. A key this grid does not hold is refused.
+      child: DragTarget<String>(
+        onWillAcceptWithDetails: (details) =>
+            details.data != panel.key && _indexOf(details.data) != null,
+        onAcceptWithDetails: (details) =>
+            _move(_indexOf(details.data)!, index),
         builder: (context, candidate, rejected) => Stack(
           children: [
             card,
@@ -228,50 +290,103 @@ class _DashboardGridState extends State<DashboardGrid> {
     );
   }
 
-  /// Header trailing: the panel's own controls, then the grid's move / drag
-  /// buttons. Either half may be absent — a glance with no presentations
-  /// still rearranges, and a one-card surface still switches how it is drawn.
-  Widget? _headerControls(int index, DashboardPanel panel) {
-    final extra = panel.controls;
-    final reorder = widget.onReorder == null ? null : _controls(index, panel);
-
-    if (extra == null) return reorder;
-    if (reorder == null) return extra;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [extra, reorder],
-    );
+  int? _indexOf(String key) {
+    final at = widget.panels.indexWhere((panel) => panel.key == key);
+    return at < 0 ? null : at;
   }
 
-  /// The card's own controls: earlier, later, and something to drag.
+  /// The line of arranging controls: something to drag, the size, earlier and
+  /// later. Above the panel's body rather than in its header, because a Small
+  /// card on a phone is 130 points wide and a header holding all of them
+  /// would leave its title no room at all.
   Widget _controls(int index, DashboardPanel panel) {
     final last = widget.panels.length - 1;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _moveButton(
-          node: _node(_earlier, panel.key, 'earlier'),
-          icon: Icons.arrow_upward,
-          // "Earlier" rather than "up": in two columns the first card of a row
-          // moves LEFT, and a button that says up would be describing something
-          // that does not happen.
-          tooltip: 'Move “${panel.title}” earlier',
-          onPressed: index == 0
-              ? null
-              : () => _move(index, index - 1, fromKeyboard: true),
-        ),
-        _moveButton(
-          node: _node(_later, panel.key, 'later'),
-          icon: Icons.arrow_downward,
-          tooltip: 'Move “${panel.title}” later',
-          onPressed: index == last
-              ? null
-              : () => _move(index, index + 1, fromKeyboard: true),
-        ),
-        _handle(index, panel),
+        if (widget.onReorder != null) _handle(index, panel),
+        if (widget.onResize != null) _sizeSwitch(panel),
+        if (widget.onReorder != null) ...[
+          _moveButton(
+            node: _node(_earlier, panel.key, 'earlier'),
+            icon: Icons.arrow_upward,
+            // "Earlier" rather than "up": in a row of columns the first card
+            // moves LEFT, and a button that says up would be describing
+            // something that does not happen.
+            tooltip: 'Move “${panel.title}” earlier',
+            onPressed: index == 0
+                ? null
+                : () => _move(index, index - 1, fromKeyboard: true),
+          ),
+          _moveButton(
+            node: _node(_later, panel.key, 'later'),
+            icon: Icons.arrow_downward,
+            tooltip: 'Move “${panel.title}” later',
+            onPressed: index == last
+                ? null
+                : () => _move(index, index + 1, fromKeyboard: true),
+          ),
+        ],
       ],
+    );
+  }
+
+  /// S · M · L, one tap each. The letters alone would read as "S" to a screen
+  /// reader, so every segment says the whole thing as its tooltip.
+  ///
+  /// Not a SegmentedButton: that one cannot be measured inside IntrinsicHeight,
+  /// which is what lines a row's cards up — its dry layout reads constraints
+  /// it has not been given, and the whole row throws.
+  Widget _sizeSwitch(DashboardPanel panel) {
+    final scheme = Theme.of(context).colorScheme;
+    const sizes = [('small', 'S'), ('medium', 'M'), ('large', 'L')];
+    final current = sizes.any((s) => s.$1 == panel.size)
+        ? panel.size
+        : 'medium';
+    final corner = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outline),
+        borderRadius: corner,
+      ),
+      child: ClipRRect(
+        borderRadius: corner,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (value, letter) in sizes)
+              Tooltip(
+                message: 'Make “${panel.title}” $value',
+                child: Semantics(
+                  button: true,
+                  selected: value == current,
+                  child: InkWell(
+                    onTap: () => widget.onResize!(panel.key, value),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      color: value == current ? scheme.primary : null,
+                      child: Text(
+                        letter,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: value == current
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -310,7 +425,7 @@ class _DashboardGridState extends State<DashboardGrid> {
     // enters the gesture arena. See [_GripDrag].
     Widget drag({required bool hold, required Widget child}) => _GripDrag(
       hold: hold,
-      data: index,
+      data: panel.key,
       feedback: _preview(panel),
       childWhenDragging: Opacity(opacity: 0.3, child: grip),
       child: child,
@@ -487,7 +602,7 @@ class _DashboardGridState extends State<DashboardGrid> {
 /// pointer's own kind is the fact that matters, and the arena already filters
 /// on it: each recognizer is simply told which pointers are its own, so exactly
 /// one of the two ever competes for any given pointer.
-class _GripDrag extends Draggable<int> {
+class _GripDrag extends Draggable<String> {
   const _GripDrag({
     required this.hold,
     required super.data,
