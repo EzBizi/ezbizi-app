@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\SendMembershipVisitToWorkiz;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -167,6 +168,11 @@ class MembershipsPublicController extends Controller
                     'job_number' => $job->number,
                 ]]);
             });
+
+            // Into the branch's Workiz too, once the booking has committed.
+            if ($m->fresh()->visit_job_id !== null) {
+                SendMembershipVisitToWorkiz::dispatch($m->getKey())->afterCommit();
+            }
 
             return $this->visitView($m->fresh());
         });
