@@ -65,6 +65,14 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   String? _greetingAudio;
   bool _uploading = false;
 
+  /// Whose mailbox this is: `company`, `user` or `ring_group`, and which.
+  /// Jose, 2026-10-05: "voicemail settings for each queue, each user". A
+  /// group's or person's box takes the messages for calls that reached them.
+  String _ownerType = 'company';
+  String? _ownerId;
+  List<(String, String)> _people = const [];
+  List<(String, String)> _groups = const [];
+
   Future<void> _uploadGreeting() async {
     final picked = await (widget.pickAudio ??
         () => Files.pickBytes(accept: '.mp3,.wav'))();
@@ -136,6 +144,8 @@ class _VoicemailPaneState extends State<VoicemailPane> {
     final results = await Future.wait([
       widget.api.get('/phone/voicemail-boxes'),
       widget.api.get('/phone/connections'),
+      widget.api.get('/phone/members'),
+      widget.api.get('/phone/ring-groups'),
     ]);
 
     if (!mounted) return;
@@ -144,6 +154,17 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _loading = false;
       _boxes = results[0].ok ? _Box.listFrom(results[0].body) : const [];
       _connections = results[1].ok ? _Conn.listFrom(results[1].body) : const [];
+      final people = results[2].ok ? results[2].body['data'] : null;
+      _people = [
+        for (final row in (people is Map ? people['people'] as List? : null) ??
+            const [])
+          if (row is Map) (row['id'].toString(), row['name']?.toString() ?? ''),
+      ];
+      final groups = results[3].ok ? results[3].body['data'] : null;
+      _groups = [
+        for (final row in (groups is List ? groups : const []))
+          if (row is Map) (row['id'].toString(), row['name']?.toString() ?? ''),
+      ];
       _defaults = {
         for (final c in _connections)
           if (c.defaultBoxId != null) c.defaultBoxId!,
@@ -162,6 +183,11 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _emails = List<String>.from(box?.notifyEmails ?? const []);
       _transcribe = box?.transcribe ?? false;
       _greetingAudio = box?.greetingAudioUrl;
+      _ownerType = switch (box?.ownerType) {
+        'user' || 'ring_group' => box!.ownerType!,
+        _ => 'company',
+      };
+      _ownerId = _ownerType == 'company' ? null : box?.ownerId;
       _connectionId = box?.connectionId ?? _connectionId;
       _email.clear();
       _error = null;
@@ -175,11 +201,20 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 
     final seconds = int.tryParse(_seconds.text.trim()) ?? 300;
 
+    if (_ownerType != 'company' && _ownerId == null) {
+      setState(() => _error = _ownerType == 'user'
+          ? 'Pick the person this mailbox belongs to.'
+          : 'Pick the team this mailbox belongs to.');
+      return;
+    }
+
     final body = {
       'name': _name.text.trim(),
       'greeting_mode': _greetingAudio == null ? 'tts' : 'audio',
       'greeting_text': _greeting.text.trim(),
       'greeting_audio_url': _greetingAudio,
+      'owner_type': _ownerType,
+      'owner_id': _ownerType == 'company' ? null : _ownerId,
       'max_seconds': seconds,
       'transcribe': _transcribe,
       'notify_emails': _emails,
@@ -235,6 +270,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
     'name': _name.text.trim(),
     'greeting_text': _greeting.text.trim(),
     'greeting_audio': _greetingAudio,
+    'owner': '$_ownerType:${_ownerId ?? ''}',
     'max_seconds': int.tryParse(_seconds.text.trim()) ?? 300,
     'transcribe': _transcribe,
     'notify_emails': _emails,
@@ -253,6 +289,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       'name': 'the name',
       'greeting_text': 'the greeting',
       'greeting_audio': 'the recording',
+      'owner': 'who it belongs to',
       'max_seconds': 'the message length',
       'transcribe': 'whether messages are written down',
       'notify_emails': 'who is told',
@@ -496,6 +533,52 @@ class _VoicemailPaneState extends State<VoicemailPane> {
         ),
 
         SettingsSection(
+          title: 'Belongs to',
+          children: [
+            SearchPickerField<String>(
+              key: const ValueKey('voicemail-owner-type'),
+              value: _ownerType,
+              label: 'Whose mailbox',
+              border: const OutlineInputBorder(),
+              options: const [
+                SearchOption(value: 'company', label: 'The company'),
+                SearchOption(value: 'user', label: 'A person'),
+                SearchOption(value: 'ring_group', label: 'A team'),
+              ],
+              onChanged: (v) => setState(() {
+                _ownerType = v ?? 'company';
+                // A person's id is not a team's.
+                _ownerId = null;
+              }),
+            ),
+            if (_ownerType != 'company') ...[
+              const SizedBox(height: 12),
+              SearchPickerField<String>(
+                key: const ValueKey('voicemail-owner'),
+                value: _ownerId,
+                label: _ownerType == 'user' ? 'Person' : 'Team',
+                border: const OutlineInputBorder(),
+                options: [
+                  for (final (id, name)
+                      in _ownerType == 'user' ? _people : _groups)
+                    SearchOption(value: id, label: name),
+                ],
+                onChanged: (v) => setState(() => _ownerId = v),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              _ownerType == 'company'
+                  ? 'Takes messages for the lines that use it.'
+                  : 'Takes the messages for calls that reached '
+                        '${_ownerType == 'user' ? 'this person' : 'this team'} '
+                        'and nobody picked up.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+
+        SettingsSection(
           title: 'Greeting',
           children: [
             TextField(
@@ -710,6 +793,7 @@ class _Box {
     this.ownerName,
     this.lineCount,
     this.greetingAudioUrl,
+    this.ownerId,
   });
 
   const _Box.blank()
@@ -724,7 +808,8 @@ class _Box {
       ownerType = null,
       ownerName = null,
       lineCount = null,
-      greetingAudioUrl = null;
+      greetingAudioUrl = null,
+      ownerId = null;
 
   final String id;
   final String connectionId;
@@ -744,6 +829,9 @@ class _Box {
 
   /// The recorded greeting, when the box plays one instead of [greetingText].
   final String? greetingAudioUrl;
+
+  /// The person's or team's id when [ownerType] names one.
+  final String? ownerId;
 
   /// "A person · Ana Ruiz" - the kind from `owner_type`, the name from
   /// `owner_name`, both the server's.
@@ -784,6 +872,7 @@ class _Box {
               e.toString(),
           ],
           ownerType: row['owner_type'] as String?,
+          ownerId: row['owner_id'] as String?,
           ownerName: row['owner_name'] as String?,
           lineCount: (row['line_count'] as num?)?.toInt(),
         ),

@@ -62,6 +62,15 @@ class RecordingWebhookController extends Controller
             $voicemail = (string) $request->input('RecordingSource', '') === 'RecordVerb';
             if ($voicemail) {
                 $call->voicemail = true;
+
+                // The group's or person's mailbox it was left in, when it was
+                // not the line's (TwimlRenderer::voicemail adds `box`). Only a
+                // box on this call's account is taken.
+                $box = (string) $request->query('box', '');
+                if ($box !== '' && \App\Models\PhoneVoicemailBox::query()
+                    ->where('connection_id', $call->connection_id)->whereKey($box)->exists()) {
+                    $call->voicemail_box_id = $box;
+                }
             }
 
             $call->save();

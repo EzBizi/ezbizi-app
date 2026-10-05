@@ -53,6 +53,23 @@ void main() {
             ],
           });
         }
+        if (path.endsWith('/phone/members')) {
+          return _json({
+            'data': {
+              'people': [
+                {'id': 'u-1', 'name': 'Ana Ruiz'},
+              ],
+              'roles': <Object>[],
+            },
+          });
+        }
+        if (path.endsWith('/phone/ring-groups')) {
+          return _json({
+            'data': [
+              {'id': 'g-1', 'name': 'Front desk'},
+            ],
+          });
+        }
         if (path.endsWith('/phone/connections')) {
           return _json({
             'data': [
@@ -93,9 +110,22 @@ void main() {
       findsOneWidget,
     );
 
+    // And it belongs to a team: their missed calls leave messages here.
+    await tester.ensureVisible(find.byKey(const ValueKey('voicemail-owner-type')));
+    await tester.tap(find.byKey(const ValueKey('voicemail-owner-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A team').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('voicemail-owner')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Front desk').last);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
+    expect(saved.single['owner_type'], 'ring_group');
+    expect(saved.single['owner_id'], 'g-1');
     expect(saved.single['greeting_mode'], 'audio');
     expect(saved.single['greeting_audio_url'], contains('signature='));
   });

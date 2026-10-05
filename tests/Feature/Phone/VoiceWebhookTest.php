@@ -560,6 +560,56 @@ class VoiceWebhookTest extends TestCase
         });
     }
 
+    /**
+     * A GROUP REACHED FROM A MENU KEY stays that group after its ring round.
+     *
+     * The key's group travelled only in the request that rang it. Twilio's
+     * dial action carries no Digits, so the next hop fell back to the line's
+     * own group — its overflow, its queue, its voicemail — and a caller who
+     * pressed 1 for Appointments was handled as the line's default team.
+     */
+    public function test_a_menu_key_group_is_still_the_group_after_nobody_answers(): void
+    {
+        $t = $this->provisionTenant();
+        [$connection, $number, $authToken] = $this->inTenant($t['org'], fn () => $this->openLine($t, e164: '+12035551011'));
+
+        $appointments = $this->inTenant($t['org'], function () use ($connection, $number) {
+            $group = PhoneRingGroup::query()->create([
+                'connection_id' => $connection->id,
+                'name' => 'Appointments',
+                'mode' => 'simultaneous',
+                'timeout_seconds' => 20,
+                'member_user_ids' => PhoneRingGroup::query()->find($number->ring_group_id)->member_user_ids,
+                'member_role_ids' => [],
+                'overflow' => 'forward',
+                'overflow_number' => '+15550009999',
+            ]);
+            $flow = \App\Models\PhoneFlow::query()->create([
+                'connection_id' => $connection->id,
+                'name' => 'Main menu',
+                'nodes' => ['type' => 'menu', 'prompt' => 'Press 1.', 'options' => [
+                    ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                ]],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return $group;
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = $this->inboundParams('CAgrpsgrpsgrpsgrpsgrpsgrpsgrpsgrps', '+15550004444', '+12035551011');
+
+        $this->signedPost($url, $params, $authToken)->assertOk();
+        $rang = $this->signedPost($url, $params + ['Digits' => '1'], $authToken)->assertOk()->getContent();
+
+        // The ring round is followed where its action says, with no Digits.
+        $next = $this->signedPost($this->dialAction($rang), $params + ['DialCallStatus' => 'no-answer'], $authToken)
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString('+15550009999', $next, 'Appointments overflow was not followed');
+        $this->assertNotNull($appointments);
+    }
+
     public function test_dial_no_answer_requests_the_next_batch(): void
     {
         $t = $this->provisionTenant();

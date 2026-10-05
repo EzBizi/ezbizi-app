@@ -8,6 +8,7 @@ use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
+use App\Models\PhoneRingGroup;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\Attestation;
 use App\Support\Phone\ClientIdentity;
@@ -333,6 +334,19 @@ class VoiceWebhookController extends Controller
             // attempt, reaches overflow, and puts the caller back in the line
             // they just left. That is the loop, and it bills per pass.
             'queued' => $this->hasQueued($request),
+
+            // The group a menu key, extension or overflow sent this call to,
+            // carried back on the dial action — see TwimlRenderer::carryGroup.
+            // Scoped to this connection, so a forged id rings nothing.
+            // And the person an extension or a one-person line was ringing.
+            // Only somebody in this organization (the tenant scopes User).
+            ...((string) $request->query('person', '') === ''
+                || ! \App\Models\User::query()->whereKey((string) $request->query('person'))->exists()
+                ? [] : ['ring_person' => (string) $request->query('person')]),
+            ...($this->carriedGroup($request, $connection) === null ? [] : [
+                'overflow_group' => $this->carriedGroup($request, $connection),
+                'overflowed' => $request->boolean('overflowed'),
+            ]),
             'dial_action' => $this->voiceAction(
                 $connection,
                 $batch + 1,
@@ -637,6 +651,18 @@ class VoiceWebhookController extends Controller
         }
 
         return $queued ? $url.'&queued=1' : $url;
+    }
+
+    private function carriedGroup(Request $request, PhoneConnection $connection): ?PhoneRingGroup
+    {
+        $id = (string) $request->query('group', '');
+        if ($id === '') {
+            return null;
+        }
+
+        return PhoneRingGroup::query()
+            ->where('connection_id', $connection->id)
+            ->find($id);
     }
 
     /**

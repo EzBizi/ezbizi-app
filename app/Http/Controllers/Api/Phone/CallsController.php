@@ -211,7 +211,11 @@ class CallsController extends Controller
             // Jose reported it as clicking A-1 Chimney Mailbox and seeing
             // nothing. Two answers to "which box does this line use", and the
             // screen was asking the one that does not decide anything.
-            $query->where('voicemail', true)->whereIn(
+            // Left in THIS box by a group or a person (voicemail_box_id), or
+            // in no particular box on a line that resolves to it.
+            $query->where('voicemail', true)->where(fn ($in) => $in
+                ->where('voicemail_box_id', $boxId)
+                ->orWhere(fn ($line) => $line->whereNull('voicemail_box_id')->whereIn(
                 'number_id',
                 PhoneNumber::query()
                     ->where(function ($line) use ($boxId) {
@@ -231,7 +235,7 @@ class CallsController extends Controller
                             });
                     })
                     ->pluck('id'),
-            );
+            )));
         }
 
         // Voicemail tiles (Mia, 2026-10-02): To deal with, Dealt with, No

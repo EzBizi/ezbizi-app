@@ -1064,6 +1064,19 @@ final class TwimlRenderer
             return;
         }
 
+        // Their own mailbox, when they have one, for both ends below.
+        $context += ['voicemail_owner' => [PhoneVoicemailBox::OWNER_USER, $userId]];
+
+        // ONE ROUND, THEN VOICEMAIL. The dial action comes back with the batch
+        // moved on, and without this the same person was rung again — every
+        // thirty seconds, for as long as the caller held on — and voicemail was
+        // never reached.
+        if ((int) ($context['batch'] ?? 0) > 0) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
         $available = PhonePresence::query()
             ->where('connection_id', $connection->id)
             ->available()
@@ -1085,6 +1098,14 @@ final class TwimlRenderer
             return;
         }
 
+        // The person rides the dial action, as a group does (carryGroup):
+        // the next hop has no Digits, and an extension's caller would
+        // otherwise be handed to the line's own team.
+        $action = $context['dial_action'] ?? null;
+        if (is_string($action) && $action !== '') {
+            $context['dial_action'] = preg_replace('/&person=[^&]*/', '', $action).'&person='.$userId;
+        }
+
         $dial = $response->dial(null, $this->dialAttributes(
             $number,
             timeout: 30,
@@ -1101,6 +1122,14 @@ final class TwimlRenderer
     {
         $language = $this->language($number);
         $connection = $number->connection;
+
+        // A PERSON this call was already ringing (an extension, or a line set
+        // to one person), coming back from their ring round.
+        if (is_string($context['ring_person'] ?? null) && $context['ring_person'] !== '') {
+            $this->ringOnePerson($response, $number, $context['ring_person'], $language, $context);
+
+            return;
+        }
 
         // WHAT THIS LINE CHOSE, unless a queue is handing a caller back.
         //
@@ -1156,13 +1185,60 @@ final class TwimlRenderer
             $number,
             timeout: (int) ($group->timeout_seconds ?: 30),
             sequential: $group->mode === 'sequential',
-            context: $context,
+            context: $this->carryGroup($context),
         );
 
         $dial = $response->dial(null, $attributes);
         foreach ($batches[$index] as $identity) {
             $dial->client($identity, $this->answeredBy($number, $identity));
         }
+    }
+
+    /**
+     * The mailbox a ring group or a person owns on this line's account.
+     *
+     * @param  array{0: string, 1: string}|null  $owner  [owner_type, owner_id]
+     */
+    private function ownersBox(PhoneNumber $number, ?array $owner): ?PhoneVoicemailBox
+    {
+        if ($owner === null) {
+            return null;
+        }
+
+        return PhoneVoicemailBox::query()
+            ->where('connection_id', $number->connection_id)
+            ->where('owner_type', $owner[0])
+            ->where('owner_id', $owner[1])
+            ->orderBy('created_at')
+            ->first();
+    }
+
+    /**
+     * THE GROUP THIS CALL WAS SENT TO survives its ring round.
+     *
+     * A group chosen by a menu key, an extension or an overflow lived only in
+     * the request that rang it: Twilio's dial action carries no Digits, so
+     * the next hop fell back to the line's own group, and a caller who pressed
+     * 1 for Appointments got the line's voicemail instead of Appointments'
+     * overflow. So it rides the action URL, with `overflowed`, which is what
+     * stops two groups overflowing into each other for ever.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function carryGroup(array $context): array
+    {
+        $group = $context['overflow_group'] ?? null;
+        $action = $context['dial_action'] ?? null;
+        if (! $group instanceof PhoneRingGroup || ! is_string($action) || $action === '') {
+            return $context;
+        }
+
+        $action = preg_replace('/&(group|overflowed)=[^&]*/', '', $action)
+            .'&group='.$group->id
+            .(($context['overflowed'] ?? false) ? '&overflowed=1' : '');
+
+        return ['dial_action' => $action] + $context;
     }
 
     /**
@@ -1217,7 +1293,9 @@ final class TwimlRenderer
             }
         }
 
-        $this->noneUsable($response, $number, $language, $context);
+        $this->noneUsable($response, $number, $language, $context + [
+            'voicemail_owner' => [PhoneVoicemailBox::OWNER_RING_GROUP, (string) $group->id],
+        ]);
     }
 
     /**
@@ -1531,9 +1609,15 @@ final class TwimlRenderer
         // caller hears before deciding whether to ring a competitor, so a
         // business that has written one must actually get it — this used to
         // be the same sentence for every line in every organization.
-        $box = $number->resolved('voicemail_box_id') === null
+        // THE GROUP'S OR PERSON'S OWN BOX FIRST. Jose, 2026-10-05:
+        // "voicemail settings for each queue, each user". A box could belong
+        // to a ring group or a person and no call ever reached it; the line's
+        // box was the only one used. The line's stays the fallback.
+        $owned = $this->ownersBox($number, $context['voicemail_owner'] ?? null);
+
+        $box = $owned ?? ($number->resolved('voicemail_box_id') === null
             ? null
-            : PhoneVoicemailBox::query()->find($number->resolved('voicemail_box_id'));
+            : PhoneVoicemailBox::query()->find($number->resolved('voicemail_box_id')));
 
         $greeting = $box?->spokenGreeting();
 
@@ -1556,7 +1640,10 @@ final class TwimlRenderer
         }
         if (is_string($context['recording_status_callback'] ?? null)
             && $context['recording_status_callback'] !== '') {
-            $attributes['recordingStatusCallback'] = $context['recording_status_callback'];
+            // Which box, when it is not the line's, so the message is listed
+            // under the group's or person's mailbox.
+            $attributes['recordingStatusCallback'] = $context['recording_status_callback']
+                .($owned === null ? '' : '?box='.$owned->id);
         }
 
         // Writing down a voicemail is a different Twilio charge from writing
