@@ -701,6 +701,14 @@ class _NumbersPaneState extends State<NumbersPane> {
     return company?.name ?? '—';
   }
 
+  /// Row buttons at their text's height, not a 48px target row each.
+  static final _compact = TextButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    minimumSize: const Size(40, 32),
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+  );
+
   Widget _linesTable(ThemeData theme) {
     final shown = _lines.where(_matches).toList();
     final small = theme.textTheme.bodySmall?.copyWith(
@@ -708,7 +716,11 @@ class _NumbersPaneState extends State<NumbersPane> {
     );
 
     // A company view holds one company; the column would say it every row.
-    final showCompany = _me.scope.type != 'company';
+    // So does any list whose lines all belong to one company - A-1's 13 did,
+    // and on a narrow pane it was the word that pushed every row to a third
+    // line (Jose, 2026-10-05: "these are too fat").
+    final showCompany = _me.scope.type != 'company' &&
+        shown.map(_company).toSet().length > 1;
 
     if (shown.isEmpty) {
       return const Padding(
@@ -719,9 +731,9 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     return ListTable(
       columns: [
-        if (_canEdit) const ListColumn('', flex: 1),
-        const ListColumn('Line', flex: 3),
-        const ListColumn('Number', flex: 3),
+        // The number rides in the Line cell rather than a column of its own,
+        // so a stacked row is two lines, not three.
+        const ListColumn('Line', flex: 6),
         const ListColumn('What answers it', flex: 4),
         if (showCompany) const ListColumn('Company', flex: 3),
         // No Recorded or Written down columns: stacked on a narrow pane they
@@ -734,27 +746,42 @@ class _NumbersPaneState extends State<NumbersPane> {
       rows: [
         for (final line in shown)
           [
-            if (_canEdit)
-              Checkbox(
-                key: ValueKey('pick:${line.id}'),
-                value: _bulkPicked.contains(line.id),
-                onChanged: (on) => setState(() {
-                  on == true
-                      ? _bulkPicked.add(line.id)
-                      : _bulkPicked.remove(line.id);
-                  _bulkNote = null;
-                }),
-              ),
-            Text(
-              line.label.trim().isEmpty || line.label == line.e164
-                  ? formatPhoneNumber(line.e164)
-                  : line.label,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            // The tick sits IN the line's cell, not a column of its own:
+            // stacked on a narrow pane a column of its own was a whole line
+            // per row holding one box (Jose, 2026-10-05: "these are too fat").
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_canEdit)
+                  Checkbox(
+                    key: ValueKey('pick:${line.id}'),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    value: _bulkPicked.contains(line.id),
+                    onChanged: (on) => setState(() {
+                      on == true
+                          ? _bulkPicked.add(line.id)
+                          : _bulkPicked.remove(line.id);
+                      _bulkNote = null;
+                    }),
+                  ),
+                Flexible(
+                  child: Text(
+                    line.label.trim().isEmpty || line.label == line.e164
+                        ? formatPhoneNumber(line.e164)
+                        : line.label,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (line.label.trim().isNotEmpty && line.label != line.e164) ...[
+                  const SizedBox(width: 8),
+                  Text(formatPhoneNumber(line.e164), style: small),
+                ],
+              ],
             ),
-            Text(formatPhoneNumber(line.e164)),
             // A line nobody answers is a fault, not a footnote - the reason
             // it is a red pill and not grey text, which is how it went unread
             // on all five production lines for three hours.
@@ -768,6 +795,7 @@ class _NumbersPaneState extends State<NumbersPane> {
                 children: [
                   if (_canMove)
                     TextButton(
+                      style: _compact,
                       onPressed: () => setState(() {
                         _moving = _moving?.id == line.id ? null : line;
                         _formError = null;
@@ -775,6 +803,7 @@ class _NumbersPaneState extends State<NumbersPane> {
                       child: Text(_moving?.id == line.id ? 'Close' : 'Move'),
                     ),
                   TextButton(
+                    style: _compact,
                     onPressed: () => setState(() {
                       _editing = line;
                       _formError = null;
