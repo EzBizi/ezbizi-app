@@ -28,8 +28,8 @@ final class SendMembershipVisitToWorkiz implements ShouldQueue
 
     /**
      * Workiz checks JobSource against each branch's own list and "Membership"
-     * is in none of them (measured 2026-10-05: 400). Null leaves it blank until
-     * Jose names a source every branch has.
+     * is in none of them (measured 2026-10-05: 400). Jose, offered "Recurring
+     * Client" or adding "Membership" to every branch: "Leave blank".
      */
     public const JOB_SOURCE = null;
 
