@@ -146,6 +146,9 @@ class User extends Authenticatable implements HoldsPersonalData
                 // here, and a switch says nothing about the person once the
                 // account is anonymised. It goes with the row.
                 Erasure::keep('A switch, not a fact about them; dropped with the account row.')),
+            new PersonalDataEntry('time_clock_edits_unmarked', PersonalDataEntry::TECHNICAL,
+                'Whether this person editing their own Work Hours leaves no "Edited" mark (Jose only, 2026-10-05).',
+                Erasure::keep('A switch, not a fact about them; dropped with the account row.')),
         ];
     }
 
@@ -208,6 +211,7 @@ class User extends Authenticatable implements HoldsPersonalData
             // Their own drawn signature, saved to reuse on contracts.
             'saved_signature'     => 'encrypted',
             'lock_screen_exempt'  => 'boolean',
+            'time_clock_edits_unmarked' => 'boolean',
         ];
     }
 

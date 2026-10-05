@@ -347,7 +347,8 @@ final class TimeClock
     public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out, bool $requested = false): void
     {
         $this->assertReaches($actor, $shift->user);
-        $own = $actor->is($shift->user);
+        // Unmarked own edits are Jose's alone (2026-10-05: "only to me").
+        $own = $actor->is($shift->user) && $actor->time_clock_edits_unmarked;
 
         DB::transaction(function () use ($shift, $in, $out, $requested, $own) {
             $shift = TimeClockShift::query()->whereKey($shift->getKey())->lockForUpdate()->firstOrFail();
@@ -480,7 +481,7 @@ final class TimeClock
     public function addShift(User $actor, User $person, Carbon $in, Carbon $out, bool $requested = false): TimeClockShift
     {
         $this->assertReaches($actor, $person);
-        $own = $actor->is($person);
+        $own = $actor->is($person) && $actor->time_clock_edits_unmarked;
 
         return DB::transaction(function () use ($person, $in, $out, $requested, $own) {
             if ($out->gt(now())) {

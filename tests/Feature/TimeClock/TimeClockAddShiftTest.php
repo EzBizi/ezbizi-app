@@ -100,23 +100,35 @@ class TimeClockAddShiftTest extends TestCase
         $this->assertSame(['request', 'hr'], array_column($shifts, 'edited'));
     }
 
-    /** "if i edit my own hours it just doesn't say anything" */
-    public function test_editing_or_adding_your_own_hours_carries_no_mark(): void
+    /**
+     * "if i edit my own hours it just doesn't say anything" — and then "only
+     * to me" (2026-10-05). The switch is per person; the control is another
+     * manager without it, whose own edit reads Edited like anyone's.
+     */
+    public function test_only_the_switched_person_edits_their_own_hours_unmarked(): void
     {
-        [$alpha, $hr] = $this->tenant();
-        $mine = $this->row($alpha['org'], $hr, '2026-09-28 13:00:00', '2026-09-28 21:00:00');
-        $this->inTenant($alpha['org'], fn () => $mine->forceFill(['ended_by' => TimeClockShift::ENDED_BY_SCHEDULE])->save());
+        [$alpha, $jose] = $this->tenant();
+        $other = $this->userWithRole($alpha, 'Hr 2', ['work_hours.general.view', 'work_hours.all', 'work_hours.manage', 'time_clock.view'], 'hr2@alpha.test');
+        $this->inTenant($alpha['org'], fn () => $jose->forceFill(['time_clock_edits_unmarked' => true])->save());
 
-        $this->signedInAs($hr)->patchJson("/api/v1/hr/time-clock/shifts/{$mine->id}", [
-            'clocked_out_at' => '2026-09-28T22:00:00Z',
-        ])->assertOk();
-        $this->signedInAs($hr)->postJson("/api/v1/hr/time-clock/people/{$hr->id}/shifts", [
-            'clocked_in_at' => '2026-09-29T13:00:00Z', 'clocked_out_at' => '2026-09-29T21:00:00Z',
-        ])->assertOk();
+        foreach ([$jose, $other] as $who) {
+            $mine = $this->row($alpha['org'], $who, '2026-09-28 13:00:00', '2026-09-28 21:00:00');
+            $this->inTenant($alpha['org'], fn () => $mine->forceFill(['ended_by' => TimeClockShift::ENDED_BY_SCHEDULE])->save());
 
-        foreach ($this->shifts($hr) as $shift) {
+            $this->signedInAs($who)->patchJson("/api/v1/hr/time-clock/shifts/{$mine->id}", [
+                'clocked_out_at' => '2026-09-28T22:00:00Z',
+            ])->assertOk();
+            $this->signedInAs($who)->postJson("/api/v1/hr/time-clock/people/{$who->id}/shifts", [
+                'clocked_in_at' => '2026-09-29T13:00:00Z', 'clocked_out_at' => '2026-09-29T21:00:00Z',
+            ])->assertOk();
+        }
+
+        foreach ($this->shifts($jose) as $shift) {
             $this->assertNull($shift->edit_source);
             $this->assertSame(TimeClockShift::ENDED_BY_PERSON, $shift->ended_by, 'not Auto, not Edited');
+        }
+        foreach ($this->shifts($other) as $shift) {
+            $this->assertSame('hr', $shift->edit_source, 'anyone else: Edited');
         }
     }
 
