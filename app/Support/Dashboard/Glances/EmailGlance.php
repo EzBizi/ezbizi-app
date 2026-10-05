@@ -53,6 +53,7 @@ final class EmailGlance extends DescribedGlance
             $slices = [];
             $sentences = [];
             $disconnected = 0;
+            $silent = 0;
 
             foreach ($mailboxes as $mailbox) {
                 // A broken mailbox is not asked. `WatchMailboxes` already skips
@@ -89,6 +90,7 @@ final class EmailGlance extends DescribedGlance
                 // instance -- so a mailbox that has just worked cannot be
                 // reported stale by the same page load that proved it working.
                 if ($this->silentTooLong($mailbox)) {
+                    $silent++;
                     $sentences[] = sprintf(
                         '%s has not been able to fetch any mail for %s. It still shows as '
                         .'connected, so nothing is asking anybody to fix it.',
@@ -156,8 +158,48 @@ final class EmailGlance extends DescribedGlance
                 GlancePayload::figure('disconnected', 'disconnected', $disconnected),
             ];
 
+            $attention = $this->attention($disconnected, $silent);
+
+            if ($attention !== []) {
+                $data['attention'] = $attention;
+            }
+
             return $this->payload($data);
         });
+    }
+
+    /**
+     * The rows that need somebody: counts, never addresses (the sentences
+     * carry those), and only when there is something to act on.
+     *
+     * Both are `bad`, because neither is "about to be": a disconnected inbox
+     * has already stopped, and one silent past Jose's day has missed roughly
+     * three hundred consecutive sweeps while still claiming to be connected.
+     *
+     * Deliberately absent: an inbox that could not be asked JUST NOW. Nobody
+     * can act on one bad minute, and the next load usually answers it. Raising
+     * it here would put the same alarm on every flaky page load, which is how
+     * a row gets ignored by the time it means something.
+     *
+     * @return list<array{tone: string, text: string}>
+     */
+    private function attention(int $disconnected, int $silent): array
+    {
+        $rows = [];
+
+        if ($disconnected > 0) {
+            $rows[] = GlancePayload::attention('bad', $disconnected === 1
+                ? '1 inbox is disconnected'
+                : "{$disconnected} inboxes are disconnected");
+        }
+
+        if ($silent > 0) {
+            $rows[] = GlancePayload::attention('bad', $silent === 1
+                ? '1 inbox has fetched no mail for over a day'
+                : "{$silent} inboxes have fetched no mail for over a day");
+        }
+
+        return $rows;
     }
 
     /**

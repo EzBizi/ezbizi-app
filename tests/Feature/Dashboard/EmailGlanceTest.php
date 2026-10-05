@@ -397,4 +397,66 @@ class EmailGlanceTest extends TestCase
             ['key' => 'disconnected', 'label' => 'disconnected', 'value' => 1, 'previous' => null],
         ], $payload['data']['figures']);
     }
+
+    /**
+     * A disconnected inbox and a silent one each get a `bad` row, counted.
+     *
+     * Two of each, so the plural is exercised -- and the transient failure
+     * beside them adds NO row, which is the half that would quietly regress
+     * into an alarm on every flaky load.
+     */
+    public function test_disconnected_and_silent_inboxes_need_somebody(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $brokenA = $this->grantedInbox($user, 'a@alpha.test');
+        $brokenB = $this->grantedInbox($user, 'b@alpha.test');
+        $quietA = $this->grantedInbox($user, 'qa@alpha.test');
+        $quietB = $this->grantedInbox($user, 'qb@alpha.test');
+        $flaky = $this->grantedInbox($user, 'flaky@alpha.test');
+        $this->inTenant(function () use ($brokenA, $brokenB) {
+            foreach ([$brokenA, $brokenB] as $mailbox) {
+                $mailbox->markBroken('token revoked');
+                $mailbox->save();
+            }
+        });
+        $this->withScriptedProvider();
+        foreach ([$quietA, $quietB] as $mailbox) {
+            $this->lastReached($mailbox, now()->subDays(3)->toDateTimeString());
+            ScriptedMailboxReader::$failUnread[(string) $mailbox->getKey()] = CannotReadMailbox::credentialRejected($mailbox);
+        }
+        // Failing now, but last reached an hour ago: one bad minute, not silence.
+        $this->lastReached($flaky, now()->subHour()->toDateTimeString());
+        ScriptedMailboxReader::$failUnread[(string) $flaky->getKey()] = CannotReadMailbox::credentialRejected($flaky);
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '2 inboxes are disconnected'],
+            ['tone' => 'bad', 'text' => '2 inboxes have fetched no mail for over a day'],
+        ], $payload['data']['attention']);
+
+        // The flaky inbox is still SAID, in the sentences -- just not raised.
+        $this->assertStringContainsString('flaky@alpha.test', implode(' ', $payload['data']['sentences']));
+    }
+
+    /**
+     * Healthy inboxes and a single bad minute raise nothing: the key is absent.
+     *
+     * The control for the test above. If `attention` were sent on every load,
+     * that test would still pass -- this is the one that fails.
+     */
+    public function test_nothing_to_act_on_sends_no_attention(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $ok = $this->grantedInbox($user, 'ok@alpha.test');
+        $flaky = $this->grantedInbox($user, 'flaky@alpha.test');
+        $this->withScriptedProvider();
+        ScriptedMailboxReader::$unread[(string) $ok->getKey()] = 3;
+        $this->lastReached($flaky, now()->subHour()->toDateTimeString());
+        ScriptedMailboxReader::$failUnread[(string) $flaky->getKey()] = CannotReadMailbox::credentialRejected($flaky);
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertArrayNotHasKey('attention', $payload['data']);
+    }
 }
