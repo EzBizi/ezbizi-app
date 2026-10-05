@@ -116,6 +116,42 @@ class PhoneCallFlowEditTest extends TestCase
     }
 
     /** @return array<string, array<string, mixed>> keyed by step */
+    /**
+     * Each step says whose value it is: the line's own, the company's default,
+     * or nobody's — so the Call flow screen can say "follows the company"
+     * from the server's own resolution rather than a client guess.
+     */
+    public function test_each_step_says_whether_the_line_or_the_company_set_it(): void
+    {
+        [$t, $number, , $group] = $this->line();
+
+        // The menu moves to the company default; the ring group stays the
+        // line's own; nothing sets hours anywhere.
+        $this->inTenant($t['org'], function () use ($number) {
+            $number->connection->forceFill(['default_flow_id' => $number->flow_id])->save();
+            $number->forceFill(['flow_id' => null])->save();
+        });
+
+        $steps = $this->describe($t, $number);
+
+        $this->assertSame('company', $steps['menu']['from']);
+        $this->assertSame('line', $steps['answer']['from']);
+        $this->assertNull($steps['hours']['from']);
+        $this->assertNull($steps['arrival']['from']);
+    }
+
+    /** The arrival step names the number as people write it. */
+    public function test_the_arrival_step_formats_the_number(): void
+    {
+        [$t, $number] = $this->line();
+        $this->inTenant($t['org'], fn () => $number->forceFill(['twilio_sid' => 'PNformatformatformatformatformatf'])->save());
+
+        $this->assertSame(
+            'A call arrives on +1 (305) 724-9401',
+            $this->describe($t, $number)['arrival']['title'],
+        );
+    }
+
     private function describe(array $t, PhoneNumber $number): array
     {
         $described = $this->inTenant(

@@ -177,6 +177,23 @@ class PhoneNumber extends Model implements StatesRetention
         return $id === null ? null : (string) $id;
     }
 
+    /**
+     * Where [resolved] took its value: 'line' for the line's own, 'company'
+     * for the phone account's default, null when neither is set. The Call
+     * flow screen says "follows the company" from this, not from a guess.
+     */
+    public function resolvedFrom(string $key): ?string
+    {
+        $own = $this->getAttribute($key);
+        if ($own !== null && $own !== '') {
+            return 'line';
+        }
+
+        $default = $this->getRelationValue('connection')?->getAttribute('default_'.$key);
+
+        return $default !== null && $default !== '' ? 'company' : null;
+    }
+
     public function resolved(string $key): mixed
     {
         $own = $this->getAttribute($key);

@@ -455,11 +455,12 @@ final class TwimlRenderer
         $pointed = filled($number->twilio_sid);
         $steps[] = [
             'step' => 'arrival',
+            'from' => null,
             'title' => $pointed
-                ? 'A call arrives on '.$number->e164
+                ? 'A call arrives on '.self::pretty((string) $number->e164)
                 : 'A call arrives — but this line is not pointed at EzBizi yet',
             'detail' => $pointed
-                ? 'Twilio posts it to EzBizi and the steps below run in order.'
+                ? 'The steps below run in order.'
                 : 'Nothing below runs until the number is imported or bought here.',
             'usable' => $pointed,
             'skipped' => false,
@@ -483,6 +484,7 @@ final class TwimlRenderer
         if ($schedule === null) {
             $steps[] = [
                 'step' => 'hours',
+                'from' => $number->resolvedFrom('hours_schedule_id'),
                 'title' => 'Business hours: always open',
                 'detail' => 'No schedule is set, so the call is never treated as after hours.',
                 'usable' => true,
@@ -496,6 +498,7 @@ final class TwimlRenderer
             $closed = $this->closed($number, $context);
             $steps[] = [
                 'step' => 'hours',
+                'from' => $number->resolvedFrom('hours_schedule_id'),
                 'title' => 'Business hours: '.$schedule->name.' — '
                     .($closed ? 'CLOSED right now' : 'OPEN right now'),
                 'detail' => $closed
@@ -517,6 +520,7 @@ final class TwimlRenderer
         $prompt = $this->menuPrompt($number);
         $steps[] = [
             'step' => 'menu',
+            'from' => $number->resolvedFrom('flow_id'),
             'title' => $prompt === null
                 ? 'IVR menu: none'
                 : 'IVR menu plays',
@@ -561,6 +565,7 @@ final class TwimlRenderer
 
         $steps[] = [
             'step' => 'answer',
+            'from' => $number->resolvedFrom('ring_group_id'),
             'title' => $reaches
                 ? 'Rings '.$group->name
                 : 'Nobody answers this line',
@@ -589,6 +594,7 @@ final class TwimlRenderer
         if ($fallback !== '') {
             $steps[] = [
                 'step' => 'fallback',
+                'from' => $number->resolvedFrom('fallback_number'),
                 'title' => $reaches
                     ? 'Otherwise falls back to '.$fallback
                     : 'Falls back to '.$fallback,
@@ -2458,5 +2464,13 @@ final class TwimlRenderer
         $language = (string) ($number->language ?? '');
 
         return $language !== '' ? $language : 'en-US';
+    }
+
+    /** +12394560829 → +1 (239) 456-0829. Anything else is shown as stored. */
+    private static function pretty(string $e164): string
+    {
+        return preg_match('/^\+1(\d{3})(\d{3})(\d{4})$/', $e164, $m)
+            ? "+1 ({$m[1]}) {$m[2]}-{$m[3]}"
+            : $e164;
     }
 }
