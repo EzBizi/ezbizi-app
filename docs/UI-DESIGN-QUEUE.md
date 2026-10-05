@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — building (`docs/previews/customers-memberships-layouts.html`)
+### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT** `5eb65079` (`docs/previews/customers-memberships-layouts.html`)
 
 From the Membership Program session (`local_9b8c5aa9…`), backend on `session/memberships` @ `19240797`, spec
 `docs/superpowers/specs/2026-10-05-memberships-design.md`. Jose, 2026-10-05, on Members: *"customer list, enrollment
@@ -2974,7 +2974,13 @@ plan; Settings the plans changed in their rows and where the renewal reminder is
 under the month they renew. **3** a list with the member docked beside it. Phone **4** (recommended) – **6**.
 Money (due, gross, paid) only with `jobs.financials`; without it those columns and tiles are not drawn.
 
-### 51 · Communication · Settings: General and Call flow, drawn together — **Jose: "go with ur recommendaitonms as usual" — 1 and 4** — building (`docs/previews/communication-call-flow-layouts.html`)
+**As built (`5eb65079`):** standalone tab files; the Membership session's shell on `session/memberships`
+switches its placeholders to them (the edit is in its working copy). On a narrow pane a member is a labelled
+row, not the table stacked into bare values (the "Yes Yes" lesson). Amounts are left-aligned: right-aligned
+ones ran into the next column. Waiting on the Membership session: the shell landing on main, and
+`GET /memberships?customer_id=` returning every year, for the member's "Every year".
+
+### 51 · Communication · Settings: General and Call flow, drawn together — **Jose: "go with ur recommendaitonms as usual" — 1 and 4** — **BUILT** `3de48638` + `3b13b750` (`docs/previews/communication-call-flow-layouts.html`)
 
 Jose, 2026-10-05, with screenshots: *"I feel we can also improve this screen on communication - settings - call
 flow"*, then of General: *"Same for this one"*. One gallery because they are one subject: General sets the company's
@@ -2989,6 +2995,13 @@ bar, Call flow as one lines-by-steps table with "same". **3** what is wrong firs
 sentence, lines in two groups. Phone **4** (recommended) – **6** the same three. Needs from Communication for every
 option: each step's `from: company | line` on `GET /phone/call-flow`. Entry 18's rule holds in all of them: the
 screen shows what the phone system will do (1 and 3 re-read the trace after each save).
+
+**As built:** Phone sent everything first — `from` per step (33fc8f99), `default_reaches` per connection
+(94be9b30), partial PATCH. The count at the top stayed (the test guarding the five silent lines asked for it);
+the lines sit straight under the boxes and recording after them. A set-but-empty group is red too
+(`3b13b750`). The chart opens in place with ← in its own header beside its line picker, and its node editor
+on a narrow pane now draws in place instead of a pushed screen (containment). General and the Call flow
+chart left the rail; `general_pane.dart` is gone and its three tests run against Call flow.
 
 ### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **Jose: "go ahead with ur recommendations" — 1 and 4** — **BUILT** `11f20d00` (`docs/previews/dashboard-sizes-layouts.html`)
 
