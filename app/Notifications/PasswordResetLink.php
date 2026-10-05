@@ -22,6 +22,19 @@ class PasswordResetLink extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * Retried, because the person is waiting and a 4xx is transient.
+     *
+     * The worker runs --tries=1, so one refusal from SES used to fail this for
+     * good. Two resets were lost that way on 2026-10-05. The retries resend the
+     * SAME token, which is still the live one: a new request is what cancels it.
+     * Ten and sixty seconds keep the whole attempt well inside its hour.
+     */
+    public int $tries = 3;
+
+    /** @var list<int> */
+    public array $backoff = [10, 60];
+
     public function __construct(
         // Serialized bare: the queue worker has no tenant, and re-loading a
         // tenant-scoped relation there throws — NotificationNotice lost 7,705

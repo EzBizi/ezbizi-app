@@ -101,6 +101,33 @@ class SchedulingBoardTest extends TestCase
         $this->assertSame('400594', $card['number']);
     }
 
+    /**
+     * A branch switched to Workiz v2 retires each v1 team row and records the
+     * USR- id that took over. A job whose payload still names the old id is
+     * the same person, so the board shows them once, on their v2 row.
+     */
+    public function test_a_retired_v1_technician_id_follows_its_v2_successor(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->day($tenant);
+        $ivan = WorkizTeamMember::where('remote_id', '101')->firstOrFail();
+        $ivan->update(['is_active' => false, 'payload' => ['succeeded_by' => 'USR-9']]);
+        $v2 = WorkizTeamMember::create([
+            'franchise_id' => $tenant['franchise']->id, 'remote_id' => 'USR-9', 'name' => 'Ivan Sharkov',
+            'is_field_tech' => true, 'is_active' => true, 'payload' => [], 'synced_at' => now(),
+        ]);
+
+        $this->job($tenant, '2026-09-25 08:00:00', [['id' => 101, 'Name' => 'Ivan Sharkov']]);
+        $this->job($tenant, '2026-09-25 11:00:00', [['id' => 'USR-9', 'Name' => 'Ivan Sharkov']]);
+
+        $board = $this->board($tenant);
+
+        $ivans = collect($board['technicians'])->where('name', 'Ivan Sharkov')->values();
+        $this->assertCount(1, $ivans, 'One person, one row.');
+        $this->assertSame(2, $ivans[0]['jobs']);
+        $this->assertSame([$v2->id, $v2->id], collect($board['scheduled'])->pluck('team.0.member_id')->all(), 'Both cards unassign through the live v2 row.');
+    }
+
     /** Nobody on it → unassigned. Cancelled and done are not on the board at all. */
     public function test_a_job_with_nobody_on_it_is_unassigned_and_cancelled_is_left_out(): void
     {

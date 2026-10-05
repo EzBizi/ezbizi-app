@@ -14,13 +14,33 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0362',
+      date: '5 Oct 2026',
+      items: [
+        'Marketing has a new QR Codes tab beside Posts and Accounts. Each code is a card showing the code itself, where it sends people (with Change right on the card, and the printed code stays the same), its scans, and SVG or PNG downloads. Delete is in the card\'s ⋮ menu and asks first, because printed copies stop working. New QR code opens a side panel.',
+        'Monitoring Files: the drive list now opens even when a computer has an empty DVD or card reader drive.',
+        'Settings › Numbers: each line takes less space on a narrow screen (about half the height).',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0361 and 0.0.0360, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0361',
+      date: '5 Oct 2026',
+      items: [
+        'HR: downloads of imported A1 Tools records now include the Employee record, the pictures and the uploaded PDFs, and the records without a signed contract can be downloaded too.',
+        'Password reset emails are retried if the mail server turns one away, and a failed email no longer stops the ones after it from sending until the system restarts. Two reset emails were lost that way on 5 October; if you asked for one and it never came, ask again.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0360',
       date: '5 Oct 2026',
       items: [
         'Experimental call report: the Existing and Not booked lists show what was said on each recorded call, transcribed on EzBizi\'s own server or taken from the Local Services transcript of the same call.',
         'Settings › Integrations › Workiz: connecting a branch asks for the API secret as well as the token.',
-        'Workiz: a client EzBizi already has (same phone, name and zip) is attached to that customer instead of becoming a second one, and a job deleted in Workiz leaves EzBizi too, unless someone changed it in EzBizi or something refers to it.',
-        'RingCentral reports sign in once an hour instead of once per request, so long periods no longer hit RingCentral\'s sign-in limit.',
+        'Workiz: a client EzBizi already has (same phone, name and zip) is attached to that customer instead of becoming a second one.',
+        'RingCentral reports sign in once an hour and wait out RingCentral\'s limits instead of failing; a busy RingCentral is no longer reported as wrong credentials.',
+        'Memberships: a visit a member books from the reminder is created in their branch\'s Workiz too, under the plan\'s Workiz job type, and retried a minute later if the Workiz sync is busy. If Workiz refuses it, a trigger tells staff to enter it by hand.',
+        'The Members list shows each member\'s phone, and their email when there is one; search finds them by either.',
       ],
     ),
     VersionRelease(

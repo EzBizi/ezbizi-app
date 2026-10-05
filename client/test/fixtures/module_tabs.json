@@ -150,7 +150,8 @@
             "parent": null,
             "tabs": [
                 "Posts",
-                "Accounts"
+                "Accounts",
+                "QR Codes"
             ]
         },
         "memberships": {
@@ -397,6 +398,7 @@
         "marketing.accounts.view",
         "marketing.edit",
         "marketing.posts.view",
+        "marketing.qr_codes.view",
         "marketing.view",
         "memberships.create",
         "memberships.dashboard.view",

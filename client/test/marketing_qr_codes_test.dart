@@ -1,0 +1,510 @@
+import 'dart:convert';
+
+import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/marketing/qr_codes_tab.dart';
+import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+/// Marketing › QR Codes (UI queue 55, desktop 1 and phone 4).
+///
+/// A printed code that never changes, pointed somewhere new from here. The
+/// one property everything rests on is that the image drawn is the code's own
+/// permanent address and never where it currently sends people: drawing the
+/// destination would show a code that stops matching the van the moment
+/// someone presses Change.
+void main() {
+  testWidgets('a card per code: the code drawn from its permanent address, '
+      'where it goes, and its scans', (tester) async {
+    await _pump(tester);
+
+    final van = find.byKey(const ValueKey('qr:q-1'));
+    expect(
+      find.descendant(of: van, matching: find.text('Van 1, side door')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: van, matching: find.text('everdoors.example/spring')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: van,
+        matching: find.text('41 scans · last 3 hours ago'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('qr:q-2')),
+        matching: find.text('No scans yet'),
+      ),
+      findsOneWidget,
+    );
+
+    // The pixels, not the call: the drawn code is the one for the printed
+    // address, and differs from the one for the destination.
+    final drawn = await _pixels(
+      tester,
+      find.byKey(const ValueKey('qr-image:q-1')),
+    );
+    expect(drawn, await _reference(tester, 'q-1', _url('q-1')));
+    expect(
+      drawn,
+      isNot(
+        await _reference(tester, 'q-1', 'https://everdoors.example/spring'),
+      ),
+    );
+  });
+
+  testWidgets('Change re-points the code on its card; a refused address is '
+      "explained under the field in the server's words", (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    await tester.tap(find.byKey(const ValueKey('qr-change:q-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'The printed code stays the same; people who scan it go here instead.',
+      ),
+      findsOneWidget,
+    );
+    final field = find.byKey(const ValueKey('qr-destination:q-1'));
+    expect(
+      tester.widget<TextField>(field).controller!.text,
+      'https://everdoors.example/spring',
+    );
+
+    await tester.enterText(field, 'everdoors summer');
+    await tester.tap(find.byKey(const ValueKey('qr-save:q-1')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Enter a full web address starting with https://.'),
+      findsOneWidget,
+    );
+    expect(field, findsOneWidget);
+
+    await tester.enterText(field, 'https://everdoors.example/summer');
+    await tester.tap(find.byKey(const ValueKey('qr-save:q-1')));
+    await tester.pumpAndSettle();
+
+    expect(server.puts, [
+      {'destination_url': 'everdoors summer'},
+      {'destination_url': 'https://everdoors.example/summer'},
+    ]);
+    expect(field, findsNothing);
+    expect(find.text('everdoors.example/summer'), findsOneWidget);
+  });
+
+  testWidgets('cards side by side are one height, an open Change box '
+      'included', (tester) async {
+    await _pump(tester);
+
+    Set<double> heights() => {
+      for (final id in ['q-1', 'q-2'])
+        tester.getSize(find.byKey(ValueKey('qr:$id'))).height,
+    };
+    final top = tester.getTopLeft(find.byKey(const ValueKey('qr:q-1'))).dy;
+    expect(tester.getTopLeft(find.byKey(const ValueKey('qr:q-2'))).dy, top);
+    expect(heights(), hasLength(1));
+
+    await tester.tap(find.byKey(const ValueKey('qr-change:q-1')));
+    await tester.pumpAndSettle();
+    expect(heights(), hasLength(1));
+    expect(
+      tester.getSize(find.byKey(const ValueKey('qr:q-2'))).height,
+      greaterThan(200),
+    );
+  });
+
+  testWidgets('Delete is asked inside the card, says what it breaks, and Keep '
+      'keeps it', (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    await tester.tap(find.byKey(const ValueKey('qr-more:q-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('qr-delete:q-1')));
+    await tester.pumpAndSettle();
+    final ask = find.byKey(const ValueKey('qr-delete-ask:q-1'));
+    expect(
+      find.descendant(
+        of: ask,
+        matching: find.text('Delete it? Printed copies will stop working.'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.descendant(of: ask, matching: find.text('Keep')));
+    await tester.pumpAndSettle();
+    expect(ask, findsNothing);
+    expect(server.deleted, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('qr-more:q-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('qr-delete:q-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('qr-delete-yes:q-1')));
+    await tester.pumpAndSettle();
+
+    expect(server.deleted, ['q-1']);
+    expect(find.byKey(const ValueKey('qr:q-1')), findsNothing);
+    expect(find.byKey(const ValueKey('qr:q-2')), findsOneWidget);
+  });
+
+  testWidgets('New QR code is made in a side panel, and a refusal lands on '
+      'its own field', (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    await tester.tap(find.byKey(const Key('qr-new')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('qr-new-name')), 'Yard sign');
+    await tester.enterText(find.byKey(const Key('qr-new-destination')), 'nope');
+    await tester.tap(find.byKey(const Key('qr-new-save')));
+    await tester.pumpAndSettle();
+
+    final destination = find.byKey(const Key('qr-new-destination'));
+    expect(
+      find.descendant(
+        of: destination,
+        matching: find.text('Enter a full web address starting with https://.'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(destination, 'https://everdoors.example/');
+    await tester.tap(find.byKey(const Key('qr-new-save')));
+    await tester.pumpAndSettle();
+
+    expect(server.posts.last, {
+      'name': 'Yard sign',
+      'destination_url': 'https://everdoors.example/',
+    });
+    expect(find.byKey(const Key('qr-new-name')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('qr:q-3')),
+        matching: find.text('everdoors.example'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the downloads ask for SVG, and for PNG by name', (tester) async {
+    final server = _Server();
+    await _pump(tester, server: server);
+
+    await tester.tap(find.byKey(const ValueKey('qr-svg:q-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('qr-png:q-1')));
+    await tester.pumpAndSettle();
+
+    expect(server.images, [
+      '/api/v1/marketing/qr-codes/q-1/image',
+      '/api/v1/marketing/qr-codes/q-1/image?format=png',
+    ]);
+  });
+
+  testWidgets('without marketing.edit the codes and downloads stay, the '
+      'changes go', (tester) async {
+    await _pump(tester, permissions: const ['marketing.qr_codes.view']);
+
+    expect(find.byKey(const ValueKey('qr:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-png:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-svg:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-change:q-1')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-more:q-1')), findsNothing);
+    expect(find.byKey(const Key('qr-new')), findsNothing);
+    expect(
+      find.text(
+        'You can see the codes and download them, but not change them.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('no codes yet says what one is for', (tester) async {
+    await _pump(tester, server: _Server(empty: true));
+
+    expect(
+      find.text(
+        'No QR codes yet. Make one for a van, a sign or your cards: where it '
+        'sends people can change later without reprinting.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('on a phone the cards stack and Change says what it changes', (
+    tester,
+  ) async {
+    await _pump(tester, size: const Size(390, 844));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Change where it goes'), findsNWidgets(2));
+    // The menu sits on the name's line, not on a line of its own.
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('qr-more:q-1'))).dy,
+      moreOrLessEquals(
+        tester.getCenter(find.text('Van 1, side door')).dy,
+        epsilon: 2,
+      ),
+    );
+    final first = tester.getTopLeft(find.byKey(const ValueKey('qr:q-1')));
+    final second = tester.getTopLeft(find.byKey(const ValueKey('qr:q-2')));
+    expect(second.dx, first.dx);
+    expect(second.dy, greaterThan(first.dy));
+  });
+
+  testWidgets('Social Media shows QR Codes beside Posts and Accounts for its '
+      'own grant only', (tester) async {
+    await _pump(
+      tester,
+      permissions: const ['marketing.qr_codes.view'],
+      screen: (api, session) => SocialMediaTab(api: api, session: session),
+    );
+    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsOneWidget);
+    expect(find.byType(QrCodesTab), findsOneWidget);
+
+    await _pump(
+      tester,
+      permissions: const ['marketing.accounts.view'],
+      screen: (api, session) => SocialMediaTab(api: api, session: session),
+    );
+    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsNothing);
+    expect(find.byType(QrCodesTab), findsNothing);
+  });
+}
+
+String _url(String id) => 'https://ezbizi.test/q/$id-7KQ2';
+
+/// The painted modules of the code drawn under [image].
+Future<List<int>> _pixels(WidgetTester tester, Finder image) async {
+  final painter =
+      tester
+              .widget<CustomPaint>(
+                find
+                    .descendant(of: image, matching: find.byType(CustomPaint))
+                    .first,
+              )
+              .painter!
+          as QrPainter;
+  final data = await tester.runAsync(() => painter.toImageData(120));
+  return data!.buffer.asUint8List();
+}
+
+/// What the code for [address] looks like, drawn the way the card draws it.
+Future<List<int>> _reference(
+  WidgetTester tester,
+  String id,
+  String address,
+) async {
+  final shown =
+      tester
+              .widget<CustomPaint>(
+                find
+                    .descendant(
+                      of: find.byKey(ValueKey('qr-image:$id')),
+                      matching: find.byType(CustomPaint),
+                    )
+                    .first,
+              )
+              .painter!
+          as QrPainter;
+  final painter = QrPainter(
+    data: address,
+    version: shown.version,
+    errorCorrectionLevel: shown.errorCorrectionLevel,
+    gapless: shown.gapless,
+    eyeStyle: shown.eyeStyle,
+    dataModuleStyle: shown.dataModuleStyle,
+  );
+  final data = await tester.runAsync(() => painter.toImageData(120));
+  return data!.buffer.asUint8List();
+}
+
+class _Server {
+  _Server({bool empty = false})
+    : rows = empty
+          ? []
+          : [
+              _row(
+                'q-1',
+                'Van 1, side door',
+                'https://everdoors.example/spring',
+                41,
+                3,
+              ),
+              _row(
+                'q-2',
+                'Yard sign',
+                'https://everdoors.example/fall',
+                0,
+                null,
+              ),
+            ];
+
+  final List<Map<String, Object?>> rows;
+  final List<Map<String, dynamic>> puts = [];
+  final List<Map<String, dynamic>> posts = [];
+  final List<String> deleted = [];
+  final List<String> images = [];
+  Map<String, Object?> me = const {};
+
+  static Map<String, Object?> _row(
+    String id,
+    String name,
+    String destination,
+    int scans,
+    int? hoursAgo,
+  ) {
+    final last = hoursAgo == null
+        ? null
+        : DateTime.now().toUtc().subtract(Duration(hours: hoursAgo));
+
+    return {
+      'id': id,
+      'name': name,
+      'code': '$id-7KQ2',
+      'url': _url(id),
+      'destination_url': destination,
+      'scans': scans,
+      // As the server sends it: ISO-8601 with an offset.
+      'last_scanned_at': last == null
+          ? null
+          : '${last.toIso8601String().substring(0, 19)}+00:00',
+    };
+  }
+
+  static final _refused = _json({
+    'message': 'The given data was invalid.',
+    'errors': {
+      'destination_url': ['Enter a full web address starting with https://.'],
+    },
+  }, 422);
+
+  Future<http.Response> handle(http.Request request) async {
+    final path = request.url.path;
+
+    if (path.endsWith('/me')) return _json({'data': me});
+
+    if (path.endsWith('/image')) {
+      images.add(
+        '${request.url.path}${request.url.hasQuery ? '?${request.url.query}' : ''}',
+      );
+      return http.Response.bytes([60, 115, 118, 103, 62], 200);
+    }
+
+    final one = RegExp(r'/marketing/qr-codes/([^/]+)$').firstMatch(path);
+    if (one != null && request.method == 'PUT') {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      puts.add(body);
+      final to = body['destination_url'] as String;
+      if (!to.startsWith('https://')) return _refused;
+      final row = rows.firstWhere((r) => r['id'] == one.group(1));
+      row['destination_url'] = to;
+      return _json({'data': row});
+    }
+    if (one != null && request.method == 'DELETE') {
+      deleted.add(one.group(1)!);
+      rows.removeWhere((r) => r['id'] == one.group(1));
+      return _json({
+        'data': {'id': one.group(1)},
+      });
+    }
+
+    if (path.endsWith('/marketing/qr-codes') && request.method == 'POST') {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      posts.add(body);
+      final to = body['destination_url'] as String;
+      if (!to.startsWith('https://')) return _refused;
+      final row = _row(
+        'q-${rows.length + 1}',
+        body['name'] as String,
+        to,
+        0,
+        null,
+      );
+      rows.add(row);
+      return _json({'data': row}, 201);
+    }
+    if (path.endsWith('/marketing/qr-codes')) return _json({'data': rows});
+
+    return _json({'data': const []});
+  }
+}
+
+Future<void> _pump(
+  WidgetTester tester, {
+  _Server? server,
+  List<String> permissions = const [
+    'marketing.qr_codes.view',
+    'marketing.edit',
+  ],
+  Size size = const Size(1400, 1000),
+  Widget Function(ApiClient, Session)? screen,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final serving = server ?? _Server();
+  serving.me = {
+    'id': 'u-1',
+    'name': 'Dana Reyes',
+    'email': 'dana@example.com',
+    'has_avatar': false,
+    'role': {'id': 'role-1', 'name': 'Administrator'},
+    'permissions': permissions,
+    'modules': <Map<String, Object?>>[],
+    'preferences': <String, dynamic>{},
+    'organization': {
+      'id': 'org-1',
+      'name': 'Everdoors',
+      'franchise_label': 'Franchise',
+      'is_read_only': false,
+    },
+    'scope': {
+      'type': 'organization',
+      'id': 'org-1',
+      'label': 'Everdoors',
+      'path': ['Everdoors'],
+    },
+    'companies': <Map<String, Object?>>[],
+    'franchises': <Map<String, Object?>>[],
+  };
+
+  final api = ApiClient(client: MockClient(serving.handle));
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: KeyedSubtree(
+          key: UniqueKey(),
+          child: (screen ?? (a, s) => QrCodesTab(api: a, session: s))(
+            api,
+            session,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+http.Response _json(Object body, [int status = 200]) => http.Response(
+  jsonEncode(body),
+  status,
+  headers: {'content-type': 'application/json'},
+);

@@ -29,12 +29,15 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Mail\MailManager;
+use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -271,6 +274,29 @@ class AppServiceProvider extends ServiceProvider
             DiagnosingHealth::class,
             function (): void {
                 DB::select('select 1');
+            },
+        );
+
+        /*
+         * A mail send that failed in the queue worker throws its connection away.
+         *
+         * The worker keeps one SMTP connection for its whole life, and when SES
+         * times that connection out the next send gets 451 on MAIL FROM.
+         * Symfony answers a failure with RSET and keeps the connection, so the
+         * sends after it kept failing until the worker restarted. That happened
+         * on 2026-09-28 (three notices, a minute apart) and 2026-10-05 (two
+         * password resets). Forgetting the mailer makes the next send build a fresh
+         * transport. Only on a MAIL failure: any other job failing leaves a
+         * healthy connection alone. See MailWorkerReconnectTest.
+         */
+        Event::listen(
+            JobExceptionOccurred::class,
+            function (JobExceptionOccurred $event): void {
+                $mail = $this->app->make('mail.manager');
+
+                if ($event->exception instanceof TransportExceptionInterface && $mail instanceof MailManager) {
+                    $mail->forgetMailers();
+                }
             },
         );
     }

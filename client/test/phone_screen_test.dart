@@ -733,6 +733,7 @@ void main() {
         tester,
         connections: const [conn],
         approvedCompanyIds: const ['co-1'],
+        size: const Size(1280, 1600),
         onNumberPatch: patched.add,
         numbers: const [
           {
@@ -767,6 +768,32 @@ void main() {
         expect(body, {'record': false}, reason: 'a field nobody picked was sent');
       }
       expect(find.textContaining('Changed 2 lines'), findsOneWidget);
+    });
+
+    // Jose, 2026-10-05, of the stacked rows at phone width: "these are too
+    // fat". The bulk tick had a stacked line of its own on every row.
+    testWidgets('a line row stays two lines tall at phone width', (tester) async {
+      await _pump(
+        tester,
+        size: const Size(420, 1400),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'General',
+            'record': true,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+          },
+        ],
+      );
+
+      await openNumbers(tester);
+
+      final height = tester.getSize(find.byKey(const ValueKey('line:n-1'))).height;
+      expect(height, lessThan(100), reason: 'a stacked line row grew a third line');
     });
 
     testWidgets('editing a line saves what it rings and how it behaves', (tester) async {
