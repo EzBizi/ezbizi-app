@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -11,13 +13,21 @@ import '../../widgets/error_note.dart';
 /// Calendar View for each franchise or service area". Every number is the
 /// server's (SchedulingAvailabilityController::calendar, which reads
 /// Openings), so this and the search cannot disagree.
+/// How often an open availability answer asks again (Jose, 2026-10-05). A
+/// booking reaches EzBizi within the minute the Workiz sync takes.
+const availabilityRefreshEvery = Duration(seconds: 30);
+
 class AvailabilityCalendar extends StatefulWidget {
   const AvailabilityCalendar({
     super.key,
     required this.api,
     required this.franchises,
     this.month,
+    this.visible = true,
   });
+
+  /// Whether its tab is showing: it refreshes itself only then.
+  final bool visible;
 
   final ApiClient api;
 
@@ -53,15 +63,42 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
   String? _error;
   int _request = 0;
 
-  Future<void> _load() async {
+  /// Kept current like the zip and area answers (Jose, 2026-10-05).
+  Timer? _refresh;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh = Timer.periodic(
+      availabilityRefreshEvery,
+      (_) => widget.visible && !_loading ? _load(quiet: true) : null,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant AvailabilityCalendar old) {
+    super.didUpdateWidget(old);
+    if (widget.visible && !old.visible && !_loading) _load(quiet: true);
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet] is a refresh: no spinner, and a failed one leaves the month up.
+  Future<void> _load({bool quiet = false}) async {
     final franchise = _franchiseId;
     if (franchise == null) return;
 
     final ticket = ++_request;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/scheduling/availability/calendar', {
       'month':
@@ -71,6 +108,7 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
       'area_id': ?_areaId,
     });
     if (!mounted || ticket != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;

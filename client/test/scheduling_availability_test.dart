@@ -46,7 +46,10 @@ void main() {
           : null,
     );
 
-    await tester.enterText(find.byKey(const Key('availability-search')), '78201');
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '78201',
+    );
     await tester.tap(find.text('Check'));
     await tester.pumpAndSettle();
 
@@ -76,7 +79,10 @@ void main() {
           : null,
     );
 
-    await tester.enterText(find.byKey(const Key('availability-search')), '75201');
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '75201',
+    );
     await tester.tap(find.text('Check'));
     await tester.pumpAndSettle();
 
@@ -171,6 +177,54 @@ void main() {
       );
     },
   );
+
+  /// Jose, 2026-10-05: on a call for DMV, "another dispatcher books something
+  /// else on DMV, i still see the same availability". The answer asks again
+  /// by itself, and a refresh that fails leaves the last answer up.
+  testWidgets('the answer refreshes itself while it is open', (tester) async {
+    var calls = 0;
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (!r.url.path.endsWith('/scheduling/availability')) return null;
+        calls++;
+        if (calls == 3) return _json({'message': 'Down'}, 500);
+        // From the second answer on, 7–11 has gone: somebody booked it.
+        final dallas = jsonDecode(jsonEncode(_dallas)) as Map<String, dynamic>;
+        if (calls > 1) {
+          final windows =
+              (dallas['areas'] as List)[0]['first']['windows'] as List;
+          windows[0]['taken'] = 3;
+          windows[0]['remaining'] = 0;
+        }
+        return _json({'data': dallas});
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('availability-search')),
+      '75201',
+    );
+    await tester.tap(find.text('Check'));
+    await tester.pumpAndSettle();
+    expect(find.text('7 AM – 11 AM  ·  3 Spots Left'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pumpAndSettle();
+    expect(calls, 2, reason: 'Asked again without anybody touching it.');
+    expect(find.text('7 AM – 11 AM  ·  3 Spots Left'), findsNothing);
+    expect(find.text('7 AM – 11 AM  ·  Full'), findsNWidgets(2));
+
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pumpAndSettle();
+    expect(calls, 3);
+    expect(
+      find.text('7 AM – 11 AM  ·  Full'),
+      findsNWidgets(2),
+      reason: 'A failed refresh keeps the answer.',
+    );
+    expect(find.text('Down'), findsNothing);
+  });
 
   /// Jovanni, 2026-10-01: "pls improve the zip code validation". A typo is
   /// said to be one, not cut to five digits and searched, and not reported
