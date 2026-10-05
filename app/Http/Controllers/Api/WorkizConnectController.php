@@ -74,7 +74,7 @@ class WorkizConnectController extends Controller
             'auth_secret' => ['nullable', 'string', 'max:120'],
             'label' => ['nullable', 'string', 'max:120'],
         ], [
-            'api_token.required' => 'Paste the API Token from the v1 tab of this account’s Workiz Developer page.',
+            'api_token.required' => 'Paste the API key from the v2 tab of this account’s Workiz Developer page (or the v1 tab’s API Token).',
         ]);
 
         $view = ViewScope::forUser($user);
@@ -97,7 +97,7 @@ class WorkizConnectController extends Controller
         );
 
         try {
-            $this->workiz->verify($data['api_token']);
+            $version = $this->workiz->verify($data['api_token']);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['api_token' => $e->getMessage()]);
         }
@@ -130,13 +130,28 @@ class WorkizConnectController extends Controller
         // connect() replaces the credentials whole, so a reconnect that left
         // the secret blank would switch this branch's writes off unsaid. The
         // same token keeps the secret it had; a new token is a new account.
-        $secret = $data['auth_secret']
-            ?? (($connection->credentials['api_token'] ?? null) === $data['api_token'] ? ($connection->credentials['auth_secret'] ?? null) : null);
+        $previous = (array) ($connection->credentials ?? []);
+        $secret = $version === 'v2' ? null : ($data['auth_secret']
+            ?? (($previous['api_token'] ?? null) === $data['api_token'] ? ($previous['auth_secret'] ?? null) : null));
+
+        // A v2 key (Jose, 2026-10-05: every branch moves to one) writes as far
+        // as its own permissions go and needs no secret. A branch moving to it
+        // keeps its v1 pair, encrypted beside it, so it can move back without
+        // asking Workiz for one again.
+        $v1 = match (true) {
+            $version === 'v1' => null,
+            ($previous['api_version'] ?? 'v1') === 'v1' && ($previous['api_token'] ?? '') !== '' => array_filter([
+                'api_token' => $previous['api_token'], 'auth_secret' => $previous['auth_secret'] ?? null,
+            ]),
+            default => $previous['v1'] ?? null,
+        };
 
         $connection->connect(array_filter([
             'refresh_token' => $data['api_token'],
             'api_token' => $data['api_token'],
             'auth_secret' => $secret,
+            'api_version' => $version === 'v2' ? 'v2' : null,
+            'v1' => $v1,
         ]));
         $connection->save();
 
@@ -144,7 +159,8 @@ class WorkizConnectController extends Controller
             'provider' => SocialProvider::Workiz->value,
             'display_name' => $connection->display_name,
             'scope_type' => $connection->scope_type,
-            'write_key' => $secret !== null,
+            'api_version' => $version,
+            'write_key' => $version === 'v2' || $secret !== null,
         ], actor: $user);
 
         return response()->json(['data' => [

@@ -628,4 +628,22 @@ class SyncWorkizJobsTest extends TestCase
             $this->assertSame('kept: something in EzBizi names it', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
         });
     }
+
+    /** v2 answers 500 for one New Jersey job (2026-10-05): it goes to the back of the queue, so it cannot stop the branch's re-reads for ever. */
+    public function test_a_job_workiz_cannot_answer_for_is_moved_back_not_asked_again_and_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+        $row = $this->stale($tenant, $connection, 'POISON', 'Submitted');
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/POISON/' => Http::response(['code' => 'INTERNAL_SERVER_ERROR', 'status' => 500], 500),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 1, '--verify' => 0])->assertSuccessful();
+
+        $synced = $this->inTenant($tenant['org'], fn () => WorkizJob::query()->find($row->id)->synced_at);
+        $this->assertTrue($synced->gt(now()->subMinute()), 'moved to the back of the queue');
+    }
 }

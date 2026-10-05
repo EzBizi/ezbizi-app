@@ -375,10 +375,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         path: '/social/workiz',
         submitLabel: 'Connect account',
         fields: const [
-          ('api_token', 'API token', 'api_… — from Workiz › Developer › v1'),
+          ('api_token', 'API key', 'From Workiz › Developer › v2 (or the API Token on the v1 tab)'),
           // The second key on the same page. Without it EzBizi reads the
           // account's jobs but cannot change them.
-          ('auth_secret', 'API secret', 'sec_… — beside the token; lets EzBizi change jobs'),
+          ('auth_secret', 'API secret', 'Only for a v1 token: the secret beside it'),
         ],
         onConnected: _load,
       ),
