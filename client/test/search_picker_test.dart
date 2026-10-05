@@ -23,6 +23,39 @@ import 'package:flutter_test/flutter_test.dart';
 /// written and the dialog never did. That asymmetry is the bug this file
 /// exists to hold shut.
 void main() {
+  /// A label and a hint, nothing chosen: the label above, the hint inside,
+  /// apart. They used to be drawn one over the other (API Integrations,
+  /// 2026-10-05, on the TikTok panel), because an empty field puts its label
+  /// where the hint goes.
+  testWidgets('a label and a hint with nothing chosen do not overlap', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SearchPickerField<String>(
+              value: null,
+              label: 'Who can see this video',
+              hint: 'Choose',
+              options: const [SearchOption(value: 'a', label: 'Everyone')],
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final label = tester.getRect(find.text('Who can see this video'));
+    final hint = tester.getRect(find.text('Choose'));
+
+    expect(label.overlaps(hint), isFalse, reason: 'The label sits on the hint.');
+    expect(label.bottom, lessThanOrEqualTo(hint.top), reason: 'The label is not above the hint.');
+  });
+
   /// TWO BODIES, ONE TEN TIMES THE OTHER, MUST DRAW THE SAME HEIGHT.
   ///
   /// Not "all rows are equal" — a one-line body and a two-line body honestly

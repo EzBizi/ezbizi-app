@@ -164,7 +164,12 @@ class SearchPickerField<T> extends StatelessWidget {
             color: scheme.onSurfaceVariant,
           ),
         ),
-        isEmpty: chosen == null,
+        // Empty only when there is no hint either. An empty decorator draws
+        // its label INSIDE the field as a placeholder, which is exactly where
+        // the hint is drawn, so a field with both showed "Who can see this
+        // video" over "Choose" (API Integrations, 2026-10-05). With a hint the
+        // label floats above it, as a text field's does.
+        isEmpty: chosen == null && (hint ?? '').isEmpty,
         child: chosen == null
             ? Text(
                 hint ?? '',
