@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -57,15 +58,26 @@ class MembershipsPublicController extends Controller
         $organization = $this->tenant->runWithoutTenant(fn () => Organization::query()->find($site->organization_id));
 
         $this->tenant->run($organization, function () use ($input, $site) {
-            $customer = $this->identify($input);
-            if ($customer === null) {
+            // Verified only when the token itself checks out: a garbage `c`
+            // beside a typed phone is still just a typed phone.
+            $tokenId = CustomerLinks::customerId($input['c'] ?? null);
+            $verified = $tokenId !== null;
+            $customer = $verified ? Customer::query()->find($tokenId) : $this->identify($input);
+
+            // Once a day per customer AND kind: a public key is in every
+            // page's source, so a typed phone must not let a stranger message
+            // someone at will, nor block the customer's own link for a day.
+            if ($customer === null || AutomationEvent::query()->where('event_key', 'customer.reviewed')
+                ->where('subject_id', $customer->getKey())->where('occurred_at', '>=', now()->subDay())
+                ->where('payload->after->verified', $verified)->exists()) {
                 return;
             }
 
             $this->events->emit('customer.reviewed', $customer, ['after' => [
                 'rating'              => $input['rating'],
                 'comment'             => $input['comment'] ?? null,
-                'source'              => isset($input['c']) ? 'review_link' : 'asked',
+                'source'              => $verified ? 'review_link' : 'asked',
+                'verified'            => $verified,
                 'site'                => $site->host,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
             ]]);
@@ -106,22 +118,23 @@ class MembershipsPublicController extends Controller
 
     private function identify(array $input): ?Customer
     {
-        if (($id = CustomerLinks::customerId($input['c'] ?? null)) !== null) {
-            return Customer::query()->find($id);
+        $digits = substr(preg_replace('/\D/', '', (string) ($input['phone'] ?? '')), -10);
+        if (strlen($digits) !== 10 && blank($input['email'] ?? null)) {
+            return null;
         }
 
-        $digits = substr(preg_replace('/\D/', '', (string) ($input['phone'] ?? '')), -10);
-
-        return Customer::query()
+        $matches = Customer::query()
             ->where(function ($q) use ($input, $digits) {
                 $q->when(strlen($digits) === 10, fn ($w) => $w->orWhereRaw("REGEXP_REPLACE(phone, '[^0-9]', '') LIKE ?", ['%'.$digits]))
                     ->when(filled($input['email'] ?? null), fn ($w) => $w->orWhere('email', $input['email']));
             })
-            ->when(strlen($digits) !== 10 && blank($input['email'] ?? null), fn ($q) => $q->whereRaw('1 = 0'))
-            // ponytail: a shared household line names several customers; the
-            // most recently touched one gets the offer.
-            ->latest('updated_at')
-            ->first();
+            ->limit(2)
+            ->get();
+
+        // A booker's or household's phone sits on many customers (A-1's staff
+        // bookers stay on their houses, Jose's ruling): more than one match
+        // names nobody, rather than thanking a random house.
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     private function asCustomer(string $id, \Closure $then): HttpResponse
