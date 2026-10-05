@@ -3,17 +3,21 @@
 namespace Tests\Feature\Workiz;
 
 use App\Console\Commands\ProjectWorkizRecords;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
+use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -627,6 +631,127 @@ class SyncWorkizJobsTest extends TestCase
             $this->assertFalse(Job::withTrashed()->find($job->id)->trashed());
             $this->assertSame('kept: something in EzBizi names it', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
         });
+    }
+
+    /**
+     * 2026-10-05: 45 of the 61 jobs A-1 moved from Nationwide to Massachusetts
+     * were named only by a Local Services lead the matcher had linked by phone,
+     * or by the event their Workiz status change fired. Neither is anybody's
+     * work: the job goes, and the lead is let go so the matcher finds the job
+     * it became now -- the Massachusetts copy.
+     */
+    public function test_a_phone_matched_lead_and_an_automation_event_do_not_keep_a_deleted_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $lead = $this->inTenant($tenant['org'], function () use ($tenant, $job) {
+            AutomationEvent::create([
+                'organization_id' => $tenant['org']->id, 'event_key' => 'job.status_changed', 'subject_type' => $job->getMorphClass(),
+                'subject_id' => $job->id, 'payload' => [], 'occurred_at' => now(), 'available_at' => now(),
+            ]);
+
+            return Lead::create([
+                'organization_id' => $tenant['org']->id, 'source' => 'local_services', 'remote_id' => 'L-1', 'phone' => '(617) 555-0100',
+                'phone_digits' => '6175550100', 'received_at' => now()->subDays(2), 'job_id' => $job->id, 'job_matched_by' => 'phone',
+            ]);
+        });
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($job, $lead) {
+            $this->assertTrue(Job::withTrashed()->find($job->id)->trashed());
+            $this->assertNull($lead->fresh()->job_id, 'free for the matcher');
+            $this->assertNull($lead->fresh()->job_matched_by);
+            $gone = json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true);
+            $this->assertSame('deleted', $gone['ezbizi_job']);
+            $this->assertSame([$lead->id], $gone['leads_released']);
+        });
+    }
+
+    /** The control: a lead somebody booked as this job, or an edit somebody made (the API audits each), still keeps it. */
+    #[DataProvider('somebodysWork')]
+    public function test_a_lead_somebody_booked_or_an_audited_edit_keeps_a_deleted_job(string $what): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $this->inTenant($tenant['org'], fn () => $what === 'lead'
+            ? Lead::create(['organization_id' => $tenant['org']->id, 'source' => 'local_services', 'remote_id' => 'L-1', 'received_at' => now(), 'job_id' => $job->id])
+            : app(AuditLogger::class)->log('job.updated', $job, ['notes' => ['before' => null, 'after' => 'Gate code 4411']]));
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($job) {
+            $this->assertFalse(Job::withTrashed()->find($job->id)->trashed());
+            $this->assertSame('kept: something in EzBizi names it', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
+        });
+    }
+
+    public static function somebodysWork(): array
+    {
+        return ['a lead booked as the job' => ['lead'], 'an audited edit' => ['edit']];
+    }
+
+    /**
+     * The jobs judged by the old rule are judged again by the new one -- unless
+     * somebody has changed the job since.
+     */
+    public function test_jobs_kept_by_the_old_rule_are_judged_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $lead = $this->inTenant($tenant['org'], function () use ($tenant, $row, $job) {
+            app(AuditLogger::class)->log('workiz.job_gone', $job, metadata: ['remote_id' => '09RR7R', 'ezbizi_job' => 'kept: something in EzBizi names it']);
+            $row->delete();
+
+            return Lead::create([
+                'organization_id' => $tenant['org']->id, 'source' => 'local_services', 'remote_id' => 'L-1',
+                'received_at' => now()->subDays(2), 'job_id' => $job->id, 'job_matched_by' => 'phone',
+            ]);
+        });
+
+        $this->travel(1)->minutes();
+        $this->artisan('ezbizi:workiz-rejudge-gone', ['--dry-run' => true])->assertSuccessful();
+        $this->inTenant($tenant['org'], fn () => $this->assertFalse($job->fresh()->trashed(), 'a dry run changes nothing'));
+
+        $this->artisan('ezbizi:workiz-rejudge-gone')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($job, $lead) {
+            $this->assertTrue(Job::withTrashed()->find($job->id)->trashed());
+            $this->assertNull($lead->fresh()->job_id);
+            $this->assertSame(['kept: something in EzBizi names it', 'deleted'], DB::table('audit_events')->where('action', 'workiz.job_gone')
+                ->orderBy('occurred_at')->pluck('metadata')->map(fn ($m) => json_decode($m, true)['ezbizi_job'])->all());
+        });
+    }
+
+    /** The control: changed since it was judged, it is somebody's now. */
+    public function test_a_kept_job_changed_since_is_not_judged_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            app(AuditLogger::class)->log('workiz.job_gone', $job, metadata: ['remote_id' => '09RR7R', 'ezbizi_job' => 'kept: something in EzBizi names it']);
+            $row->delete();
+            $this->travel(1)->minutes();
+            DB::table('jobs')->where('id', $job->id)->update(['title' => 'Sweep and cap', 'updated_at' => now()]);
+        });
+
+        $this->artisan('ezbizi:workiz-rejudge-gone')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $this->assertFalse(Job::withTrashed()->find($job->id)->trashed()));
     }
 
     /** v2 answers 500 for one New Jersey job (2026-10-05): it goes to the back of the queue, so it cannot stop the branch's re-reads for ever. */
