@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0358',
+      date: '5 Oct 2026',
+      items: [
+        'Memberships: the renewal reminder can carry a link where the customer picks the day of their next visit, and it books the job, one visit a year however often they tap; staff see each member\'s booked visit on the list. If no day is picked two weeks after the reminder, a trigger lets staff follow up. Plans can name the Workiz job type their visits are booked as.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0357',
       date: '5 Oct 2026',
       items: [
