@@ -20,10 +20,15 @@ use App\Support\Tenancy\TenantContext;
 final class InventoryGlance extends DescribedGlance
 {
     protected const KEY = 'inventory';
+
     protected const LABEL = 'Inventory';
+
     protected const PERMISSION = 'inventory.view';
+
     protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+
     protected const DEFAULT_PRESENTATION = 'pie';
+
     protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
@@ -72,6 +77,20 @@ final class InventoryGlance extends DescribedGlance
                     GlancePayload::figure('out', 'out of stock', $counts['out']),
                 ],
             ];
+
+            // What needs somebody: out is broken, low is about to be. Counts
+            // only; absent when nothing is low or out.
+            $attention = array_values(array_filter([
+                $counts['out'] > 0 ? GlancePayload::attention('bad', $counts['out'] === 1
+                    ? '1 item out of stock'
+                    : "{$counts['out']} items out of stock") : null,
+                $counts['low'] > 0 ? GlancePayload::attention('caution', $counts['low'] === 1
+                    ? '1 item low'
+                    : "{$counts['low']} items low") : null,
+            ]));
+            if ($attention !== []) {
+                $data['attention'] = $attention;
+            }
 
             // No stock value here, even with inventory.financials — Jose ruled on
             // 2026-09-29 that the dashboard shows no financial information at

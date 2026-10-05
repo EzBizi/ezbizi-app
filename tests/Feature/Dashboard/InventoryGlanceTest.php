@@ -65,13 +65,13 @@ class InventoryGlanceTest extends TestCase
         return $this->inTenant(function () {
             $franchise = Franchise::create([
                 'organization_id' => $this->alpha['org']->id,
-                'company_id'      => $this->alpha['company']->id,
+                'company_id' => $this->alpha['company']->id,
                 'name' => 'Second', 'is_active' => true,
             ]);
 
             $user = User::create([
                 'organization_id' => $this->alpha['org']->id,
-                'role_id'         => $this->alpha['admin']->role_id,
+                'role_id' => $this->alpha['admin']->role_id,
                 'name' => 'Branch', 'email' => 'branch@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -235,6 +235,42 @@ class InventoryGlanceTest extends TestCase
             ['key' => 'low', 'label' => 'low', 'value' => 1, 'previous' => null],
             ['key' => 'out', 'label' => 'out of stock', 'value' => 2, 'previous' => null],
         ], $payload['data']['figures']);
+    }
+
+    /**
+     * Out of stock is broken (bad), low is about to be (caution); out leads.
+     * Distinct counts (2 out, 1 low) so a row reading the other count fails.
+     */
+    public function test_attention_names_out_then_low(): void
+    {
+        $location = $this->taggedLocation($this->alpha['franchise']);
+
+        $low = $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->setOnHand($low, $location, 3);
+
+        $payload = app(InventoryGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '2 items out of stock'],
+            ['tone' => 'caution', 'text' => '1 item low'],
+        ], $payload['data']['attention']);
+    }
+
+    public function test_nothing_low_or_out_needs_nobody(): void
+    {
+        $in = $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->setOnHand($in, $this->taggedLocation($this->alpha['franchise']), 10);
+
+        $payload = app(InventoryGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertFalse($payload['data']['empty']);
+        $this->assertArrayNotHasKey('attention', $payload['data']);
     }
 
     public function test_open_purchase_orders_are_draft_or_open(): void
