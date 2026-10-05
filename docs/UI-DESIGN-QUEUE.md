@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 51 · Communication · Settings: General and Call flow, drawn together — **out for decision** (`docs/previews/communication-call-flow-layouts.html`)
+### 51 · Communication · Settings: General and Call flow, drawn together — **Jose: "go with ur recommendaitonms as usual" — 1 and 4** — building (`docs/previews/communication-call-flow-layouts.html`)
 
 Jose, 2026-10-05, with screenshots: *"I feel we can also improve this screen on communication - settings - call
 flow"*, then of General: *"Same for this one"*. One gallery because they are one subject: General sets the company's
