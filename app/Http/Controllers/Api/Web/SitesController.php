@@ -148,6 +148,15 @@ class SitesController extends Controller
         ]);
 
         if (array_key_exists('franchise_id', $input)) {
+            // A branch of THIS company: another company's branch would file
+            // this website's enquiries where its own people never look.
+            if ($input['franchise_id'] !== null
+                && \App\Models\Franchise::query()->whereKey($input['franchise_id'])->value('company_id') !== $site->company_id) {
+                throw ValidationException::withMessages([
+                    'franchise_id' => 'That branch belongs to a different company.',
+                ]);
+            }
+
             /*
              * Only the enquiries that arrive AFTER this land on the new branch.
              * The ones already in Leads keep the placement they were filed

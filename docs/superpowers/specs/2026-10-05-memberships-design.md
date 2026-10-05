@@ -86,9 +86,21 @@ Jose, on how the faces know who smiled: **both** — a personal link, else ask.
 Web Management owns the widget change: pass `c` from the page URL, and with no `c`
 ask for phone or email on the happy face, then POST `v1/web/review`.
 
+## Next visit (phase 3)
+
+- `{{ confirm_visit_url }}` on a Membership automation = a signed page, good until a
+  month after the year ends (`GET/POST v1/memberships/visit/{membership}`). The
+  customer picks a day from tomorrow on; Jobs' `BookJob` books it (the organization's
+  first status, 09:00 franchise wall clock, audit `source: membership`), the year's
+  `visit_job_id` is set, and `membership.visit_confirmed` is raised. One visit per year.
+- `memberships:remind-renewals` also raises `membership.visit_unconfirmed` once, 14 days
+  after the reminder, while no visit is booked: the staff follow-up.
+- **Workiz gap (Jobs, 2026-10-05):** nothing in EzBizi creates a Workiz job, so A1's
+  dispatchers do not see a visit booked here until it is entered in Workiz. Asked the
+  Workiz session; until a mirror exists, an automation on `membership.visit_confirmed`
+  tells dispatch.
+
 ## Still to do
 
-1. **Screens** — UI/UX designs and builds Dashboard, Members, Settings.
-2. **Confirm the next visit** — the reminder carries a link; a chosen date
-   books a job (Jobs); no answer in N days leaves staff a follow-up.
-3. Payments arrive only by staff typing `paid_minor` until there is a payments ledger.
+1. Payments arrive only by staff typing `paid_minor` until there is a payments ledger.
+2. Workiz mirror of a confirmed visit (Workiz session).

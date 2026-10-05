@@ -424,6 +424,30 @@ void main() {
     expect(_puts.last.containsKey('hours_timezone'), isFalse);
   });
 
+  /// Jose, 2026-10-05: a Branch picker per website, its own company's only.
+  testWidgets('a website picks its branch, from its own company only', (
+    tester,
+  ) async {
+    _puts.clear();
+    _patches.clear();
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    final picker = find.byKey(const Key('seo-branch'));
+    await tester.ensureVisible(picker);
+    await tester.pumpAndSettle();
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Everdoors North'), findsNothing);
+    await tester.tap(find.text('A1 - Chimney MA').last);
+    await tester.pumpAndSettle();
+
+    expect(_patches.last, {'franchise_id': 'fr-ma'});
+  });
+
   testWidgets('on a phone the editor opens in the tab, not behind the site', (
     tester,
   ) async {
@@ -761,6 +785,11 @@ Future<http.Response> Function(http.Request) _respond(
      */
     final path = request.url.path;
     if (request.method == 'PUT') _puts.add(jsonDecode(request.body) as Map<String, dynamic>);
+    if (request.method == 'PATCH') {
+      _patches.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return http.Response(jsonEncode({'data': _sites.first}), 200,
+          headers: {'content-type': 'application/json'});
+    }
 
     if (path == '/api/v1/me') {
       body = {'data': _me(permissions, scopedToCompany)};
@@ -885,6 +914,9 @@ Future<http.Response> Function(http.Request) _respond(
 /// Every PUT body the screen sent, newest last.
 final List<Map<String, dynamic>> _puts = [];
 
+/// Every PATCH body the screen sent, newest last.
+final List<Map<String, dynamic>> _patches = [];
+
 const List<Map<String, Object?>> _sites = [
   {
     'id': 'site-1',
@@ -949,5 +981,9 @@ Map<String, Object?> _me(List<String> permissions, bool scopedToCompany) => {
     {'id': 'co-1', 'name': 'A-1 Chimney', 'parent_company_id': null},
     {'id': 'co-2', 'name': 'Everdoors Roofing', 'parent_company_id': null},
   ],
-  'franchises': <Map<String, Object?>>[],
+  'franchises': <Map<String, Object?>>[
+    {'id': 'fr-ma', 'name': 'A1 - Chimney MA', 'company_id': 'co-1'},
+    // Another company's branch: never offered for an A-1 Chimney website.
+    {'id': 'fr-ev', 'name': 'Everdoors North', 'company_id': 'co-2'},
+  ],
 };

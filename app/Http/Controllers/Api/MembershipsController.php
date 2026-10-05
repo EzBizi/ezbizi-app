@@ -41,7 +41,7 @@ class MembershipsController extends Controller
         $this->need($request->user(), 'memberships.members.view', 'see members');
 
         $rows = Membership::query()
-            ->with(['plan', 'customer'])
+            ->with(['plan', 'customer', 'visitJob'])
             ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
             // One customer's every year (the member page's "Every year"),
             // else the latest year of each member.
@@ -91,7 +91,7 @@ class MembershipsController extends Controller
         $this->audit->log('membership.created', $membership);
         $this->events->emitAfterCommit('membership.created', $membership, ['after' => $this->payload($membership)]);
 
-        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer']), true, [])], Response::HTTP_CREATED);
+        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), true, [])], Response::HTTP_CREATED);
     }
 
     public function update(Request $request, Membership $membership): JsonResponse
@@ -116,7 +116,7 @@ class MembershipsController extends Controller
         $this->audit->logChange('membership.updated', $membership);
         $membership->save();
 
-        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer']), $request->user()->hasPermission('jobs.financials'), [])]);
+        return response()->json(['data' => $this->present($membership->fresh(['plan', 'customer', 'visitJob']), $request->user()->hasPermission('jobs.financials'), [])]);
     }
 
     public function destroy(Request $request, Membership $membership): JsonResponse
@@ -169,6 +169,8 @@ class MembershipsController extends Controller
             'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price_minor' => [$required, 'integer', 'min:0'],
             'billing'     => [$required, Rule::in(MembershipPlan::BILLINGS)],
+            // Jose: the Workiz job type a confirmed visit carries, per plan.
+            'workiz_job_type' => ['sometimes', 'nullable', 'string', 'max:120'],
             'is_active'   => ['sometimes', 'boolean'],
         ]);
     }
@@ -194,6 +196,10 @@ class MembershipsController extends Controller
             'ends_on'       => $m->ends_on->toDateString(),
             'status'        => $m->state(),
             'reminded_at'   => $m->reminded_at?->toIso8601String(),
+            // The next visit the reminder's link booked, if any: its day (the
+            // stored wall-clock date, no zone arithmetic) and its job number.
+            'visit_on'         => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
+            'visit_job_number' => $m->visitJob?->number,
             'currency'      => $plan->currency,
             'price_minor'   => $money ? $plan->price_minor : null,
             'paid_minor'    => $money ? $m->paid_minor : null,

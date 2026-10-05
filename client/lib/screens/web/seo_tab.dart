@@ -520,6 +520,11 @@ class _SeoTabState extends State<SeoTab> {
         onToken: (token) =>
             setState(() => _freshTokens[site['id'] as String] = token),
         onChanged: _load,
+        // The branches of THIS website's company, for "where its enquiries land".
+        branches: [
+          for (final f in widget.session.me!.franchises)
+            if (f.companyId == (site['company'] as Map?)?['id']) f,
+        ],
         onBulkHours: _canEdit
             ? () {
                 final pushed = _pushedSite;
@@ -799,10 +804,15 @@ class _SiteDetail extends StatefulWidget {
     required this.onToken,
     required this.onChanged,
     this.onBulkHours,
+    this.branches = const [],
   });
 
   final ApiClient api;
   final Map<String, dynamic> site;
+
+  /// The company's branches this person can reach (Jose, 2026-10-05: a
+  /// Branch picker per website, after A1 - Chimney MA was created).
+  final List<FranchiseSummary> branches;
   final bool canEdit;
 
   /// Which section of the catalogue to draw. The site's values are loaded
@@ -1071,6 +1081,45 @@ class _SiteDetailState extends State<_SiteDetail> {
   /// is one click to move it elsewhere. What it DOES change is what every other
   /// site of this company publishes, so the list is reloaded afterwards — their
   /// inherited values have just moved.
+  /// Where this website's enquiries land: a branch, or the company itself.
+  /// Only new ones move; the leads already filed keep their place.
+  Future<void> _setBranch(String? franchiseId) async {
+    final response = await widget.api.patch('/web/sites/$_id', {'franchise_id': franchiseId});
+
+    if (!mounted) return;
+
+    setState(() {
+      if (response.ok) {
+        _saved = 'New enquiries from $_host now go to '
+            '${franchiseId == null ? 'the company' : widget.branches.firstWhere((b) => b.id == franchiseId).name}.';
+      } else {
+        _error = response.message;
+      }
+    });
+
+    if (response.ok) await widget.onChanged();
+  }
+
+  Widget _branchPicker(ThemeData theme) {
+    final company = '${(widget.site['company'] as Map?)?['name'] ?? 'the company'}';
+    final current = (widget.site['franchise'] as Map?)?['id'] as String?;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SearchPickerField<String?>(
+        key: const Key('seo-branch'),
+        value: current,
+        label: 'Branch',
+        helperText: 'Where chats, forms and reviews from this website land in Leads.',
+        options: [
+          SearchOption<String?>(value: null, label: 'No branch ($company)'),
+          for (final b in widget.branches) SearchOption<String?>(value: b.id, label: b.name),
+        ],
+        onChanged: widget.canEdit ? (id) { if (id != current) _setBranch(id); } : null,
+      ),
+    );
+  }
+
   Future<void> _makePrimary() async {
     final response = await widget.api.post('/web/sites/$_id/primary', {});
 
@@ -1166,6 +1215,7 @@ class _SiteDetailState extends State<_SiteDetail> {
              */
             if (!_connected) _guideButtons(theme),
 
+            if (widget.section == 'general' && widget.branches.isNotEmpty) _branchPicker(theme),
             _addressBlock(theme),
             _fieldGrid(theme, _plainFields),
             if (_hoursField != null) ...[

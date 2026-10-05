@@ -300,6 +300,32 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertSame($tenant['company']->getKey(), $lead->company_id);
     }
 
+    /** Jose, 2026-10-05: a website's branch is picked on screen, and only from its own company. */
+    public function test_a_website_moves_to_a_branch_of_its_own_company_only(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $editor = $this->userWithRole($tenant, 'Branch Editor',
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+
+        $this->signedInAs($editor)->patchJson('/api/v1/web/sites/'.$site->getKey(), [
+            'franchise_id' => $tenant['franchise']->getKey(),
+        ])->assertOk()->assertJsonPath('data.franchise.id', $tenant['franchise']->getKey());
+
+        $other = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $company = \App\Models\Company::create(['organization_id' => $tenant['org']->getKey(), 'name' => 'Other Co']);
+
+            return \App\Models\Franchise::create(['organization_id' => $tenant['org']->getKey(),
+                'company_id' => $company->getKey(), 'name' => 'Other branch', 'is_active' => true]);
+        });
+
+        $this->signedInAs($editor)->patchJson('/api/v1/web/sites/'.$site->getKey(), [
+            'franchise_id' => $other->getKey(),
+        ])->assertStatus(422)->assertJsonValidationErrors('franchise_id');
+
+        $this->signedInAs($editor)->patchJson('/api/v1/web/sites/'.$site->getKey(), ['franchise_id' => null])
+            ->assertOk()->assertJsonPath('data.franchise', null);
+    }
+
     /** A site that names no branch places its enquiries at company level. */
     public function test_a_site_with_no_branch_places_its_enquiries_on_the_company(): void
     {

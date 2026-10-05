@@ -115,6 +115,13 @@ class MembershipsApiTest extends TestCase
         CarbonImmutable::setTestNow();
     }
 
+    public function test_a_plan_names_its_workiz_job_type(): void
+    {
+        $id = $this->plan();
+        $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/plans/{$id}", ['workiz_job_type' => 'Chimney Sweep'])
+            ->assertOk()->assertJsonPath('data.workiz_job_type', 'Chimney Sweep');
+    }
+
     private function aCustomer(string $franchiseId): string
     {
         return $this->inTenant($this->alpha['org'], fn () => Customer::create([

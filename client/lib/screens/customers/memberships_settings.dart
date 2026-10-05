@@ -46,6 +46,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
   final _name = TextEditingController();
   final _price = TextEditingController();
   final _description = TextEditingController();
+  final _workizType = TextEditingController();
   String _billing = 'yearly';
 
   bool get _canEdit => widget.session.me?.can('memberships.edit') ?? false;
@@ -60,6 +61,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
   void dispose() {
     _name.dispose();
     _description.dispose();
+    _workizType.dispose();
     _price.dispose();
     super.dispose();
   }
@@ -106,6 +108,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
         : (plan.priceMinor / 100).toStringAsFixed(2);
     _billing = plan?.billing ?? 'yearly';
     _description.text = plan?.description ?? '';
+    _workizType.text = plan?.workizJobType ?? '';
   });
 
   Future<void> _save() async {
@@ -130,11 +133,15 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
     // server from before it drops the key (planInput validates), so it is
     // safe to send to either.
     final description = _description.text.trim();
+    // Jose: "Type per plan" — the Workiz job type a confirmed visit is
+    // created with. Dropped by a server from before it, like description.
+    final workizType = _workizType.text.trim();
     final body = {
       'name': _name.text.trim(),
       'price_minor': price,
       'billing': _billing,
       'description': description.isEmpty ? null : description,
+      'workiz_job_type': workizType.isEmpty ? null : workizType,
     };
     final response = _editing == 'new'
         ? await widget.api.post('/memberships/plans', {
@@ -254,6 +261,11 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
                           plan.description!,
                           style: theme.textTheme.bodySmall,
                         ),
+                      if ((plan.workizJobType ?? '').isNotEmpty)
+                        Text(
+                          'Workiz job type: ${plan.workizJobType}',
+                          style: theme.textTheme.bodySmall,
+                        ),
                     ],
                   ),
                   Text(plan.price),
@@ -369,6 +381,21 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
                 helperText:
                     'Shown under the plan on the page a customer joins from.',
                 border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 320,
+              child: TextField(
+                key: const Key('plan-workiz-type'),
+                controller: _workizType,
+                maxLength: 120,
+                decoration: const InputDecoration(
+                  labelText: 'Workiz job type',
+                  hintText: 'Chimney Sweep',
+                  helperText: 'The job type a confirmed visit gets in Workiz.',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             if (_formError != null) ...[

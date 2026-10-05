@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 /** A plan a customer can join: its name, price, and whether billed yearly or monthly. */
-#[Fillable(['name', 'description', 'price_minor', 'currency', 'billing', 'is_active'])]
+#[Fillable(['name', 'description', 'price_minor', 'currency', 'billing', 'workiz_job_type', 'is_active'])]
 class MembershipPlan extends Model implements StatesRetention
 {
     use BelongsToTenant;

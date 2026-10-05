@@ -187,7 +187,7 @@ class _MembershipsDashboardState extends State<MembershipsDashboard> {
                                             ),
                                             Text(
                                               '${row.planName} · ${_formats.formatDate(row.endsOn!.add(const Duration(days: 1)))} · '
-                                              '${row.remindedAt == null ? 'reminder not sent yet' : 'reminder sent'}',
+                                              '${row.visitLine(_formats) ?? (row.remindedAt == null ? 'reminder not sent yet' : 'reminder sent')}',
                                               style: theme.textTheme.bodySmall,
                                             ),
                                           ],
