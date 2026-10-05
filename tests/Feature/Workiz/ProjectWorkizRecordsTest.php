@@ -1265,4 +1265,119 @@ class ProjectWorkizRecordsTest extends TestCase
         $customer = $this->inTenant($tenant['org'], fn () => Customer::query()->sole());
         $this->assertSame('2025-03-02', $customer->customer_since?->toDateString());
     }
+
+    // ── adoption: a Workiz client EzBizi already holds as a customer ──
+
+    /** Pat Rivera, as the fixture's job carries them: 5555550100, 1 Example Street, 07030. */
+    private function pat(array $tenant, string $branchId, array $overrides = []): Customer
+    {
+        return $this->inTenant($tenant['org'], fn () => Customer::create(array_merge([
+            'owning_franchise_id' => $branchId, 'number' => 'C-'.Str::random(6), 'name' => 'Pat  rivera',
+            'phone' => '+15555550100', 'address_line1' => '1 Example Street', 'postal_code' => '07030', 'is_active' => true,
+        ], $overrides)));
+    }
+
+    /**
+     * Massachusetts got its own Workiz account on 2026-10-05: new client
+     * numbers for people EzBizi holds through Nationwide's. Each is attached to
+     * the customer it is, in whatever branch, and nothing about that customer
+     * moves -- re-homing is Customers' step.
+     */
+    public function test_a_client_ezbizi_already_holds_is_adopted_not_created_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $nationwide = $this->extraFranchise($tenant, 'Nationwide');
+        $pat = $this->pat($tenant, $nationwide->id);
+        $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($pat, $nationwide) {
+            $this->assertSame(1, Customer::query()->count(), 'no twin');
+            $this->assertSame($pat->id, WorkizClient::query()->sole()->customer_id);
+            $this->assertSame($pat->id, Job::query()->sole()->customer_id, 'the job is theirs');
+            $this->assertSame($nationwide->id, $pat->fresh()->owning_franchise_id, 'ownership untouched');
+
+            $audit = DB::table('audit_events')->where('action', 'customer.workiz_clients_adopted')->sole();
+            $this->assertSame($pat->id, json_decode($audit->metadata, true)['adopted'][0]['customer_id']);
+        });
+    }
+
+    /** The booker at another house, and the placeholder address staff share, are not the same person. */
+    public function test_another_postal_code_or_a_placeholder_street_is_a_new_customer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $nationwide = $this->extraFranchise($tenant, 'Nationwide');
+        $this->pat($tenant, $nationwide->id, ['postal_code' => '10001']);
+        $this->pat($tenant, $nationwide->id, ['address_line1' => '800 SE 4th Ave']);
+        $home = $this->pat($tenant, $nationwide->id);
+        // At home: the one real match. At the placeholder: nobody, though phone, name and zip agree.
+        $this->mirror($tenant);
+        $this->mirror($tenant, ['remote_id' => 'PH0001', 'client_id' => 2002, 'address' => '800 Southeast 4th Avenue'],
+            ['UUID' => 'PH0001', 'ClientId' => 2002, 'Address' => '800 Southeast 4th Avenue']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($home) {
+            $this->assertSame($home->id, WorkizClient::query()->where('client_id', 1002)->value('customer_id'));
+            $this->assertSame(4, Customer::query()->count(), 'one created, for the placeholder');
+        });
+    }
+
+    /** Several matches: the one in the client's own branch, when exactly one is; otherwise created, and listed. */
+    public function test_several_matches_adopt_the_one_in_the_clients_own_branch_or_none(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $own = $this->pat($tenant, $tenant['franchise']->id);
+        $this->pat($tenant, $this->extraFranchise($tenant, 'Nationwide')->id);
+        $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->inTenant($tenant['org'], fn () => $this->assertSame($own->id, WorkizClient::query()->sole()->customer_id));
+
+        $elsewhere = $this->provisionTenant('Beta');
+        $this->pat($elsewhere, $this->extraFranchise($elsewhere, 'Ohio')->id);
+        $this->pat($elsewhere, $this->extraFranchise($elsewhere, 'Texas')->id);
+        $this->mirror($elsewhere, ['connection_id' => (string) Str::uuid()]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($elsewhere['org'], function () use ($elsewhere) {
+            $this->assertSame(3, Customer::query()->count(), 'neither is chosen');
+            $listed = json_decode(DB::table('audit_events')->where('organization_id', $elsewhere['org']->id)->where('action', 'customer.workiz_clients_adopted')->value('metadata'), true);
+            $this->assertCount(2, $listed['matched_several'][0]['customers']);
+        });
+    }
+
+    /**
+     * Customers' points, 2026-10-05: a zip is its first five digits, so ZIP+4 is
+     * the same place; a phone is ten national digits, whichever of the two
+     * shapes `customers.phone` holds (12 legacy rows are bare ten digits).
+     */
+    public function test_zip_plus_four_and_a_bare_ten_digit_phone_are_the_same_person(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $pat = $this->pat($tenant, $this->extraFranchise($tenant, 'Nationwide')->id, ['phone' => '5555550100']);
+        $this->mirror($tenant, ['postal_code' => '07030-1234'], ['PostalCode' => '07030-1234']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $this->assertSame($pat->id, WorkizClient::query()->sole()->customer_id));
+    }
+
+    /** Every Massachusetts zip starts with a 0 a spreadsheet can drop: four digits are listed, never padded into a guess. */
+    public function test_a_zip_too_short_to_read_is_listed_not_guessed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $pat = $this->pat($tenant, $this->extraFranchise($tenant, 'Nationwide')->id);
+        $this->mirror($tenant, ['postal_code' => '7030'], ['PostalCode' => '7030']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $pat) {
+            $this->assertSame(2, Customer::query()->count(), 'created, as before');
+            $listed = json_decode(DB::table('audit_events')->where('organization_id', $tenant['org']->id)->where('action', 'customer.workiz_clients_adopted')->value('metadata'), true);
+            $this->assertSame([$pat->id], $listed['zip_unreadable'][0]['customers']);
+        });
+    }
 }

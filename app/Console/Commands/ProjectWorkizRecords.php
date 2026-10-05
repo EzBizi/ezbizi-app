@@ -261,6 +261,9 @@ class ProjectWorkizRecords extends Command
     private function projectCustomers(RecordNumberGenerator $numbers, AuditLogger $audit, int $limit, bool $dryRun): int
     {
         $created = 0;
+        $adopted = [];
+        $several = [];
+        $unreadable = [];
 
         $pending = WorkizClient::query()
             ->whereNull('customer_id')
@@ -272,6 +275,38 @@ class ProjectWorkizRecords extends Command
 
             if ($franchise === null) {
                 continue;
+            }
+
+            /*
+             * A PERSON EZBIZI ALREADY HOLDS IS ADOPTED, NOT CREATED AGAIN.
+             *
+             * One person served by two branches is one customer (plan §5.2).
+             * A-1 gave Massachusetts its own Workiz account on 2026-10-05; its
+             * clients are new numbers for ~800 people EzBizi holds through
+             * Nationwide's, and creating them would have made ~800 twins. The
+             * rule is the one Customers set for folding twins (MergeWorkizTwins),
+             * applied before the twin exists. Ownership is not touched: moving a
+             * customer to another branch is Customers' step, and audited there.
+             */
+            $same = $this->samePerson($client);
+
+            if ($same['customer'] !== null) {
+                if (! $dryRun) {
+                    $client->customer_id = $same['customer']->getKey();
+                    $client->save();
+                }
+
+                $adopted[] = ['workiz_client_id' => $client->client_id, 'franchise_id' => $client->franchise_id, 'customer_id' => $same['customer']->getKey()];
+
+                continue;
+            }
+
+            if ($same['several'] !== []) {
+                $several[] = ['workiz_client_id' => $client->client_id, 'franchise_id' => $client->franchise_id, 'customers' => $same['several']];
+            }
+
+            if ($same['zip_unreadable'] !== []) {
+                $unreadable[] = ['workiz_client_id' => $client->client_id, 'franchise_id' => $client->franchise_id, 'postal_code' => $client->postal_code, 'customers' => $same['zip_unreadable']];
             }
 
             if ($dryRun) {
@@ -354,7 +389,79 @@ class ProjectWorkizRecords extends Command
             ]);
         }
 
+        // Every adoption listed, so a wrong one can be found and undone; and,
+        // created as before for Customers to look at, the clients that matched
+        // several people or whose zip could not be read.
+        if (($adopted !== [] || $several !== [] || $unreadable !== []) && ! $dryRun) {
+            $audit->log('customer.workiz_clients_adopted', metadata: [
+                'source' => 'workiz',
+                'rule' => 'same phone, name and five-digit zip',
+                'adopted' => $adopted,
+                'matched_several' => $several,
+                'zip_unreadable' => $unreadable,
+            ]);
+        }
+
+        if ($adopted !== []) {
+            $this->info(($dryRun ? '[dry run] ' : '').count($adopted).' Workiz clients adopted by the customer they already are.');
+        }
+
         return $created;
+    }
+
+    /**
+     * The live customer this Workiz client already is: the same phone, name
+     * and five-digit zip, in any branch -- the rule Customers set for twins,
+     * with their three points of 2026-10-05:
+     *
+     *  - the phone compared as ten national digits, through Customer's own
+     *    realPhone(), so a placeholder line added there later matches nobody
+     *    here either; `customers.phone` holds E.164 and, on 12 legacy rows,
+     *    bare ten digits (measured that day), so both shapes are asked for;
+     *  - the zip as its first five digits, so ZIP+4 is the same place; one
+     *    that reads shorter -- every Massachusetts zip starts with a 0 a
+     *    spreadsheet can drop -- is listed, never padded into a guess;
+     *  - several matches: the one in the client's own branch when exactly one
+     *    is, otherwise none. Never the newest or the first: that fallback sent
+     *    the Memberships offer to a stranger's house.
+     *
+     * A placeholder street matches nobody: staff and test records share it.
+     *
+     * @return array{customer: ?Customer, several: list<string>, zip_unreadable: list<string>}
+     */
+    private function samePerson(WorkizClient $client): array
+    {
+        $none = ['customer' => null, 'several' => [], 'zip_unreadable' => []];
+        $phone = Customer::realPhone(PhoneE164::from($client->phone));
+        $name = $client->name ?: $client->company;
+        $norm = fn (?string $value) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $value)));
+        $zip = fn (?string $value) => substr(preg_replace('/\D+/', '', (string) $value), 0, 5);
+        $placeholder = fn (?string $street) => in_array(MergeWorkizTwins::street($street), MergeWorkizTwins::PLACEHOLDER_STREETS, true);
+
+        if ($phone === null || preg_match('/^\+1\d{10}$/', $phone) !== 1 || ($name ?? '') === '' || $placeholder($client->address)) {
+            return $none;
+        }
+
+        $people = Customer::query()
+            ->whereIn('phone', [$phone, substr($phone, 2)])
+            ->get()
+            ->filter(fn (Customer $c) => $norm($c->name) === $norm($name) && ! $placeholder($c->address_line1))
+            ->values();
+
+        if (strlen($zip($client->postal_code)) < 5) {
+            return ['zip_unreadable' => $people->modelKeys()] + $none;
+        }
+
+        $matches = $people->filter(fn (Customer $c) => $zip($c->postal_code) === $zip($client->postal_code))->values();
+
+        if ($matches->count() > 1) {
+            $own = $matches->where('owning_franchise_id', $client->franchise_id)->values();
+            $matches = $own->count() === 1 ? $own : $matches;
+        }
+
+        return $matches->count() === 1
+            ? ['customer' => $matches->first()] + $none
+            : ['several' => $matches->count() > 1 ? $matches->modelKeys() : []] + $none;
     }
 
     private function projectJobs(RecordNumberGenerator $numbers, int $limit, bool $dryRun): int
