@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0358',
+      date: '5 Oct 2026',
+      items: [
+        'Customers › Memberships: a yearly maintenance program with its own Dashboard, a Members list (plan, amount due, state, zip, estimated gross and paid so far) and the plans under Settings, billed yearly or monthly. A reminder trigger fires a month before each year ends, and customers can join from a link sent after a good review.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0357',
       date: '5 Oct 2026',
       items: [
