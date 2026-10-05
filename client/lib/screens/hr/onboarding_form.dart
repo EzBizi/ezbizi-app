@@ -301,6 +301,13 @@ class _OnboardingFormState extends State<OnboardingForm> {
   final Map<String, TextEditingController> _boxes = {};
   final Map<String, TextEditingController> _received = {};
 
+  /// Work days and hours set in the panel, or typed as availability (Jose,
+  /// 2026-10-05: some technicians "do not have set hours and instead have
+  /// certain availability", and "it should be one or the other, never
+  /// both"). Null until chosen: a stored answer that is not a schedule then
+  /// reads as typed.
+  bool? _typedSchedule;
+
   /// What has been changed and not yet saved, by field key.
   ///
   /// Only these are sent. A form that PATCHed everything it was holding would
@@ -895,6 +902,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
           if (mine.isNotEmpty) ...[
             const SizedBox(height: 28),
             _sectionTitle(context, 'Yours to fill in'),
+            if (form.employerAddressEditable) _employerAddress(context, form),
             for (final question in mine) _row(context, question),
             const SizedBox(height: 8),
             _saveBar(context),
@@ -1942,6 +1950,41 @@ class _OnboardingFormState extends State<OnboardingForm> {
         return parts;
       });
 
+  /// The company address the contract prints, typed when the company's own
+  /// is not set or not right (Jose, 2026-10-05: "if it's typed it overrides
+  /// whatever is in place"). Optional: empty, the company's own is used.
+  Widget _employerAddress(BuildContext context, Onboarding form) {
+    final theme = Theme.of(context);
+    final fallback = form.employerAddressDefault?.trim() ?? '';
+    final box = _boxes.putIfAbsent(
+      employerAddressKey,
+      () => TextEditingController(text: form.employerAddress ?? ''),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Company address (optional)', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key('onboarding-employer-address'),
+            controller: box,
+            enabled: !_saving,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              hintText: fallback.isEmpty ? 'No company address is set' : fallback,
+              helperText:
+                  'Typed here, it replaces the company address on this contract.',
+            ),
+            onChanged: (value) => _answer(employerAddressKey, value),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Work days and work hours, one control: the week, set in the schedule
   /// panel and written back as the two answers [scheduleText] describes.
   Widget _schedule(
@@ -1953,6 +1996,20 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final days = _question(_form!, 'work_days');
     final text = _voided(hours) ? '' : _answerOf(hours.key).trim();
     final week = text.isEmpty ? null : scheduleFrom(text);
+    final typed = _typedSchedule ?? (text.isNotEmpty && week == null);
+
+    // Switching empties both answers, so a contract never carries a set
+    // schedule and typed availability at once. Typed, the days answer is
+    // "doesn't apply" and its line leaves the contract.
+    void choose(bool toTyped) {
+      if (toTyped == typed) return;
+      setState(() => _typedSchedule = toTyped);
+      _box(hours).text = '';
+      _answer(hours.key, '');
+      if (days != null && days.writable) {
+        _answer(days.key, toTyped ? notApplicable : '');
+      }
+    }
 
     return Container(
       key: answerKey(hours.key),
@@ -1965,7 +2022,38 @@ class _OnboardingFormState extends State<OnboardingForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (text.isEmpty)
+          SegmentedButton<bool>(
+            key: const Key('onboarding-schedule-mode'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: false, label: Text('Set days and hours')),
+              ButtonSegment(value: true, label: Text('Type availability')),
+            ],
+            selected: {typed},
+            onSelectionChanged: enabled ? (v) => choose(v.first) : null,
+          ),
+          const SizedBox(height: 12),
+          if (typed)
+            TextField(
+              key: const Key('onboarding-schedule-typed'),
+              controller: _box(hours),
+              enabled: enabled,
+              minLines: 2,
+              maxLines: null,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'e.g. Available Monday to Thursday, mornings',
+              ),
+              onChanged: (value) {
+                _answer(hours.key, value);
+                if (days != null &&
+                    days.writable &&
+                    _answerOf(days.key).trim() != notApplicable) {
+                  _answer(days.key, notApplicable);
+                }
+              },
+            )
+          else if (text.isEmpty)
             Text('No schedule yet.', style: theme.textTheme.bodyMedium)
           else if (week != null)
             for (final group in text.split(';'))
@@ -1979,28 +2067,29 @@ class _OnboardingFormState extends State<OnboardingForm> {
               'replace it.',
               style: theme.textTheme.bodyMedium,
             ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            key: const Key('onboarding-schedule'),
-            onPressed: enabled
-                ? () async {
-                    final picked = await showWorkSchedulePanel(
-                      context,
-                      title: 'Work schedule',
-                      days: week,
-                      formats: widget.formats,
-                    );
-                    if (picked == null || !mounted) return;
-                    final (dayText, hourText) = scheduleText(picked);
-                    _answer(hours.key, hourText);
-                    if (days != null && days.writable) {
-                      _answer(days.key, dayText);
+          if (!typed) const SizedBox(height: 10),
+          if (!typed)
+            OutlinedButton.icon(
+              key: const Key('onboarding-schedule'),
+              onPressed: enabled
+                  ? () async {
+                      final picked = await showWorkSchedulePanel(
+                        context,
+                        title: 'Work schedule',
+                        days: week,
+                        formats: widget.formats,
+                      );
+                      if (picked == null || !mounted) return;
+                      final (dayText, hourText) = scheduleText(picked);
+                      _answer(hours.key, hourText);
+                      if (days != null && days.writable) {
+                        _answer(days.key, dayText);
+                      }
                     }
-                  }
-                : null,
-            icon: const Icon(Icons.schedule_outlined, size: 18),
-            label: Text(text.isEmpty ? 'Set the schedule' : 'Change it'),
-          ),
+                  : null,
+              icon: const Icon(Icons.schedule_outlined, size: 18),
+              label: Text(text.isEmpty ? 'Set the schedule' : 'Change it'),
+            ),
         ],
       ),
     );

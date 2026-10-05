@@ -358,11 +358,12 @@ class _InvitationsTabState extends State<InvitationsTab> {
       invitation['last_name'],
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
-    // Two ends, and neither has anything left to do to it. An accepted one is
-    // a person now (Records is where they live); a revoked one is a decision
-    // somebody made, and the server refuses to resend it. Expired is NOT
+    // A revoked one is a decision somebody made, and the server refuses to
+    // resend it. An accepted one has nothing to resend but can still be
+    // revoked (Jose, 2026-10-05: "regardless of anything"). Expired is NOT
     // settled: chasing one that lapsed is the most useful thing Resend does.
-    final settled = status == 'completed' || status == 'revoked';
+    final settled = status == 'revoked';
+    final accepted = status == 'completed';
     final mayAct = widget.session.me?.can('hr.create') == true;
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -388,11 +389,12 @@ class _InvitationsTabState extends State<InvitationsTab> {
           : Wrap(
               alignment: WrapAlignment.end,
               children: [
-                Refused(
-                  reason: widget.session.me?.refusal(
-                    'hr.create',
-                    'resend invitations',
-                  ),
+                if (!accepted)
+                  Refused(
+                    reason: widget.session.me?.refusal(
+                      'hr.create',
+                      'resend invitations',
+                    ),
                   child: TextButton(
                     onPressed: mayAct ? () => _resend(invitation) : null,
                     child: const Text('Resend'),
@@ -496,12 +498,16 @@ class _InvitationsTabState extends State<InvitationsTab> {
             child: const Text('Revoke'),
           ),
         ],
-        child: const Text(
-          'The link stops working. Anybody already holding it sees an '
-          'invitation that no longer exists, and inviting them again is a new '
-          'link rather than the same one coming back. The row stays on this '
-          'list — "we invited them and changed our mind" is worth being able '
-          'to answer later.',
+        child: Text(
+          invitation['status'] == 'completed'
+              ? 'They already accepted. Revoking switches their access off and '
+                    'cancels their paperwork, signed or not. Records can switch '
+                    'them back on.'
+              : 'The link stops working. Anybody already holding it sees an '
+                    'invitation that no longer exists, and inviting them again '
+                    'is a new link rather than the same one coming back. The '
+                    'row stays on this list — "we invited them and changed our '
+                    'mind" is worth being able to answer later.',
         ),
       ),
     );

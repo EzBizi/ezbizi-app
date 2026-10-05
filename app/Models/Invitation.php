@@ -441,8 +441,8 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
             ->where('expires_at', '>', now());
 
         return match ($status) {
-            self::COMPLETED => $query->whereNotNull('accepted_at'),
-            self::REVOKED => $query->whereNull('accepted_at')->whereNotNull('revoked_at'),
+            self::COMPLETED => $query->whereNotNull('accepted_at')->whereNull('revoked_at'),
+            self::REVOKED => $query->whereNotNull('revoked_at'),
             self::ABANDONED => $query->whereNull('accepted_at')->whereNull('revoked_at')
                 ->where('expires_at', '<=', now()),
             'opened' => $pending($query)->where(fn (Builder $q) => $q->whereNotNull('opened_at')
@@ -455,8 +455,9 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
     public function status(): string
     {
         return match (true) {
-            $this->accepted_at !== null => self::COMPLETED,
+            // Revoked first: one may be withdrawn after it was accepted.
             $this->revoked_at !== null  => self::REVOKED,
+            $this->accepted_at !== null => self::COMPLETED,
             $this->hasExpired()         => self::ABANDONED,
             $this->onboarding !== null  => self::IN_PROGRESS,
             $this->opened_at !== null   => self::RECEIVED,

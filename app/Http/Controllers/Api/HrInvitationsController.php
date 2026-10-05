@@ -412,7 +412,7 @@ class HrInvitationsController extends Controller
         // same path this button does. Converted to the refusal shape this
         // endpoint has always answered with, for the reason given in resend().
         try {
-            $this->actions->revoke($invitation);
+            $this->actions->revoke($invitation, $request->user());
         } catch (CannotActOnInvitation $e) {
             throw ValidationException::withMessages([
                 $e->field ?? 'invitation' => $e->getMessage(),
