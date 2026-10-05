@@ -1122,8 +1122,13 @@ class MembershipPlan {
   final String billing;
   final bool active;
 
+  /// The price is the YEAR's, however it is billed: the server charges a
+  /// twelfth of it for every month begun on a monthly plan (Membership's
+  /// dueMinor). Shown as both on a monthly plan, so "$18 a month" is never
+  /// mistaken for the price that is stored.
   String get price => billing == 'monthly'
-      ? '${memberMoney(priceMinor, currency)} a month'
+      ? '${memberMoney((priceMinor / 12).round(), currency)} a month '
+            '(${memberMoney(priceMinor, currency)} a year)'
       : '${memberMoney(priceMinor, currency)} a year';
 
   String get label => '$name · $price';
