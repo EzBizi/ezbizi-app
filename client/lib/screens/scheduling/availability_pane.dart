@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -83,9 +85,18 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   int _request = 0;
   int _suggestRequest = 0;
 
+  /// The answer on screen keeps itself current (Jose, 2026-10-05: on a call
+  /// for DMV, "another dispatcher books something else on DMV, i still see
+  /// the same availability"). The last search is asked again every
+  /// [availabilityRefreshEvery] while the tab is showing, and at once when it
+  /// comes back.
+  Map<String, String>? _lastQuery;
+  Timer? _refresh;
+
   @override
   void initState() {
     super.initState();
+    _refresh = Timer.periodic(availabilityRefreshEvery, (_) => _refreshNow());
     _loadFranchises();
     final zip = widget.initialZip?.trim() ?? '';
     if (zip.isNotEmpty) {
@@ -95,7 +106,20 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   }
 
   @override
+  void didUpdateWidget(covariant AvailabilityPane old) {
+    super.didUpdateWidget(old);
+    if (widget.visible && !old.visible) _refreshNow();
+  }
+
+  void _refreshNow() {
+    final query = _lastQuery;
+    if (!widget.visible || _loading || query == null) return;
+    _run(query, quiet: true);
+  }
+
+  @override
   void dispose() {
+    _refresh?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -202,15 +226,20 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     await _run(id == _all ? {'all': '1'} : {'franchise_id': id});
   }
 
-  Future<void> _run(Map<String, String> query) async {
+  /// [quiet] is a refresh: no spinner, and a failed one leaves the answer up.
+  Future<void> _run(Map<String, String> query, {bool quiet = false}) async {
     final ticket = ++_request;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    _lastQuery = query;
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/scheduling/availability', query);
     if (!mounted || ticket != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -229,6 +258,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
   void _setMode(_Mode mode) => setState(() {
     _mode = mode;
+    _lastQuery = null;
     _areas = null;
     _error = null;
     _suggestions = [];
@@ -317,6 +347,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                   _Mode.area => _areaChips(),
                   _Mode.calendar => AvailabilityCalendar(
                     api: widget.api,
+                    visible: widget.visible,
                     franchises: _franchises,
                   ),
                 },
