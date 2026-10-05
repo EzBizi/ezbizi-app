@@ -64,6 +64,22 @@ class DashboardController extends Controller
             }
 
             $presentation = $this->declaredPresentation($glance, $entry['presentation'] ?? null);
+            $size = $this->declaredSize($glance, $entry['size'] ?? null);
+
+            // Hidden from this person's dashboard (Customize, 2026-10-05):
+            // listed so "Add a box" can offer it back, but not resolved —
+            // a box nobody looks at spends no queries.
+            if (($entry['hidden'] ?? false) === true) {
+                $glances[] = [
+                    'key' => $glance->key(),
+                    'label' => $glance->label(),
+                    'hidden' => true,
+                    'size' => $size,
+                    'presentation' => $presentation,
+                ];
+
+                continue;
+            }
 
             /*
              * One glance must never take the dashboard down with it.
@@ -86,7 +102,8 @@ class DashboardController extends Controller
                 $payload = $this->failedPanel($glance);
             }
             $payload['presentation'] = $presentation;
-            $payload['size'] = $this->declaredSize($glance, $entry['size'] ?? null);
+            $payload['size'] = $size;
+            $payload['hidden'] = false;
 
             // No glance takes options: the last one, Jobs' earned statuses, left
             // with the money on 2026-09-29. Always empty, so whatever a glance
@@ -130,6 +147,7 @@ class DashboardController extends Controller
             'glances.*.key' => ['required', 'string', 'max:64'],
             'glances.*.presentation' => ['sometimes', 'nullable', 'string', 'max:32'],
             'glances.*.size' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'glances.*.hidden' => ['sometimes', 'boolean'],
             'glances.*.options' => ['sometimes', 'array'],
         ]);
 
@@ -257,6 +275,9 @@ class DashboardController extends Controller
             if (isset($entry['size']) && is_string($entry['size'])) {
                 $row['size'] = $entry['size'];
             }
+            if (($entry['hidden'] ?? false) == true) {
+                $row['hidden'] = true;
+            }
             if (isset($entry['options']) && is_array($entry['options'])) {
                 $row['options'] = $entry['options'];
             }
@@ -269,6 +290,12 @@ class DashboardController extends Controller
             'presentation' => $this->declaredPresentation($glance, $entry['presentation'] ?? null),
             'size' => $this->declaredSize($glance, $entry['size'] ?? null),
         ];
+
+        // Stored only when true, so a layout saved before Customize existed
+        // and one that never hid anything read the same.
+        if (($entry['hidden'] ?? false) == true) {
+            $row['hidden'] = true;
+        }
 
         return $row;
     }

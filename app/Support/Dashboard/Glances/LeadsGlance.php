@@ -197,7 +197,7 @@ final class LeadsGlance extends DescribedGlance
                     'sentences' => $sentences,
                     'figures'   => [
                         GlancePayload::figure('arrived', 'arrived '.$periodWord, $inPeriod, $this->arrivedIn($period->previous(), $inReach)),
-                        GlancePayload::figure('waiting', 'waiting', $waiting),
+                        GlancePayload::figure('waiting', 'not yet dealt with', $waiting),
                     ],
                     // `organization_total` was here and is gone. GlancePayload's
                     // rule: a glance sends what its box draws, and this one was

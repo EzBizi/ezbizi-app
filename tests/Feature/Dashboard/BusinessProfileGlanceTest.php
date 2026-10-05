@@ -99,7 +99,7 @@ class BusinessProfileGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'sentences', 'figures'],
+            ['empty', 'sentences', 'figures', 'notes'],
             array_keys($data),
             'the Business Profile box draws its sentences and its figures; any other '
             .'key is a query on every dashboard load for a figure nobody sees, and an '

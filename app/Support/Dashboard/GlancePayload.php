@@ -185,7 +185,52 @@ final class GlancePayload
             'snapshot' => $this->snapshot,
             'coming_soon' => $this->comingSoon,
             'options' => $this->options,
-            'data' => $this->data,
+            'data' => $this->withNotes($this->data),
         ];
+    }
+
+    /**
+     * `notes`: the sentences that are NOT a figure, for the sized client,
+     * which draws figures + notes and never sentences (UI/UX, 2026-10-05).
+     * `sentences` stays for installed builds that predate figures.
+     *
+     * Derived so twenty-two glances do not each keep two lists in step: a
+     * sentence is a figure when it holds that figure's value as a number AND
+     * every word of its label, plurals ignored ("1 vehicle needs service
+     * soon." beside {1, "need service soon"}). Erring is one-sided on
+     * purpose: a line that fails to match is drawn twice, visibly; nothing
+     * is dropped unless both the number and all the words agree. A glance
+     * that sets `notes` itself is left alone.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withNotes(array $data): array
+    {
+        $figures = $data['figures'] ?? [];
+        if ($figures === [] || array_key_exists('notes', $data)) {
+            return $data;
+        }
+
+        $sentences = $data['sentences'] ?? (isset($data['sentence']) ? [$data['sentence']] : []);
+
+        $words = fn (string $text) => array_map(
+            fn ($w) => rtrim($w, 's'),
+            preg_split('/[^a-z0-9]+/', strtolower($text), -1, PREG_SPLIT_NO_EMPTY),
+        );
+
+        $data['notes'] = array_values(array_filter($sentences, function ($line) use ($figures, $words) {
+            $said = $words((string) $line);
+            foreach ($figures as $figure) {
+                if (in_array((string) $figure['value'], $said, true)
+                    && array_diff($words($figure['label']), $said) === []) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+
+        return $data;
     }
 }

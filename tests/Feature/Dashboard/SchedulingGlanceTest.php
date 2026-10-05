@@ -216,6 +216,11 @@ class SchedulingGlanceTest extends TestCase
         $this->assertCount(1, $noHours, 'One sentence, not two, for one fact.');
         $this->assertStringContainsString('2 service areas have no hours set', $noHours[0]);
 
+        // Two areas, two without hours: the same number and words as the
+        // areas figure, and still a note of its own for the sized client.
+        $this->assertSame(2, collect($data['figures'])->firstWhere('key', 'areas')['value']);
+        $this->assertContains($noHours[0], $data['notes']);
+
         // And nothing anywhere in the box claims the organization.
         foreach ($sentences as $sentence) {
             $this->assertStringNotContainsString(
@@ -303,7 +308,7 @@ class SchedulingGlanceTest extends TestCase
             ->toArray()['data']['figures'];
 
         $this->assertSame([
-            ['key' => 'capacity', 'label' => 'jobs a week capacity', 'value' => 5, 'previous' => null],
+            ['key' => 'capacity', 'label' => 'jobs a week set up', 'value' => 5, 'previous' => null],
             ['key' => 'areas', 'label' => 'service areas', 'value' => 2, 'previous' => null],
             ['key' => 'zips', 'label' => 'zip code', 'value' => 1, 'previous' => null],
         ], $figures);

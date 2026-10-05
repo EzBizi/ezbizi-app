@@ -826,6 +826,64 @@ class DashboardTest extends TestCase
         }
     }
 
+    /**
+     * `notes` are the sentences that are not a figure: the sized client draws
+     * figures + notes, so a line that repeats a figure must not be a note,
+     * and a line that is not one must not be lost.
+     */
+    public function test_notes_are_the_sentences_that_are_not_figures(): void
+    {
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->addDays(2)]);
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        // Jobs says exactly its two figures ("1 job today.", "... coming up.").
+        $this->assertNotEmpty($glances['jobs']['data']['sentences']);
+        $this->assertSame([], $glances['jobs']['data']['notes']);
+
+        // HR says more than its figures: those lines stay, the figure lines go.
+        $hr = $glances['hr']['data'];
+        $this->assertContains('0 onboardings in flight.', $hr['notes']);
+        $this->assertNotContains('1 person on the books.', $hr['notes']);
+        $this->assertContains('1 person on the books.', $hr['sentences'], 'old builds keep every sentence');
+    }
+
+    /** Customize: a hidden box is listed for "Add a box" and not computed. */
+    public function test_a_hidden_box_is_listed_without_being_resolved(): void
+    {
+        Exceptions::fake();
+        $this->registryOf([
+            new ComingSoonGlance('newsletter', 'Newsletter', 'Soon.'),
+            $this->brokenGlance(),
+        ]);
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [
+                ['key' => 'broken', 'hidden' => true, 'size' => 'large'],
+                ['key' => 'newsletter'],
+            ],
+        ])->assertOk();
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        $this->assertSame(
+            ['key' => 'broken', 'label' => 'Broken Module', 'hidden' => true, 'size' => 'large', 'presentation' => 'pie'],
+            $glances['broken'],
+        );
+        // The broken glance throws when resolved; nothing reported means it
+        // never ran. The control: the visible box did.
+        Exceptions::assertNothingReported();
+        $this->assertFalse($glances['newsletter']['hidden']);
+        $this->assertSame('Soon.', $glances['newsletter']['data']['sentence']);
+
+        // Shown again by saving without the flag.
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [['key' => 'broken'], ['key' => 'newsletter']],
+        ])->assertOk();
+        $this->assertFalse(collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'broken')['hidden']);
+    }
+
     // ── size (Jose, 2026-10-05: "change the widget sizes") ─────────────
 
     public function test_a_box_is_its_glances_default_size_until_somebody_picks_one(): void

@@ -123,22 +123,31 @@ final class SchedulingGlance extends DescribedGlance
 
             $areas = $areaIds->count();
             $zips = ServiceAreaZip::whereIn('service_area_id', $areaIds)->count();
+            $sentences = $this->sentences(
+                areas: $areas,
+                zips: $zips,
+                unconfigured: $this->areasWithNoHours($areaIds),
+                totalJobs: $totalJobs,
+            );
 
             return $this->payload([
                 'empty' => false,
                 'series' => [['label' => 'Jobs a day', 'points' => $points]],
                 'slices' => $slices,
-                'sentences' => $this->sentences(
-                    areas: $areas,
-                    zips: $zips,
-                    unconfigured: $this->areasWithNoHours($areaIds),
-                    totalJobs: $totalJobs,
-                ),
-                // Configured, like every number here: "capacity" in the label
+                'sentences' => $sentences,
+                // Set here, not derived (GlancePayload::withNotes): "2 service
+                // areas have no hours set" shares a number and its words with
+                // the areas figure, so the derived notes would drop it. The
+                // figures say capacity, areas and zips; these lines are the rest.
+                'notes' => array_values(array_filter(
+                    $sentences,
+                    fn (string $s) => ! str_starts_with($s, 'Set up to take ') && ! str_contains($s, ' covering '),
+                )),
+                // Configured, like every number here: "set up" in the label
                 // so the headline cannot read as bookings. No history, so no
                 // previous (see SNAPSHOT above).
                 'figures' => [
-                    GlancePayload::figure('capacity', ($totalJobs === 1 ? 'job' : 'jobs').' a week capacity', $totalJobs),
+                    GlancePayload::figure('capacity', ($totalJobs === 1 ? 'job' : 'jobs').' a week set up', $totalJobs),
                     GlancePayload::figure('areas', $areas === 1 ? 'service area' : 'service areas', $areas),
                     GlancePayload::figure('zips', $zips === 1 ? 'zip code' : 'zip codes', $zips),
                 ],

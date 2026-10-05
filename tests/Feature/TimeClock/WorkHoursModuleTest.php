@@ -203,7 +203,7 @@ class WorkHoursModuleTest extends TestCase
             ->toArray()['data']['figures'];
 
         $this->assertSame([
-            ['key' => 'on_the_clock', 'label' => 'on the clock', 'value' => 1, 'previous' => null],
+            ['key' => 'on_the_clock', 'label' => 'clocked in', 'value' => 1, 'previous' => null],
             ['key' => 'hours', 'label' => 'hours clocked today', 'value' => 2, 'previous' => 3],
         ], $figures);
     }

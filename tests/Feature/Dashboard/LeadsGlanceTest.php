@@ -277,7 +277,7 @@ class LeadsGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'series', 'slices', 'sentences', 'figures'],
+            ['empty', 'series', 'slices', 'sentences', 'figures', 'notes'],
             array_keys($data),
             'the Leads box draws a line, its slices, its sentences and its figures; any other key '
             .'is a query on every dashboard load for a figure nobody sees, and an '
@@ -436,7 +436,7 @@ class LeadsGlanceTest extends TestCase
 
         $this->assertSame([
             ['key' => 'arrived', 'label' => 'arrived today', 'value' => 3, 'previous' => 1],
-            ['key' => 'waiting', 'label' => 'waiting', 'value' => 4, 'previous' => null],
+            ['key' => 'waiting', 'label' => 'not yet dealt with', 'value' => 4, 'previous' => null],
         ], $data['figures']);
     }
 

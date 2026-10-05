@@ -77,7 +77,7 @@ final class WorkHoursGlance extends DescribedGlance
                 // On the clock is right now, so it has no earlier self. Hours
                 // compare with the same elapsed span one period back.
                 'figures' => [
-                    GlancePayload::figure('on_the_clock', 'on the clock', $in),
+                    GlancePayload::figure('on_the_clock', 'clocked in', $in),
                     GlancePayload::figure('hours', 'hours clocked '.$period->phrase(), $hours, $this->hoursIn($people, $period->previous())),
                 ],
             ]);
