@@ -18,7 +18,7 @@ class VersionHistory {
       date: '5 Oct 2026',
       items: [
         'HR: downloads of imported A1 Tools records now include the Employee record, the pictures and the uploaded PDFs, and the records without a signed contract can be downloaded too.',
-        'Email: a mail connection that goes bad is replaced at once, and a password reset email is retried before it is given up on.',
+        'Password reset emails are retried if the mail server turns one away, and a failed email no longer stops the ones after it from sending until the system restarts. Two reset emails were lost that way on 5 October; if you asked for one and it never came, ask again.',
       ],
     ),
     VersionRelease(
