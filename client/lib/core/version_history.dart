@@ -14,6 +14,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0355',
+      date: '5 Oct 2026',
+      items: [
+        'Scheduling: the morning warning email now lists only service areas with no open spot for the next 10 days or more, each with its next opening, so their ads can be paused. Scheduling › Overbooking shows the same 10-day list, and the Scheduling box on the dashboard counts it.',
+        'Communication › Settings › Call flow: General and the call flow chart are now one screen. Your company\'s answer shows once and changes right there, each line says whether it follows the company or has its own, a red box with "Pick who rings" fixes the lines that reach nobody, and opening a line shows its chart. On a phone, a chart box opens its settings in place instead of a new screen.',
+        'Calls now remember which menu key the caller pressed and any extension they typed. Reports can show calls by key pressed and by caller, with the customer\'s name when they\'re on file. Calls before this release show \'No key pressed\'.',
+        'The Phone box on the dashboard now flags what needs someone: a phone account that stopped working, and voicemails waiting (over a day in red).',
+        'Dashboard › Jobs: flags jobs from the past week still in your first status, and upcoming jobs with no service area. The box also loads much faster.',
+        'Dashboard: amounts of money show only to people whose role may see that module\'s financials, and the Inventory box adds the value of the stock for them.',
+        'Social Media: TikTok connections now renew their access on their own; one that can\'t asks to be reconnected.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0354',
       date: '5 Oct 2026',
       items: [
