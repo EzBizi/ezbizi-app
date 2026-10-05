@@ -45,7 +45,7 @@ class PortsController extends Controller
             ->whereIn('connection_id', $connections)
             ->orderByDesc('created_at')
             ->get()
-            ->map(fn (PhonePortRequest $row) => $this->row($row))
+            ->map(fn (PhonePortRequest $row) => $this->row($row, $request->user()->hasPermission('phone.edit')))
             ->all();
 
         return response()->json(['data' => $rows]);
@@ -107,11 +107,33 @@ class PortsController extends Controller
                 : ['losing_carrier' => $input['losing_carrier'] ?? null, 'pin' => $input['pin'] ?? null],
         ]);
 
-        return response()->json(['data' => $this->row($row)], Response::HTTP_CREATED);
+        return response()->json(['data' => $this->row($row, true)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $carrier
+     * @return array<string, mixed>|null
+     */
+    private static function masked(?array $carrier): ?array
+    {
+        if ($carrier === null) {
+            return null;
+        }
+
+        $hide = fn (?string $value) => $value === null || $value === ''
+            ? $value
+            : str_repeat('•', max(0, mb_strlen($value) - 2)).mb_substr($value, -2);
+
+        $carrier['pin'] = $hide($carrier['pin'] ?? null);
+        if (is_array($carrier['losing_carrier'] ?? null)) {
+            $carrier['losing_carrier']['account_number'] = $hide($carrier['losing_carrier']['account_number'] ?? null);
+        }
+
+        return $carrier;
     }
 
     /** @return array<string, mixed> */
-    private function row(PhonePortRequest $row): array
+    private function row(PhonePortRequest $row, bool $reveal = false): array
     {
         return [
             'id' => $row->id,
@@ -122,9 +144,11 @@ class PortsController extends Controller
             'status_reason' => $row->status_reason,
             'created_at' => $row->created_at?->toIso8601String(),
 
-            // What the losing carrier was told, PIN included: this list is
-            // behind the Settings tab, and phone.edit is what starts a port.
-            'carrier' => $row->carrier,
+            // What the losing carrier was told. The PIN and account number
+            // are what move a number away, so only somebody who can start a
+            // port (phone.edit) reads them; everyone else sees the last two
+            // digits. Deploy desk review, 2026-10-05.
+            'carrier' => $reveal ? $row->carrier : self::masked($row->carrier),
 
             // Said by the server rather than worked out on screen, because
             // the same list is read by the web client and the phone app and a

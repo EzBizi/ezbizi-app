@@ -67,6 +67,38 @@ class PhonePortCarrierTest extends TestCase
         $this->assertSame('55501234', $row['carrier']['losing_carrier']['account_number']);
     }
 
+    /**
+     * The PIN and account number move a number away, so a role that can only
+     * VIEW phone settings never receives them - not on screen, not in the
+     * raw response. Deploy desk review, 2026-10-05.
+     */
+    public function test_a_view_only_role_never_receives_the_pin(): void
+    {
+        $this->app->instance(TwilioGateway::class, new FakeTwilioGateway);
+
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view', 'phone.settings.view']);
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $t['org']->id,
+        ]));
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/ports', [
+            'connection_id' => $connection->id,
+            'e164s' => ['+19544538774'],
+            'losing_carrier' => self::CARRIER,
+            'pin' => '4321',
+        ])->assertCreated();
+
+        $this->app['auth']->forgetGuards();
+        $response = $this->signedInAs($viewer)->getJson('/api/v1/phone/ports')->assertOk();
+
+        $this->assertStringNotContainsString('4321', $response->getContent());
+        $this->assertStringNotContainsString('55501234', $response->getContent());
+        $this->assertSame('••21', $response->json('data.0.carrier.pin'));
+    }
+
     public function test_carrier_details_without_who_signs_are_refused(): void
     {
         $this->app->instance(TwilioGateway::class, new FakeTwilioGateway);
