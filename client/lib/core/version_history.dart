@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0357',
+      date: '5 Oct 2026',
+      items: [
+        'Marketing › Posts: the TikTok privacy choice no longer shows its hint over its label.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0356',
       date: '5 Oct 2026',
       items: [
