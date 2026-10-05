@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0361',
+      date: '5 Oct 2026',
+      items: [
+        'HR: downloads of imported A1 Tools records now include the Employee record, the pictures and the uploaded PDFs, and the records without a signed contract can be downloaded too.',
+        'Email: a mail connection that goes bad is replaced at once, and a password reset email is retried before it is given up on.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0360',
       date: '5 Oct 2026',
       items: [
