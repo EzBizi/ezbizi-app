@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
 import 'instagram_comments_panel.dart';
+import 'qr_codes_tab.dart';
 import 'tiktok_post_choices.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
@@ -66,6 +67,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   static const _panes = [
     ('posts', 'Posts', Icons.edit_outlined),
     ('accounts', 'Accounts', Icons.link_outlined),
+    ('qr_codes', 'QR Codes', Icons.qr_code_2_outlined),
   ];
 
   /// Absent `/me` answers NO.
@@ -446,7 +448,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: current == 'posts'
+          child: current == 'qr_codes'
+              ? QrCodesTab(api: widget.api, session: widget.session)
+              : current == 'posts'
               ? _PostsPane(
                   api: widget.api,
                   session: widget.session,
