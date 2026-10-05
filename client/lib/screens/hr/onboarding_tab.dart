@@ -288,7 +288,11 @@ class _OnboardingTabState extends State<OnboardingTab> {
         FilterTile(
           key: 'open',
           label: 'Ongoing',
-          count: _tiles == null ? null : (n('in_progress') ?? 0) + (n('submitted') ?? 0),
+          count: _tiles == null
+              ? null
+              : (n('in_progress') ?? 0) +
+                    (n('submitted') ?? 0) +
+                    (n('awaiting_approval') ?? 0),
           note: 'not finished',
         ),
         FilterTile(
@@ -302,6 +306,13 @@ class _OnboardingTabState extends State<OnboardingTab> {
           label: 'Submitted',
           count: n('submitted'),
           note: 'waiting on a signature',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'awaiting_approval',
+          label: 'To approve',
+          count: n('awaiting_approval'),
+          note: 'signed, waiting for approval',
           tone: Tone.caution,
         ),
         FilterTile(

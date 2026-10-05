@@ -870,6 +870,51 @@ void main() {
 
   // Jose, 2026-10-05: Eve typed Cook, the search found nothing, and "she
   // should be able to just save, even if the finder does not find anything".
+  // Jose, 2026-10-05: "a final approval is pending from the employer who
+  // sent it out".
+  testWidgets('signed paperwork waits for the sender, who approves it', (
+    tester,
+  ) async {
+    var approved = 0;
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployer,
+          'status': 'awaiting_approval',
+          'approval': {'by': 'Eve Sarfaty', 'mine': true},
+        },
+        onApprove: () => approved++,
+      ),
+    );
+
+    expect(find.byKey(const Key('onboarding-approval')), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('onboarding-approve')));
+    expect(approved, 1);
+    expect(find.byKey(const Key('onboarding-approval')), findsNothing);
+  });
+
+  testWidgets('the new starter is told whose approval it waits for', (
+    tester,
+  ) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployee,
+          'status': 'awaiting_approval',
+          'approval': {'by': 'Eve Sarfaty', 'mine': false},
+        },
+      ),
+    );
+
+    expect(
+      find.text('Signed by both sides. Waiting for Eve Sarfaty to approve it.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('onboarding-approve')), findsNothing);
+  });
+
   testWidgets('a county the search cannot find is saved as typed', (
     tester,
   ) async {
@@ -1679,6 +1724,7 @@ MockClientHandler _handler({
   onTaxForm,
   void Function(Map<String, String> query)? onCounties,
   void Function(Map<String, String> query)? onList,
+  void Function()? onApprove,
 }) {
   final seen = form ?? _asEmployer;
 
@@ -1705,6 +1751,13 @@ MockClientHandler _handler({
               (f as Map)['key'] == 'tax_form' ? {...f, 'value': 'att-9'} : f,
           ],
         },
+      });
+    }
+
+    if (path.endsWith('/hr/onboardings/o-1/approve')) {
+      onApprove?.call();
+      return _json({
+        'data': {...seen, 'status': 'completed', 'approval': null},
       });
     }
 

@@ -178,7 +178,7 @@ class HrOnboardingsController extends Controller
                 $request->query('state'),
                 fn (Builder $q, string $state) => $q->whereIn('status', $state === 'finished'
                     ? [Onboarding::COMPLETED, Onboarding::CANCELLED]
-                    : [Onboarding::IN_PROGRESS, Onboarding::SUBMITTED]),
+                    : Onboarding::OPEN),
             )
             ->when(
                 $request->query('user_id'),
@@ -201,6 +201,7 @@ class HrOnboardingsController extends Controller
                 'tiles'        => [
                     Onboarding::IN_PROGRESS => $tiles[Onboarding::IN_PROGRESS] ?? 0,
                     Onboarding::SUBMITTED => $tiles[Onboarding::SUBMITTED] ?? 0,
+                    Onboarding::AWAITING_APPROVAL => $tiles[Onboarding::AWAITING_APPROVAL] ?? 0,
                     Onboarding::COMPLETED => $tiles[Onboarding::COMPLETED] ?? 0,
                     Onboarding::CANCELLED => $tiles[Onboarding::CANCELLED] ?? 0,
                 ],
@@ -1333,13 +1334,70 @@ class HrOnboardingsController extends Controller
         }
     }
 
-    /** Every signature field signed — the onboarding is done. */
+    /**
+     * POST /api/v1/hr/onboardings/{onboarding}/approve — the sender's final
+     * approval, once both sides have signed (Jose, 2026-10-05). Completes it:
+     * the contract's terms go into the record and the new starter's access
+     * opens.
+     */
+    public function approve(Request $request, Onboarding $onboarding): JsonResponse
+    {
+        $this->authorize('approve', $onboarding);
+
+        if ($onboarding->status !== Onboarding::AWAITING_APPROVAL) {
+            throw ValidationException::withMessages(['onboarding' =>
+                'Only paperwork both sides have signed waits for approval, and this one is not '
+                .'waiting.',
+            ]);
+        }
+
+        $actor = $request->user();
+        DB::transaction(function () use ($onboarding, $actor) {
+            $this->audit->log('onboarding.approved', $onboarding);
+            $this->complete($onboarding, $actor);
+        });
+
+        if (($employee = $onboarding->user) !== null && $employee->is_active) {
+            try {
+                $this->notifications->dispatch(
+                    title: 'Your paperwork is approved',
+                    body: 'Everything is signed and approved. The rest of the app is open to you now.',
+                    subject: $onboarding,
+                    onlyTo: $employee,
+                    source: 'hr',
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
+    }
+
+    /**
+     * Every signature field signed: done, or waiting for the sender's
+     * approval where the organization asks for it.
+     */
     private function completeIfFullySigned(Onboarding $onboarding, User $actor): void
     {
         if (! $onboarding->isFullySigned()) {
             return;
         }
 
+        if ((bool) app(\App\Support\Settings\SettingsResolver::class)
+            ->get(Onboarding::APPROVAL_SETTING, $onboarding->organization)) {
+            $onboarding->forceFill(['status' => Onboarding::AWAITING_APPROVAL])->save();
+            $this->audit->log('onboarding.awaiting_approval', $onboarding);
+
+            return;
+        }
+
+        $this->complete($onboarding, $actor);
+    }
+
+    private function complete(Onboarding $onboarding, User $actor): void
+    {
+        $before = $onboarding->status;
         $signed = $onboarding->takenSignatures()->pluck('field_key')->all();
 
         $onboarding->forceFill([
@@ -1378,7 +1436,7 @@ class HrOnboardingsController extends Controller
          * is what lets a reader of the rule see that without knowing it.
          */
         $this->events->emit('onboarding.completed', $onboarding, [
-            'before' => ['status' => Onboarding::SUBMITTED],
+            'before' => ['status' => $before === Onboarding::AWAITING_APPROVAL ? $before : Onboarding::SUBMITTED],
             'after'  => [
                 'status'     => $onboarding->status,
                 'signatures' => count($signed),
@@ -1546,7 +1604,19 @@ class HrOnboardingsController extends Controller
         }
 
         try {
-            if ($signed === FilledBy::EMPLOYER && ($employee = $onboarding->user) !== null) {
+            if ($onboarding->status === Onboarding::AWAITING_APPROVAL) {
+                $sender = $onboarding->startedBy;
+                if ($sender !== null && $sender->is_active && ! $sender->is($actor)) {
+                    $this->notifications->dispatch(
+                        title: 'Paperwork ready for your approval',
+                        body: sprintf('Both sides have signed %s\'s paperwork. It waits for your approval.',
+                            (string) $onboarding->user?->name),
+                        subject: $onboarding,
+                        onlyTo: $sender,
+                        source: 'hr',
+                    );
+                }
+            } elseif ($signed === FilledBy::EMPLOYER && ($employee = $onboarding->user) !== null) {
                 $employee->notify(new PaperworkReadyToFinish(
                     (string) $onboarding->organization?->name,
                     (string) $onboarding->contractVersion?->contract?->name,
@@ -1719,6 +1789,12 @@ class HrOnboardingsController extends Controller
 
         return $this->summarise($onboarding) + [
             'parties'    => $parties,
+            // Whose final approval it waits for, and whether this person may
+            // give it (Jose, 2026-10-05).
+            'approval' => $onboarding->status !== Onboarding::AWAITING_APPROVAL ? null : [
+                'by' => $onboarding->startedBy?->name,
+                'mine' => Gate::forUser($actor)->allows('approve', $onboarding),
+            ],
             // The company address typed on this form, what the contract
             // prints without it, and whether this person may type it.
             'employer_address' => [

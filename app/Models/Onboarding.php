@@ -60,7 +60,15 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public const SUBMITTED = 'submitted';
 
-    /** Every signature the version asks for has been given. */
+    /**
+     * Both sides have signed and the sender's final approval is pending (Jose,
+     * 2026-10-05), when the organization asks for one: Settings › Human
+     * Resources, `hr.onboarding_approval`. Until it is given the new starter
+     * sees only their paperwork (User::awaitingOnboardingApproval).
+     */
+    public const AWAITING_APPROVAL = 'awaiting_approval';
+
+    /** Every signature the version asks for has been given, and approved where that is asked. */
     public const COMPLETED = 'completed';
 
     /**
@@ -77,8 +85,14 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
     public const EMPLOYER_ADDRESS = 'employer_address';
 
     public const STATUSES = [
-        self::IN_PROGRESS, self::SUBMITTED, self::COMPLETED, self::CANCELLED,
+        self::IN_PROGRESS, self::SUBMITTED, self::AWAITING_APPROVAL, self::COMPLETED, self::CANCELLED,
     ];
+
+    /** Not finished: still being filled in, signed, or approved. */
+    public const OPEN = [self::IN_PROGRESS, self::SUBMITTED, self::AWAITING_APPROVAL];
+
+    /** The organization's switch for the final approval. */
+    public const APPROVAL_SETTING = 'hr.onboarding_approval';
 
     protected $fillable = [
         'organization_id', 'invitation_id', 'user_id', 'contract_version_id',

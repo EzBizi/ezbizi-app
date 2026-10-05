@@ -99,8 +99,12 @@ class _HrOverviewState extends State<HrOverview> {
           _Row(
             '${o['name'] ?? ''}',
             '${o['contract'] ?? 'Paperwork'}',
-            pill: o['state'] == 'to_sign' ? 'To sign' : 'Filling in',
-            tone: o['state'] == 'to_sign' ? Tone.caution : Tone.info,
+            pill: switch (o['state']) {
+              'to_sign' => 'To sign',
+              'to_approve' => 'To approve',
+              _ => 'Filling in',
+            },
+            tone: o['state'] == 'filling_in' ? Tone.info : Tone.caution,
             when: _age(o['since']),
           ),
         ),
@@ -284,7 +288,8 @@ class _HrOverviewState extends State<HrOverview> {
         unit: 'now',
         note:
             '${_int(onboarding['filling_in'])} filling in · '
-            '${_int(onboarding['to_sign'])} to sign',
+            '${_int(onboarding['to_sign'])} to sign'
+            '${_int(onboarding['to_approve']) > 0 ? ' · ${_int(onboarding['to_approve'])} to approve' : ''}',
         open: () => _open(
           context,
           _List(

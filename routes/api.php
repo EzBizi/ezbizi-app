@@ -1713,6 +1713,7 @@ Route::prefix('v1')
         // this and changed our mind" remains answerable.
         Route::delete('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'destroy']);
         Route::post('hr/onboardings/{onboarding}/sign', [HrOnboardingsController::class, 'sign']);
+        Route::post('hr/onboardings/{onboarding}/approve', [HrOnboardingsController::class, 'approve']);
         Route::post('hr/onboardings/{onboarding}/preview', [HrOnboardingsController::class, 'preview']);
         Route::post('hr/onboardings/{onboarding}/tax-form', [HrOnboardingsController::class, 'taxForm']);
         Route::post('hr/onboardings/{onboarding}/amendments', [HrOnboardingsController::class, 'amend']);
@@ -2807,12 +2808,17 @@ Route::prefix('v1')
                     // the client draws "Your paperwork" from it (session.dart
                     // onboardingId). Without it a new starter whose role has no
                     // HR tab had no way to reach their own form.
-                    'onboarding' => \App\Models\Onboarding::query()
+                    // `held`: everything else is closed until the paperwork
+                    // is approved (User::awaitingOnboardingApproval).
+                    'onboarding' => ($open = \App\Models\Onboarding::query()
                         ->where('user_id', $user->id)
-                        ->whereIn('status', [\App\Models\Onboarding::IN_PROGRESS, \App\Models\Onboarding::SUBMITTED])
+                        ->whereIn('status', \App\Models\Onboarding::OPEN)
                         ->latest()
-                        ->first(['id'])
-                        ?->only('id'),
+                        ->first(['id', 'status'])) === null ? null : [
+                            'id' => $open->id,
+                            'status' => $open->status,
+                            'held' => $user->awaitingOnboardingApproval(),
+                        ],
 
                     // This address has not been confirmed, so RequireVerifiedEmail
                     // refuses every write (TODO #22). Carried here for exactly the

@@ -100,12 +100,17 @@ final class HrOverview
                 'count' => $this->inFlight($places)->count(),
                 'filling_in' => $this->inFlight($places)->where('status', Onboarding::IN_PROGRESS)->count(),
                 'to_sign' => $this->inFlight($places)->where('status', Onboarding::SUBMITTED)->count(),
+                'to_approve' => $this->inFlight($places)->where('status', Onboarding::AWAITING_APPROVAL)->count(),
                 'items' => $onboardings->map(fn (Onboarding $o) => [
                     'id' => $o->getKey(),
                     'user_id' => $o->user_id,
                     'name' => $o->user?->name ?? $this->invitedName($o->invitation),
                     'contract' => $o->contractVersion?->contract?->name,
-                    'state' => $o->status === Onboarding::SUBMITTED ? 'to_sign' : 'filling_in',
+                    'state' => match ($o->status) {
+                        Onboarding::SUBMITTED => 'to_sign',
+                        Onboarding::AWAITING_APPROVAL => 'to_approve',
+                        default => 'filling_in',
+                    },
                     'since' => $o->started_at?->toIso8601String(),
                 ])->all(),
             ],
@@ -166,7 +171,7 @@ final class HrOverview
     private function inFlight(array $places): Builder
     {
         return Onboarding::query()
-            ->whereIn('status', [Onboarding::IN_PROGRESS, Onboarding::SUBMITTED])
+            ->whereIn('status', Onboarding::OPEN)
             ->where(function (Builder $visible) use ($places) {
                 $visible->whereHas('invitation', fn (Builder $i) => $this->constrainToPlaces($i, $places));
                 if ($places['organization'] !== null) {

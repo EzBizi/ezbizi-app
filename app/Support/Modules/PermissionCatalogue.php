@@ -180,7 +180,7 @@ class PermissionCatalogue
      */
     public function heldBy(User $user): array
     {
-        if (! $user->is_active) {
+        if (! $user->is_active || $user->awaitingOnboardingApproval()) {
             return [];
         }
 
