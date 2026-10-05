@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 54 · Memberships · the page a customer joins from — **Jose: "go with ur recommended options as usual" (the Membership program) — 1 and 4** — building (`docs/previews/memberships-join-page-layouts.html`)
+### 54 · Memberships · the page a customer joins from — **Jose: "go with ur recommended options as usual" (the Membership program) — 1 and 4** — **BUILT** `5d4d61c6` (`docs/previews/memberships-join-page-layouts.html`)
 
 The signed link in the review offer and the renewal reminder opens `resources/views/memberships/join.blade.php`
 (Membership session, `session/memberships`), plain HTML until now; the Membership session handed its look to me.
@@ -2983,7 +2983,7 @@ a miniature drawn from its sizes, Use this layout), applied at once with an Undo
 (recommended); **2** template chips under the Customize bar, same Undo; **3** five cards first in Customize, asked
 inside the card. Phone **4** (recommended) – **6** the same three.
 
-### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT, held off main** (`5eb65079`, reverted `f403b70a`; lands with `session/memberships`) (`docs/previews/customers-memberships-layouts.html`)
+### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT, on main with its routes** (merge `4b293c53`; price fix `64a1ccbc`) (`docs/previews/customers-memberships-layouts.html`)
 
 From the Membership Program session (`local_9b8c5aa9…`), backend on `session/memberships` @ `19240797`, spec
 `docs/superpowers/specs/2026-10-05-memberships-design.md`. Jose, 2026-10-05, on Members: *"customer list, enrollment
