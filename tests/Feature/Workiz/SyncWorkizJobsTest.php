@@ -474,6 +474,9 @@ class SyncWorkizJobsTest extends TestCase
     /** An upcoming open job, projected onto an EzBizi job that still holds what the projection wrote. */
     private function projected(array $tenant, SocialConnection $connection, string $uuid): array
     {
+        // Retirement is switched on by hand once MA is connected (services.workiz.retire_deleted).
+        config(['services.workiz.retire_deleted' => true]);
+
         return $this->inTenant($tenant['org'], function () use ($tenant, $connection, $uuid) {
             $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
             $job = Job::create([
@@ -509,6 +512,32 @@ class SyncWorkizJobsTest extends TestCase
             $this->assertNull(WorkizJob::query()->find($row->id), 'the board and the openings read this table');
             $this->assertTrue(Job::withTrashed()->find($job->id)->trashed());
             $this->assertSame('deleted', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
+        });
+    }
+
+    /**
+     * Off by default. The 43 Boston North jobs staff moved into MA's account
+     * still hold Massachusetts' seats until MA's own jobs arrive, so nothing is
+     * retired until the switch is turned on (desk, 2026-10-05).
+     */
+    public function test_nothing_is_retired_while_the_switch_is_off(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->assertFalse(config('services.workiz.retire_deleted'), 'shipped off');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        config(['services.workiz.retire_deleted' => false]);
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            $this->assertNotNull(WorkizJob::query()->find($row->id), 'still holding its seat');
+            $this->assertFalse(Job::withTrashed()->find($job->id)->trashed());
         });
     }
 
