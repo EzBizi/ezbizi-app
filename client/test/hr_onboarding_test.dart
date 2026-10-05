@@ -951,7 +951,7 @@ void main() {
     await _tap(tester, find.byTooltip('One more'));
     await _tap(tester, find.byKey(const Key('checklist-add-tools')));
     await tester.enterText(find.byKey(const Key('checklist-add-name')), 'Ladder');
-    await _tap(tester, find.widgetWithText(FilledButton, 'Add'));
+    await _tap(tester, find.widgetWithText(TextButton, 'Add'));
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
     final rows = jsonDecode(saved!['answers']['tools'] as String) as List;
