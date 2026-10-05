@@ -525,6 +525,12 @@ class ConnectionsController extends Controller
             'default_flow_id' => $connection->default_flow_id,
             'default_hours_schedule_id' => $connection->default_hours_schedule_id,
             'default_ring_group_id' => $connection->default_ring_group_id,
+
+            // Whether the company's default group would reach anybody, judged
+            // the way a line's answer step is (DialPlan::batches): a group set
+            // but empty, or gone, is nobody. For the Call flow screen's
+            // company boxes (UI/UX queue 51).
+            'default_reaches' => $this->defaultReaches($connection),
             'default_voicemail_box_id' => $connection->default_voicemail_box_id,
             'default_fallback_number' => $connection->default_fallback_number,
             'default_recording_notice' => $connection->default_recording_notice,
@@ -534,5 +540,14 @@ class ConnectionsController extends Controller
             'default_after_hours' => $connection->default_after_hours ?? 'voicemail',
             'default_after_hours_number' => $connection->default_after_hours_number,
         ];
+    }
+
+    private function defaultReaches(PhoneConnection $connection): bool
+    {
+        $group = $connection->default_ring_group_id === null
+            ? null
+            : \App\Models\PhoneRingGroup::query()->find($connection->default_ring_group_id);
+
+        return $group !== null && \App\Support\Phone\DialPlan::batches($group, $connection) !== [];
     }
 }

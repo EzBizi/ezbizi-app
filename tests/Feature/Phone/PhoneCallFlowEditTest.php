@@ -140,6 +140,38 @@ class PhoneCallFlowEditTest extends TestCase
         $this->assertNull($steps['arrival']['from']);
     }
 
+    /**
+     * The company's default group is judged the way a line's answer step is:
+     * a group set but with nobody to ring reaches nobody.
+     */
+    public function test_the_company_default_says_whether_it_reaches_anybody(): void
+    {
+        [$t, $number, , $group] = $this->line();
+        $reader = $this->userWithRole($t, 'Reader', ['phone.view']);
+
+        $this->inTenant($t['org'], function () use ($number, $group) {
+            $number->connection->forceFill(['default_ring_group_id' => $group->id])->save();
+
+            // Somebody in the group is signed in and available.
+            \App\Models\PhonePresence::query()->create([
+                'connection_id' => $number->connection_id,
+                'user_id' => $group->member_user_ids[0],
+                'state' => \App\Models\PhonePresence::STATE_REGISTERED,
+            ]);
+        });
+
+        $reaches = fn () => collect($this->signedInAs($reader)->getJson('/api/v1/phone/connections')
+            ->assertOk()->json('data'))->firstWhere('id', $number->connection_id)['default_reaches'];
+
+        $this->assertTrue($reaches());
+
+        // The control: the same group, emptied.
+        $this->inTenant($t['org'], fn () => $group->forceFill(['member_user_ids' => []])->save());
+        $this->app['auth']->forgetGuards();
+
+        $this->assertFalse($reaches());
+    }
+
     /** The arrival step names the number as people write it. */
     public function test_the_arrival_step_formats_the_number(): void
     {
