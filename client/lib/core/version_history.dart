@@ -14,21 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0362',
-      date: '5 Oct 2026',
-      items: [
-        'Marketing has a new QR Codes tab beside Posts and Accounts. Each code is a card showing the code itself, where it sends people (with Change right on the card, and the printed code stays the same), its scans, and SVG or PNG downloads. Delete is in the card\'s ⋮ menu and asks first, because printed copies stop working. New QR code opens a side panel.',
-        'Monitoring Files: the drive list now opens even when a computer has an empty DVD or card reader drive.',
-        'Settings › Numbers: each line takes less space on a narrow screen (about half the height).',
-        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0361 and 0.0.0360, which reached the web first.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0361',
       date: '5 Oct 2026',
       items: [
         'HR: downloads of imported A1 Tools records now include the Employee record, the pictures and the uploaded PDFs, and the records without a signed contract can be downloaded too.',
         'Password reset emails are retried if the mail server turns one away, and a failed email no longer stops the ones after it from sending until the system restarts. Two reset emails were lost that way on 5 October; if you asked for one and it never came, ask again.',
+        'Marketing has a new QR Codes tab beside Posts and Accounts. Each code is a card showing the code itself, where it sends people (with Change right on the card, and the printed code stays the same), its scans, and SVG or PNG downloads. Delete is in the card\'s ⋮ menu and asks first, because printed copies stop working. New QR code opens a side panel.',
+        'Monitoring Files: the drive list now opens even when a computer has an empty DVD or card reader drive.',
+        'Settings › Numbers: each line takes less space on a narrow screen (about half the height).',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0360, which reached the web first.',
       ],
     ),
     VersionRelease(
