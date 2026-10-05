@@ -681,6 +681,49 @@ void main() {
       expect(find.textContaining('One line is not reaching anybody'), findsOneWidget);
     });
 
+    // Jose, 2026-10-05: "list of phones not in use, deactivated or not
+    // assigned". A tile for each, from the server's last call and holder.
+    testWidgets('lines not in use and not assigned have their own tiles', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'Busy line',
+            'record': false,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+            'last_call_at': DateTime.now().toUtc().toIso8601String(),
+            'assigned_to': 'Ana',
+          },
+          {
+            'id': 'n-2',
+            'e164': '+15612323930',
+            'label': 'Quiet line',
+            'record': false,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+            'last_call_at': null,
+            'assigned_to': null,
+          },
+        ],
+      );
+
+      await openNumbers(tester);
+      expect(find.textContaining('Busy line'), findsWidgets);
+
+      await _tap(tester, find.text('NOT IN USE'));
+      expect(find.textContaining('Quiet line'), findsWidgets);
+      expect(find.textContaining('Busy line'), findsNothing);
+
+      await _tap(tester, find.text('NOT ASSIGNED'));
+      expect(find.textContaining('Quiet line'), findsWidgets);
+      expect(find.textContaining('Busy line'), findsNothing);
+    });
+
     testWidgets('editing a line saves what it rings and how it behaves', (tester) async {
       Map<String, dynamic>? patched;
 

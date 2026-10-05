@@ -64,8 +64,32 @@ class NumbersController extends Controller
 
         $live = $this->linesInUse();
 
-        $rows = $this->access->visibleTo($request->user())
-            ->map(fn (PhoneNumber $number) => $this->row($number, $live))
+        $numbers = $this->access->visibleTo($request->user());
+        $ids = $numbers->pluck('id')->all();
+
+        // WHICH LINES ARE IN USE. Jose, 2026-10-05: "list of phones not in
+        // use, deactivated or not assigned". One grouped query each, not one
+        // per line: the last call on each, and the person holding it.
+        $lastCall = PhoneCall::query()
+            ->whereIn('number_id', $ids)
+            ->groupBy('number_id')
+            ->selectRaw('number_id, MAX(created_at) as last')
+            ->pluck('last', 'number_id');
+        $holders = PhoneExtension::query()
+            ->whereIn('number_id', $ids)
+            ->whereNotNull('user_id')
+            ->with('user:id,name')
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('number_id');
+
+        $rows = $numbers
+            ->map(fn (PhoneNumber $number) => $this->row($number, $live) + [
+                'last_call_at' => isset($lastCall[$number->id])
+                    ? \Illuminate\Support\Carbon::parse($lastCall[$number->id], 'UTC')->toIso8601String()
+                    : null,
+                'assigned_to' => $holders->get($number->id)?->first()?->user?->name,
+            ])
             ->all();
 
         return response()->json(['data' => $rows]);

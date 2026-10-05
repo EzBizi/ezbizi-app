@@ -83,6 +83,8 @@ class _NumbersPaneState extends State<NumbersPane> {
     'answered' => line.answers,
     'silent' => !line.answers,
     'recorded' => line.record,
+    'idle' => line.idle,
+    'unassigned' => line.assignedTo == null,
     _ => true,
   };
 
@@ -528,6 +530,21 @@ class _NumbersPaneState extends State<NumbersPane> {
           label: 'Recorded',
           count: count((l) => l.record),
           note: 'calls kept',
+        ),
+        // Jose, 2026-10-05: "list of phones not in use, deactivated or not
+        // assigned". From the server's last call and extension holder.
+        FilterTile(
+          key: 'idle',
+          label: 'Not in use',
+          count: count((l) => l.idle),
+          note: 'no calls in 30 days',
+          tone: Tone.caution,
+        ),
+        FilterTile(
+          key: 'unassigned',
+          label: 'Not assigned',
+          count: count((l) => l.assignedTo == null),
+          note: 'nobody holds it',
         ),
       ],
     );
@@ -1181,7 +1198,20 @@ class _Line {
     this.fallbackNumber,
     this.recordingNotice,
     this.answerTitle,
+    this.lastCallAt,
+    this.assignedTo,
   });
+
+  /// The last call on this line, either way; null when it has had none.
+  final DateTime? lastCallAt;
+
+  /// The person whose extension holds this line, or null when nobody does.
+  final String? assignedTo;
+
+  /// No call in thirty days, or never.
+  bool get idle =>
+      lastCallAt == null ||
+      DateTime.now().difference(lastCallAt!) > const Duration(days: 30);
 
   final String id;
   final String e164;
@@ -1256,6 +1286,8 @@ class _Line {
         fallbackNumber: row['fallback_number'] as String?,
         recordingNotice: row['recording_notice'] as String?,
         answerTitle: _answerTitle(row['steps']),
+        lastCallAt: DateTime.tryParse(row['last_call_at']?.toString() ?? ''),
+        assignedTo: row['assigned_to'] as String?,
       );
     }).toList(growable: false);
   }
