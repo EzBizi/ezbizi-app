@@ -166,12 +166,28 @@ class DashboardController extends Controller
             $seen = [];
             $layout = [];
 
+            // An entry WITHOUT size or hidden means "unchanged", not "reset":
+            // every build that predates sizes, and the HR tab's chip, save
+            // {key, presentation} on a reorder, and must not undo a size or a
+            // hide made on a newer build. Only a present value replaces it.
+            $stored = [];
+            foreach (is_array($preferences['dashboard.glances'] ?? null) ? $preferences['dashboard.glances'] : [] as $old) {
+                if (is_array($old) && is_string($old['key'] ?? null)) {
+                    $stored[$old['key']] = $old;
+                }
+            }
+
             foreach ($input['glances'] as $entry) {
                 $key = $entry['key'];
                 if (isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
+                foreach (['size', 'hidden'] as $kept) {
+                    if (! array_key_exists($kept, $entry) && array_key_exists($kept, $stored[$key] ?? [])) {
+                        $entry[$kept] = $stored[$key][$kept];
+                    }
+                }
                 $layout[] = $this->storedEntry($entry, $this->registry->find($key, $user));
             }
 

@@ -521,6 +521,31 @@ class FieldTest extends TestCase
         $this->assertSame(['1 of 2 tracked people are reporting now.'], $payload->data['sentences']);
     }
 
+    public function test_the_glance_lists_what_needs_a_manager_only_when_something_does(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40, -75));
+        $glance = fn () => app(\App\Support\Dashboard\Glances\FieldGlance::class)
+            ->resolve($this->manager->fresh(), \App\Support\Dashboard\DashboardPeriod::for($this->manager), [])
+            ->data;
+
+        $this->assertSame([], $glance()['attention']);
+
+        $this->inTenant($this->t['org'], function () {
+            foreach ([FieldAlert::SOS, FieldAlert::STOPPED, FieldAlert::STOPPED, FieldAlert::SIGNAL_LOST] as $kind) {
+                FieldAlert::query()->create(['user_id' => $this->tech->id, 'kind' => $kind]);
+            }
+            // An acknowledged one needs nobody.
+            FieldAlert::query()->create(['user_id' => $this->tech->id, 'kind' => FieldAlert::SOS, 'acknowledged_at' => now()]);
+        });
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 SOS waiting'],
+            ['tone' => 'bad', 'text' => '1 person lost signal'],
+            ['tone' => 'caution', 'text' => '2 people stopped too long'],
+        ], $glance()['attention']);
+    }
+
     public function test_erasing_a_person_drops_their_trail(): void
     {
         $this->mode('always');
