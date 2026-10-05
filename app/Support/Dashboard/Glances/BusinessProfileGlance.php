@@ -89,6 +89,9 @@ final class BusinessProfileGlance extends DescribedGlance
                         GlancePayload::figure('listings', 'listings connected', $total),
                         GlancePayload::figure('not_live', 'not showing', $notLive),
                     ],
+                    ...($notLive === 0 ? [] : ['attention' => [GlancePayload::attention('bad', $notLive === 1
+                        ? '1 listing not showing on Google'
+                        : "{$notLive} listings not showing on Google")]]),
                     // `organization_total` was here and is gone. GlancePayload's
                     // rule: a glance sends what its box draws. Nothing in
                     // client/lib read it, so it was a COUNT(*) on every

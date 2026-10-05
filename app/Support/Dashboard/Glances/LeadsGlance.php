@@ -3,10 +3,12 @@
 namespace App\Support\Dashboard\Glances;
 
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Leads\LeadReplies;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Carbon;
@@ -148,6 +150,27 @@ final class LeadsGlance extends DescribedGlance
             $periodWord = $period->phrase();
             $inPeriod   = array_sum($counts);
 
+            // Customers who spoke last in the past day and can be answered:
+            // the list's red mark (overdue) and those about to get it. A day,
+            // because an enquiry left New for a week is not "waiting" any more.
+            $replies = app(LeadReplies::class);
+            $owed = $inReach(Lead::query())
+                ->where('status', Lead::STATUS_NEW)
+                ->where('last_contact_from', LeadConversation::FROM_CONSUMER)
+                ->where('last_contact_at', '>=', now()->subDay())
+                ->get()
+                ->filter(fn (Lead $lead) => $replies->canReply($lead));
+            $overdue = $owed->filter(fn (Lead $lead) => $lead->replyOverdue(true))->count();
+            $soon = $owed->count() - $overdue;
+            $attention = array_values(array_filter([
+                $overdue === 0 ? null : GlancePayload::attention('bad', $overdue === 1
+                    ? '1 customer waiting over '.Lead::REPLY_OVERDUE_AFTER_MINUTES.' minutes for a reply'
+                    : "{$overdue} customers waiting over ".Lead::REPLY_OVERDUE_AFTER_MINUTES.' minutes for a reply'),
+                $soon === 0 ? null : GlancePayload::attention('caution', $soon === 1
+                    ? '1 customer waiting for a reply'
+                    : "{$soon} customers waiting for a reply"),
+            ]));
+
             /*
              * The "yet" in "not yet dealt with" STAYS, and a sweep that
              * removes the word everywhere would be wrong to take it.
@@ -199,6 +222,7 @@ final class LeadsGlance extends DescribedGlance
                         GlancePayload::figure('arrived', 'arrived '.$periodWord, $inPeriod, $this->arrivedIn($period->previous(), $inReach)),
                         GlancePayload::figure('waiting', 'not yet dealt with', $waiting),
                     ],
+                    ...($attention === [] ? [] : ['attention' => $attention]),
                     // `organization_total` was here and is gone. GlancePayload's
                     // rule: a glance sends what its box draws, and this one was
                     // read by nothing in client/lib - a count on every dashboard

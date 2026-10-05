@@ -5,6 +5,7 @@ namespace Tests\Feature\Dashboard;
 use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
@@ -438,6 +439,27 @@ class LeadsGlanceTest extends TestCase
             ['key' => 'arrived', 'label' => 'arrived today', 'value' => 3, 'previous' => 1],
             ['key' => 'waiting', 'label' => 'not yet dealt with', 'value' => 4, 'previous' => null],
         ], $data['figures']);
+    }
+
+    /** Customers who spoke last and can be answered: red once overdue, amber before. */
+    public function test_waiting_customers_are_the_attention_rows(): void
+    {
+        $said = fn (Lead $lead, string $type, int $minutesAgo) => $this->inTenant(fn () => $lead->forceFill([
+            'lead_type' => $type,
+            'last_contact_from' => LeadConversation::FROM_CONSUMER,
+            'last_contact_at' => now()->subMinutes($minutesAgo),
+        ])->save());
+
+        $said($this->lead(null), 'MESSAGE', 30);
+        $said($this->lead(null), 'MESSAGE', 40);
+        $said($this->lead(null), 'MESSAGE', 2);
+        $said($this->lead(null), 'PHONE_CALL', 30);          // a call has no reply box
+        $said($this->lead(null), 'MESSAGE', 60 * 30);        // left for over a day
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '2 customers waiting over 10 minutes for a reply'],
+            ['tone' => 'caution', 'text' => '1 customer waiting for a reply'],
+        ], $this->glance($this->alpha['admin'])['attention']);
     }
 
     public function test_a_specimen_beside_real_enquiries_is_left_out_of_every_count(): void

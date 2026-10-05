@@ -96,6 +96,9 @@ final class A1LeadsGbpGlance extends DescribedGlance
                     GlancePayload::figure('new', 'new '.$period->phrase(), $total, $before['new']),
                     GlancePayload::figure('low', '1 to 3 stars', $low, $before['low']),
                 ],
+                ...($low === 0 ? [] : ['attention' => [GlancePayload::attention('caution', $low === 1
+                    ? '1 new review of 1 to 3 stars'
+                    : "{$low} new reviews of 1 to 3 stars")]]),
             ]);
         });
     }
