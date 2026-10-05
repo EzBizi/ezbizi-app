@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT** `5eb65079` (`docs/previews/customers-memberships-layouts.html`)
+### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT, held off main** (`5eb65079`, reverted `f403b70a`; lands with `session/memberships`) (`docs/previews/customers-memberships-layouts.html`)
 
 From the Membership Program session (`local_9b8c5aa9…`), backend on `session/memberships` @ `19240797`, spec
 `docs/superpowers/specs/2026-10-05-memberships-design.md`. Jose, 2026-10-05, on Members: *"customer list, enrollment
@@ -2979,6 +2979,11 @@ switches its placeholders to them (the edit is in its working copy). On a narrow
 row, not the table stacked into bare values (the "Yes Yes" lesson). Amounts are left-aligned: right-aligned
 ones ran into the next column. Waiting on the Membership session: the shell landing on main, and
 `GET /memberships?customer_id=` returning every year, for the member's "Every year".
+
+**Reverted from main by the desk (`f403b70a`), rightly:** `tests/Feature/ClientCallsRealRoutesTest` reads every
+api path in `client/lib`, and the seven `/memberships` routes were only on `session/memberships` (and uncommitted
+in the shared tree, which is why my runs passed). "Nothing reaches it yet" is not that guard's question. The four
+files sit untracked in the shared tree and land in the same commit or merge as the routes.
 
 ### 51 · Communication · Settings: General and Call flow, drawn together — **Jose: "go with ur recommendaitonms as usual" — 1 and 4** — **BUILT** `3de48638` + `3b13b750` (`docs/previews/communication-call-flow-layouts.html`)
 
