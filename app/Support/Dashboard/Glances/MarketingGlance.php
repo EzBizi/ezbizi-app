@@ -79,8 +79,16 @@ final class MarketingGlance extends DescribedGlance
              * deliberately so: a box that counted posts the tab will not show
              * is a box nobody can reconcile.
              */
-            $visible = SocialConnection::query()->get()
-                ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            $connections = SocialConnection::query()->get()
+                ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c));
+
+            $visible = $connections->map(fn (SocialConnection $c) => $c->getKey())->values()->all();
+
+            // Broken (a refresh failed) and revoked (the owner removed the app
+            // on the network) both mean nothing posts there until somebody
+            // reconnects it.
+            $disconnected = $connections
+                ->filter(fn (SocialConnection $c) => $c->status !== SocialConnection::STATUS_CONNECTED)
                 ->map(fn (SocialConnection $c) => $c->getKey())
                 ->values()
                 ->all();
@@ -205,6 +213,26 @@ final class MarketingGlance extends DescribedGlance
 
             $previous = $period->previous();
 
+            /*
+             * Rows that need somebody, most broken first: a failure already
+             * happened, a disconnected account will fail every post sent to
+             * it, and a post still waiting on one is the failure about to be.
+             */
+            $stranded = $disconnected === [] ? 0 : (int) $this->inReach($disconnected)
+                ->whereIn('status', [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_QUEUED])
+                ->count();
+            $broken = count($disconnected);
+
+            $attention = array_values(array_filter([
+                $failed === 0 ? null : GlancePayload::attention('bad', $sentences[0]),
+                $broken === 0 ? null : GlancePayload::attention('bad', $broken === 1
+                    ? '1 account needs reconnecting.'
+                    : "{$broken} accounts need reconnecting."),
+                $stranded === 0 ? null : GlancePayload::attention('caution', $stranded === 1
+                    ? '1 waiting post is on an account that needs reconnecting.'
+                    : "{$stranded} waiting posts are on accounts that need reconnecting."),
+            ]));
+
             return $this->payload([
                 'empty' => false,
                 'series' => [['label' => 'Published', 'points' => $points]],
@@ -228,6 +256,7 @@ final class MarketingGlance extends DescribedGlance
                     ),
                     GlancePayload::figure('waiting', 'waiting', $waiting),
                 ],
+                ...($attention === [] ? [] : ['attention' => $attention]),
             ]);
         });
     }
