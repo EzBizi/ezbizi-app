@@ -94,9 +94,56 @@ final class InspectionGlance extends DescribedGlance
                         GlancePayload::figure('submitted', 'submitted '.$periodWord, $submittedThisPeriod, $this->submittedIn($period->previous(), $reachable)),
                         GlancePayload::figure('archived', 'archived', $archived),
                     ],
-                ],
+                ] + $this->attention($runs),
             );
         });
+    }
+
+    /**
+     * Started inspections nobody has come back to — the one thing in this box
+     * that needs a person.
+     *
+     * A draft is the only record here that can go stale: a filed report is
+     * finished, and an archived one was put away on purpose. A draft left
+     * untouched is either a job somebody forgot to finish on site or an
+     * inspection that was started against the wrong client, and either way it
+     * sits in the technician's list until somebody acts.
+     *
+     * `updated_at` is the last save — answering a question saves the run — so
+     * "untouched" means nobody has answered anything since. Three days is
+     * caution (a weekend, a follow-up visit); a week is bad.
+     *
+     * Absent rather than an empty list when nothing is stale, so the box only
+     * carries attention when there is something to act on.
+     *
+     * @param  Collection<int, InspectionRun>  $runs
+     * @return array{attention?: list<array{tone: string, text: string}>}
+     */
+    private function attention(Collection $runs): array
+    {
+        $week = now()->subDays(7);
+        $threeDays = now()->subDays(3);
+
+        $overdue = $runs->filter(fn (InspectionRun $r) => $r->updated_at !== null && $r->updated_at->lt($week))->count();
+        $slipping = $runs->filter(fn (InspectionRun $r) => $r->updated_at !== null
+            && $r->updated_at->lt($threeDays)
+            && $r->updated_at->gte($week))->count();
+
+        $rows = [];
+
+        if ($overdue > 0) {
+            $rows[] = GlancePayload::attention('bad', $overdue === 1
+                ? '1 inspection started over a week ago and not submitted.'
+                : "{$overdue} inspections started over a week ago and not submitted.");
+        }
+
+        if ($slipping > 0) {
+            $rows[] = GlancePayload::attention('caution', $slipping === 1
+                ? '1 inspection not touched in 3 days.'
+                : "{$slipping} inspections not touched in 3 days.");
+        }
+
+        return $rows === [] ? [] : ['attention' => $rows];
     }
 
     /**

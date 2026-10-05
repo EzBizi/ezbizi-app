@@ -249,6 +249,47 @@ class InspectionGlanceTest extends TestCase
         ], $figures);
     }
 
+    /**
+     * Attention is untouched drafts: a week is bad, three days is caution, and
+     * a run saved yesterday is neither. Each run is created at its own clock so
+     * `updated_at` is the age being judged; the boundary days (exactly 3 and 7)
+     * sit on the side the comparisons put them.
+     */
+    public function test_attention_names_drafts_nobody_came_back_to(): void
+    {
+        $now = Carbon::parse('2026-09-20 12:00:00', 'UTC');
+
+        foreach (['2026-09-19', '2026-09-16', '2026-09-13 13:00:00', '2026-09-10', '2026-09-01'] as $at) {
+            Carbon::setTestNow(Carbon::parse($at, 'UTC'));
+            $this->runOn($this->alpha['franchise']);
+        }
+
+        Carbon::setTestNow($now);
+
+        $data = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '2 inspections started over a week ago and not submitted.'],
+            ['tone' => 'caution', 'text' => '2 inspections not touched in 3 days.'],
+        ], $data['attention'] ?? null);
+    }
+
+    /** Fresh drafts and filed reports need nobody: the key is absent, not empty. */
+    public function test_nothing_stale_carries_no_attention(): void
+    {
+        $this->runOn($this->alpha['franchise']);
+        $this->reportOn($this->alpha['franchise'], now()->subMonths(2));
+
+        $data = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertFalse($data['empty']);
+        $this->assertArrayNotHasKey('attention', $data);
+    }
+
     public function test_submitted_this_period_uses_the_period(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'UTC'));
