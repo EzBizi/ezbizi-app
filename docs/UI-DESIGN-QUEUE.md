@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **out for decision** (`docs/previews/dashboard-sizes-layouts.html`)
+### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **Jose: "go ahead with ur recommendations" — 1 and 4** — building (`docs/previews/dashboard-sizes-layouts.html`)
 
 Jose, 2026-10-05, with Workiz's dashboard beside ours: *"it would be nice to be able to not only move around stuff but
 change the widget sizes between different available sizes, obviously smaller ones would show less information"*.
@@ -2974,6 +2974,12 @@ a tile row plus two lanes, sizes from each widget's ⋮ menu. Phone **4** two co
 Jose's 2026-09-29 rule (Workiz's sales tiles become counts); asked whether that changed. Needs from the Dashboard
 module: `figures` with the previous period's value, `series`, the breakdown, `attention` rows, and `size` beside
 `presentation` in `PUT /dashboard/layout`; option 2 also each widget's grid place.
+
+**Money, Jose 2026-10-05:** *"as for the money remember its a role y permission things where ( can see financials )
+should be toggled"* — replaces the 2026-09-29 rule. A box carries money only for a person whose role holds that
+module's `financials`; for anyone else the server sends no amount at all. Proposed to the Dashboard module: money
+only as a figure with `currency` (value and previous in minor units), never inside a sentence, so the guard can
+check for the key. Pick and both messages sent to the Dashboard module 2026-10-05.
 
 ### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **Jose: "go with ur recommendations" — 1 and 4** (`docs/previews/scheduling-locations-layouts.html`)
 
@@ -3033,7 +3039,7 @@ screen (recommended), **5** from PC Specs, **6** shortcuts first. Needs a `files
 and `roots` on Remote Control's cache-queue shape, a two-step download, `monitoring.files.view` and
 `.download` grants, and the same Lead Developer exemption Screen Monitoring has (told Monitoring).
 
-### 45 · Dashboard · the main dashboard and its boxes — **out for decision** (`docs/previews/dashboard-layouts.html`)
+### 45 · Dashboard · the main dashboard and its boxes — **superseded by 50, never picked** (`docs/previews/dashboard-layouts.html`)
 
 Jose, 2026-10-01, with a screenshot: *"i also feel like the dashboard and it's widgets are a bit stale and may need
 some improvements, i also want the default to be Day ( as in today ) instead of Week"* (Day built, `b3e69240`).
