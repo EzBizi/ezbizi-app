@@ -290,18 +290,27 @@ class A1ToolsPeopleImportTest extends TestCase
         $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
     }
 
-    /** Imported with no signed contract: nothing to download, said so. */
-    public function test_an_imported_record_without_a_contract_has_no_download(): void
+    /**
+     * Imported with no signed contract: the download is the record on its
+     * own (Jose, 2026-10-05: "convert all the a1 tools imported ones ...
+     * that includes everything").
+     */
+    public function test_an_imported_record_without_a_contract_downloads_the_record(): void
     {
-        $this->bundle([$this->newPerson()], []);
+        $this->bundle([$this->newPerson(['onboarding' => [
+            'submitted_at' => '2026-08-01T15:20:00Z', 'answers' => ['ssn' => '123456789'], 'documents' => [],
+        ]])], []);
         $this->assertSame(0, $this->import());
 
         $jon = $this->jon();
         $id = $this->inTenant($this->t['org'], fn () => Onboarding::query()->where('user_id', $jon->id)->sole()->id);
 
+        \Illuminate\Support\Facades\Process::fake();
         $this->signedInAs($this->t['admin']);
-        $this->getJson("/api/v1/hr/onboardings/{$id}")->assertOk()->assertJsonPath('data.downloadable', false);
-        $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertNotFound();
+        $this->getJson("/api/v1/hr/onboardings/{$id}")->assertOk()->assertJsonPath('data.downloadable', true);
+        $pdf = $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertOk()->getContent();
+        $this->assertStringStartsWith('%PDF', $pdf);
+        \Illuminate\Support\Facades\Process::assertNothingRan();
     }
 
     /** The version marks the SSN sensitive, so the screen masks it and a reveal is audited. */
