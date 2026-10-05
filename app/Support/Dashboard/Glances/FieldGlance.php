@@ -41,8 +41,12 @@ final class FieldGlance extends DescribedGlance
 
             $reporting = FieldPresence::query()->whereIn('user_id', $ids)
                 ->where('last_seen_at', '>', now()->subMinutes(30))->count();
-            $open = FieldAlert::query()->whereIn('user_id', $ids)->whereNull('acknowledged_at')->count();
+            $openByKind = FieldAlert::query()->whereIn('user_id', $ids)->whereNull('acknowledged_at')
+                ->selectRaw('kind, COUNT(*) as n')->groupBy('kind')->pluck('n', 'kind');
+            $open = (int) $openByKind->sum();
             $tracked = count($ids);
+            $count = fn (string $kind) => (int) ($openByKind[$kind] ?? 0);
+            $people = fn (int $n) => $n === 1 ? '1 person' : "{$n} people";
 
             return $this->payload([
                 'empty' => false,
@@ -55,6 +59,20 @@ final class FieldGlance extends DescribedGlance
                     GlancePayload::figure('reporting', 'reporting now', $reporting),
                     GlancePayload::figure('alerts', 'alerts waiting', $open),
                 ],
+                // What needs a manager, unacknowledged on the Field dashboard:
+                // an SOS and a silent phone are bad (somebody may be in
+                // trouble), standing still too long is caution.
+                'attention' => array_values(array_filter([
+                    $count(FieldAlert::SOS) > 0
+                        ? GlancePayload::attention('bad', ($count(FieldAlert::SOS) === 1 ? '1 SOS' : $count(FieldAlert::SOS).' SOS alerts').' waiting')
+                        : null,
+                    $count(FieldAlert::SIGNAL_LOST) > 0
+                        ? GlancePayload::attention('bad', $people($count(FieldAlert::SIGNAL_LOST)).' lost signal')
+                        : null,
+                    $count(FieldAlert::STOPPED) > 0
+                        ? GlancePayload::attention('caution', $people($count(FieldAlert::STOPPED)).' stopped too long')
+                        : null,
+                ])),
             ]);
         });
     }
