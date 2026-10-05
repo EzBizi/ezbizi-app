@@ -266,6 +266,7 @@ class ConsentTest extends TestCase
         return $this->as($actor)->postJson("/api/v1/hr/onboardings/{$id}/sign", [
             'field_key' => $field, 'affirmation' => $name,
             'consent' => true, 'document_hash' => $hash,
+            'drawing' => self::SIGNATURE_PNG,
         ])->assertCreated();
     }
 

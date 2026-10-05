@@ -921,6 +921,7 @@ class HrOnboardingDocumentPdfTest extends TestCase
             'field_key'     => $field,
             'affirmation'   => $name,
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertCreated();
     }

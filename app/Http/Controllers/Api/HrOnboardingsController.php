@@ -788,9 +788,11 @@ class HrOnboardingsController extends Controller
                 'account_numbers' => $given('account_numbers'),
             ] + $this->taxIdBoxes($given('ein') !== '' ? $given('ein') : $answer('ein'), $ssn);
 
-        $pdf = TaxForms::render($input['kind'], $values, $drawing, now($zone)->format('m/d/Y'));
+        $date = now($zone)->format('m/d/Y');
 
         if ($preview) {
+            $pdf = TaxForms::render($input['kind'], $values, $drawing, $date);
+
             return response($pdf, Response::HTTP_OK, [
                 'Content-Type' => PdfRenderer::MIME,
                 'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, 'tax-form.pdf'),
@@ -800,8 +802,12 @@ class HrOnboardingsController extends Controller
         }
 
         $label = $input['kind'] === TaxForms::W4 ? 'W-4' : 'W-9';
-        DB::transaction(function () use ($onboarding, $actor, $parties, $pdf, $label, $input) {
-            $file = $this->documents->storeFile($onboarding, $actor, $pdf, "{$label}.pdf", PdfRenderer::MIME);
+        // Kept as the picture of the signed page, A1 Tools' way, so the
+        // contract's PDF prints it with the other documents (Jose,
+        // 2026-10-05: "the w4-w9 signed pdf does not seem attached at all").
+        $png = TaxForms::renderPng($input['kind'], $values, $drawing, $date);
+        DB::transaction(function () use ($onboarding, $actor, $parties, $png, $label, $input) {
+            $file = $this->documents->storeFile($onboarding, $actor, $png, "{$label}.png", 'image/png');
             $this->form->save($onboarding, $actor, $parties, ['tax_form' => $file->getKey()]);
             $this->audit->log('onboarding.tax_form_signed', $onboarding, metadata: ['form' => $input['kind']]);
         });
@@ -939,10 +945,15 @@ class HrOnboardingsController extends Controller
         // stays open for the employee, who signs the finished one.
         $presign = $field->filledBy === FilledBy::EMPLOYER && ! $onboarding->isFrozen();
 
+        // Required (Jose, 2026-10-05: an employer signature reached a signed
+        // contract with no drawing; "each contract needs a proper signature
+        // from both employer and employee"). An app too old to send one is
+        // told to update rather than allowed to sign without.
         $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
-        if (($input['drawing'] ?? null) !== null && $drawing === null) {
-            throw ValidationException::withMessages(['drawing' =>
-                'The drawn signature did not arrive as a PNG image under 400 KB. Draw it again and sign.']);
+        if ($drawing === null) {
+            throw ValidationException::withMessages(['drawing' => ($input['drawing'] ?? null) === null
+                ? 'Draw your signature to sign. If there is nowhere to draw it, update the app.'
+                : 'The drawn signature did not arrive as a PNG image under 400 KB. Draw it again and sign.']);
         }
 
         $signature = DB::transaction(function () use ($onboarding, $actor, $field, $input, $request, $presign, $drawing) {
