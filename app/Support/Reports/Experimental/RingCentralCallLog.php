@@ -360,9 +360,23 @@ final class RingCentralCallLog
         ];
     }
 
+    /**
+     * The access token, kept until a minute before it expires.
+     *
+     * One sign-in per request was fine for one day's report. A month is thirty
+     * day-requests, and RingCentral rate-limits the sign-in itself - measured
+     * 2026-10-06, `ezbizi:warm-call-log --days=31` died on a 429 from
+     * /oauth/token, not from the call log. The token lasts an hour.
+     */
     private function token(): string
     {
         $config = config('experimental_reports.ringcentral');
+        $key = 'ringcentral-token:'.sha1((string) $config['client_id']);
+
+        if (is_string($cached = Cache::get($key))) {
+            return $cached;
+        }
+
         $server = rtrim((string) $config['server'], '/');
 
         $response = Http::asForm()
@@ -378,6 +392,13 @@ final class RingCentralCallLog
             throw new RuntimeException('RingCentral refused the credentials ('.$response->status().').');
         }
 
-        return (string) $response->json('access_token');
+        $token = (string) $response->json('access_token');
+        $lasts = (int) ($response->json('expires_in') ?? 0);
+
+        if ($token !== '' && $lasts > 120) {
+            Cache::put($key, $token, now()->addSeconds($lasts - 60));
+        }
+
+        return $token;
     }
 }

@@ -501,6 +501,20 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(['Trey Brannan', 'Nelly Escobar'], array_column($calls, 'answered_by'));
     }
 
+    /** One sign-in serves every request until it expires: RingCentral rate-limits the sign-in too. */
+    public function test_the_token_is_reused_across_requests(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
+
+        $log = app(RingCentralCallLog::class);
+        $log->forDate('x', 'y');
+        $log->forDate('x', 'y');
+        $log->forDate('x', 'y');
+
+        $signIns = collect(Http::recorded())->filter(fn ($pair) => str_contains($pair[0]->url(), 'oauth/token'));
+        $this->assertCount(1, $signIns);
+    }
+
     /** A rate-limited page is waited for and asked again, not turned into an error. */
     public function test_a_rate_limited_page_is_retried_after_the_wait(): void
     {
