@@ -754,6 +754,22 @@ class SyncWorkizJobsTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->assertFalse(Job::withTrashed()->find($job->id)->trashed()));
     }
 
+    /** The other control: only the verdict the rule changed is judged again; a job kept for somebody's change stays theirs. */
+    public function test_a_job_kept_for_a_change_in_ezbizi_is_not_judged_again(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            app(AuditLogger::class)->log('workiz.job_gone', $job, metadata: ['remote_id' => '09RR7R', 'ezbizi_job' => 'kept: changed in EzBizi']);
+            $row->delete();
+        });
+
+        $this->artisan('ezbizi:workiz-rejudge-gone')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $this->assertFalse(Job::withTrashed()->find($job->id)->trashed()));
+    }
+
     /** v2 answers 500 for one New Jersey job (2026-10-05): it goes to the back of the queue, so it cannot stop the branch's re-reads for ever. */
     public function test_a_job_workiz_cannot_answer_for_is_moved_back_not_asked_again_and_again(): void
     {
