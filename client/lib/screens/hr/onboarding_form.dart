@@ -299,7 +299,6 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// contract designer's `_Question` documents. These are keyed by the field
   /// key, so a question cannot end up wearing another question's text.
   final Map<String, TextEditingController> _boxes = {};
-  final Map<String, TextEditingController> _received = {};
 
   /// Work days and hours set in the panel, or typed as availability (Jose,
   /// 2026-10-05: some technicians "do not have set hours and instead have
@@ -416,9 +415,6 @@ class _OnboardingFormState extends State<OnboardingForm> {
   @override
   void dispose() {
     for (final box in _boxes.values) {
-      box.dispose();
-    }
-    for (final box in _received.values) {
       box.dispose();
     }
     for (final parts in _addresses.values) {
@@ -1761,78 +1757,126 @@ class _OnboardingFormState extends State<OnboardingForm> {
     };
   }
 
+  /// Tools and equipment the way A1 Tools asked the technician (Jose,
+  /// 2026-10-05: "look at how a1tools did it", "less extensive"): tick what
+  /// you received, a quantity appears beside it, and anything not on the list
+  /// can be added. Received is the day it was ticked.
   Widget _checklist(OnboardingQuestion question, {required bool enabled}) {
-    final items = question.field.options;
+    final theme = Theme.of(context);
     final rows = _checklistRows(question);
+    final options = question.field.options;
+    final items = [
+      ...options,
+      for (final item in rows.keys)
+        if (!options.contains(item)) item,
+    ];
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final item in items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          SizedBox(
+            height: 40,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(item)),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 72,
-                      child: TextField(
-                        enabled: enabled,
-                        controller: TextEditingController(
-                          text: rows[item]?['quantity'] ?? '',
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Qty',
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (value) => _setChecklistCell(
-                          question,
-                          item,
-                          'quantity',
-                          value,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                CalendarDayField(
-                  controller: _receivedBox(question, item, rows[item]?['received'] ?? ''),
-                  label: 'Received',
-                  formats: widget.formats,
-                  enabled: enabled,
-                  dense: true,
+                Checkbox(
+                  key: Key('checklist-${question.key}-$item'),
+                  value: rows.containsKey(item),
                   onChanged: enabled
-                      ? (value) => _setChecklistCell(
+                      ? (on) => _setChecklistQuantity(
                           question,
                           item,
-                          'received',
-                          value,
+                          on == true ? 1 : 0,
                         )
                       : null,
                 ),
+                Expanded(child: Text(item, overflow: TextOverflow.ellipsis)),
+                if (rows[item] case final row?) ...[
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'One fewer',
+                    icon: const Icon(Icons.remove, size: 18),
+                    onPressed: enabled
+                        ? () => _setChecklistQuantity(
+                            question,
+                            item,
+                            (_quantityOf(row) - 1).clamp(1, 999),
+                          )
+                        : null,
+                  ),
+                  SizedBox(
+                    width: 28,
+                    child: Text(
+                      '${_quantityOf(row)}',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'One more',
+                    icon: const Icon(Icons.add, size: 18),
+                    onPressed: enabled
+                        ? () => _setChecklistQuantity(
+                            question,
+                            item,
+                            (_quantityOf(row) + 1).clamp(1, 999),
+                          )
+                        : null,
+                  ),
+                ],
               ],
             ),
+          ),
+        if (enabled)
+          TextButton.icon(
+            key: Key('checklist-add-${question.key}'),
+            onPressed: () => _addChecklistItem(question),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add one not listed'),
           ),
       ],
     );
   }
 
-  TextEditingController _receivedBox(
-    OnboardingQuestion question,
-    String item,
-    String starting,
-  ) {
-    return _received.putIfAbsent(
-      '${question.key}::$item',
-      () => TextEditingController(text: starting),
+  int _quantityOf(Map<String, String> row) =>
+      int.tryParse(row['quantity'] ?? '') ?? 1;
+
+  Future<void> _addChecklistItem(OnboardingQuestion question) async {
+    // A String, not a controller: one disposed here is still read by the
+    // dialog's closing animation.
+    var typed = '';
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Add one not listed'),
+        content: TextField(
+          key: const Key('checklist-add-name'),
+          autofocus: true,
+          maxLength: 190,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onChanged: (value) => typed = value,
+          onSubmitted: (value) => Navigator.of(dialog).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialog).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialog).pop(typed),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
     );
+    final item = name?.trim() ?? '';
+    if (item.isEmpty || !mounted) return;
+    _setChecklistQuantity(question, item, 1);
   }
 
+  /// Only received items are stored; the document prints every listed item,
+  /// the unreceived ones blank.
   Map<String, Map<String, String>> _checklistRows(OnboardingQuestion question) {
     final raw = _pending[question.key] ?? question.value;
     if (raw.isEmpty) return {};
@@ -1841,7 +1885,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
       if (decoded is List) {
         return {
           for (final row in decoded.whereType<Map>())
-            if (row['item'] is String)
+            if (row['item'] is String &&
+                ('${row['quantity'] ?? ''}'.isNotEmpty ||
+                    '${row['received'] ?? ''}'.isNotEmpty))
               row['item'] as String: {
                 'quantity': '${row['quantity'] ?? ''}',
                 'received': '${row['received'] ?? ''}',
@@ -1852,28 +1898,32 @@ class _OnboardingFormState extends State<OnboardingForm> {
     return {};
   }
 
-  void _setChecklistCell(
+  /// Zero un-ticks it.
+  void _setChecklistQuantity(
     OnboardingQuestion question,
     String item,
-    String cell,
-    String value,
+    int quantity,
   ) {
-    final rows = {
-      for (final option in question.field.options)
-        option: Map<String, String>.from(
-          _checklistRows(question)[option] ?? {'quantity': '', 'received': ''},
-        ),
-    };
-    rows[item]![cell] = value;
+    final rows = _checklistRows(question);
+    if (quantity <= 0) {
+      rows.remove(item);
+    } else {
+      final now = DateTime.now();
+      final today =
+          '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+      final received = rows[item]?['received'] ?? '';
+      rows[item] = {
+        'quantity': '$quantity',
+        'received': received.isEmpty ? today : received,
+      };
+    }
     _answer(
       question.key,
       jsonEncode([
-        for (final option in question.field.options)
-          {
-            'item': option,
-            'quantity': rows[option]!['quantity'] ?? '',
-            'received': rows[option]!['received'] ?? '',
-          },
+        for (final MapEntry(key: item, value: row) in rows.entries)
+          {'item': item, 'quantity': row['quantity'], 'received': row['received']},
       ]),
     );
   }
