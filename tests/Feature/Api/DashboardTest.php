@@ -298,32 +298,73 @@ class DashboardTest extends TestCase
     // ── money ────────────────────────────────────────────────────
 
     /**
-     * No money on the dashboard, from any glance (Jose, 2026-09-29: "do not
-     * show any financial info on the dashboard widgets, for example
-     * dispatchers may have access to jobs so they would see the widget").
+     * Money follows the role (Jose, 2026-09-29, refined 2026-10-05: "as for
+     * the money remember its a role y permission things where ( can see
+     * financials ) should be toggled"). A reader who holds every glance's
+     * permission and none of the `*.financials` ones gets no amount in the
+     * RESPONSE — not just on screen, since it is readable whatever draws it.
      *
-     * Derived, not enumerated: the administrator holds every permission, so
-     * every registered glance resolves into this one response, and the needle
-     * is searched in the raw body — a glance added next month under a key
-     * nobody has heard of is caught too -- but only on a branch the fixture
-     * reaches: a glance whose money sits behind data this test does not seed
-     * is not covered. Seed it here when a glance grows a reading branch. The client draws no money either, but
-     * the response is readable whatever the client draws, so this is the guard.
+     * Derived, not enumerated: the reader's permissions are every registered
+     * glance's, so a glance added next month is in this response, and the
+     * needles are searched in the raw body under any key. Only a branch the
+     * fixture reaches is covered; seed here when a glance grows money.
      */
-    public function test_no_glance_sends_money_to_the_dashboard(): void
+    public function test_no_glance_sends_money_without_financials(): void
     {
-        $this->earnedStatuses(['completed']);
-        $job = $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $job = $this->seedMoney();
+        $permissions = collect(app(GlanceRegistry::class)->all())
+            ->map(fn (Glance $g) => $g->permission())->unique()->values()->all();
+        $reader = $this->userWithPermissions($permissions, 'no-money@alpha.test');
+        $this->assertFalse($this->inTenant(fn () => $reader->hasPermission('jobs.financials')));
+        $this->assertFalse($this->inTenant(fn () => $reader->hasPermission('inventory.financials')));
 
-        // Control: the money exists and this person may read it elsewhere.
+        // Control: the money exists and somebody may read it elsewhere.
         $this->assertStringContainsString(
             '987654',
             $this->as($this->alpha['admin'])->getJson("/api/v1/jobs/{$job->id}")->assertOk()->getContent(),
         );
 
-        // Stock worth 3 x 43.21 = 129.63. Without it the Inventory box takes its
-        // "No items" branch and never reaches the line that once sent money —
-        // the guard stayed green with stock value put back until this existed.
+        $response = $this->as($reader)->getJson('/api/v1/dashboard')->assertOk();
+        $glances = collect($response->json('glances'));
+        $this->assertSame(1, array_sum(array_column($glances->firstWhere('key', 'jobs')['data']['slices'], 'total')), 'the job is on the dashboard');
+        $this->assertFalse($glances->firstWhere('key', 'inventory')['data']['empty'], 'the stock is on the dashboard');
+
+        $body = $response->getContent();
+        foreach (['987654', '9876.54', '12963', '129.63', '"currency"', 'amount_minor', '"revenue"', 'stock_value'] as $needle) {
+            $this->assertStringNotContainsString($needle, $body);
+        }
+    }
+
+    /** The pair: with the permission the amount arrives — as a figure, and nowhere else. */
+    public function test_a_financials_holder_gets_money_only_as_a_figure(): void
+    {
+        $this->seedMoney();
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        $this->assertContains(
+            ['key' => 'stock_value', 'label' => 'stock value', 'value' => 12963, 'previous' => null, 'currency' => 'USD'],
+            $glances['inventory']['data']['figures'],
+        );
+        foreach ($glances as $key => $glance) {
+            $words = json_encode([
+                $glance['data']['sentences'] ?? [], $glance['data']['sentence'] ?? null,
+                $glance['data']['notes'] ?? [], $glance['data']['attention'] ?? [],
+            ]);
+            $this->assertStringNotContainsString('12963', $words, $key);
+            $this->assertStringNotContainsString('129.63', $words, $key);
+        }
+    }
+
+    /** An earned job worth 9,876.54 and stock worth 3 x 43.21 = 129.63. */
+    private function seedMoney(): Job
+    {
+        $this->earnedStatuses(['completed']);
+        $job = $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+
+        // Without stock the Inventory box takes its "No items" branch and
+        // never reaches its money line: the guard once stayed green with
+        // stock value put back because of exactly that.
         $this->inTenant(function () {
             $item = InventoryItem::factory()->create([
                 'company_id' => $this->alpha['company']->id,
@@ -337,19 +378,7 @@ class DashboardTest extends TestCase
             InventoryBalance::create(['item_id' => $item->id, 'location_id' => $location->id, 'qty_on_hand' => '3.000']);
         });
 
-        $response = $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk();
-        $glances = collect($response->json('glances'));
-        $this->assertSame(1, array_sum(array_column($glances->firstWhere('key', 'jobs')['data']['slices'], 'total')), 'the job is on the dashboard');
-        $this->assertFalse($glances->firstWhere('key', 'inventory')['data']['empty'], 'the stock is on the dashboard');
-
-        $body = $response->getContent();
-        $this->assertStringNotContainsString('987654', $body);
-        $this->assertStringNotContainsString('9876.54', $body);
-        $this->assertStringNotContainsString('12963', $body);
-        $this->assertStringNotContainsString('129.63', $body);
-        $this->assertStringNotContainsString('amount_minor', $body);
-        $this->assertStringNotContainsString('"revenue"', $body);
-        $this->assertStringNotContainsString('"stock_value"', $body);
+        return $job;
     }
 
     // ── catalogue ────────────────────────────────────────────────
@@ -811,7 +840,8 @@ class DashboardTest extends TestCase
 
         foreach ($glances as $key => $glance) {
             foreach ($glance['data']['figures'] ?? [] as $figure) {
-                $this->assertSame(['key', 'label', 'value', 'previous'], array_keys($figure), $key);
+                $this->assertSame(['key', 'label', 'value', 'previous'], array_slice(array_keys($figure), 0, 4), $key);
+                $this->assertTrue(count($figure) === 4 || array_keys($figure)[4] === 'currency', $key);
                 $this->assertIsString($figure['key'], $key);
                 $this->assertNotSame('', trim($figure['label']), $key);
                 $this->assertIsInt($figure['value'], $key);

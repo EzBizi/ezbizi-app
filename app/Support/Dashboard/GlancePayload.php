@@ -91,11 +91,17 @@ final class GlancePayload
      *   attention        [{tone: caution|bad, text}], at most 3: what needs
      *                    somebody. Build with self::attention().
      *
-     * NO MONEY, under any key (Jose, 2026-09-29: "do not show any financial
-     * info on the dashboard widgets" — a dispatcher who can open Jobs sees
-     * the Jobs box). The client draws none, and
-     * `DashboardTest::test_no_glance_sends_money_to_the_dashboard` fails if
-     * any glance sends an amount. Money belongs in its module's tab, gated.
+     * MONEY ONLY BEHIND `<module>.financials`, and only as a figure built
+     * with self::money() — never in a sentence, a note or an attention row.
+     * Jose, 2026-09-29: "do not show any financial info on the dashboard
+     * widgets" (a dispatcher who can open Jobs sees the Jobs box); refined
+     * 2026-10-05: "as for the money remember its a role y permission things
+     * where ( can see financials ) should be toggled" (UI queue 50). So a
+     * reader without the permission gets no amount in the RESPONSE, not just
+     * on screen — the response is readable whatever the client draws.
+     * `DashboardTest::test_no_glance_sends_money_without_financials` checks
+     * the raw body for every glance; its pair checks the figure arrives with
+     * the permission.
      *
      * ── DECIDED 2026-09-15: do not send what nothing draws ──────────
      *
@@ -161,6 +167,18 @@ final class GlancePayload
     public static function figure(string $key, string $label, int $value, ?int $previous = null): array
     {
         return ['key' => $key, 'label' => $label, 'value' => $value, 'previous' => $previous];
+    }
+
+    /**
+     * A money figure: `value` and `previous` in minor units of `currency`.
+     * Send it ONLY when the reader holds the module's `financials`
+     * permission, and one per currency — never a sum across currencies.
+     *
+     * @return array{key: string, label: string, value: int, previous: int|null, currency: string}
+     */
+    public static function money(string $key, string $label, int $minor, ?int $previousMinor, string $currency): array
+    {
+        return self::figure($key, $label, $minor, $previousMinor) + ['currency' => $currency];
     }
 
     /**

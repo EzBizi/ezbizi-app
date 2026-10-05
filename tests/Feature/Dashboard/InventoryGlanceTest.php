@@ -234,6 +234,9 @@ class InventoryGlanceTest extends TestCase
             ['key' => 'items', 'label' => 'items listed', 'value' => 4, 'previous' => null],
             ['key' => 'low', 'label' => 'low', 'value' => 1, 'previous' => null],
             ['key' => 'out', 'label' => 'out of stock', 'value' => 2, 'previous' => null],
+            // The administrator holds inventory.financials, so the money
+            // figure follows the counts (test_stock_value_is_a_figure_only_with_financials).
+            ['key' => 'stock_value', 'label' => 'stock value', 'value' => 2500, 'previous' => null, 'currency' => 'USD'],
         ], $payload['data']['figures']);
     }
 
@@ -307,11 +310,11 @@ class InventoryGlanceTest extends TestCase
     }
 
     /**
-     * No stock value, even with inventory.financials (Jose, 2026-09-29: no
-     * financial information on the dashboard). The figure is still computed
-     * for the Inventory tab — InventorySummaryTest pins it there.
+     * Stock value follows inventory.financials (Jose, 2026-10-05: money is
+     * the role's "can see financials"): a figure for a reader who holds it,
+     * nothing at all in the payload for one who does not.
      */
-    public function test_no_stock_value_even_with_financials(): void
+    public function test_stock_value_is_a_figure_only_with_financials(): void
     {
         $location = $this->taggedLocation($this->alpha['franchise']);
         $item = $this->taggedItem($this->alpha['franchise'], [
@@ -319,18 +322,19 @@ class InventoryGlanceTest extends TestCase
         ]);
         $this->setOnHand($item, $location, 2);
 
-        $money = $this->userWithPermissions(
-            ['inventory.view', 'inventory.financials'],
-            'money@alpha.test',
+        $money = $this->userWithPermissions(['inventory.view', 'inventory.financials'], 'money@alpha.test');
+        $viewer = $this->userWithPermissions(['inventory.view'], 'viewer@alpha.test');
+
+        $with = app(InventoryGlance::class)->resolve($money, DashboardPeriod::for($money), [])->toArray();
+        $this->assertSame(
+            ['key' => 'stock_value', 'label' => 'stock value', 'value' => 500, 'previous' => null, 'currency' => 'USD'],
+            end($with['data']['figures']),
         );
 
-        $payload = app(InventoryGlance::class)->resolve(
-            $money, DashboardPeriod::for($money), []
-        )->toArray();
-
-        $this->assertSame(1, $payload['data']['slices'][0]['total']);
-        $json = json_encode($payload);
-        $this->assertStringNotContainsString('amount_minor', $json);
+        $without = app(InventoryGlance::class)->resolve($viewer, DashboardPeriod::for($viewer), [])->toArray();
+        $this->assertSame(1, $without['data']['slices'][0]['total'], 'the stock is in this box');
+        $json = json_encode($without);
+        $this->assertStringNotContainsString('currency', $json);
         $this->assertStringNotContainsString('500', $json);
         $this->assertStringNotContainsString('USD', $json);
     }

@@ -14,8 +14,8 @@ use App\Support\Tenancy\TenantContext;
  * Inventory box: stock-health pie plus reach / open-PO sentences (snapshot).
  *
  * Active items only on the pie. Items, locations, and open POs stay sentences
- * so the board does not grow a line when the first PO is cut. No stock value:
- * the dashboard carries no financial information (Jose, 2026-09-29).
+ * so the board does not grow a line when the first PO is cut. And
+ * stock value only for a reader with inventory.financials (Jose, 2026-10-05).
  */
 final class InventoryGlance extends DescribedGlance
 {
@@ -92,10 +92,14 @@ final class InventoryGlance extends DescribedGlance
                 $data['attention'] = $attention;
             }
 
-            // No stock value here, even with inventory.financials — Jose ruled on
-            // 2026-09-29 that the dashboard shows no financial information at
-            // all. The figure still lives on the Inventory tab, behind that
-            // permission, where somebody went looking for it.
+            // Stock value only for a reader who holds inventory.financials
+            // (Jose, 2026-10-05: money follows the role's "can see
+            // financials"). Last, so it is never the headline a Small box
+            // shows to a room. USD, as the Inventory tab reports it. A
+            // snapshot: no previous.
+            if ($user->hasPermission('inventory.financials')) {
+                $data['figures'][] = GlancePayload::money('stock_value', 'stock value', $counts['stock_value_minor'], null, 'USD');
+            }
 
             return new GlancePayload(
                 key: $this->key(),
