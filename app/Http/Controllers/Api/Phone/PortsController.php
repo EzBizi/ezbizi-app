@@ -60,6 +60,25 @@ class PortsController extends Controller
             'e164s.*' => ['required', 'string', 'max:16'],
             'documents' => ['sometimes', 'array'],
             'losing_carrier' => ['sometimes', 'array'],
+
+            // What the losing carrier has on file (Jose, 2026-10-05: port in
+            // "showing pin codes and verification"). Twilio's own fields.
+            'losing_carrier.customer_type' => ['required_with:losing_carrier', 'in:Individual,Business'],
+            'losing_carrier.customer_name' => ['required_with:losing_carrier', 'string', 'max:191'],
+            'losing_carrier.account_number' => ['nullable', 'string', 'max:64'],
+            'losing_carrier.account_telephone_number' => ['nullable', 'string', 'max:20'],
+            'losing_carrier.authorized_representative' => ['required_with:losing_carrier', 'string', 'max:191'],
+            'losing_carrier.authorized_representative_email' => ['required_with:losing_carrier', 'email', 'max:191'],
+            'losing_carrier.address' => ['sometimes', 'array'],
+            'losing_carrier.address.street' => ['required_with:losing_carrier.address', 'string', 'max:191'],
+            'losing_carrier.address.street_2' => ['nullable', 'string', 'max:191'],
+            'losing_carrier.address.city' => ['required_with:losing_carrier.address', 'string', 'max:96'],
+            'losing_carrier.address.state' => ['required_with:losing_carrier.address', 'string', 'max:64'],
+            'losing_carrier.address.zip' => ['required_with:losing_carrier.address', 'string', 'max:16'],
+            'losing_carrier.address.country' => ['nullable', 'string', 'max:64'],
+
+            // Required by US mobile carriers, for every number in the port.
+            'pin' => ['nullable', 'string', 'max:20'],
             'notification_emails' => ['sometimes', 'array'],
         ]);
 
@@ -72,6 +91,7 @@ class PortsController extends Controller
         $params = array_filter([
             'documents' => $input['documents'] ?? null,
             'losing_carrier' => $input['losing_carrier'] ?? null,
+            'pin' => $input['pin'] ?? null,
             'notification_emails' => $input['notification_emails'] ?? null,
         ], fn ($v) => $v !== null);
 
@@ -82,6 +102,9 @@ class PortsController extends Controller
             'e164s' => $e164s,
             'twilio_sid' => $started['sid'],
             'status' => $started['status'],
+            'carrier' => ($input['losing_carrier'] ?? null) === null && ($input['pin'] ?? null) === null
+                ? null
+                : ['losing_carrier' => $input['losing_carrier'] ?? null, 'pin' => $input['pin'] ?? null],
         ]);
 
         return response()->json(['data' => $this->row($row)], Response::HTTP_CREATED);
@@ -98,6 +121,10 @@ class PortsController extends Controller
             'status' => $row->status,
             'status_reason' => $row->status_reason,
             'created_at' => $row->created_at?->toIso8601String(),
+
+            // What the losing carrier was told, PIN included: this list is
+            // behind the Settings tab, and phone.edit is what starts a port.
+            'carrier' => $row->carrier,
 
             // Said by the server rather than worked out on screen, because
             // the same list is read by the web client and the phone app and a

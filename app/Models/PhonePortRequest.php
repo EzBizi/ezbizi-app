@@ -33,13 +33,17 @@ class PhonePortRequest extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'connection_id', 'e164s',
-        'twilio_sid', 'status', 'status_reason',
+        'twilio_sid', 'status', 'status_reason', 'carrier',
     ];
 
     protected function casts(): array
     {
         return [
             'e164s' => 'array',
+
+            // The losing carrier's details and the port PIN, encrypted at
+            // rest: the account number and PIN are what move a number.
+            'carrier' => 'encrypted:array',
         ];
     }
 

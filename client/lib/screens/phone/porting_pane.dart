@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -52,6 +53,36 @@ class _PortingPaneState extends State<PortingPane> {
 
   final _numbers = TextEditingController();
 
+  // THE LOSING CARRIER'S ACCOUNT. Jose, 2026-10-05: port in "showing pin
+  // codes and verification as well". Twilio sends the letter of
+  // authorization from these to the person named, who signs it.
+  String _customerType = 'Business';
+  final _customerName = TextEditingController();
+  final _accountNumber = TextEditingController();
+  final _accountPhone = TextEditingController();
+  final _pin = TextEditingController();
+  final _representative = TextEditingController();
+  final _representativeEmail = TextEditingController();
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
+  final _postal = TextEditingController();
+
+  List<TextEditingController> get _carrierFields => [
+    _customerName,
+    _accountNumber,
+    _accountPhone,
+    _pin,
+    _representative,
+    _representativeEmail,
+    _line1,
+    _line2,
+    _city,
+    _state,
+    _postal,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +92,9 @@ class _PortingPaneState extends State<PortingPane> {
   @override
   void dispose() {
     _numbers.dispose();
+    for (final c in _carrierFields) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -105,6 +139,24 @@ class _PortingPaneState extends State<PortingPane> {
       return;
     }
 
+    String text(TextEditingController c) => c.text.trim();
+    if ([
+      _customerName,
+      _representative,
+      _representativeEmail,
+      _line1,
+      _city,
+      _state,
+      _postal,
+    ].any((c) => text(c).isEmpty)) {
+      setState(
+        () => _error =
+            'Fill in the account name, who signs, their email and the '
+            'service address as the current carrier has them.',
+      );
+      return;
+    }
+
     setState(() {
       _starting = true;
       _error = null;
@@ -113,6 +165,25 @@ class _PortingPaneState extends State<PortingPane> {
     final response = await widget.api.post('/phone/ports', {
       'connection_id': connectionId,
       'e164s': numbers,
+      'losing_carrier': {
+        'customer_type': _customerType,
+        'customer_name': text(_customerName),
+        if (text(_accountNumber).isNotEmpty)
+          'account_number': text(_accountNumber),
+        if (text(_accountPhone).isNotEmpty)
+          'account_telephone_number': text(_accountPhone),
+        'authorized_representative': text(_representative),
+        'authorized_representative_email': text(_representativeEmail),
+        'address': {
+          'street': text(_line1),
+          if (text(_line2).isNotEmpty) 'street_2': text(_line2),
+          'city': text(_city),
+          'state': text(_state),
+          'zip': text(_postal),
+          'country': 'US',
+        },
+      },
+      if (text(_pin).isNotEmpty) 'pin': text(_pin),
     });
 
     if (!mounted) return;
@@ -126,6 +197,9 @@ class _PortingPaneState extends State<PortingPane> {
     }
 
     _numbers.clear();
+    for (final c in _carrierFields) {
+      c.clear();
+    }
     setState(() {
       _starting = false;
       _open = false;
@@ -252,6 +326,80 @@ class _PortingPaneState extends State<PortingPane> {
             ),
           ),
 
+          const SizedBox(height: 20),
+          Text(
+            'The current carrier’s account',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Exactly as it appears on their bill. Twilio emails the letter of '
+            'authorization to the person below, and nothing moves until they '
+            'sign it.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          SearchPickerField<String>(
+            key: const ValueKey('port-customer-type'),
+            value: _customerType,
+            label: 'Account type',
+            border: const OutlineInputBorder(),
+            options: const [
+              SearchOption(value: 'Business', label: 'Business'),
+              SearchOption(value: 'Individual', label: 'Individual'),
+            ],
+            onChanged: (v) => setState(() => _customerType = v ?? 'Business'),
+          ),
+          for (final (key, controller, label, helper) in [
+            ('port-customer-name', _customerName, 'Name on the account', null),
+            (
+              'port-account-number',
+              _accountNumber,
+              'Account number',
+              'Required for mobile numbers.',
+            ),
+            ('port-account-phone', _accountPhone, 'Account phone number', null),
+            (
+              'port-pin',
+              _pin,
+              'Port PIN',
+              'Required for US mobile numbers. Ask the current carrier for it.',
+            ),
+            (
+              'port-representative',
+              _representative,
+              'Who signs',
+              'The person the carrier has as authorized on the account.',
+            ),
+            (
+              'port-representative-email',
+              _representativeEmail,
+              'Their email',
+              'The letter of authorization is sent here.',
+            ),
+          ]) ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: ValueKey(key),
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: label,
+                helperText: helper,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          AddressFields(
+            api: widget.api,
+            line1: _line1,
+            line2: _line2,
+            city: _city,
+            state: _state,
+            postal: _postal,
+            dense: false,
+          ),
+
           const SizedBox(height: 16),
           Row(
             children: [
@@ -349,7 +497,7 @@ class _PortingPaneState extends State<PortingPane> {
               ),
             ),
             StatusPill(port.statusLabel, tone: port.tone),
-            Text(port.reason.isEmpty ? '—' : port.reason, style: small),
+            Text(port.said, style: small),
             Text(formatListStamp(port.createdAt, '—', formats: formats)),
           ],
       ],
@@ -411,6 +559,9 @@ class _Port {
     required this.reason,
     required this.settled,
     required this.createdAt,
+    this.pin,
+    this.account,
+    this.signer,
   });
 
   final String id;
@@ -419,6 +570,11 @@ class _Port {
   final String reason;
   final bool settled;
   final String? createdAt;
+
+  /// From what we gave the carrier, when the port was started here.
+  final String? pin;
+  final String? account;
+  final String? signer;
 
   /// Which tile it counts under. `waiting_for_signature` is action needed,
   /// not progress: the carrier has emailed a letter of authorization and
@@ -433,6 +589,20 @@ class _Port {
     }
     if (!settled) return 'progress';
     return null;
+  }
+
+  /// What the carrier said, then what we gave them: the PIN and account,
+  /// and who was sent the letter while it waits for a signature.
+  String get said {
+    final parts = [
+      if (reason.isNotEmpty) reason,
+      if (status == 'waiting_for_signature' && signer != null)
+        'Letter of authorization sent to $signer',
+      if (pin != null) 'PIN $pin',
+      if (account != null) 'Account $account',
+    ];
+
+    return parts.isEmpty ? '—' : parts.join(' · ');
   }
 
   String get statusLabel => switch (status) {
@@ -471,6 +641,15 @@ class _Port {
           reason: (row['status_reason'] ?? '').toString(),
           settled: row['settled'] == true,
           createdAt: row['created_at'] as String?,
+          pin: (row['carrier'] as Map?)?['pin'] as String?,
+          account:
+              ((row['carrier'] as Map?)?['losing_carrier']
+                      as Map?)?['account_number']
+                  as String?,
+          signer:
+              ((row['carrier'] as Map?)?['losing_carrier']
+                      as Map?)?['authorized_representative_email']
+                  as String?,
         ),
     ];
   }

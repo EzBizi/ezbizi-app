@@ -131,6 +131,38 @@ void main() {
     expect(find.text('Action needed'), findsOneWidget);
   });
 
+  // Jose, 2026-10-05: port in "showing pin codes and verification". A port
+  // started here says the PIN and account it was given, and who was sent
+  // the letter of authorization while it waits for their signature.
+  testWidgets('a port says its PIN, account and who must sign', (tester) async {
+    await _pump(
+      tester,
+      (api, session) => PortingPane(api: api, session: session),
+      routes: {
+        '/phone/connections': [_conn('pc-1', 'co-1', 'connected')],
+        '/phone/ports': [
+          {
+            ..._port('p-1', '+12035550199', 'waiting_for_signature', settled: false),
+            'carrier': {
+              'pin': '4321',
+              'losing_carrier': {
+                'account_number': '55501234',
+                'authorized_representative_email': 'jose@example.com',
+              },
+            },
+          },
+        ],
+      },
+    );
+
+    expect(find.textContaining('PIN 4321'), findsOneWidget);
+    expect(find.textContaining('Account 55501234'), findsOneWidget);
+    expect(
+      find.textContaining('Letter of authorization sent to jose@example.com'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Ring groups counts who can answer now and filters to it', (
     tester,
   ) async {

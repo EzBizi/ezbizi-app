@@ -695,12 +695,33 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    /**
+     * The losing carrier's details as Twilio's model takes them: the address
+     * has to be its own model object, not an array.
+     *
+     * @return array<string, mixed>
+     */
+    private static function losingCarrier(mixed $carrier): array
+    {
+        if (! is_array($carrier)) {
+            return [];
+        }
+
+        if (is_array($carrier['address'] ?? null)) {
+            $carrier['address'] = \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingAddress($carrier['address']);
+        }
+
+        return $carrier;
+    }
+
     public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array
     {
         $phoneNumbers = array_map(
-            fn (string $e164) => \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreatePhoneNumbers([
+            fn (string $e164) => \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreatePhoneNumbers(array_filter([
                 'phone_number' => $e164,
-            ]),
+                // US mobile carriers require it; one PIN covers the port.
+                'pin' => $params['pin'] ?? null,
+            ])),
             $e164s,
         );
 
@@ -710,7 +731,7 @@ final class HttpTwilioGateway implements TwilioGateway
             'documents' => $params['documents'] ?? [],
             'losing_carrier_information' => $params['losing_carrier_information']
                 ?? \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingLosingCarrierInformation(
-                    is_array($params['losing_carrier'] ?? null) ? $params['losing_carrier'] : [],
+                    self::losingCarrier($params['losing_carrier'] ?? null),
                 ),
         ];
 
