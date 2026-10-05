@@ -104,4 +104,29 @@ class MembershipsWorkizTest extends TestCase
         Http::assertNothingSent();
         $this->assertSame(0, $this->notInWorkiz());
     }
+
+    public function test_a_busy_sync_is_retried_and_only_the_last_try_tells_staff(): void
+    {
+        $this->connectWorkiz();
+        $this->inTenant($this->t['org'], function () {
+            $job = app(\App\Support\Jobs\BookJob::class)(Customer::query()->find($this->membership->customer_id),
+                $this->t['franchise'], 'Visit', CarbonImmutable::today()->addWeeks(4)->toDateString());
+            $this->membership->forceFill(['visit_job_id' => $job->id])->save();
+        });
+
+        $lock = \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 600);
+        $lock->get();
+        Queue::fake();
+
+        try {
+            app()->call([new SendMembershipVisitToWorkiz($this->membership->id), 'handle']);
+            Queue::assertPushed(SendMembershipVisitToWorkiz::class, fn ($j) => $j->attempt === 2);
+            $this->assertSame(0, $this->notInWorkiz());
+
+            app()->call([new SendMembershipVisitToWorkiz($this->membership->id, SendMembershipVisitToWorkiz::BUSY_TRIES), 'handle']);
+            $this->assertSame(1, $this->notInWorkiz());
+        } finally {
+            $lock->release();
+        }
+    }
 }

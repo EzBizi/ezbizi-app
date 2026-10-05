@@ -44,6 +44,9 @@ use InvalidArgumentException;
  */
 final class WorkizJobWriter
 {
+    /** The one refusal that means "nothing happened, try again": a caller may retry it rather than hand it to a person. */
+    public const BUSY = 'The Workiz sync is busy, so nothing was sent to Workiz.';
+
     public function __construct(private WorkizJobs $workiz, private AuditLogger $audit) {}
 
     /**
@@ -155,12 +158,17 @@ final class WorkizJobWriter
             'JobSource' => $jobSource,
         ], fn ($value) => $value !== null && $value !== '');
 
-        $lock = Cache::lock(ProjectWorkizRecords::LOCK, 120);
+        // A queued caller runs under the worker's default 60-second timeout
+        // (production: queue:work with no --timeout, --tries=1), and a job
+        // killed there leaves no refusal for anyone to act on. So the wait plus
+        // Workiz's own 30 seconds stays inside it, and the hold expires soon
+        // after a killed run rather than keeping the projection off.
+        $lock = Cache::lock(ProjectWorkizRecords::LOCK, 60);
 
         try {
-            $lock->block(120);
+            $lock->block(15);
         } catch (LockTimeoutException) {
-            return ['job' => null, 'refused' => 'The Workiz sync is busy, so nothing was sent to Workiz.'];
+            return ['job' => null, 'refused' => self::BUSY];
         }
 
         try {

@@ -33,7 +33,10 @@ final class SendMembershipVisitToWorkiz implements ShouldQueue
      */
     public const JOB_SOURCE = null;
 
-    public function __construct(public readonly string $membershipId) {}
+    /** Tries while Workiz's sync holds the lock, a minute apart, before a person is told. */
+    public const BUSY_TRIES = 5;
+
+    public function __construct(public readonly string $membershipId, public readonly int $attempt = 1) {}
 
     public function handle(TenantContext $tenant, WorkizJobWriter $writer, EventEmitter $events): void
     {
@@ -51,6 +54,14 @@ final class SendMembershipVisitToWorkiz implements ShouldQueue
             }
 
             $refused = $writer->create($job, $membership->plan?->workiz_job_type, self::JOB_SOURCE)['refused'];
+
+            // BUSY alone means nothing happened (the sync held the lock past
+            // create()'s 15 s); a retry is safe, create() twice is once.
+            if ($refused === WorkizJobWriter::BUSY && $this->attempt < self::BUSY_TRIES) {
+                self::dispatch($this->membershipId, $this->attempt + 1)->delay(60);
+
+                return;
+            }
 
             if ($refused !== null) {
                 $events->emit('membership.visit_not_in_workiz', $membership, ['after' => [

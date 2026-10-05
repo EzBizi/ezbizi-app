@@ -186,6 +186,9 @@ class MembershipsController extends Controller
             'id'            => $m->getKey(),
             'customer_id'   => $m->customer_id,
             'customer_name' => $customer?->name,
+            // Jose: "show the phone number as well on members, and email if available".
+            'customer_phone' => Customer::realPhone($customer?->phone),
+            'customer_email' => Customer::realEmail($customer?->email),
             'state'         => $customer?->state,
             'zip'           => $customer?->postal_code,
             'enrollment'    => $m->enrollment,
