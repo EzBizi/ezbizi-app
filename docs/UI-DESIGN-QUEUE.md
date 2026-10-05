@@ -2961,6 +2961,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 51 · Communication · Settings: General and Call flow, drawn together — **out for decision** (`docs/previews/communication-call-flow-layouts.html`)
+
+Jose, 2026-10-05, with screenshots: *"I feel we can also improve this screen on communication - settings - call
+flow"*, then of General: *"Same for this one"*. One gallery because they are one subject: General sets the company's
+answer, Call flow shows each line's result. Today 7 of 8 Call flow cards repeat the same four steps (a Twilio
+sentence and the raw E.164 on each), "Transcribed" / "Recorded" are drawn as buttons that do nothing, and General's
+ring group "Nobody" (the cause of all seven red lines) sits in grey with nothing tying it to them. Call flow chart
+hangs under a second "CONNECT" heading. Desktop **1** one screen: the company's answer once as boxes left to right,
+each changed in place and saved on the spot, the wrong box red with its fix ("Pick who rings" turns seven lines
+on), lines as rows saying only "follows the company" or "its own", a line opening its chart in place; General and
+the chart's entry fold in (recommended). **2** both screens kept but short: General as numbered steps with a Save
+bar, Call flow as one lines-by-steps table with "same". **3** what is wrong first, then the answer as an editable
+sentence, lines in two groups. Phone **4** (recommended) – **6** the same three. Needs from Communication for every
+option: each step's `from: company | line` on `GET /phone/call-flow`. Entry 18's rule holds in all of them: the
+screen shows what the phone system will do (1 and 3 re-read the trace after each save).
+
 ### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **Jose: "go ahead with ur recommendations" — 1 and 4** — building (`docs/previews/dashboard-sizes-layouts.html`)
 
 Jose, 2026-10-05, with Workiz's dashboard beside ours: *"it would be nice to be able to not only move around stuff but

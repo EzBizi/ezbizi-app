@@ -1,0 +1,556 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Communication · General and Call flow</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every line, person, number and the company are invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every line, person, number and the company are invented. */
+.set{flex:1;display:flex;min-height:0}
+.srail{width:178px;flex:0 0 auto;border-right:1px solid var(--line);padding:10px 8px;display:flex;flex-direction:column;gap:3px;background:var(--ground);overflow:hidden}
+.srail .g{font:800 9.5px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:8px 6px 2px}
+.srail .g:first-child{margin-top:0}
+.srail .it{display:flex;align-items:center;gap:7px;height:27px;padding:0 9px;border-radius:var(--r);font-size:11.5px;color:var(--neu);background:var(--paper);border:1px solid var(--line2);white-space:nowrap;overflow:hidden}
+.srail .it.on{background:var(--pric);border-color:var(--edge);color:var(--prid);font-weight:700}
+.srail .it.gone{background:transparent;border:1px dashed #b9c7cd;color:#8a979e;text-decoration:line-through}
+.pane{flex:1;min-width:0;padding:14px 18px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.pt{font-size:15px;font-weight:800}
+.flow{display:flex;align-items:stretch;flex:0 0 auto;min-width:0}
+.stp{flex:1 1 0;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;display:flex;flex-direction:column;gap:3px}
+.stp .k{font:800 9.5px Inter,"Segoe UI",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.stp .v{font-size:13.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp .d{font-size:11px;color:var(--muted);line-height:1.35}
+.stp .chg{margin-top:auto;padding-top:4px;font-size:11px;font-weight:700;color:var(--pri)}
+.stp.bad{background:var(--badc);border-color:#e7b4b4}
+.stp.bad .k,.stp.bad .v,.stp.bad .d{color:var(--bad)}
+.stp.soft{background:transparent;border-style:dashed}
+.arr{width:20px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#8aa0a9;font-size:14px}
+.btn.sm{height:26px;padding:0 10px;font-size:11.5px;margin-top:auto}
+.subrow{display:flex;gap:18px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+.subrow b{color:var(--ink)}
+.subrow a{color:var(--pri);font-weight:700;text-decoration:none}
+.sws{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.swr{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
+.swr b{font-size:12px}
+.swr .tiny{grid-column:1}
+.tg{grid-row:1 / span 2;grid-column:2;width:34px;height:20px;border-radius:999px;background:#c9d4d9;position:relative;flex:0 0 auto}
+.tg::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tg.on{background:var(--pri)}
+.tg.on::after{left:17px}
+.hh{display:flex;align-items:baseline;gap:8px;margin:2px 0 -4px}
+.hh b{font-size:12.5px}
+.ok-t{color:var(--ok);font-weight:700}
+.bad-t{color:var(--bad);font-weight:700}
+.chev{color:#93a3ab;text-align:right}
+.ln2{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+.ln2 b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ln2 i{font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap}
+/* the line's chart, drawn small */
+.canvas{flex:1;min-height:0;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);position:relative;overflow:hidden}
+.nd{position:absolute;background:var(--paper);border:1px solid #b9c7cd;border-radius:var(--r);padding:6px 9px;font-size:11px;line-height:1.3;width:132px}
+.nd b{display:block;font-size:11.5px}
+.nd.bad{background:var(--badc);border-color:#e7b4b4;color:var(--bad)}
+.nd.own{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.wire{position:absolute;height:0;border-top:1.5px solid #9fb2ba}
+.wl{position:absolute;font-size:9.5px;color:var(--muted);background:var(--paper);padding:0 3px}
+/* option 2 */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;flex:1;min-height:0}
+.steps{display:flex;flex-direction:column;gap:0}
+.sr{display:grid;grid-template-columns:26px 120px 250px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)}
+.sr:first-child{border-top:0}
+.sn{width:22px;height:22px;border-radius:50%;background:var(--neuc);color:var(--neu);font:800 11px Inter,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center}
+.sr.bad .sn{background:var(--badc);color:var(--bad)}
+.sr .lb{font-size:12px;font-weight:700}
+.sr .tiny{line-height:1.35}
+.sr.bad .tiny{color:var(--bad)}
+.sr.mute .lb,.sr.mute .srch{color:#8a979e}
+.srch.bad{border-color:#e7b4b4;background:var(--badc);color:var(--bad)}
+.savebar{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:var(--r);padding:7px 10px 7px 14px;font-size:12px;flex:0 0 auto}
+.savebar .btn{border-color:#5b6672;color:#fff;background:transparent}
+.savebar .btn.f{background:#fff;color:var(--ink);border-color:#fff}
+.same{color:#9aa7ae}
+/* option 3 */
+.fix{background:var(--badc);border:1px solid #e7b4b4;border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:12px;color:var(--bad);font-size:12.5px;flex:0 0 auto}
+.fix b{color:var(--bad)}
+.sent{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;font-size:14px;line-height:1.9;flex:0 0 auto}
+.sent u{text-decoration:none;border-bottom:2px dotted var(--pri);color:var(--prid);font-weight:700;padding:0 1px}
+.sent u.bad{border-bottom-color:var(--bad);color:var(--bad)}
+.grp{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;display:flex;flex-direction:column;gap:6px}
+.grp .gh{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.chipline{display:flex;flex-wrap:wrap;gap:6px}
+/* phones */
+.vflow{display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.vs{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px 12px;border-top:1px solid var(--line2);position:relative}
+.vs:first-child{border-top:0}
+.vs .ic2{width:24px;height:24px;border-radius:50%;background:var(--neuc);display:flex;align-items:center;justify-content:center;font-size:12px}
+.vs .g2{min-width:0;line-height:1.25}
+.vs .g2 span{display:block;font:800 9px Inter,"Segoe UI",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.vs .g2 b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vs .g2 i{display:block;font-style:normal;font-size:10.5px;color:var(--muted)}
+.vs.bad{background:var(--badc)}
+.vs.bad .g2 span,.vs.bad .g2 b,.vs.bad .g2 i{color:var(--bad)}
+.vs.bad .ic2{background:#f6d0d0}
+.prow2{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-top:1px solid var(--line2);font-size:12.5px}
+.prow2:first-child{border-top:0}
+.prow2 .tg{grid-row:auto;grid-column:auto}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line2)}
+.lrow:first-child{border-top:0}
+.lrow b{display:block;font-size:12.5px}
+.lrow i{display:block;font-style:normal;font-size:10.5px;color:var(--muted)}
+.ph-l{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:4px 2px -2px}
+</style>
+
+<div class="wrap">
+<h1>Communication · Settings · General and Call flow</h1>
+<p class="sub">Jose, 2026-10-05, on Call flow: <i>"I feel we can also improve this screen on communication - settings - call flow"</i>, and on General: <i>"Same for this one"</i>. They are drawn together because they are one subject: General sets how the company answers a call, and Call flow shows what each line then does.</p>
+
+<div class="now">
+ <div class="nr"><span class="nl">General today</span><span class="muted">Five pickers stretched across the whole screen, three switches and one Save at the bottom. Ring group reads "Nobody — every call goes to voicemail" in grey. Nothing on it says that this one setting is why seven lines ring nobody.</span></div>
+ <div class="nr"><span class="nl">Call flow today</span><span class="muted">One card per line. Seven of eight cards repeat the same four steps word for word, each with a sentence about Twilio and the raw number (+12395550142). "Transcribed" and "Recorded" are drawn like buttons and do nothing. The red "Nobody answers this line" has no button to fix it.</span></div>
+ <div class="nr"><span class="nl">The rail</span><span class="muted">Call flow chart sits under a second "CONNECT" heading at the bottom of the list, away from Call flow.</span></div>
+</div>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>One screen: the company's answer drawn once and changed in place, the lines under it <span class="rec">Recommended</span></h2>
+<p class="cap">General and Call flow become one screen called <b>Call flow</b>. The top is Harbor Chimney's answer, left to right in the order a call meets it. Click a box to choose another value (the same search picker General uses). It saves on the spot, then the boxes re-read what the phone system will actually do, so the screen never shows what you typed in place of what will happen. A wrong box is red and carries its fix: <b>Pick who rings</b> turns all seven lines on at once. Under it, one row per line says only whether that line follows the company or has its own answer. Opening a line shows its chart (today's Call flow chart) with a ← back, so the chart's separate entry goes too. <span class="why">Why: the answer appears once instead of eight times, the change that makes seven lines ring is on the box that is wrong, and Settings loses two entries and the duplicate heading.</span></p>
+<p class="need"><b>Data:</b> one addition from Communication: in <code>GET /phone/call-flow</code>, each step says where its value comes from, <code>from: company | line</code> <span class="new">new</span>, so "follows Harbor Chimney" and "its own" are the server's words, not a guess. The pickers write the same <code>default_*</code> fields General writes today.</p>
+<div class="win" style="height:700px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div></div>
+  <div class="tabs"><span class="tab">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab on">Settings</span></div>
+  <div class="set">
+   <div class="srail">
+    <div class="g">Connect</div><div class="it on">Call flow</div><div class="it gone">General</div><div class="it">Connection</div><div class="it">Numbers</div><div class="it">Porting</div>
+    <div class="g">Answering</div><div class="it">IVR menus</div><div class="it">Hours</div><div class="it">Ring groups</div><div class="it">Voicemail</div><div class="it">Extensions</div><div class="it">Blocked callers</div>
+    <div class="g">Identity</div><div class="it">Trust &amp; caller identity</div>
+    <div class="g">Running it</div><div class="it">Tags</div><div class="it">Cost</div><div class="it">Messaging</div>
+   </div>
+   <div class="pane">
+    <div><div class="pt">Call flow</div><div class="tiny">What happens when somebody rings Harbor Chimney. Every line answers this way unless it has its own answer.</div></div>
+    <div class="flow">
+     <div class="stp"><span class="k">☎ A call comes in</span><b class="v">8 lines</b><span class="d">On any number below.</span></div>
+     <span class="arr">→</span>
+     <div class="stp"><span class="k">🕘 Hours</span><b class="v">Always open</b><span class="d">No schedule, so a call is never treated as closed.</span><span class="chg">Change</span></div>
+     <span class="arr">→</span>
+     <div class="stp"><span class="k">⌨ Menu</span><b class="v">Main menu</b><span class="d">"To book a visit press 1, existing customers press 2…"</span><span class="chg">Change · Edit the menu</span></div>
+     <span class="arr">→</span>
+     <div class="stp bad"><span class="k">⚠ Rings</span><b class="v">Nobody</b><span class="d">7 lines go straight to voicemail.</span><span class="btn f sm">Pick who rings</span></div>
+     <span class="arr">→</span>
+     <div class="stp"><span class="k">✉ Voicemail</span><b class="v">Harbor Mailbox</b><span class="d">Takes a message when nobody answers.</span><span class="chg">Change</span></div>
+    </div>
+    <div class="subrow"><span>Out of hours: <b>Take a voicemail</b>, used once Hours has a schedule</span><span>If nobody picks up, also try: <b>no other number</b> <a>Add one</a></span></div>
+    <div class="sws">
+     <div class="swr"><b>Record calls</b><span class="tg on"></span><span class="tiny">Callers hear the announcement before they connect.</span></div>
+     <div class="swr"><b>Write down calls</b><span class="tg on"></span><span class="tiny">Costs extra per minute.</span></div>
+     <div class="swr"><b>Write down voicemails</b><span class="tg"></span><span class="tiny">Costs extra per message.</span></div>
+    </div>
+    <div class="hh"><b>Lines</b><span class="tiny">8 · 7 ring nobody</span></div>
+    <div class="tbl" style="--g:120px 120px minmax(0,1fr) 210px 14px">
+     <div class="tr hd"><span>Line</span><span>Number</span><span>Answers</span><span>Result</span><span></span></div>
+     <div class="tr"><b>Main</b><span class="num" style="text-align:left">(239) 555-0142</span><span class="muted">Follows Harbor Chimney</span><span class="bad-t">⚠ Rings nobody</span><span class="chev">›</span></div>
+     <div class="tr"><b>Dana</b><span class="num" style="text-align:left">(239) 555-0187</span><span>Its own: rings <b>Existing Clients</b></span><span class="ok-t">✓ Rings Existing Clients</span><span class="chev">›</span></div>
+     <div class="tr"><b>Sam</b><span class="num" style="text-align:left">(325) 555-0123</span><span class="muted">Follows Harbor Chimney</span><span class="bad-t">⚠ Rings nobody</span><span class="chev">›</span></div>
+     <div class="tr"><b>Avery</b><span class="num" style="text-align:left">(469) 555-0168</span><span class="muted">Follows Harbor Chimney</span><span class="bad-t">⚠ Rings nobody</span><span class="chev">›</span></div>
+     <div class="tr"><b>Riley</b><span class="num" style="text-align:left">(786) 555-0110</span><span class="muted">Follows Harbor Chimney</span><span class="bad-t">⚠ Rings nobody</span><span class="chev">›</span></div>
+     <div class="tr"><b>Morgan</b><span class="num" style="text-align:left">(305) 555-0199</span><span class="muted">Follows Harbor Chimney</span><span class="bad-t">⚠ Rings nobody</span><span class="chev">›</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px"><b>A line, opened in place:</b> its chart, as today's Call flow chart draws it, and the one place a line's own answer is set or given back to the company.</p>
+<div class="win" style="height:340px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="pane">
+   <div class="prow"><span class="ib">←</span><div><div class="pt">Dana · (239) 555-0187</div><div class="tiny">Follows Harbor Chimney, except: rings <b class="ink">Existing Clients</b> <a style="color:var(--pri);font-weight:700">Follow the company again</a></div></div></div>
+   <div class="canvas">
+    <div class="nd" style="left:16px;top:70px"><b>Caller</b>(239) 555-0187</div>
+    <div class="wire" style="left:148px;top:92px;width:34px"></div>
+    <div class="nd" style="left:182px;top:70px"><b>Always open</b>Hours</div>
+    <div class="wire" style="left:314px;top:92px;width:34px"></div>
+    <div class="nd" style="left:348px;top:70px"><b>Main menu</b>Plays, waits for a key</div>
+    <div class="wire" style="left:480px;top:82px;width:60px;transform:rotate(-14deg);transform-origin:left"></div><span class="wl" style="left:494px;top:52px">Press 1</span>
+    <div class="wire" style="left:480px;top:100px;width:60px;transform:rotate(14deg);transform-origin:left"></div><span class="wl" style="left:436px;top:126px">Press 2 · No key</span>
+    <div class="nd" style="left:540px;top:28px"><b>Scheduling desk</b>Ring group · 3 people</div>
+    <div class="nd own" style="left:540px;top:112px"><b>Existing Clients</b>This line's own · 4 people</div>
+    <div class="wire" style="left:672px;top:134px;width:34px"></div>
+    <div class="nd" style="left:706px;top:112px"><b>Harbor Mailbox</b>If nobody picks up</div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>Two screens, each made short: General as numbered steps, Call flow as one table</h2>
+<p class="cap">The rail keeps both, with the chart moved up beside Call flow so the second "CONNECT" heading goes. <b>General</b> becomes numbered steps with pickers a third of the width they are now, the wrong step red with the reason beside it, and recording on the right. A Save bar appears only once something changed. <b>Call flow</b> becomes one table: the company's row first, then a row per line, where a line that follows the company reads <span class="same">same</span> and only its own values and its faults are written out. A row opens that line's chart.</p>
+<p class="need"><b>Data:</b> the same <code>from: company | line</code> on each step <span class="new">new</span>, to tell "same" from "its own". Nothing else.</p>
+<div class="win" style="height:560px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div></div>
+  <div class="tabs"><span class="tab">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab on">Settings</span></div>
+  <div class="set">
+   <div class="srail">
+    <div class="g">Connect</div><div class="it on">General</div><div class="it">Call flow</div><div class="it">Call flow chart</div><div class="it">Connection</div><div class="it">Numbers</div><div class="it">Porting</div>
+    <div class="g">Answering</div><div class="it">IVR menus</div><div class="it">Hours</div><div class="it">Ring groups</div><div class="it">Voicemail</div>
+   </div>
+   <div class="pane">
+    <div><div class="pt">General</div><div class="tiny">How Harbor Chimney answers a call, in the order the call meets it. Every line answers this way unless it has its own.</div></div>
+    <div class="cols">
+     <div class="steps">
+      <div class="sr"><span class="sn">1</span><span class="lb">Hours</span><span class="srch pick">Always open <span>⌄</span></span><span class="tiny">No schedule, so a call is never treated as closed.</span></div>
+      <div class="sr"><span class="sn">2</span><span class="lb">Menu</span><span class="srch pick">Main menu <span>⌄</span></span><span class="tiny">Plays first. A key sends the caller on.</span></div>
+      <div class="sr bad"><span class="sn">3</span><span class="lb">Who rings</span><span class="srch pick bad">Nobody <span>⌄</span></span><span class="tiny"><b>7 lines go straight to voicemail</b> because nobody rings.</span></div>
+      <div class="sr"><span class="sn">4</span><span class="lb">Voicemail</span><span class="srch pick" style="border-color:var(--pri)">Harbor Mailbox <span>⌄</span></span><span class="tiny">Takes a message when nobody answers. <b class="ink">Changed, not saved.</b></span></div>
+      <div class="sr"><span class="sn">5</span><span class="lb">Also try</span><span class="srch">Another number, if nobody picks up</span><span class="tiny">Tried once, then voicemail.</span></div>
+      <div class="sr mute"><span class="sn">–</span><span class="lb">Out of hours</span><span class="srch pick">Take a voicemail <span>⌄</span></span><span class="tiny">Used once Hours has a schedule.</span></div>
+     </div>
+     <div class="box" style="gap:8px">
+      <div class="bh"><b>Recording and transcripts</b></div>
+      <div class="swr" style="border:0;padding:0"><b>Record calls</b><span class="tg on"></span><span class="tiny">Callers hear the announcement first.</span></div>
+      <div class="srch" style="height:44px;white-space:normal">This call may be recorded.</div>
+      <div class="swr" style="border:0;padding:0"><b>Write down calls</b><span class="tg on"></span><span class="tiny">Costs extra per minute.</span></div>
+      <div class="swr" style="border:0;padding:0"><b>Write down voicemails</b><span class="tg"></span><span class="tiny">Costs extra per message.</span></div>
+     </div>
+    </div>
+    <div class="savebar"><span>1 change: Voicemail is now <b>Harbor Mailbox</b>.</span><span class="sp"></span><span class="btn">Discard</span><span class="btn f">Save</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px"><b>Call flow</b>, the same company:</p>
+<div class="win" style="height:330px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="pane">
+   <div><div class="pt">Call flow</div><div class="tiny">What each line does with a call. <span class="same">same</span> means it follows Harbor Chimney.</div></div>
+   <div class="tbl" style="--g:170px 110px 140px minmax(0,1fr) 150px 14px">
+    <div class="tr hd"><span>Line</span><span>Hours</span><span>Menu</span><span>Who rings</span><span>Voicemail</span><span></span></div>
+    <div class="tr" style="background:#f7f9fa"><span class="ln2"><b>Harbor Chimney</b><i>every line</i></span><span>Always open</span><span>Main menu</span><span class="bad-t">⚠ Nobody</span><span>Harbor Mailbox</span><span></span></div>
+    <div class="tr"><span class="ln2"><b>Main</b><i>(239) 555-0142</i></span><span class="same">same</span><span class="same">same</span><span class="bad-t">⚠ Nobody</span><span class="same">same</span><span class="chev">›</span></div>
+    <div class="tr"><span class="ln2"><b>Dana</b><i>(239) 555-0187</i></span><span class="same">same</span><span class="same">same</span><span class="ok-t">Existing Clients</span><span class="same">same</span><span class="chev">›</span></div>
+    <div class="tr"><span class="ln2"><b>Sam</b><i>(325) 555-0123</i></span><span class="same">same</span><span class="same">same</span><span class="bad-t">⚠ Nobody</span><span class="same">same</span><span class="chev">›</span></div>
+    <div class="tr"><span class="ln2"><b>Avery</b><i>(469) 555-0168</i></span><span class="same">same</span><span>No menu</span><span class="bad-t">⚠ Nobody</span><span class="same">same</span><span class="chev">›</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>One screen, what is wrong first, and the answer as a sentence you edit</h2>
+<p class="cap">The top is what needs fixing, each with its fix in the same line. Then Harbor Chimney's answer is written as one sentence whose underlined words are the settings: click one to choose another. The lines come in two groups, the ones that follow the company and the ones with their own answer, so seven identical lines are one row. A line opens its chart.</p>
+<p class="need"><b>Data:</b> the same <code>from: company | line</code> <span class="new">new</span>. The to-fix list is the steps the server already marks unusable.</p>
+<div class="win" style="height:520px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Communication</div></div>
+  <div class="tabs"><span class="tab">Phone</span><span class="tab">Users</span><span class="tab">Records</span><span class="tab">Reports</span><span class="tab on">Settings</span></div>
+  <div class="set">
+   <div class="srail">
+    <div class="g">Connect</div><div class="it on">Call flow</div><div class="it">Connection</div><div class="it">Numbers</div><div class="it">Porting</div>
+    <div class="g">Answering</div><div class="it">IVR menus</div><div class="it">Hours</div><div class="it">Ring groups</div><div class="it">Voicemail</div>
+   </div>
+   <div class="pane">
+    <div class="fix"><span style="font-size:18px">⚠</span><span style="flex:1"><b>7 of 8 lines ring nobody.</b> They follow Harbor Chimney's answer, and it rings nobody, so every call goes to voicemail.</span><span class="srch pick" style="width:210px;color:var(--ink)">Pick who rings <span>⌄</span></span></div>
+    <div class="sent">Calls are answered <u>any time</u>. Callers hear the <u>Main menu</u>, and if they press nothing, <u class="bad">nobody</u> rings. Then <u>Harbor Mailbox</u> takes a message. Calls are <u>recorded</u> and <u>written down</u>; voicemails are <u>not written down</u>.</div>
+    <div class="grp">
+     <div class="gh"><b>Follow Harbor Chimney</b><span class="tiny">7 lines</span><span class="sp"></span><span class="bad-t" style="font-size:11.5px">⚠ Ring nobody</span></div>
+     <div class="chipline"><span class="chip">Main · (239) 555-0142</span><span class="chip">Sam · (325) 555-0123</span><span class="chip">Avery · (469) 555-0168</span><span class="chip">Riley · (786) 555-0110</span><span class="chip">Morgan · (305) 555-0199</span><span class="chip">Quinn · (954) 555-0131</span><span class="chip">Jordan · (561) 555-0175</span></div>
+    </div>
+    <div class="grp">
+     <div class="gh"><b>Their own answer</b><span class="tiny">1 line</span></div>
+     <div class="lr" style="grid-template-columns:minmax(0,1fr) auto auto"><div class="g"><b>Dana · (239) 555-0187</b><span>Rings Existing Clients instead of nobody</span></div><span class="ok-t" style="font-size:11.5px">✓ Rings Existing Clients</span><span class="chev">›</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · The answer top to bottom, lines under it <span class="rec">Recommended</span></p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Call flow</span></div>
+  <div class="pb">
+   <span class="ph-l">How Harbor Chimney answers</span>
+   <div class="vflow">
+    <div class="vs"><span class="ic2">☎</span><div class="g2"><span>A call comes in</span><b>8 lines</b></div><span></span></div>
+    <div class="vs"><span class="ic2">🕘</span><div class="g2"><span>Hours</span><b>Always open</b></div><span class="chev">›</span></div>
+    <div class="vs"><span class="ic2">⌨</span><div class="g2"><span>Menu</span><b>Main menu</b></div><span class="chev">›</span></div>
+    <div class="vs bad"><span class="ic2">⚠</span><div class="g2"><span>Rings</span><b>Nobody</b><i>7 lines go straight to voicemail.</i></div><span class="btn f sm" style="margin:0">Pick</span></div>
+    <div class="vs"><span class="ic2">✉</span><div class="g2"><span>Voicemail</span><b>Harbor Mailbox</b></div><span class="chev">›</span></div>
+   </div>
+   <div class="card">
+    <div class="prow2"><span>Record calls</span><span class="tg on"></span></div>
+    <div class="prow2"><span>Write down calls</span><span class="tg on"></span></div>
+    <div class="prow2"><span>Write down voicemails</span><span class="tg"></span></div>
+   </div>
+   <span class="ph-l">Lines · 7 ring nobody</span>
+   <div class="card">
+    <div class="lrow"><div><b>Main · (239) 555-0142</b><i>Follows Harbor Chimney</i></div><span class="bad-t">⚠</span></div>
+    <div class="lrow"><div><b>Dana · (239) 555-0187</b><i>Its own: rings Existing Clients</i></div><span class="ok-t">✓</span></div>
+    <div class="lrow"><div><b>Sam · (325) 555-0123</b><i>Follows Harbor Chimney</i></div><span class="bad-t">⚠</span></div>
+   </div>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · General as numbered steps, Call flow as rows</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">General</span></div>
+  <div class="pb">
+   <div class="card">
+    <div class="lrow"><div><b>1 · Hours</b><i>Always open</i></div><span class="chev">›</span></div>
+    <div class="lrow"><div><b>2 · Menu</b><i>Main menu</i></div><span class="chev">›</span></div>
+    <div class="lrow" style="background:var(--badc)"><div><b class="bad-t">3 · Who rings</b><i class="bad-t" style="font-weight:600">Nobody: 7 lines go to voicemail</i></div><span class="chev">›</span></div>
+    <div class="lrow"><div><b>4 · Voicemail</b><i>Harbor Mailbox</i></div><span class="chev">›</span></div>
+    <div class="lrow"><div><b>5 · Also try</b><i>No other number</i></div><span class="chev">›</span></div>
+   </div>
+   <div class="card">
+    <div class="prow2"><span>Record calls</span><span class="tg on"></span></div>
+    <div class="prow2"><span>Write down calls</span><span class="tg on"></span></div>
+    <div class="prow2"><span>Write down voicemails</span><span class="tg"></span></div>
+   </div>
+   <div class="savebar" style="margin-top:auto"><span>1 change</span><span class="sp"></span><span class="btn">Discard</span><span class="btn f">Save</span></div>
+   <p class="tiny">Call flow: one row per line, "same" where it follows the company.</p>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · What is wrong first, then the sentence</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Call flow</span></div>
+  <div class="pb">
+   <div class="fix" style="flex-direction:column;align-items:stretch;gap:8px"><span><b>7 of 8 lines ring nobody.</b> They follow Harbor Chimney's answer, and it rings nobody.</span><span class="srch pick" style="color:var(--ink)">Pick who rings <span>⌄</span></span></div>
+   <div class="sent" style="font-size:13px;line-height:1.85">Calls are answered <u>any time</u>. Callers hear the <u>Main menu</u>, and if they press nothing, <u class="bad">nobody</u> rings. Then <u>Harbor Mailbox</u> takes a message.</div>
+   <div class="card">
+    <div class="lrow"><div><b>Follow Harbor Chimney</b><i>7 lines · Main, Sam, Avery and 4 more</i></div><span class="bad-t">⚠</span></div>
+    <div class="lrow"><div><b>Their own answer</b><i>Dana · rings Existing Clients</i></div><span class="ok-t">✓</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:22px">Every line, number, person and the company are invented. Picking a value saves it in 1, 3, 4 and 6; 2 and 5 keep a Save button. Whoever cannot change phone settings sees the same screen with no pickers and one sentence saying so.</p>
+</div>
