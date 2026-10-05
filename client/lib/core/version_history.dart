@@ -22,6 +22,7 @@ class VersionHistory {
         'Onboarding: an optional company address typed on the form replaces the company\'s address on that contract.',
         'An invitation can be revoked even after it was accepted. Revoking cancels the paperwork and switches the person\'s access off. A signed onboarding can now be cancelled too.',
         'Web Management, Widgets: every colour of every widget is in a Colours section with a colour picker, and the live preview changes as you pick.',
+        'Scheduling › Availability: the answer on screen now refreshes itself every 30 seconds, and right away when you come back to the tab, so a booking made by another dispatcher shows up without searching again.',
         'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0351 and 0.0.0350, which reached the web first.',
       ],
     ),
