@@ -14,14 +14,6 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0357',
-      date: '5 Oct 2026',
-      items: [
-        'Marketing › Posts: the TikTok privacy choice no longer shows its hint over its label.',
-        'Pickers that show a hint no longer draw their label on top of it.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0356',
       date: '5 Oct 2026',
       items: [
@@ -31,6 +23,8 @@ class VersionHistory {
         'Settings › Numbers: tick several lines and change what rings them, their business hours or recording, all at once.',
         'Settings › Numbers has two new filters: \'Not in use\' (no calls in 30 days) and \'Not assigned\' (no one\'s extension holds the line).',
         'Port-in asks for the current carrier\'s account (name, account number, who signs, service address) and the port PIN that US mobile numbers need. The port list shows the PIN and the account number in full to whoever can start a port and only their last two digits to everyone else, and who was sent the letter of authorization to sign.',
+        'Marketing › Posts: the TikTok privacy choice no longer shows its hint over its label.',
+        'Pickers that show a hint no longer draw their label on top of it.',
       ],
     ),
     VersionRelease(
