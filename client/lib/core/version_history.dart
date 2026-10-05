@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0353',
+      date: '5 Oct 2026',
+      items: [
+        'Onboarding: a final approval step. Settings › Human Resources › "Approve onboardings before access". When it is on, paperwork signed by both sides, in either order, waits for the approval of whoever sent it, or of an Administrator. Until then the new starter sees only their paperwork.',
+        'Onboarding: a "To approve" filter, and an Approve button on the signed paperwork.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0352',
       date: '5 Oct 2026',
       items: [
