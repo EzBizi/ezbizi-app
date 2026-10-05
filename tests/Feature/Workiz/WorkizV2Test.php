@@ -399,6 +399,33 @@ class WorkizV2Test extends TestCase
         });
     }
 
+    /**
+     * Connecticut as the first switch left it: both v2 rows already exist,
+     * and his active v1 row was never succeeded. The next team sync settles it.
+     */
+    public function test_a_v1_row_left_active_by_an_earlier_tie_is_settled(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], function () use ($connection) {
+            foreach ([['437573', true, []], ['400001', false, ['succeeded_by' => 'USR-old']], ['USR-old', false, []], ['USR-live', true, []]] as [$id, $active, $payload]) {
+                WorkizTeamMember::create([
+                    'franchise_id' => $connection->scope_id, 'remote_id' => $id, 'name' => 'Adir Shemesh', 'email' => 'adir@example.test',
+                    'is_active' => $active, 'is_field_tech' => true, 'payload' => $payload, 'synced_at' => now(),
+                ]);
+            }
+        });
+        $person = fn (string $id, bool $active) => ['id' => $id, 'name' => 'Adir Shemesh', 'emailAddress' => 'adir@example.test', 'fieldTech' => true, 'active' => $active];
+        Http::fake(['api.workiz.com/crm/api/v2/users*' => Http::response($this->page([$person('USR-old', false), $person('USR-live', true)]))]);
+
+        $this->artisan('ezbizi:sync-workiz-team')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () {
+            $old = WorkizTeamMember::query()->where('remote_id', '437573')->sole();
+            $this->assertFalse($old->is_active);
+            $this->assertSame('USR-live', $old->payload['succeeded_by']);
+        });
+    }
+
     /** Rows v1 landed carry no JOB- id, and v2 reads a job by nothing else: a refresh lands each once through v2. */
     public function test_a_refresh_backfill_gives_rows_v1_landed_their_v2_id(): void
     {
