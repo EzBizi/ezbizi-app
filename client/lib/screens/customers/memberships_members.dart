@@ -1118,6 +1118,7 @@ class MembershipPlan {
     required this.billing,
     required this.active,
     this.description,
+    this.workizJobType,
   });
 
   final String id;
@@ -1130,6 +1131,9 @@ class MembershipPlan {
   /// What a visit includes, in a line; null on a plan without one, or from a
   /// server from before plans had one.
   final String? description;
+
+  /// The Workiz job type a confirmed visit on this plan is created with.
+  final String? workizJobType;
 
   /// The price is the YEAR's, however it is billed: the server charges a
   /// twelfth of it for every month begun on a monthly plan (Membership's
@@ -1157,6 +1161,9 @@ class MembershipPlan {
           active: row['is_active'] != false,
           description: row['description'] is String
               ? row['description'] as String
+              : null,
+          workizJobType: row['workiz_job_type'] is String
+              ? row['workiz_job_type'] as String
               : null,
         ),
     ];

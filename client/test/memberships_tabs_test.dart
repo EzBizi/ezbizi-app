@@ -308,6 +308,10 @@ void main() {
           find.byKey(const Key('plan-description')),
           'Gutters cleared twice a year',
         );
+        await tester.enterText(
+          find.byKey(const Key('plan-workiz-type')),
+          'Gutter Cleaning',
+        );
         await tester.tap(find.byKey(const Key('plan-save')));
         await tester.pumpAndSettle();
 
@@ -317,8 +321,13 @@ void main() {
           'price_minor': 1999,
           'billing': 'yearly',
           'description': 'Gutters cleared twice a year',
+          'workiz_job_type': 'Gutter Cleaning',
           'is_active': true,
         });
+
+        // And which Workiz job type its visits are made as (Jose: "Type per
+        // plan"), on the row.
+        expect(find.text('Workiz job type: Chimney Sweep'), findsOneWidget);
 
         // What a plan includes is on its row, as the join page shows it.
         expect(find.text('One sweep and inspection a year'), findsOneWidget);
@@ -336,6 +345,7 @@ void main() {
           'price_minor': 20900,
           'billing': 'yearly',
           'description': 'One sweep and inspection a year',
+          'workiz_job_type': 'Chimney Sweep',
         });
       },
     );
@@ -484,6 +494,7 @@ class _Server {
             'billing': 'yearly',
             'is_active': true,
             'description': 'One sweep and inspection a year',
+            'workiz_job_type': 'Chimney Sweep',
           },
           {
             'id': 'p-2',
