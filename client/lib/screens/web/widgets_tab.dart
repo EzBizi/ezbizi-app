@@ -1355,6 +1355,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   ) {
     switch (_focus) {
       case 'chat':
+        // The chat's own colours, each falling back as the plugin does (Jose,
+        // 2026-10-05: the preview stayed orange after a change to blue).
+        final headBg = _colour(chat['header_bg']) ?? accent;
+        final headInk = _colour(chat['header_color']) ?? onAccent;
+        final bubbleBg = _colour(chat['bubble_bg']) ?? accent;
+        final bubbleInk = _colour(chat['bubble_color']) ?? onAccent;
+        final youBg = _colour(chat['visitor_bg']) ?? accent;
+        final themBg = _colour(chat['business_bg']) ?? const Color(0xFFF1F3F5);
         return [
         if (chat['enabled'] == false)
           _mockPage(
@@ -1384,14 +1392,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                      color: accent,
+                      color: headBg,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             _line(chat['title']),
                             style: TextStyle(
-                              color: onAccent,
+                              color: headInk,
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
                             ),
@@ -1400,7 +1408,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                             Text(
                               _line(chat['intro']),
                               style: TextStyle(
-                                color: onAccent.withValues(alpha: 0.9),
+                                color: headInk.withValues(alpha: 0.9),
                                 fontSize: 12,
                               ),
                             ),
@@ -1472,7 +1480,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                         alignment: Alignment.centerRight,
                         child: _mockBubble(
                           'Hello, I need…',
-                          accent,
+                          youBg,
                           onAccent,
                           radius,
                         ),
@@ -1480,7 +1488,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                       const SizedBox(height: 6),
                       _mockBubble(
                         _line(chat['auto_reply']),
-                        const Color(0xFFF1F3F5),
+                        themBg,
                         const Color(0xFF1B1B1B),
                         radius,
                       ),
@@ -1491,7 +1499,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
               const SizedBox(height: 8),
               // The closed bubble, which is what most visitors ever see of it.
-              _mockButton(_line(chat['button']), accent, onAccent, radius),
+              _mockButton(_line(chat['button']), bubbleBg, bubbleInk, radius),
             ],
           ),
         ),
@@ -1580,6 +1588,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     );
 
     return {
+      ...stored,
       for (final knob in rendered.knobs) knob.key: stored[knob.key] ?? knob.fallbackValue,
     };
   }
@@ -3177,6 +3186,7 @@ class _PresetCardState extends State<_PresetCard> {
             child: ShortcodeButton(code: _shortcode(name)),
           ),
           const SizedBox(height: 8),
+          ..._colourGroup(theme, values, name),
           for (final knob in widget.rendered.knobs)
             _knob(theme, knob, values, name),
           ..._styleGroups(theme, values, name),
@@ -3191,6 +3201,51 @@ class _PresetCardState extends State<_PresetCard> {
   /// spacing for each part of the widget — so they are drawn from its schema,
   /// one folded group per part. Every one starts empty, meaning "the website's
   /// own look", which is why they can sit folded away until somebody wants one.
+  /// Every colour of the widget, open and first (Toula, 2026-10-05: "it
+  /// still doesn't allow me to change the color of each widget"). They were
+  /// all there, folded inside the "Style — …" groups at the foot of the
+  /// card, where nobody found them; the chat's colours sit in plain sight,
+  /// and so do these now. One picker each, named by part: "Icons — colour".
+  List<Widget> _colourGroup(
+    ThemeData theme,
+    Map<String, dynamic> values,
+    String preset,
+  ) {
+    final colours = <Widget>[];
+
+    widget.schema.forEach((key, raw) {
+      final rule = Map<String, dynamic>.from(raw as Map? ?? const {});
+      final part = rule['part'];
+      if (part is! String || rule['type'] != 'color') return;
+
+      final where = _partLabels[part] ?? part;
+      final what = (_propLabels[rule['prop']] ?? '${rule['prop']}').toLowerCase();
+      colours.add(_knob(
+        theme,
+        _Colour(key, '${where[0].toUpperCase()}${where.substring(1)} — $what'),
+        values,
+        preset,
+      ));
+    });
+
+    if (colours.isEmpty) return const [];
+
+    return [
+      ExpansionTile(
+        key: ValueKey('colours-$preset'),
+        initiallyExpanded: true,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        title: Text('Colours', style: theme.textTheme.bodyMedium),
+        subtitle: Text(
+          'Empty keeps the website\'s own colour.',
+          style: theme.textTheme.bodySmall,
+        ),
+        children: colours,
+      ),
+    ];
+  }
+
   List<Widget> _styleGroups(
     ThemeData theme,
     Map<String, dynamic> values,
@@ -3202,6 +3257,8 @@ class _PresetCardState extends State<_PresetCard> {
       final rule = Map<String, dynamic>.from(raw as Map? ?? const {});
       final part = rule['part'];
       if (part is! String) return;
+      // Drawn under Colours, above; once is enough.
+      if (rule['type'] == 'color') return;
 
       final label = _propLabels[rule['prop']] ?? '${rule['prop']}';
       final knob = switch (rule['type']) {

@@ -197,6 +197,9 @@ void main() {
             'social_links': {
               'size': {'type': 'range', 'min': 16, 'max': 64},
               'icon_color': {'type': 'color', 'part': 'icon', 'prop': 'color'},
+              // A non-colour icon option too, as the real schema has: the
+              // icons' group keeps these once colours move to "Colours".
+              'icon_size': {'type': 'range', 'min': 0, 'max': 120, 'part': 'icon', 'prop': 'size'},
               'box_devices': {
                 'type': 'choice',
                 'choices': ['', 'desktop', 'mobile'],
@@ -1750,10 +1753,27 @@ void main() {
     // An option without a part is the widget's own, not a style group.
     expect(find.text('Style — size'), findsNothing);
 
+    // Toula, 2026-10-05: every colour sits open under "Colours", named by
+    // part, not folded inside these groups where nobody found them.
+    expect(find.text('Colours'), findsWidgets);
+    final iconColour = find.widgetWithText(TextField, 'Icons — colour');
+    await tester.scrollUntilVisible(iconColour, -300, scrollable: _editor);
+    await tester.enterText(iconColour, '#ff0000');
+    await tester.pumpAndSettle();
+
+    // Jose, 2026-10-05: "she changes color from orange to blue, but the live
+    // preview remains orange". The preview's icons take the colour at once.
+    expect(
+      find.byWidgetPredicate((w) => w is Icon && w.color == const Color(0xFFFF0000)),
+      findsWidgets,
+      reason: 'the preview shows the icon colour just chosen',
+    );
+
+    // And only once: the folded group no longer repeats it.
+    await tester.scrollUntilVisible(group, 300, scrollable: _editor);
     await tester.tap(group);
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Colour'), '#ff0000');
-    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Colour'), findsNothing);
 
     await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
     await tester.tap(find.text('Save'));

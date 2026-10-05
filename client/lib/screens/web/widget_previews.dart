@@ -41,6 +41,54 @@ Widget renderedPreview({
   required Color surface,
   required double radius,
 }) {
+  /*
+   * The part colours the Colours section sets (Jose, 2026-10-05: "she
+   * changes color from orange to blue, but the live preview remains
+   * orange"). The previews were drawn from the site's accent only, so a
+   * colour chosen for the icons or the button never reached them. Each part
+   * colour now stands in for the default it replaces; the box's background
+   * and border wrap the whole preview.
+   */
+  Color? first(List<String> keys) {
+    for (final k in keys) {
+      final c = _hex('${options[k] ?? ''}');
+      if (c != null) return c;
+    }
+    return null;
+  }
+
+  accent = first(['icon_color', 'button_bg', 'badge_bg', 'submit_bg', 'icon_bg', 'link_color', 'arrow_color']) ?? accent;
+  onAccent = first(['button_color', 'badge_color', 'submit_color']) ?? onAccent;
+  text = first(['title_color', 'label_color', 'value_color', 'name_color', 'text_color', 'heading_color',
+          'question_color', 'number_color', 'day_color', 'address_color', 'link_color']) ??
+      text;
+  final boxBg = first(['box_bg', 'card_bg', 'item_bg']);
+  final boxBorder = first(['box_border_color', 'card_border_color', 'item_border_color']);
+
+  final drawn = _drawn(key, theme, options, accent, onAccent, text, surface, radius);
+  if (boxBg == null && boxBorder == null) return drawn;
+
+  return Container(
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: boxBg,
+      border: boxBorder == null ? null : Border.all(color: boxBorder, width: 2),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: drawn,
+  );
+}
+
+Widget _drawn(
+  String key,
+  ThemeData theme,
+  Map<String, dynamic> options,
+  Color accent,
+  Color onAccent,
+  Color text,
+  Color surface,
+  double radius,
+) {
   switch (key) {
     case 'social_links':
       return _socialLinks(options, accent, onAccent, text, radius);
