@@ -1036,8 +1036,15 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'membership.visit_confirmed',
                         label: 'Next visit confirmed',
                         description: 'The customer picked a date from the reminder\'s {{ confirm_visit_url }} '
-                            .'and a job was booked for it ("job_number", "visit_on"). Not in Workiz: '
-                            .'a dispatcher who works there has to enter it.',
+                            .'and a job was booked for it ("job_number", "visit_on"). A branch on '
+                            .'Workiz gets it there too, with no service area set yet.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'membership.visit_not_in_workiz',
+                        label: 'Visit could not be sent to Workiz',
+                        description: 'A confirmed visit was booked in EzBizi but Workiz refused it; '
+                            .'"refused" is Workiz\'s own reason (often a job type the branch\'s list '
+                            .'lacks). Somebody has to enter it in Workiz by hand.',
                     ),
                     new TriggerDefinition(
                         key: 'membership.visit_unconfirmed',
