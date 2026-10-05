@@ -313,10 +313,15 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(
-                      labelText: 'Price',
+                    // The year's price, whatever the billing: the server
+                    // charges a twelfth of it a month on a monthly plan.
+                    decoration: InputDecoration(
+                      labelText: 'Price for the year',
                       prefixText: r'$ ',
-                      border: OutlineInputBorder(),
+                      helperText: _billing == 'monthly'
+                          ? 'A twelfth is billed each month.'
+                          : null,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),

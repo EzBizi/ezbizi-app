@@ -2961,6 +2961,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 54 · Memberships · the page a customer joins from — **Jose: "go with ur recommended options as usual" (the Membership program) — 1 and 4** — building (`docs/previews/memberships-join-page-layouts.html`)
+
+The signed link in the review offer and the renewal reminder opens `resources/views/memberships/join.blade.php`
+(Membership session, `session/memberships`), plain HTML until now; the Membership session handed its look to me.
+Desktop **1** the frame every business email through EzBizi already wears (queue 39: the business's name in a
+white band with the teal rule, "via EzBizi" small), a card per plan with the price large (a monthly plan shows the
+month and the year) and one Join, the thank-you on the same page (recommended); **2** one plan up front, the rest as
+rows; **3** a comparison table. Phone **4** (recommended) – **6**. Needs from Membership: the CUSTOMER's company name
+on the page (it shows the organization's, "A1-Group", where the customer knows "A-1 Chimney"), and an optional
+one-line plan `description`.
+
 ### 53 · Dashboard · templates a person can apply — **out for decision** (`docs/previews/dashboard-templates-layouts.html`)
 
 Jose, 2026-10-05, to the Dashboard module: *"also make some recommended layouts, like templates a user can
