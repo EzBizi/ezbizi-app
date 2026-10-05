@@ -265,13 +265,13 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public function takenSignatures(): Collection
     {
-        if ($this->user_id === null) {
-            return collect();
-        }
-
+        // This onboarding's own, and older rows from before signatures named
+        // their onboarding, by version and subject.
         return ContractSignature::query()
             ->where('contract_version_id', $this->contract_version_id)
-            ->where('subject_user_id', $this->user_id)
+            ->where(fn ($q) => $q->where('onboarding_id', $this->getKey())
+                ->when($this->user_id !== null, fn ($q) => $q->orWhere(fn ($q) => $q
+                    ->whereNull('onboarding_id')->where('subject_user_id', $this->user_id))))
             ->orderBy('signed_at')
             ->get();
     }

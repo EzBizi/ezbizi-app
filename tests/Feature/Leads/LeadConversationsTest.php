@@ -571,11 +571,10 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
-     * Item 3 of the a1tools list. Read is per PERSON: the dispatcher who
-     * opened the lead has read it, the one who has not has not, and a new
-     * message after the mark makes it unread again. Star and note are shared.
+     * Read is SHARED (Jose, 2026-10-05): once anybody opens a lead it is read
+     * for everyone, and a new message after the mark makes it unread again.
      */
-    public function test_read_is_per_person_and_a_new_message_makes_a_lead_unread_again(): void
+    public function test_read_is_shared_and_a_new_message_makes_a_lead_unread_again(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
         $connection = $this->connected($t);
@@ -592,6 +591,10 @@ class LeadConversationsTest extends TestCase
 
         $mine = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json('data'));
         $this->assertSame(['Other'], $mine->pluck('contact_name')->all(), 'the one I read is no longer unread for me');
+
+        $colleague = $this->userWithRole($t, 'Colleague', ['leads.view', 'leads.local_services.view']);
+        $theirs = collect($this->signedInAs($colleague)->getJson('/api/v1/leads?unread=1')->json('data'));
+        $this->assertSame(['Other'], $theirs->pluck('contact_name')->all(), 'and for a colleague who never opened it');
 
         // A message arrives after my mark: unread again, for me. Seeded
         // directly (a second Http::fake would stack behind the first), a

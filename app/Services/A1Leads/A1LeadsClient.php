@@ -305,7 +305,9 @@ class A1LeadsClient
      */
     public static function card(array $card): array
     {
-        $contact = is_array($card['contact'] ?? null) ? $card['contact'] : [];
+        // A1 Leads names it `workiz_contact` on a card; `contact` is the older name.
+        $contact = is_array($card['workiz_contact'] ?? null) ? $card['workiz_contact']
+            : (is_array($card['contact'] ?? null) ? $card['contact'] : []);
         $customer = is_array($card['customer'] ?? null) ? $card['customer'] : [];
         $job = is_array($customer['last_job'] ?? null) ? $customer['last_job'] : [];
         $report = is_array($card['report'] ?? null) ? $card['report'] : [];
@@ -343,6 +345,52 @@ class A1LeadsClient
             'assignee' => self::text($card['assignee'] ?? null),
             'report_state' => self::text($report['state'] ?? null),
             'updates' => $updates,
+        ];
+    }
+
+    /**
+     * The customer A1 Leads matched to a review, whether or not it has a card.
+     *
+     * A1 Leads owns the match; this only reduces it for the tab. `manual` is an
+     * operator's own pick (`operator_selected`) and is never second-guessed
+     * here. `assignee_kind` says whether `technician` names a person or a team.
+     *
+     * @return array<string, mixed>|null null when A1 Leads has no match
+     */
+    public static function matchedCustomer(mixed $customer, mixed $contact): ?array
+    {
+        if (! is_array($customer) || ($customer['matched'] ?? false) !== true) {
+            return null;
+        }
+        $contact = is_array($contact) ? $contact : [];
+        $job = is_array($customer['last_job'] ?? null) ? $customer['last_job'] : [];
+        $basis = self::text($customer['match_basis'] ?? null);
+        $url = self::text($customer['workiz_url'] ?? null);
+        $scalar = fn (mixed $v) => is_scalar($v) && ! is_bool($v) ? self::text((string) $v) : null;
+
+        $phones = [];
+        foreach ([$customer['phone'] ?? null, ...(array) ($customer['phones'] ?? []),
+            $contact['phone'] ?? null, ...(array) ($contact['phones'] ?? [])] as $phone) {
+            if (($phone = $scalar($phone)) !== null && ! in_array($phone, $phones, true)) {
+                $phones[] = $phone;
+            }
+        }
+
+        return [
+            'name' => self::text($customer['name'] ?? null) ?? self::text($contact['name'] ?? null),
+            'basis' => $basis,
+            'manual' => $basis === 'operator_selected',
+            'workiz_account' => self::text($customer['workiz_tenant'] ?? null),
+            'client_id' => $scalar($customer['client_id'] ?? null),
+            'job_number' => $scalar($job['number'] ?? null),
+            'job_date' => self::text($job['date'] ?? null),
+            'technician' => self::text($customer['technician'] ?? null) ?? self::text($job['tech'] ?? null),
+            'assignee_kind' => in_array($customer['assignee_kind'] ?? null, ['team', 'technician'], true)
+                ? $customer['assignee_kind'] : null,
+            'phones' => $phones,
+            'email' => self::text($customer['email'] ?? null) ?? self::text($contact['email'] ?? null),
+            'address' => self::text($customer['service_address'] ?? null) ?? self::text($contact['address'] ?? null),
+            'workiz_url' => $url !== null && str_starts_with($url, 'https://') ? $url : null,
         ];
     }
 

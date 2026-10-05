@@ -608,6 +608,7 @@ class HrOnboardingsController extends Controller
         // Signed elsewhere and imported: the original PDF is the download.
         if ($document === null && $revision === null
             && ($imported = $this->documents->importedPdf($onboarding)) !== null) {
+            $imported = $this->documents->importedWithRecord($onboarding, $imported);
             $this->audit->log('onboarding.document_copied', $onboarding, metadata: [
                 'format' => PdfRenderer::MIME,
                 'source' => 'imported',
@@ -945,7 +946,10 @@ class HrOnboardingsController extends Controller
          * to the person it binds. Reachable whenever an employer tries to sign a
          * form for somebody who has not accepted their invitation yet.
          */
-        if ($onboarding->user_id === null) {
+        // The employer may sign first, before the invitation is accepted
+        // (Jose, 2026-10-05: "the final approval and the signature from the
+        // employer are two different things"). The employee needs an account.
+        if ($onboarding->user_id === null && $field->filledBy !== FilledBy::EMPLOYER) {
             throw ValidationException::withMessages(['field_key' =>
                 'Nobody has accepted the invitation yet, so there is no person for this '
                 .'contract to be about. They create their account from the link, and the '
@@ -984,6 +988,7 @@ class HrOnboardingsController extends Controller
             $signature = ContractSignature::create([
                 'contract_version_id' => $onboarding->contract_version_id,
                 'field_key'           => $field->key,
+                'onboarding_id'       => $onboarding->getKey(),
                 'subject_user_id'     => $onboarding->user_id,
                 // From the SESSION, never from the request body. "Who signed" is
                 // the one thing a signature cannot take somebody's word for.

@@ -760,6 +760,23 @@ void main() {
   });
 
 
+  /// Rodrigo, 2 October: a matched customer shows whether or not the review
+  /// has a card, with how it was matched and whether a team or a person did
+  /// the job.
+  testWidgets('a matched customer with no card is shown in full', (tester) async {
+    await _pump(tester, _handler(total: 3, liveCustomer: true));
+
+    expect(find.text('Matched: Christopher Beard'), findsOneWidget);
+    expect(find.text('Workiz OH · Job #600024076 · 2026-07-02 08:00:00 · Team: ms chimney'), findsOneWidget,
+        reason: 'a team is not written as a technician');
+    expect(find.text('5133905722'), findsOneWidget);
+    expect(find.text('christopher@example.com'), findsOneWidget);
+
+    await _board(tester);
+    expect(find.textContaining('matched by hand'), findsOneWidget);
+    expect(find.text('Open in Workiz'), findsOneWidget);
+  });
+
   /// Nothing matching the filters is a different sentence from nothing at all.
   testWidgets('an empty page blames the filters, not the business', (tester) async {
     await _pump(tester, _handler(total: 0));
@@ -820,6 +837,7 @@ List<Map<String, Object?>> _reviews(
   bool withPhone = false,
   bool boardDown = false,
   bool withCustomer = false,
+  bool liveCustomer = false,
 }) {
   final all = <Map<String, Object?>>[
     {
@@ -884,6 +902,18 @@ List<Map<String, Object?>> _reviews(
       ];
   }
 
+  // The live copy's shape: the matched customer on the review itself, with no
+  // card at all (measured 5 October, seq 13179).
+  if (liveCustomer) {
+    all[2]['customer'] = {
+      'name': 'Christopher Beard', 'basis': 'operator_selected', 'manual': true,
+      'workiz_account': 'OH', 'client_id': '6290', 'job_number': '600024076',
+      'job_date': '2026-07-02 08:00:00', 'technician': 'ms chimney', 'assignee_kind': 'team',
+      'phones': ['5133905722'], 'email': 'christopher@example.com', 'address': '920 Winsray Ct, Cincinnati, Ohio',
+      'workiz_url': 'https://app.workiz.com/root/client/6290',
+    };
+  }
+
   if (boardDown) {
     for (final r in all) {
       r['board'] = null;
@@ -909,6 +939,7 @@ MockClientHandler _handler({
   String? replyBecause = 'company_not_in_view',
   bool replyGranted = false,
   bool withCustomer = false,
+  bool liveCustomer = false,
   bool opsAvailable = false,
   bool manageGranted = false,
   bool live = false,
@@ -1035,7 +1066,7 @@ MockClientHandler _handler({
       return _json({
         'data': {
           'source': source,
-          'reviews': usable ? _reviews(total, offset, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer) : <dynamic>[],
+          'reviews': usable ? _reviews(total, offset, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer, liveCustomer: liveCustomer) : <dynamic>[],
           'meta': {'total': total},
           'board': boardDown
               ? {'available': false, 'because': 'A1 Leads refused cards with HTTP 403.'}
@@ -1052,7 +1083,7 @@ MockClientHandler _handler({
           'reply_unavailable_because': replyAvailable ? null : replyBecause,
           'ops_available': opsAvailable,
           'summary': usable ? {'total': 13169} : null,
-          'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer) : <dynamic>[],
+          'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer, liveCustomer: liveCustomer) : <dynamic>[],
           'meta': {'total': total},
           'health': null,
           'locations': usable

@@ -14,10 +14,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0359',
+      date: '5 Oct 2026',
+      items: [
+        'Onboarding: the employer can sign before the new hire has accepted the invitation. The employer\'s signature and the final approval are separate steps.',
+        'HR: the downloaded contract PDF now ends with an \'Employee record\' section: bank details, SSN, work hours and everything else on file that the contract wording doesn\'t state. Imported A1 Tools contracts get the record and any uploaded PDFs (such as a W-4) added after the original.',
+        'Leads: read and unread are shared by everyone. Opening a lead or Mark all read marks it for all, and a new message makes it unread again. Stars stay personal.',
+        'Web Management: each website has a Branch setting that decides where its chats, forms and reviews land in Leads.',
+        'Scheduling: a job booked under a branch whose service area shares another branch\'s availability is placed by its zip again, so Nationwide\'s Boston North bookings count against A1 - Chimney MA\'s Boston North.',
+        'Experimental call report: spam calls are no longer counted; Reached nobody is now Missed calls, with New/Existing filters; cards follow Jose\'s order (Calls, Missed calls, Existing client, New client, Jobs booked, Conv. rate, Not booked); Not booked lists unbooked new-client calls with Convert to booked and its history; dispatchers can be tagged New or Existing; Day/Week/Month periods. Weeks and months include every call, not just the first 1,000.',
+        'A1Leads GBP: the customer A1 Leads matched to a review now shows even when the review has no card. You also see whether it was matched by hand or automatically, plus the Workiz account, the last job number and date, the technician or team, the phones, email, address and a Workiz link.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0358, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0358',
       date: '5 Oct 2026',
       items: [
-        'Memberships: the renewal reminder can carry a link where the customer picks the day of their next visit, and it books the job, one visit a year however often they tap; staff see each member\'s booked visit on the list. If no day is picked two weeks after the reminder, a trigger lets staff follow up. Plans can name the Workiz job type their visits are booked as.',
+        'Memberships: the renewal reminder can carry a link where the customer picks the day of their next visit, and it books the job, one visit a year however often they tap; staff see each member\'s booked visit on the list, and who hasn\'t picked a day after the reminder. If no day is picked two weeks after the reminder, a trigger lets staff follow up. Plans can name the Workiz job type their visits are booked as.',
       ],
     ),
     VersionRelease(
