@@ -657,6 +657,25 @@ class HrOnboardingDocumentPdfTest extends TestCase
         $this->assertStringContainsString('cert.pdf', $text);
     }
 
+    /**
+     * Everything on file the wording does not state, after the contract
+     * (Jose, 2026-10-05: "bank information, ssn, etc").
+     */
+    public function test_the_record_is_printed_after_the_contract(): void
+    {
+        $with = app(PdfRenderer::class)->render(...$this->conversionOf('<html><body><p>Terms.</p></body></html>') + [
+            'record' => [['label' => 'Bank account', 'value' => self::IBAN], ['label' => 'Work hours', 'value' => 'Mornings']],
+        ]);
+
+        $text = $this->textOf($with);
+        $this->assertStringContainsString('Employee record', $text);
+        $this->assertStringContainsString(self::IBAN, $text);
+        $this->assertStringContainsString('Mornings', $text);
+        $this->assertStringNotContainsString('Employee record', $this->textOf(
+            app(PdfRenderer::class)->render(...$this->conversionOf('<html><body><p>Terms.</p></body></html>')),
+        ));
+    }
+
     private function conversionOf(string $document): array
     {
         return [

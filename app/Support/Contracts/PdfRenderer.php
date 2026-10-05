@@ -180,12 +180,16 @@ final class PdfRenderer
         DateTimeInterface $sourceStoredAt,
         array $signatures = [],
         array $attachments = [],
+        array $record = [],
     ): string {
         $dompdf = new Dompdf($this->options());
 
         $dompdf->loadHtml(
             $this->withBanner(
-                $this->withAttachments($this->withSignatures($storedDocument, $signatures), $attachments),
+                $this->withAttachments(
+                    $this->withRecord($this->withSignatures($storedDocument, $signatures), $record),
+                    $attachments,
+                ),
                 $organizationName,
                 $contractName,
                 $version,
@@ -296,6 +300,61 @@ final class PdfRenderer
         }
 
         return $html;
+    }
+
+    /**
+     * Everything on file for the person that the contract's wording does not
+     * state, after the contract (Jose, 2026-10-05: "it should also have the
+     * section with everything on record for the employee, bank information,
+     * ssn, etc"). Values in the clear: the download is behind the reveal
+     * permission and audited as one.
+     *
+     * @param  list<array{label: string, value: string}>  $record
+     */
+    private function withRecord(string $html, array $record): string
+    {
+        if ($record === []) {
+            return $html;
+        }
+
+        $esc = fn (string $v) => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $out = '<section class="record" style="page-break-before:always"><h2>Employee record</h2>'
+            .'<table class="checklist"><tbody>';
+        foreach ($record as $row) {
+            $out .= '<tr><td style="width:40%"><strong>'.$esc($row['label']).'</strong></td>'
+                .'<td>'.nl2br($esc($row['value'])).'</td></tr>';
+        }
+        $out .= '</tbody></table></section>';
+
+        return str_contains($html, '</body>')
+            ? str_replace('</body>', $out.'</body>', $html)
+            : $html.$out;
+    }
+
+    /**
+     * The record and the uploads on their own, for a contract signed
+     * elsewhere and imported (its original PDF goes in front of this).
+     *
+     * @param  list<array{label: string, value: string}>  $record
+     * @param  list<array{label: string, name: string, mime: string, data: ?string}>  $attachments
+     */
+    public function recordOnly(string $title, array $record, array $attachments): string
+    {
+        $esc = fn (string $v) => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $html = '<!doctype html><html><head><meta charset="utf-8"><style>'
+            .'body{font-family:Helvetica,Arial,sans-serif;font-size:9.5pt;color:#111}'
+            .'table.checklist{width:100%;border-collapse:collapse}'
+            .'table.checklist td{border:1px solid #999;padding:4pt 6pt;vertical-align:top}'
+            .'</style></head><body><h1 style="font-size:14pt">'.$esc($title).'</h1></body></html>';
+        $html = $this->withAttachments($this->withRecord($html, $record), $attachments);
+        // The record follows the title on the same page.
+        $html = str_replace('<section class="record" style="page-break-before:always">', '<section class="record">', $html);
+
+        $dompdf = new Dompdf($this->options());
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        return (string) $dompdf->output();
     }
 
     /**

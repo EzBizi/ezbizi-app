@@ -9,6 +9,7 @@ use App\Models\OnboardingDocument;
 use App\Models\User;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
+use App\Support\Contracts\FieldType;
 use App\Support\Contracts\PdfRenderer;
 use App\Support\Files\FileStore;
 use App\Support\Privacy\SensitiveValues;
@@ -339,7 +340,113 @@ class OnboardingDocuments
             sourceStoredAt: $document->created_at ?? $onboarding->started_at ?? now(),
             signatures: $this->signatureBlocks($onboarding),
             attachments: $this->attachmentPages($onboarding),
+            // A contract with no wording prints every answer already.
+            record: trim((string) $version->body) === '' ? [] : $this->recordRows($onboarding, (string) $version->body),
         );
+    }
+
+    /**
+     * Every answer and profile detail the contract's wording does not merge,
+     * as label and value (Jose, 2026-10-05: "stuff that is not explicitly in
+     * the contract written"). Files are not rows: they are the attachments.
+     *
+     * @return list<array{label: string, value: string}>
+     */
+    public function recordRows(Onboarding $onboarding, string $body = ''): array
+    {
+        $mentioned = fn (string $key) => preg_match(
+            '/\{\{\s*[#\/^]?\s*'.preg_quote($key, '/').'\s*\}\}/', $body,
+        ) === 1;
+        $rows = [];
+
+        foreach ($this->form->identity($onboarding) as $key => $value) {
+            if (trim((string) $value) !== '' && ! $mentioned($key)) {
+                $rows[] = ['label' => \App\Support\Contracts\CommonCore::labelFor($key), 'value' => trim((string) $value)];
+            }
+        }
+
+        $answers = $onboarding->answers()->get()->keyBy('field_key');
+        foreach ($onboarding->fields() as $field) {
+            if (in_array($field->type, [FieldType::SIGNATURE, FieldType::FILE], true)
+                || $field->retired || $mentioned($field->key)) {
+                continue;
+            }
+            $value = trim((string) ($answers->get($field->key)?->value ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $rows[] = ['label' => $field->label, 'value' => match (true) {
+                $value === \App\Support\Contracts\MergeValue::NOT_APPLICABLE => 'Does not apply',
+                $field->type === FieldType::CHECKLIST => implode("\n", array_map(
+                    fn (string $item, array $row) => trim($item.'  ×'.$row['quantity'].'  '.$row['received']),
+                    array_keys($items = \App\Support\Contracts\ChecklistTable::rows($value)), $items,
+                )),
+                default => $value,
+            }];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The download of a contract signed elsewhere and imported: its original
+     * PDF, then the record and the uploads (Jose, 2026-10-05). The pages are
+     * joined with qpdf; without it on the server the original goes alone.
+     *
+     * ponytail: qpdf on the host, because the A1 PDFs use xref streams no
+     * free PHP parser reads; a pure-PHP merge if qpdf ever cannot be had.
+     */
+    public function importedWithRecord(Onboarding $onboarding, string $original): string
+    {
+        $record = $this->recordRows($onboarding);
+        // Pictures are drawn into the record; other PDFs they uploaded (a W-4)
+        // are joined after it, whole.
+        $attachments = array_values(array_filter(
+            $this->attachmentPages($onboarding),
+            fn (array $page) => $page['mime'] !== PdfRenderer::MIME,
+        ));
+        $pdfs = [];
+        $answers = $onboarding->answers()->get()->keyBy('field_key');
+        foreach ($onboarding->fields() as $field) {
+            $id = $field->type === FieldType::FILE && $field->key !== self::IMPORTED_CONTRACT
+                ? (string) ($answers->get($field->key)?->value ?? '') : '';
+            $file = $id === '' ? null : Attachment::query()->find($id);
+            if ($file?->mime === PdfRenderer::MIME && ($bytes = $this->files->contents($file->path, $file->disk)) !== null) {
+                $pdfs[] = $bytes;
+            }
+        }
+        if ($record === [] && $attachments === [] && $pdfs === []) {
+            return $original;
+        }
+
+        $extra = $this->pdf->recordOnly(
+            trim(($onboarding->user?->name ?? '').' · Employee record', ' ·'),
+            $record,
+            $attachments,
+        );
+
+        $dir = storage_path('app/tmp/'.Str::uuid());
+        @mkdir($dir, 0700, true);
+        try {
+            $parts = [];
+            foreach ([$original, $extra, ...$pdfs] as $i => $bytes) {
+                file_put_contents($parts[] = "{$dir}/{$i}.pdf", $bytes);
+            }
+            $run = \Illuminate\Support\Facades\Process::run(['qpdf', '--empty', '--pages', ...$parts, '--', "{$dir}/out.pdf"]);
+
+            return $run->successful() && is_file("{$dir}/out.pdf")
+                ? (string) file_get_contents("{$dir}/out.pdf")
+                : $original;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $original;
+        } finally {
+            foreach (glob("{$dir}/*") ?: [] as $file) {
+                @unlink($file);
+            }
+            @rmdir($dir);
+        }
     }
 
     /**

@@ -1407,6 +1407,42 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
+     * The employer signs before the new starter has accepted (Jose,
+     * 2026-10-05: "she should be able to sign it regardless"); the employee
+     * signs after accepting, and the two signatures make one agreement.
+     */
+    public function test_the_employer_signs_before_the_invitation_is_accepted(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $contractId = $this->aContract($alpha);
+        $invitation = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
+            'email' => 'later@example.test', 'first_name' => 'Lee', 'last_name' => 'Later',
+            'role_id' => $this->roleFor($alpha)->id,
+            'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
+        ])->assertCreated();
+        $id = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
+            'invitation_id' => $invitation->json('data.id'), 'contract_id' => $contractId,
+        ])->assertCreated()->json('data.id');
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => '18.50', 'iban' => self::IBAN],
+        ])->assertOk();
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva')->assertCreated();
+        $this->assertCount(1, $this->form($alpha['admin'], $id)['signatures']);
+
+        $this->accept($this->tokenFrom($invitation->json('data.accept_url')));
+        $employee = $this->inTenant($alpha['org'], fn () => User::where('email', 'later@example.test')->firstOrFail());
+        $this->assertCount(1, $this->form($employee, $id)['signatures'], 'The employer signature followed the onboarding.');
+
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['emergency_contact' => 'Ana, 600 111 222'],
+        ])->assertOk();
+        $this->signAs($employee, $id, 'employee_sign', 'Lee Later')->assertCreated();
+
+        $this->assertSame('completed', $this->form($alpha['admin'], $id)['status']);
+    }
+
+    /**
      * The final approval (Jose, 2026-10-05): with the switch on, the two
      * signatures in either order leave it waiting for the sender, and the new
      * starter holds no permission until the sender approves.
