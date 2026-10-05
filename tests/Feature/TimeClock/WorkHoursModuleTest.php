@@ -4,12 +4,14 @@ namespace Tests\Feature\TimeClock;
 
 use App\Models\Permission;
 use App\Models\Role;
+use App\Models\TimeClockCorrectionRequest;
 use App\Models\TimeClockShift;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\WorkHoursGlance;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
@@ -171,7 +173,7 @@ class WorkHoursModuleTest extends TestCase
      */
     public function test_the_figures_compare_hours_with_the_same_span_yesterday(): void
     {
-        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-15 12:00:00', 'UTC'));
+        Carbon::setTestNow(Carbon::parse('2026-09-15 12:00:00', 'UTC'));
 
         $alpha = $this->provisionTenant('Alpha');
         $worker = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
@@ -206,5 +208,37 @@ class WorkHoursModuleTest extends TestCase
             ['key' => 'on_the_clock', 'label' => 'clocked in', 'value' => 1, 'previous' => null],
             ['key' => 'hours', 'label' => 'hours clocked today', 'value' => 2, 'previous' => 3],
         ], $figures);
+    }
+
+    /**
+     * Attention: a shift open past its end (the sweep failed) is bad; waiting
+     * correction requests are caution, for a reader who can approve them. The
+     * control is the same box before either exists: no attention at all.
+     */
+    public function test_the_box_flags_a_stuck_shift_and_waiting_requests(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $worker = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
+        $glance = fn () => app(WorkHoursGlance::class)
+            ->resolve($alpha['admin'], DashboardPeriod::for($alpha['admin'], 'day'), [])->toArray()['data'];
+
+        $this->assertArrayNotHasKey('attention', $glance());
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $worker) {
+            $shift = TimeClockShift::query()->create([
+                'organization_id' => $alpha['org']->id, 'user_id' => $worker->id,
+                'clocked_in_at' => now()->subHours(9), 'scheduled_end_at' => now()->subHour(),
+            ]);
+            TimeClockCorrectionRequest::query()->create([
+                'organization_id' => $alpha['org']->id, 'user_id' => $worker->id, 'shift_id' => $shift->id,
+                'was_in_at' => $shift->clocked_in_at, 'clocked_in_at' => now()->subHours(10),
+                'reason' => 'Came in early.', 'status' => 'pending',
+            ]);
+        });
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 shift is still open past its end.'],
+            ['tone' => 'caution', 'text' => '1 correction request is waiting.'],
+        ], $glance()['attention']);
     }
 }

@@ -59,7 +59,7 @@ final class WebManagementGlance extends DescribedGlance
                 ? collect()
                 : WebSite::query()
                     ->whereIn('company_id', $companyIds)
-                    ->get(['id', 'connected_at']);
+                    ->get(['id', 'connected_at', 'went_quiet_at']);
 
             if ($sites->isEmpty()) {
                 return $this->payload([
@@ -141,9 +141,28 @@ final class WebManagementGlance extends DescribedGlance
              * a number it does not draw, the cost is one sentence saying why —
              * here, at the line that sends it.
              */
+            /*
+             * The rows that need somebody (Dashboard, 2026-10-05). A site that
+             * STOPPED reading is broken: it is showing whatever it last read to
+             * every visitor, and the quiet sweep has already decided it is
+             * quiet (`went_quiet_at`), so this box agrees with the event a rule
+             * would get. A site never connected is unfinished, not broken.
+             */
+            $quiet = $sites->whereNotNull('went_quiet_at')->count();
+            $attention = array_values(array_filter([
+                $quiet > 0 ? GlancePayload::attention('bad', $quiet === 1
+                    ? '1 website stopped reading EzBizi.'
+                    : "{$quiet} websites stopped reading EzBizi.") : null,
+                $waiting > 0 ? GlancePayload::attention('caution', $waiting === 1
+                    ? '1 website is waiting for its plugin.'
+                    : "{$waiting} websites are waiting for their plugin.") : null,
+            ]));
+
             return $this->payload([
                 'empty' => false,
                 'sentences' => $sentences,
+                // Only when something needs somebody.
+                ...($attention === [] ? [] : ['attention' => $attention]),
                 // Drawn by the sized dashboard, and built from the same scoped
                 // collection as the sentences, so no organization-wide count.
                 'figures' => [
