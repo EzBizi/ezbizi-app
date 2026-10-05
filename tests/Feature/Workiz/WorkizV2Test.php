@@ -465,4 +465,22 @@ class WorkizV2Test extends TestCase
         $this->assertCount(149, $read['jobs'], 'all but the one Workiz cannot list, across both pages');
         $this->assertNotContains('J00057', array_column($read['jobs'], 'UUID'));
     }
+
+    /** A row v1 landed has no JOB- id; the kept v1 pair asks for it, and its 204 is "deleted" (Nationwide's 45 moved jobs). */
+    public function test_a_row_v1_landed_is_asked_through_the_kept_v1_pair(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], function () use ($connection) {
+            $connection->connect(['api_token' => 'v2key_NW', 'api_version' => 'v2', 'v1' => ['api_token' => 'api_NW', 'auth_secret' => 'sec_NW']]);
+            $connection->save();
+            WorkizJob::create([
+                'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => '09RR7R',
+                'status' => 'Submitted', 'payload' => ['UUID' => '09RR7R'], 'synced_at' => now(),
+            ]);
+        });
+        Http::fake(['api.workiz.com/api/v1/api_NW/job/get/09RR7R/' => Http::response(null, 204)]);
+
+        $this->assertSame(['job' => null, 'failed' => null], app(WorkizJobs::class)->find($connection->fresh(), '09RR7R'));
+        Http::assertSentCount(1);
+    }
 }

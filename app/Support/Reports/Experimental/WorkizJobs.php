@@ -572,6 +572,8 @@ final class WorkizJobs
      */
     public function find(SocialConnection $connection, string $uuid): array
     {
+        $token = (string) ($connection->credentials['api_token'] ?? '');
+
         if (WorkizV2::uses($connection)) {
             // v2 answers 404 to the six-character uuid (measured): it reads a
             // job by its JOB- id, which the mirror keeps under `v2`.
@@ -579,20 +581,26 @@ final class WorkizJobs
             $id = str_starts_with($uuid, 'JOB-') ? $uuid : (WorkizJob::query()->withoutGlobalScopes()
                 ->where('franchise_id', $connection->scope_id)->where('remote_id', $uuid)->first(['payload'])?->payload['v2']['id'] ?? null);
 
-            if (! is_string($id) || $id === '') {
-                return ['job' => null, 'failed' => 'EzBizi holds no Workiz v2 id for job '.$uuid.'.'];
+            if (is_string($id) && $id !== '') {
+                $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+
+                return match (true) {
+                    $read['missing'] => ['job' => null, 'failed' => null],
+                    $read['refused'] !== null => ['job' => null, 'failed' => $read['refused']],
+                    default => ['job' => WorkizV2::job((array) $read['data']), 'failed' => null],
+                };
             }
 
-            $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+            // A row v1 landed before the switch has no JOB- id. The v1 pair
+            // kept beside the key still asks for it by uuid, and answers 204
+            // when Workiz deleted it: what retires a job deleted before v2
+            // ever read it (Nationwide's 45 moved to Massachusetts, 2026-10-05).
+            $token = (string) ($connection->credentials['v1']['api_token'] ?? '');
 
-            return match (true) {
-                $read['missing'] => ['job' => null, 'failed' => null],
-                $read['refused'] !== null => ['job' => null, 'failed' => $read['refused']],
-                default => ['job' => WorkizV2::job((array) $read['data']), 'failed' => null],
-            };
+            if ($token === '') {
+                return ['job' => null, 'failed' => 'EzBizi holds no Workiz v2 id for job '.$uuid.'.'];
+            }
         }
-
-        $token = (string) ($connection->credentials['api_token'] ?? '');
 
         if ($token === '') {
             return ['job' => null, 'failed' => 'This branch has no stored token.'];
