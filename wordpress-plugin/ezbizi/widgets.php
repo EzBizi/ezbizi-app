@@ -1985,6 +1985,19 @@ function ezbizi_review_faces_shortcode($atts) {
         . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . $t('sad_label') . '</button>'
         . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . $t('happy_label') . '</button>'
         . '</div></div>'
+        /*
+         * Jose, 2026-10-05: a good review can bring a thank-you and the
+         * Membership offer. A customer who came by their personal link (`?c=`)
+         * is known; anybody else is asked, once, and can skip it, so the way
+         * to Google never waits on a box.
+         */
+        . '<div data-step="ask" hidden><h3>' . $t('happy_title') . '</h3>'
+        . '<p>' . esc_html__('Leave your phone or email so we can thank you (optional).', 'ezbizi') . '</p>'
+        . '<label for="' . esc_attr($id) . '-who">' . esc_html__('Phone or email', 'ezbizi') . '</label>'
+        . '<input id="' . esc_attr($id) . '-who" class="ezbizi-rf-who" type="text" autocomplete="email" />'
+        . '<p><button type="button" class="ezbizi-rf-btn ezbizi-rf-continue">' . esc_html__('Continue', 'ezbizi') . '</button> '
+        . '<button type="button" class="ezbizi-rf-skip" style="background:none;border:0;text-decoration:underline;cursor:pointer;color:inherit">'
+        . esc_html__('Skip', 'ezbizi') . '</button></p></div>'
         . '<div data-step="happy" hidden><h3>' . $t('happy_title') . '</h3><p>' . $t('happy_text') . '</p>'
         . ($review === '' ? '<p>' . $t('thanks') . '</p>' : $review) . '</div>'
         . '<div data-step="sad" hidden><h3>' . $t('sad_title') . '</h3><p>' . $t('sad_text') . '</p>'
@@ -2003,7 +2016,19 @@ function ezbizi_review_faces_shortcode($atts) {
     $out .= "<script>(function(){
 var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
 function show(n){Array.prototype.forEach.call(w.querySelectorAll('[data-step]'),function(d){d.hidden=d.getAttribute('data-step')!==n;});}
-Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){show(b.getAttribute('data-go'));});});
+var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ";
+var c='';try{c=new URLSearchParams(location.search).get('c')||'';}catch(x){}
+// The review itself, for the customer's record and the Membership offer. Never waited on.
+function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
+function who(raw){var s=String(raw||'').trim(),o={};if(!s)return o;if(s.indexOf('@')>-1)o.email=s;else o.phone=s;return o;}
+Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){
+  var go=b.getAttribute('data-go');
+  if(go==='happy'){if(c){tell({rating:'happy'});show('happy');}else show('ask');return;}
+  show(go);
+});});
+var whoBox=w.querySelector('.ezbizi-rf-who');
+w.querySelector('.ezbizi-rf-continue').addEventListener('click',function(){var v=who(whoBox.value);v.rating='happy';if(v.email||v.phone)tell(v);show('happy');});
+w.querySelector('.ezbizi-rf-skip').addEventListener('click',function(){show('happy');});
 var f=w.querySelector('form'),note=w.querySelector('.ezbizi-rf-note');
 f.addEventListener('submit',function(e){
   e.preventDefault();
@@ -2014,7 +2039,7 @@ f.addEventListener('submit',function(e){
   var v={key:" . wp_json_encode($key) . ",name:g('name'),email:g('email'),phone:g('phone'),page_url:location.href,
     fields:{'Rating':'Not happy','Name':g('name'),'Phone':g('phone'),'Email':g('email'),'What happened?':g('feedback')}};
   fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)})
-  .then(function(r){if(!r.ok)throw new Error(r.status);show('sent');})
+  .then(function(r){if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });
 })();</script>";
