@@ -416,6 +416,44 @@ class MarketingGlanceTest extends TestCase
     }
 
     /**
+     * Published and failed compare with yesterday up to the same time, not the
+     * whole of yesterday: the later sends yesterday would make both previous
+     * figures larger if the window were a whole day.
+     */
+    public function test_the_figures_compare_with_the_same_span_the_day_before(): void
+    {
+        $account = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'head');
+
+        // Today, before now.
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subHour()->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subHours(2)->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_FAILED, now()->subHours(3)->toDateTimeString());
+
+        // Yesterday, inside the same elapsed span.
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subDay()->subHour()->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_FAILED, now()->subDay()->subHours(2)->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_FAILED, now()->subDay()->subHours(3)->toDateTimeString());
+
+        // Yesterday, after the same time of day: outside the comparison.
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subDay()->addHours(2)->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subDay()->addHours(3)->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_FAILED, now()->subDay()->addHours(2)->toDateTimeString());
+
+        $this->target($account, SocialPostTarget::STATUS_SCHEDULED, null, now()->addMonths(2)->format('Y-m-d H:i'));
+
+        $admin = $this->alpha['admin'];
+        $data = app(MarketingGlance::class)
+            ->resolve($admin, DashboardPeriod::for($admin, 'day'), [])
+            ->toArray()['data'];
+
+        $this->assertSame([
+            ['key' => 'published', 'label' => 'published today', 'value' => 2, 'previous' => 1],
+            ['key' => 'failed', 'label' => 'failed', 'value' => 1, 'previous' => 2],
+            ['key' => 'waiting', 'label' => 'waiting', 'value' => 1, 'previous' => null],
+        ], $data['figures']);
+    }
+
+    /**
      * The box is live, so the placeholder must be gone.
      *
      * Asserted through what the registry actually HANDS OUT rather than

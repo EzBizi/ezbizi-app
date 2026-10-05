@@ -52,6 +52,7 @@ final class EmailGlance extends DescribedGlance
 
             $slices = [];
             $sentences = [];
+            $disconnected = 0;
 
             foreach ($mailboxes as $mailbox) {
                 // A broken mailbox is not asked. `WatchMailboxes` already skips
@@ -62,6 +63,7 @@ final class EmailGlance extends DescribedGlance
                 // one. Two production mailboxes sat broken for three weeks
                 // saying "could not be asked", which reads like a bad minute.
                 if ($mailbox->status === Mailbox::STATUS_BROKEN) {
+                    $disconnected++;
                     $sentences[] = sprintf(
                         '%s is disconnected. No mail is arriving from it until it is reconnected in Email, Settings.',
                         $mailbox->address,
@@ -141,6 +143,18 @@ final class EmailGlance extends DescribedGlance
             if ($sentences !== []) {
                 $data['sentences'] = $sentences;
             }
+
+            // Both are the inboxes as they stand now (SNAPSHOT), so neither
+            // has a previous. Unread sums the bars, so an inbox that could not
+            // be asked adds nothing rather than a guess; disconnected counts
+            // the inboxes named as disconnected above. Counted in the loop,
+            // not by re-reading `status` here: a read refused just now can
+            // mark its mailbox broken mid-load, and that inbox's sentence on
+            // THIS load says "could not be asked", not "disconnected".
+            $data['figures'] = [
+                GlancePayload::figure('unread', 'unread', (int) array_sum(array_column($slices, 'total'))),
+                GlancePayload::figure('disconnected', 'disconnected', $disconnected),
+            ];
 
             return $this->payload($data);
         });

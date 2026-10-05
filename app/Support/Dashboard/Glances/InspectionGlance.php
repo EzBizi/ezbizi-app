@@ -67,16 +67,7 @@ final class InspectionGlance extends DescribedGlance
                 );
             }
 
-            // Period bounds are wall times in the view timezone; submitted_at is
-            // stored UTC. Bind UTC instants so "now" is not compared as a naive
-            // clock string earlier than the row.
-            $from = $period->startsOn->copy()->utc();
-            $to = $period->endsOn->copy()->utc();
-            $submittedThisPeriod = InspectionReport::query()
-                ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
-                ->where('submitted_at', '>=', $from)
-                ->where('submitted_at', '<=', $to)
-                ->count();
+            $submittedThisPeriod = $this->submittedIn($period, $reachable);
 
             $periodWord = $period->phrase();
 
@@ -96,9 +87,36 @@ final class InspectionGlance extends DescribedGlance
                         "{$submittedThisPeriod} submitted {$periodWord}.",
                         "{$archived} archived.",
                     ],
+                    // In progress and archived are snapshots; submitted
+                    // compares with the same elapsed span one period back.
+                    'figures' => [
+                        GlancePayload::figure('in_progress', 'in progress', $inProgress),
+                        GlancePayload::figure('submitted', 'submitted '.$periodWord, $submittedThisPeriod, $this->submittedIn($period->previous(), $reachable)),
+                        GlancePayload::figure('archived', 'archived', $archived),
+                    ],
                 ],
             );
         });
+    }
+
+    /**
+     * Reports in reach submitted inside a window.
+     *
+     * @param  \Illuminate\Support\Collection<int, string>  $reachable
+     */
+    private function submittedIn(DashboardPeriod $window, $reachable): int
+    {
+        // Period bounds are wall times in the view timezone; submitted_at is
+        // stored UTC. Bind UTC instants so "now" is not compared as a naive
+        // clock string earlier than the row.
+        $from = $window->startsOn->copy()->utc();
+        $to = $window->endsOn->copy()->utc();
+
+        return InspectionReport::query()
+            ->where(fn (Builder $q) => $this->constrainToReach($q, $reachable))
+            ->where('submitted_at', '>=', $from)
+            ->where('submitted_at', '<=', $to)
+            ->count();
     }
 
     /**

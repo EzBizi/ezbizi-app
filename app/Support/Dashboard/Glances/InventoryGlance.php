@@ -64,6 +64,13 @@ final class InventoryGlance extends DescribedGlance
                     $locations === 1 ? '1 location listed.' : "{$locations} locations listed.",
                     $openPos === 1 ? '1 open purchase order.' : "{$openPos} open purchase orders.",
                 ],
+                // Counts of items, never their worth (see below). A snapshot,
+                // so nothing to compare with: previous stays null.
+                'figures' => [
+                    GlancePayload::figure('items', 'items listed', $items),
+                    GlancePayload::figure('low', 'low', $counts['low']),
+                    GlancePayload::figure('out', 'out of stock', $counts['out']),
+                ],
             ];
 
             // No stock value here, even with inventory.financials — Jose ruled on

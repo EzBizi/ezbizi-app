@@ -209,6 +209,34 @@ class InventoryGlanceTest extends TestCase
         $this->assertContains('0 open purchase orders.', $payload['data']['sentences']);
     }
 
+    /**
+     * Items listed leads; low and out follow. Counts only — never stock value —
+     * and a snapshot, so every previous is null. Distinct values (4 / 1 / 2) so
+     * a figure reading the wrong count cannot pass.
+     */
+    public function test_figures_are_items_listed_then_low_then_out(): void
+    {
+        $location = $this->taggedLocation($this->alpha['franchise']);
+
+        $in = $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000', 'last_cost_minor' => 250]);
+        $low = $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+        $this->taggedItem($this->alpha['franchise'], ['reorder_at' => '4.000']);
+
+        $this->setOnHand($in, $location, 10);
+        $this->setOnHand($low, $location, 3);
+
+        $payload = app(InventoryGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray();
+
+        $this->assertSame([
+            ['key' => 'items', 'label' => 'items listed', 'value' => 4, 'previous' => null],
+            ['key' => 'low', 'label' => 'low', 'value' => 1, 'previous' => null],
+            ['key' => 'out', 'label' => 'out of stock', 'value' => 2, 'previous' => null],
+        ], $payload['data']['figures']);
+    }
+
     public function test_open_purchase_orders_are_draft_or_open(): void
     {
         $this->taggedItem($this->alpha['franchise']);

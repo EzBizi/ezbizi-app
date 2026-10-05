@@ -261,9 +261,9 @@ class ReviewsGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'series', 'slices', 'sentences'],
+            ['empty', 'series', 'slices', 'sentences', 'figures'],
             array_keys($data),
-            'the Reviews box draws a line, its slices and its sentences; any other '
+            'the Reviews box draws a line, its slices, its sentences and its figures; any other '
             .'key is a query on every dashboard load for a figure nobody sees, and '
             .'an organization-wide one reaches a reader scoped to one franchise',
         );
@@ -341,6 +341,36 @@ class ReviewsGlanceTest extends TestCase
             '4.5 stars across 2.',
             $this->glance($this->alpha['admin'])['sentences'],
         );
+    }
+
+    /**
+     * The headline compares today so far with yesterday to the same hour.
+     *
+     * `review()` dates each review a day before the clock. Yesterday
+     * afternoon's review is after noon, so a whole-day comparison would say 2
+     * and the same span says 1.
+     */
+    public function test_the_arrived_figure_compares_with_the_same_span_the_day_before(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-24 10:00:00', 'America/New_York'));
+        $this->review(null, answered: true); // left 10:00 yesterday
+        Carbon::setTestNow(Carbon::parse('2026-08-24 13:00:00', 'America/New_York'));
+        $this->review(null); // left 13:00 yesterday, after the span
+
+        Carbon::setTestNow(Carbon::parse('2026-08-25 09:00:00', 'America/New_York'));
+        $this->review(null); // left 09:00 today
+        $this->review(null);
+        $this->review(null, answered: true);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $data = app(ReviewsGlance::class)
+            ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'day'), [])
+            ->toArray()['data'];
+
+        $this->assertSame([
+            ['key' => 'arrived', 'label' => 'arrived today', 'value' => 3, 'previous' => 1],
+            ['key' => 'unanswered', 'label' => 'unanswered', 'value' => 3, 'previous' => null],
+        ], $data['figures']);
     }
 
     /** With nothing anywhere, the same sentence is simply true. */

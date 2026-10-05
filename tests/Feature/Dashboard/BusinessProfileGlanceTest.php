@@ -99,9 +99,9 @@ class BusinessProfileGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'sentences'],
+            ['empty', 'sentences', 'figures'],
             array_keys($data),
-            'the Business Profile box draws its sentences and nothing else; any other '
+            'the Business Profile box draws its sentences and its figures; any other '
             .'key is a query on every dashboard load for a figure nobody sees, and an '
             .'organization-wide one reaches a reader scoped to one franchise',
         );
@@ -120,5 +120,20 @@ class BusinessProfileGlanceTest extends TestCase
 
         $this->assertSame('1 listing is not showing on Google.', $data['sentences'][0]);
         $this->assertSame('2 listings connected.', $data['sentences'][1]);
+    }
+
+    /** Listings connected leads, not showing follows; a snapshot, so no previous. */
+    public function test_figures_are_listings_connected_then_not_showing(): void
+    {
+        $this->location();
+        $this->location();
+        $this->location(live: false);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $this->assertSame([
+            ['key' => 'listings', 'label' => 'listings connected', 'value' => 3, 'previous' => null],
+            ['key' => 'not_live', 'label' => 'not showing', 'value' => 1, 'previous' => null],
+        ], $data['figures']);
     }
 }

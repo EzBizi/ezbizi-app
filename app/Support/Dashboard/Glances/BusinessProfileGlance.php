@@ -83,6 +83,12 @@ final class BusinessProfileGlance extends DescribedGlance
                 data: [
                     'empty'     => false,
                     'sentences' => $sentences,
+                    // Drawn by the sized dashboard; from the same reach-scoped
+                    // collection as the sentences. Snapshot, so no previous.
+                    'figures'   => [
+                        GlancePayload::figure('listings', 'listings connected', $total),
+                        GlancePayload::figure('not_live', 'not showing', $notLive),
+                    ],
                     // `organization_total` was here and is gone. GlancePayload's
                     // rule: a glance sends what its box draws. Nothing in
                     // client/lib read it, so it was a COUNT(*) on every

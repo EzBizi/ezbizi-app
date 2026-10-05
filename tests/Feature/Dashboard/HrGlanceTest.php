@@ -368,6 +368,67 @@ class HrGlanceTest extends TestCase
     }
 
     /**
+     * The figures: on the books is a snapshot; Joined and Left carry the same
+     * counts over the previous window, bounded on BOTH ends. The 16th of
+     * August is after last month's "so far" ended and the 31st of July before
+     * it began, so neither may reach either figure.
+     */
+    public function test_the_figures_compare_joined_and_left_with_the_same_span_last_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15 12:00:00', 'UTC'));
+
+        $this->inTenant(function () {
+            $person = function (string $email, ?string $started, ?string $left = null) {
+                $user = User::create([
+                    'organization_id' => $this->alpha['org']->id,
+                    'role_id'         => $this->alpha['admin']->role_id,
+                    'name' => $email, 'email' => $email,
+                    'password' => 'a-real-password', 'is_active' => true,
+                ]);
+
+                Assignment::create([
+                    'organization_id' => $this->alpha['org']->id,
+                    'user_id' => $user->id,
+                    'assigned_franchise_id' => $this->alpha['franchise']->id,
+                ]);
+
+                if ($started !== null) {
+                    \App\Models\EmploymentEvent::create([
+                        'organization_id' => $this->alpha['org']->id, 'user_id' => $user->id,
+                        'kind' => \App\Models\EmploymentEvent::STARTED, 'occurred_on' => $started,
+                    ]);
+                }
+
+                if ($left !== null) {
+                    \App\Models\EmploymentEvent::create([
+                        'organization_id' => $this->alpha['org']->id, 'user_id' => $user->id,
+                        'kind' => \App\Models\EmploymentEvent::LEFT, 'occurred_on' => $left,
+                    ]);
+                    $user->forceFill(['is_active' => false])->save();
+                }
+            };
+
+            $person('now@alpha.test', '2026-09-03');                    // joined this month
+            $person('first@alpha.test', '2026-08-01');                  // joined last month, first day
+            $person('fifteenth@alpha.test', '2026-08-15');              // joined last month, last day
+            $person('after@alpha.test', '2026-08-16');                  // after the window: neither
+            $person('before@alpha.test', '2026-07-31');                 // before the window: neither
+            $person('gone@alpha.test', '2025-01-01', '2026-08-10');     // left last month
+            $person('later@alpha.test', '2025-01-01', '2026-08-20');    // left outside both
+        });
+
+        $figures = app(HrGlance::class)
+            ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'month'), [])
+            ->toArray()['data']['figures'];
+
+        $this->assertSame([
+            ['key' => 'on_the_books', 'label' => 'on the books', 'value' => 8, 'previous' => null],
+            ['key' => 'joined', 'label' => 'joined this month', 'value' => 1, 'previous' => 2],
+            ['key' => 'left', 'label' => 'left this month', 'value' => 0, 'previous' => 1],
+        ], $figures);
+    }
+
+    /**
      * A view-timezone wall clock must be converted before it meets a UTC column.
      *
      * `DashboardPeriod::startsOn` is local midnight in the ORGANIZATION timezone;

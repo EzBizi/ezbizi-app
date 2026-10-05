@@ -87,6 +87,14 @@ final class FleetGlance extends DescribedGlance
                 $data['sentences'] = $sentences;
             }
 
+            // Snapshots, so no previous. Counts of vehicles only: what the
+            // insurance costs stays on the vehicle pane.
+            $data['figures'] = [
+                GlancePayload::figure('vehicles', 'vehicles', $total),
+                GlancePayload::figure('service_due', 'need service soon', $serviceDue),
+                GlancePayload::figure('insurance_due', 'insurance due soon', $insuranceDue),
+            ];
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),

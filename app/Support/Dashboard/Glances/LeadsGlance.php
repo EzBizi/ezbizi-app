@@ -195,6 +195,10 @@ final class LeadsGlance extends DescribedGlance
                     ],
                     'slices'    => $slices,
                     'sentences' => $sentences,
+                    'figures'   => [
+                        GlancePayload::figure('arrived', 'arrived '.$periodWord, $inPeriod, $this->arrivedIn($period->previous(), $inReach)),
+                        GlancePayload::figure('waiting', 'waiting', $waiting),
+                    ],
                     // `organization_total` was here and is gone. GlancePayload's
                     // rule: a glance sends what its box draws, and this one was
                     // read by nothing in client/lib - a count on every dashboard
@@ -206,6 +210,19 @@ final class LeadsGlance extends DescribedGlance
                 ],
             );
         });
+    }
+
+    /**
+     * How many enquiries were made in a window, on the same `received_at` and
+     * the same reach the line reads. Only a count: the figure's `previous`
+     * needs no buckets.
+     */
+    private function arrivedIn(DashboardPeriod $period, callable $inReach): int
+    {
+        return (int) $inReach(Lead::query())
+            ->where('received_at', '>=', $period->startsOn->copy()->utc())
+            ->where('received_at', '<=', $period->endsOn->copy()->utc())
+            ->count();
     }
 
     /**

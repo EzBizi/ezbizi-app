@@ -367,4 +367,34 @@ class EmailGlanceTest extends TestCase
         $this->assertStringNotContainsString('has not been able to fetch', $sentences);
         $this->assertStringContainsString('just now', $sentences, 'It should still report the live failure.');
     }
+
+    /**
+     * Unread sums only the inboxes that answered; a failed read and a broken
+     * inbox add nothing to it. Both figures are a snapshot, so neither has a
+     * previous.
+     */
+    public function test_the_figures_are_unread_across_the_bars_and_inboxes_disconnected(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $first = $this->grantedInbox($user, 'first@alpha.test');
+        $second = $this->grantedInbox($user, 'second@alpha.test');
+        $dead = $this->grantedInbox($user, 'dead@alpha.test');
+        $broken = $this->grantedInbox($user, 'broken@alpha.test');
+        $this->inTenant(function () use ($broken) {
+            $broken->markBroken('token revoked');
+            $broken->save();
+        });
+        $this->withScriptedProvider();
+        ScriptedMailboxReader::$unread[(string) $first->getKey()] = 3;
+        ScriptedMailboxReader::$unread[(string) $second->getKey()] = 4;
+        ScriptedMailboxReader::$unread[(string) $broken->getKey()] = 50;
+        ScriptedMailboxReader::$failUnread[(string) $dead->getKey()] = CannotReadMailbox::credentialRejected($dead);
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user, 'day'), [])->toArray();
+
+        $this->assertSame([
+            ['key' => 'unread', 'label' => 'unread', 'value' => 7, 'previous' => null],
+            ['key' => 'disconnected', 'label' => 'disconnected', 'value' => 1, 'previous' => null],
+        ], $payload['data']['figures']);
+    }
 }

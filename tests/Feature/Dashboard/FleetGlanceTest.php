@@ -143,6 +143,46 @@ class FleetGlanceTest extends TestCase
         $this->assertContains('1 vehicle has insurance due soon.', $week['data']['sentences']);
     }
 
+    /**
+     * The figures: every vehicle in reach first (sold ones included, as the
+     * pie counts them), then service and insurance due. Snapshots, so no
+     * previous.
+     */
+    public function test_the_figures_lead_with_the_vehicles_in_reach(): void
+    {
+        $this->taggedVehicle($this->alpha['franchise']);
+        $this->taggedVehicle($this->alpha['franchise'], VehicleStatus::Sold);
+
+        $this->inTenant(function () {
+            Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+                'next_service_on' => now()->subDay()->toDateString(),
+            ]);
+
+            VehicleInsurancePolicy::factory()->create([
+                'vehicle_id' => Vehicle::factory()->create([
+                    'company_id' => $this->alpha['company']->id,
+                    'franchise_id' => $this->alpha['franchise']->id,
+                    'status' => VehicleStatus::Active,
+                ])->id,
+                'expires_on' => now()->addDay()->toDateString(),
+                'ended_on' => null,
+            ]);
+        });
+
+        $figures = app(FleetGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data']['figures'];
+
+        $this->assertSame([
+            ['key' => 'vehicles', 'label' => 'vehicles', 'value' => 4, 'previous' => null],
+            ['key' => 'service_due', 'label' => 'need service soon', 'value' => 1, 'previous' => null],
+            ['key' => 'insurance_due', 'label' => 'insurance due soon', 'value' => 1, 'previous' => null],
+        ], $figures);
+    }
+
     public function test_service_due_matches_the_vehicle_list(): void
     {
         $this->inTenant(function () {

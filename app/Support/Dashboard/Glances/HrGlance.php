@@ -2,6 +2,7 @@
 
 namespace App\Support\Dashboard\Glances;
 
+use App\Models\EmploymentEvent;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
@@ -161,6 +162,8 @@ final class HrGlance extends DescribedGlance
                 };
             }
 
+            [$joinedBefore, $leftBefore] = $this->joinedAndLeftIn($user, $period->previous());
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),
@@ -173,9 +176,56 @@ final class HrGlance extends DescribedGlance
                     'empty' => false,
                     'slices' => $slices,
                     'sentences' => $sentences,
+                    // On the books is a snapshot, so it has no earlier self.
+                    // Joined and Left compare with the same elapsed span one
+                    // period back, counted the way the widget counts them.
+                    'figures' => [
+                        GlancePayload::figure('on_the_books', 'on the books', $people),
+                        GlancePayload::figure('joined', 'joined '.$periodWord, $joined, $joinedBefore),
+                        GlancePayload::figure('left', 'left '.$periodWord, $left, $leftBefore),
+                    ],
                 ],
             );
         });
+    }
+
+    /**
+     * Joined and Left inside a closed window, for a figure's `previous`.
+     *
+     * The same reads as StartersAndLeavers — an ACTIVE person's first `started`
+     * date, and `left` events, for people in this view — but bounded on both
+     * ends: the widget's window runs open to now, and a past window that did
+     * the same would count this period as well. Both columns are DATES in the
+     * organization's own days, so the bounds are the window's local dates, as
+     * the 'since' above is (no ->utc()).
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function joinedAndLeftIn(User $user, DashboardPeriod $window): array
+    {
+        $from = $window->startsOn->toDateString();
+        $to = $window->endsOn->toDateString();
+
+        $firsts = EmploymentEvent::query()
+            ->where('kind', EmploymentEvent::STARTED)
+            ->groupBy('user_id')
+            ->selectRaw('user_id, min(occurred_on) as first_started');
+
+        $joined = $this->peopleOnTheBooks($user)
+            ->joinSub($firsts, 'firsts', 'firsts.user_id', '=', 'users.id')
+            ->where('users.is_active', true)
+            ->where('firsts.first_started', '>=', $from)
+            ->where('firsts.first_started', '<=', $to)
+            ->count();
+
+        $left = EmploymentEvent::query()
+            ->where('kind', EmploymentEvent::LEFT)
+            ->whereDate('occurred_on', '>=', $from)
+            ->whereDate('occurred_on', '<=', $to)
+            ->whereIn('user_id', $this->peopleOnTheBooks($user)->select('id'))
+            ->count();
+
+        return [$joined, $left];
     }
 
     /**

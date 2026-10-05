@@ -163,4 +163,48 @@ class WorkHoursModuleTest extends TestCase
         $this->assertFalse($data['empty']);
         $this->assertSame(1, collect($data['slices'])->firstWhere('label', 'Clocked in')['total'], 'their own branch, and not the other one');
     }
+
+    /**
+     * The figures: who is on the clock now (a snapshot), and hours clocked
+     * against the same elapsed span yesterday. The shift yesterday AFTER this
+     * time of day is outside "yesterday so far" and must not count.
+     */
+    public function test_the_figures_compare_hours_with_the_same_span_yesterday(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-15 12:00:00', 'UTC'));
+
+        $alpha = $this->provisionTenant('Alpha');
+        $worker = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
+        $other = $this->userWithRole($alpha, 'Tech 2', ['time_clock.view'], 'tech2@alpha.test');
+
+        $period = DashboardPeriod::for($alpha['admin'], 'day');
+        $before = $period->previous();
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $worker, $other, $period, $before) {
+            $shift = fn ($who, $in, $out) => TimeClockShift::query()->create([
+                'organization_id' => $alpha['org']->id,
+                'user_id' => $who->id,
+                'clocked_in_at' => $in,
+                'clocked_out_at' => $out,
+                'scheduled_end_at' => $in->copy()->addHours(8),
+            ]);
+
+            // Today: two closed hours, and half an hour still open.
+            $shift($worker, $period->startsOn->copy()->utc()->addHour(), $period->startsOn->copy()->utc()->addHours(3));
+            $shift($other, now()->subMinutes(30), null);
+
+            // Yesterday so far: three hours. And one after this time of day.
+            $shift($worker, $before->startsOn->copy()->utc()->addHour(), $before->startsOn->copy()->utc()->addHours(4));
+            $shift($other, $before->endsOn->copy()->utc()->addHour(), $before->endsOn->copy()->utc()->addHours(2));
+        });
+
+        $figures = app(WorkHoursGlance::class)
+            ->resolve($alpha['admin'], $period, [])
+            ->toArray()['data']['figures'];
+
+        $this->assertSame([
+            ['key' => 'on_the_clock', 'label' => 'on the clock', 'value' => 1, 'previous' => null],
+            ['key' => 'hours', 'label' => 'hours clocked today', 'value' => 2, 'previous' => 3],
+        ], $figures);
+    }
 }

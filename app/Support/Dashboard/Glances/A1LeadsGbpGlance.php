@@ -71,6 +71,7 @@ final class A1LeadsGbpGlance extends DescribedGlance
 
             $low = $arrived->filter(fn ($r) => $r->rating !== null && $r->rating <= 3)->count();
             $total = $arrived->count();
+            $before = $this->countsIn($period->previous(), $company);
 
             $points = [];
             $slices = [];
@@ -91,6 +92,10 @@ final class A1LeadsGbpGlance extends DescribedGlance
                         ? 'None of them 1 to 3 stars.'
                         : ($low === 1 ? '1 of them 1 to 3 stars.' : "{$low} of them 1 to 3 stars."),
                 ],
+                'figures' => [
+                    GlancePayload::figure('new', 'new '.$period->phrase(), $total, $before['new']),
+                    GlancePayload::figure('low', '1 to 3 stars', $low, $before['low']),
+                ],
             ]);
         });
     }
@@ -108,6 +113,27 @@ final class A1LeadsGbpGlance extends DescribedGlance
             options: [],
             data: $data,
         );
+    }
+
+    /**
+     * New reviews in a window, and how many of them were 1 to 3 stars, on the
+     * same `review_created_at` and the same rating rule as the box. Only
+     * counts: the figures' `previous` needs no buckets.
+     *
+     * @return array{new: int, low: int}
+     */
+    private function countsIn(DashboardPeriod $period, string $company): array
+    {
+        $ratings = A1LeadsReviewEvent::query()
+            ->where('company_id', $company)
+            ->where('review_created_at', '>=', $period->startsOn->copy()->utc())
+            ->where('review_created_at', '<=', $period->endsOn->copy()->utc())
+            ->pluck('rating');
+
+        return [
+            'new' => $ratings->count(),
+            'low' => $ratings->filter(fn ($rating) => $rating !== null && $rating <= 3)->count(),
+        ];
     }
 
     /** @return array<string, int> */

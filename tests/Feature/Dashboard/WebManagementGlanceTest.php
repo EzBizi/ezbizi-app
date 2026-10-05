@@ -171,6 +171,21 @@ class WebManagementGlanceTest extends TestCase
         }
     }
 
+    /** Websites lead, waiting-for-plugin follows; a snapshot, so no previous. */
+    public function test_figures_are_websites_then_waiting_for_plugin(): void
+    {
+        $this->site('a-1chimney.com', connected: true);
+        $this->site('nj.a-1chimney.com', connected: false);
+        $this->site('ny.a-1chimney.com', connected: true);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $this->assertSame([
+            ['key' => 'sites', 'label' => 'websites', 'value' => 3, 'previous' => null],
+            ['key' => 'waiting', 'label' => 'waiting for plugin', 'value' => 1, 'previous' => null],
+        ], $data['figures']);
+    }
+
     public function test_one_website_is_singular(): void
     {
         $this->site('a-1chimney.com', connected: false);

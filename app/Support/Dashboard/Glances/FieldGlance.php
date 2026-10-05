@@ -50,6 +50,11 @@ final class FieldGlance extends DescribedGlance
                     "{$reporting} of {$tracked} tracked ".($tracked === 1 ? 'person is' : 'people are').' reporting now.',
                     $open > 0 ? ($open === 1 ? '1 alert is waiting.' : "{$open} alerts are waiting.") : null,
                 ])),
+                'figures' => [
+                    GlancePayload::figure('tracked', 'tracked', $tracked),
+                    GlancePayload::figure('reporting', 'reporting now', $reporting),
+                    GlancePayload::figure('alerts', 'alerts waiting', $open),
+                ],
             ]);
         });
     }

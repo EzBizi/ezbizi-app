@@ -222,6 +222,33 @@ class InspectionGlanceTest extends TestCase
         $this->assertSame($week['data']['slices'], $year['data']['slices']);
     }
 
+    /**
+     * The figures: in progress and archived are snapshots; submitted carries
+     * the same span last month. The 20th of August is after last month's
+     * "so far" ended, so it reaches neither submitted figure.
+     */
+    public function test_the_figures_compare_submitted_with_the_same_span_last_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15 12:00:00', 'UTC'));
+
+        $this->runOn($this->alpha['franchise']);
+        $this->reportOn($this->alpha['franchise'], Carbon::parse('2026-09-10 12:00:00', 'UTC'));
+        $this->reportOn($this->alpha['franchise'], Carbon::parse('2026-08-05 12:00:00', 'UTC'));
+        $this->reportOn($this->alpha['franchise'], Carbon::parse('2026-08-12 12:00:00', 'UTC'));
+        $late = $this->reportOn($this->alpha['franchise'], Carbon::parse('2026-08-20 12:00:00', 'UTC'));
+        $this->inTenant(fn () => $late->forceFill(['archived_at' => now()])->save());
+
+        $figures = app(InspectionGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'month'), []
+        )->toArray()['data']['figures'];
+
+        $this->assertSame([
+            ['key' => 'in_progress', 'label' => 'in progress', 'value' => 1, 'previous' => null],
+            ['key' => 'submitted', 'label' => 'submitted this month', 'value' => 1, 'previous' => 2],
+            ['key' => 'archived', 'label' => 'archived', 'value' => 1, 'previous' => null],
+        ], $figures);
+    }
+
     public function test_submitted_this_period_uses_the_period(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'UTC'));

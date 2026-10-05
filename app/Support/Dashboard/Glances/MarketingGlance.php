@@ -127,10 +127,7 @@ final class MarketingGlance extends DescribedGlance
                 ]);
             }
 
-            $failed = (int) $this->inReach($visible)
-                ->where('status', SocialPostTarget::STATUS_FAILED)
-                ->whereBetween('sent_at', [$from, $to])
-                ->count();
+            $failed = $this->countIn($visible, SocialPostTarget::STATUS_FAILED, $period);
 
             $published = $this->inReach($visible)
                 ->where('status', SocialPostTarget::STATUS_SENT)
@@ -206,13 +203,48 @@ final class MarketingGlance extends DescribedGlance
                 $slices[] = ['label' => $at, 'total' => $value];
             }
 
+            $previous = $period->previous();
+
             return $this->payload([
                 'empty' => false,
                 'series' => [['label' => 'Published', 'points' => $points]],
                 'slices' => $slices,
                 'sentences' => $sentences,
+                // Published and failed compare with the same elapsed span one
+                // period back. Waiting is not windowed (see the class
+                // docblock), so it has no earlier self to compare with.
+                'figures' => [
+                    GlancePayload::figure(
+                        'published',
+                        'published '.$period->phrase(),
+                        $inPeriod,
+                        $this->countIn($visible, SocialPostTarget::STATUS_SENT, $previous),
+                    ),
+                    GlancePayload::figure(
+                        'failed',
+                        'failed',
+                        $failed,
+                        $this->countIn($visible, SocialPostTarget::STATUS_FAILED, $previous),
+                    ),
+                    GlancePayload::figure('waiting', 'waiting', $waiting),
+                ],
             ]);
         });
+    }
+
+    /**
+     * Targets in one status whose `sent_at` falls in a window, bounded on both
+     * ends. The period's bounds are wall times in the view timezone and
+     * `sent_at` is stored UTC, so they are bound as UTC instants.
+     *
+     * @param  string[]  $visible
+     */
+    private function countIn(array $visible, string $status, DashboardPeriod $period): int
+    {
+        return (int) $this->inReach($visible)
+            ->where('status', $status)
+            ->whereBetween('sent_at', [$period->startsOn->copy()->utc(), $period->endsOn->copy()->utc()])
+            ->count();
     }
 
     /**

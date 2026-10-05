@@ -128,9 +128,18 @@ final class TrainingGlance extends DescribedGlance
             // states for vehicles. "Nobody is due" is the good news this box
             // is for, and a box that vanished at zero would take the board's
             // layout with it every time the last person retook something.
+            $due = $this->peopleDueForRetaking($testIds, $user);
+
+            // The same distinct-PEOPLE count the sentence carries, never a sum
+            // of assignments; the tests are the ones this box tracks. Already
+            // lapsed, right now: a snapshot, so no previous.
             return $this->payload([
                 'empty' => false,
-                'sentence' => $this->sentenceFor($this->peopleDueForRetaking($testIds, $user)),
+                'sentence' => $this->sentenceFor($due),
+                'figures' => [
+                    GlancePayload::figure('due', 'due to retake', $due),
+                    GlancePayload::figure('tests', 'tests tracked', count($testIds)),
+                ],
             ]);
         });
     }

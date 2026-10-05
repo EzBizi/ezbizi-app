@@ -74,6 +74,9 @@ final class ReportsGlance extends DescribedGlance
                     'sentences' => [
                         $total === 1 ? '1 report saved.' : "{$total} reports saved.",
                     ],
+                    'figures' => [
+                        GlancePayload::figure('saved', 'reports saved', $total),
+                    ],
                 ],
             );
         });

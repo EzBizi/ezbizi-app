@@ -320,4 +320,36 @@ class PhoneGlanceTest extends TestCase
         $this->assertTrue($data['empty']);
         $this->assertSame('No calls to show for this period.', $data['sentence']);
     }
+
+    /**
+     * Answered and missed compare with yesterday up to the same time, not the
+     * whole of yesterday: the afternoon calls below would make both previous
+     * figures larger if the window were a whole day.
+     */
+    public function test_the_figures_compare_with_the_same_span_the_day_before(): void
+    {
+        $number = $this->line();
+
+        Carbon::setTestNow(Carbon::parse('2026-08-23 10:00:00', 'America/New_York'));
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-23 13:00:00', 'America/New_York'));
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+        $this->ring($number, PhoneCall::STATUS_IN_PROGRESS);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
+        $this->ring($number, PhoneCall::STATUS_BLOCKED);
+
+        $this->assertSame([
+            ['key' => 'answered', 'label' => 'answered today', 'value' => 3, 'previous' => 1],
+            ['key' => 'missed', 'label' => 'missed', 'value' => 1, 'previous' => 2],
+            ['key' => 'voicemail', 'label' => 'waiting', 'value' => 1, 'previous' => null],
+        ], $this->payload(period: 'day')['data']['figures']);
+    }
 }

@@ -121,16 +121,27 @@ final class SchedulingGlance extends DescribedGlance
                 $slices[] = ['label' => $label, 'total' => $jobs];
             }
 
+            $areas = $areaIds->count();
+            $zips = ServiceAreaZip::whereIn('service_area_id', $areaIds)->count();
+
             return $this->payload([
                 'empty' => false,
                 'series' => [['label' => 'Jobs a day', 'points' => $points]],
                 'slices' => $slices,
                 'sentences' => $this->sentences(
-                    areas: $areaIds->count(),
-                    zips: ServiceAreaZip::whereIn('service_area_id', $areaIds)->count(),
+                    areas: $areas,
+                    zips: $zips,
                     unconfigured: $this->areasWithNoHours($areaIds),
                     totalJobs: $totalJobs,
                 ),
+                // Configured, like every number here: "capacity" in the label
+                // so the headline cannot read as bookings. No history, so no
+                // previous (see SNAPSHOT above).
+                'figures' => [
+                    GlancePayload::figure('capacity', ($totalJobs === 1 ? 'job' : 'jobs').' a week capacity', $totalJobs),
+                    GlancePayload::figure('areas', $areas === 1 ? 'service area' : 'service areas', $areas),
+                    GlancePayload::figure('zips', $zips === 1 ? 'zip code' : 'zip codes', $zips),
+                ],
             ]);
         });
     }

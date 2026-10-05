@@ -9,6 +9,7 @@ use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Collection;
 
 /**
  * Phone box: what happened on the phone this period, and what is waiting.
@@ -74,31 +75,13 @@ final class PhoneGlance extends DescribedGlance
                 ]);
             }
 
-            // startsOn is a wall clock in the viewer's timezone; created_at is
-            // stored UTC. Bound as instants, or a franchise an hour behind
-            // counts yesterday's calls as today's.
-            $counts = PhoneCall::query()
-                ->whereIn('number_id', $numberIds)
-                ->where('direction', PhoneCall::DIRECTION_INBOUND)
-                ->whereBetween('created_at', [
-                    $period->startsOn->copy()->utc(),
-                    $period->endsOn->copy()->utc(),
-                ])
-                ->selectRaw('status, COUNT(*) as total')
-                ->groupBy('status')
-                ->pluck('total', 'status');
+            $counts = $this->inboundIn($period, $numberIds);
 
-            $answered = (int) ($counts[PhoneCall::STATUS_COMPLETED] ?? 0)
-                + (int) ($counts[PhoneCall::STATUS_IN_PROGRESS] ?? 0);
+            $answered = $this->answered($counts);
 
             $blocked = (int) ($counts[PhoneCall::STATUS_BLOCKED] ?? 0);
 
-            // Everything else that arrived and did not get answered. Written
-            // as a subtraction rather than a list of statuses so a status
-            // added later cannot quietly fall out of the total — which is how
-            // a chart comes to show 38 of 44 with no sixth slice to explain
-            // the gap.
-            $missed = (int) $counts->sum() - $answered - $blocked;
+            $missed = $this->missed($counts);
 
             $waiting = PhoneCall::query()
                 ->whereIn('number_id', $numberIds)
@@ -139,8 +122,65 @@ final class PhoneGlance extends DescribedGlance
                 $data['sentences'] = [$this->voicemailSentence($waiting)];
             }
 
+            // Answered and missed compare with the same elapsed span one
+            // period back. Voicemails waiting is a queue standing now, with
+            // no earlier self to compare with.
+            $previous = $this->inboundIn($period->previous(), $numberIds);
+
+            $data['figures'] = [
+                GlancePayload::figure('answered', 'answered '.$period->phrase(), $answered, $this->answered($previous)),
+                GlancePayload::figure('missed', 'missed', $missed, $this->missed($previous)),
+                GlancePayload::figure('voicemail', 'waiting', $waiting),
+            ];
+
             return $this->payload($data);
         });
+    }
+
+    /**
+     * Inbound calls in a window, counted by status.
+     *
+     * startsOn is a wall clock in the viewer's timezone; created_at is stored
+     * UTC. Bound as instants, or a franchise an hour behind counts yesterday's
+     * calls as today's.
+     *
+     * @param  list<int|string>  $numberIds
+     * @return Collection<string, int>
+     */
+    private function inboundIn(DashboardPeriod $period, array $numberIds): Collection
+    {
+        return PhoneCall::query()
+            ->whereIn('number_id', $numberIds)
+            ->where('direction', PhoneCall::DIRECTION_INBOUND)
+            ->whereBetween('created_at', [
+                $period->startsOn->copy()->utc(),
+                $period->endsOn->copy()->utc(),
+            ])
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+    }
+
+    /** @param  Collection<string, int>  $counts */
+    private function answered(Collection $counts): int
+    {
+        return (int) ($counts[PhoneCall::STATUS_COMPLETED] ?? 0)
+            + (int) ($counts[PhoneCall::STATUS_IN_PROGRESS] ?? 0);
+    }
+
+    /**
+     * Everything else that arrived and did not get answered. Written as a
+     * subtraction rather than a list of statuses so a status added later
+     * cannot quietly fall out of the total — which is how a chart comes to
+     * show 38 of 44 with no sixth slice to explain the gap.
+     *
+     * @param  Collection<string, int>  $counts
+     */
+    private function missed(Collection $counts): int
+    {
+        return (int) $counts->sum()
+            - $this->answered($counts)
+            - (int) ($counts[PhoneCall::STATUS_BLOCKED] ?? 0);
     }
 
     private function voicemailSentence(int $waiting): string

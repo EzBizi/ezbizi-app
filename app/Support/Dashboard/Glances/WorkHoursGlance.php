@@ -60,25 +60,7 @@ final class WorkHoursGlance extends DescribedGlance
             $in = TimeClockShift::query()->open()->whereIn('user_id', $people)->distinct()->count('user_id');
             $out = $people->count() - $in;
 
-            // Clocked time that falls in the period, an open shift counted to
-            // now, as the Work Hours totals do. ->utc() for the reason every
-            // sibling glance gives: the period is wall clock in the view zone.
-            $from = $period->startsOn->copy()->utc();
-            $to = $period->endsOn->copy()->utc();
-            $now = now();
-            $seconds = 0;
-
-            foreach (TimeClockShift::query()
-                ->whereIn('user_id', $people)
-                ->where('clocked_in_at', '<', $to)
-                ->where(fn ($q) => $q->whereNull('clocked_out_at')->orWhere('clocked_out_at', '>', $from))
-                ->get(['clocked_in_at', 'clocked_out_at']) as $shift) {
-                $start = $shift->clocked_in_at->max($from);
-                $end = ($shift->clocked_out_at ?? $now)->min($to)->min($now);
-                $seconds += max(0, $end->getTimestamp() - $start->getTimestamp());
-            }
-
-            $hours = intdiv($seconds, 3600);
+            $hours = $this->hoursIn($people, $period);
 
             return $payload([
                 'empty' => false,
@@ -92,7 +74,41 @@ final class WorkHoursGlance extends DescribedGlance
                         ? "1 hour clocked {$period->phrase()} in this view."
                         : "{$hours} hours clocked {$period->phrase()} in this view.",
                 ],
+                // On the clock is right now, so it has no earlier self. Hours
+                // compare with the same elapsed span one period back.
+                'figures' => [
+                    GlancePayload::figure('on_the_clock', 'on the clock', $in),
+                    GlancePayload::figure('hours', 'hours clocked '.$period->phrase(), $hours, $this->hoursIn($people, $period->previous())),
+                ],
             ]);
         });
+    }
+
+    /**
+     * Whole hours clocked inside a window by these people.
+     *
+     * @param  \Illuminate\Support\Collection<int, string>  $people
+     */
+    private function hoursIn($people, DashboardPeriod $window): int
+    {
+        // Clocked time that falls in the period, an open shift counted to
+        // now, as the Work Hours totals do. ->utc() for the reason every
+        // sibling glance gives: the period is wall clock in the view zone.
+        $from = $window->startsOn->copy()->utc();
+        $to = $window->endsOn->copy()->utc();
+        $now = now();
+        $seconds = 0;
+
+        foreach (TimeClockShift::query()
+            ->whereIn('user_id', $people)
+            ->where('clocked_in_at', '<', $to)
+            ->where(fn ($q) => $q->whereNull('clocked_out_at')->orWhere('clocked_out_at', '>', $from))
+            ->get(['clocked_in_at', 'clocked_out_at']) as $shift) {
+            $start = $shift->clocked_in_at->max($from);
+            $end = ($shift->clocked_out_at ?? $now)->min($to)->min($now);
+            $seconds += max(0, $end->getTimestamp() - $start->getTimestamp());
+        }
+
+        return intdiv($seconds, 3600);
     }
 }

@@ -171,6 +171,30 @@ class AutomationsGlanceTest extends TestCase
         $this->assertSame(['No automations have run.'], $this->sentences());
     }
 
+    /**
+     * Failures lead, then successes, then rules that stopped themselves —
+     * all counts the box already makes. Distinct values so a swap goes red.
+     */
+    public function test_figures_are_failed_then_succeeded_then_stopped(): void
+    {
+        $this->runWithStatus(AutomationRun::SUCCEEDED);
+        $this->runWithStatus(AutomationRun::SUCCEEDED);
+        $this->runWithStatus(AutomationRun::SUCCEEDED);
+        $this->runWithStatus(AutomationRun::FAILED);
+        $this->runWithStatus(AutomationRun::FAILED);
+        $this->stoppedRule('Chase completions');
+
+        $data = app(AutomationsGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertSame([
+            ['key' => 'failed', 'label' => 'runs failed', 'value' => 2, 'previous' => null],
+            ['key' => 'succeeded', 'label' => 'runs succeeded', 'value' => 3, 'previous' => null],
+            ['key' => 'stopped', 'label' => 'stopped', 'value' => 1, 'previous' => null],
+        ], $data['figures']);
+    }
+
     public function test_idle_is_a_sentence_not_zero_over_zero(): void
     {
         $payload = app(AutomationsGlance::class)->resolve(

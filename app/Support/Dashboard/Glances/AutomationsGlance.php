@@ -103,6 +103,15 @@ final class AutomationsGlance extends DescribedGlance
                 $data['sentences'] = $sentences;
             }
 
+            // From what the box already counts: the last 100 runs and the rules
+            // that stopped themselves. Failures lead, as the bad number does on
+            // Business Profile. Snapshot, so no previous.
+            $data['figures'] = [
+                GlancePayload::figure('failed', 'runs failed', $failed),
+                GlancePayload::figure('succeeded', 'runs succeeded', $succeeded),
+                GlancePayload::figure('stopped', 'stopped', $off->count()),
+            ];
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),

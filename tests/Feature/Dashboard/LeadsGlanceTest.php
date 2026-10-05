@@ -277,9 +277,9 @@ class LeadsGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'series', 'slices', 'sentences'],
+            ['empty', 'series', 'slices', 'sentences', 'figures'],
             array_keys($data),
-            'the Leads box draws a line, its slices and its sentences; any other key '
+            'the Leads box draws a line, its slices, its sentences and its figures; any other key '
             .'is a query on every dashboard load for a figure nobody sees, and an '
             .'organization-wide one reaches a reader scoped to one franchise',
         );
@@ -410,6 +410,34 @@ class LeadsGlanceTest extends TestCase
         $this->assertSame(1, $this->inTenant(fn () => Lead::query()->withoutGlobalScopes()->count()));
         $this->assertTrue($data['empty']);
         $this->assertSame('No enquiries in this view.', $data['sentence']);
+    }
+
+    /**
+     * The headline compares today so far with yesterday to the same hour.
+     *
+     * Yesterday afternoon's enquiry is after noon, so a whole-day comparison
+     * would say 2 and the same span says 1.
+     */
+    public function test_the_arrived_figure_compares_with_the_same_span_the_day_before(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-23 11:00:00', 'America/New_York'));
+        $this->lead(null); // received 10:00 yesterday
+        Carbon::setTestNow(Carbon::parse('2026-08-23 14:00:00', 'America/New_York'));
+        $this->lead(null); // received 13:00 yesterday, after the span
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $this->lead(null);
+        $this->lead(null);
+        $this->lead(null, Lead::STATUS_BOOKED);
+
+        $data = app(LeadsGlance::class)
+            ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'day'), [])
+            ->toArray()['data'];
+
+        $this->assertSame([
+            ['key' => 'arrived', 'label' => 'arrived today', 'value' => 3, 'previous' => 1],
+            ['key' => 'waiting', 'label' => 'waiting', 'value' => 4, 'previous' => null],
+        ], $data['figures']);
     }
 
     public function test_a_specimen_beside_real_enquiries_is_left_out_of_every_count(): void

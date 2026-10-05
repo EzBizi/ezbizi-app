@@ -142,6 +142,10 @@ final class ReviewsGlance extends DescribedGlance
                 'series' => [['label' => 'Reviews', 'points' => $points]],
                 'slices' => $slices,
                 'sentences' => $sentences,
+                'figures' => [
+                    GlancePayload::figure('arrived', 'arrived '.$period->phrase(), $inPeriod, $this->arrivedIn($period->previous(), $inReach)),
+                    GlancePayload::figure('unanswered', 'unanswered', $unanswered),
+                ],
                 /*
                  * `organization_total` was here and is gone. Dashboard's rule,
                  * 2026-09-15: a glance sends what its box draws, and nothing
@@ -179,6 +183,19 @@ final class ReviewsGlance extends DescribedGlance
             options: [],
             data: $data,
         );
+    }
+
+    /**
+     * How many reviews were left in a window, on the same `reviewed_at` and
+     * the same reach the line reads. Only a count: the figure's `previous`
+     * needs no buckets.
+     */
+    private function arrivedIn(DashboardPeriod $period, callable $inReach): int
+    {
+        return (int) $inReach(Review::query())
+            ->where('reviewed_at', '>=', $period->startsOn->copy()->utc())
+            ->where('reviewed_at', '<=', $period->endsOn->copy()->utc())
+            ->count();
     }
 
     /** @return array<string, int> */

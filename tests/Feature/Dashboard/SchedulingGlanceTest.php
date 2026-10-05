@@ -280,6 +280,36 @@ class SchedulingGlanceTest extends TestCase
     }
 
     /**
+     * The figures: configured capacity first, named as capacity, then areas
+     * and zip codes. Snapshots all, so no previous.
+     */
+    public function test_the_figures_lead_with_configured_capacity(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $dallas = $this->area($tenant, 'Dallas');
+        $this->slot($dallas, 1, 2);
+        $this->slot($dallas, 4, 3);
+        $this->area($tenant, 'Houston'); // no hours: an area, and no capacity
+
+        ServiceAreaZip::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'service_area_id' => $dallas->id,
+            'zip' => '75201',
+        ]);
+
+        $figures = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin']), [])
+            ->toArray()['data']['figures'];
+
+        $this->assertSame([
+            ['key' => 'capacity', 'label' => 'jobs a week capacity', 'value' => 5, 'previous' => null],
+            ['key' => 'areas', 'label' => 'service areas', 'value' => 2, 'previous' => null],
+            ['key' => 'zips', 'label' => 'zip code', 'value' => 1, 'previous' => null],
+        ], $figures);
+    }
+
+    /**
      * An area with no hours contributes zero to every bar, so it is invisible
      * on the chart and looks exactly like a quiet business. It gets a sentence.
      */

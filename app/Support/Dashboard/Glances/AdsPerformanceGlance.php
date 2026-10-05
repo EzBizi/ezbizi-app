@@ -60,7 +60,17 @@ final class AdsPerformanceGlance extends DescribedGlance
                 $total === 1 ? '1 account connected.' : "{$total} accounts connected.",
             ]));
 
-            return $this->payload(['empty' => false, 'sentences' => $sentences]);
+            // Counts of accounts and campaigns only — never spend or budget
+            // (Jose, 2026-09-29: no financial info on the dashboard).
+            return $this->payload([
+                'empty' => false,
+                'sentences' => $sentences,
+                'figures' => [
+                    GlancePayload::figure('accounts', 'accounts connected', $total),
+                    GlancePayload::figure('certification', 'certification problems', $certification),
+                    GlancePayload::figure('paused', 'campaigns paused', (int) $paused),
+                ],
+            ]);
         });
     }
 

@@ -144,6 +144,12 @@ final class WebManagementGlance extends DescribedGlance
             return $this->payload([
                 'empty' => false,
                 'sentences' => $sentences,
+                // Drawn by the sized dashboard, and built from the same scoped
+                // collection as the sentences, so no organization-wide count.
+                'figures' => [
+                    GlancePayload::figure('sites', 'websites', $total),
+                    GlancePayload::figure('waiting', 'waiting for plugin', $waiting),
+                ],
             ]);
         });
     }

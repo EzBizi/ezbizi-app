@@ -59,4 +59,41 @@ class A1LeadsGbpGlanceTest extends TestCase
         $this->assertTrue($data['empty']);
         $this->assertStringContainsString('Switch to A-1 Chimney', $data['sentence']);
     }
+
+    /**
+     * Both figures compare today so far with yesterday to the same hour.
+     *
+     * Yesterday afternoon's review is after noon, so a whole-day comparison
+     * would say 2 and 2 where the same span says 1 and 1.
+     */
+    public function test_the_figures_compare_with_the_same_span_the_day_before(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+        $t = $this->provisionTenant('A1-Group');
+        config()->set('services.a1leads.organization_id', $t['org']->id);
+        config()->set('services.a1leads.company_id', $t['company']->id);
+        $user = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach ([
+                ['today-5', 5, '2026-08-24 09:00:00'],
+                ['today-2', 2, '2026-08-24 09:00:00'],
+                ['today-1', 1, '2026-08-24 09:00:00'],
+                ['yesterday-morning', 1, '2026-08-23 10:00:00'],
+                ['yesterday-afternoon', 2, '2026-08-23 13:00:00'],
+            ] as [$name, $rating, $at]) {
+                A1LeadsReviewEvent::create([
+                    'company_id' => $t['company']->id, 'google_review_name' => "accounts/a/locations/l/reviews/{$name}",
+                    'rating' => $rating, 'review_created_at' => Carbon::parse($at, 'America/New_York')->utc(),
+                ]);
+            }
+        });
+
+        $data = app(A1LeadsGbpGlance::class)->resolve($user, DashboardPeriod::for($user, 'day'), [])->toArray()['data'];
+
+        $this->assertSame([
+            ['key' => 'new', 'label' => 'new today', 'value' => 3, 'previous' => 1],
+            ['key' => 'low', 'label' => '1 to 3 stars', 'value' => 2, 'previous' => 1],
+        ], $data['figures']);
+    }
 }

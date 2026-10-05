@@ -132,6 +132,26 @@ class TrainingGlanceTest extends TestCase
         $this->assertSame('Nobody is due to retake a test.', $data['sentence']);
     }
 
+    /**
+     * The headline is the same distinct-PEOPLE count as the sentence: one
+     * person lapsed on two of three tests is 1, not 2. Tests tracked follows.
+     */
+    public function test_figures_are_people_due_then_tests_tracked(): void
+    {
+        $tenant = $this->provisionTenant('Glance-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $this->aLapsedPass($tenant, $learner, $this->aPublishedTest($tenant, 'Ladders'));
+        $this->aLapsedPass($tenant, $learner, $this->aPublishedTest($tenant, 'Roofs'));
+        $this->aPublishedTest($tenant, 'Gutters');
+
+        $this->assertSame([
+            ['key' => 'due', 'label' => 'due to retake', 'value' => 1, 'previous' => null],
+            ['key' => 'tests', 'label' => 'tests tracked', 'value' => 3, 'previous' => null],
+        ], $this->resolveFor($monitor)['figures']);
+    }
+
     public function test_no_tests_in_reach_reads_empty(): void
     {
         $tenant = $this->provisionTenant('Glance-'.Str::random(8));

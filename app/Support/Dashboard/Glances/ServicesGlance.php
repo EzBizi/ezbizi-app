@@ -73,6 +73,10 @@ final class ServicesGlance extends DescribedGlance
                     'sentences' => [
                         $total === 1 ? '1 service listed.' : "{$total} services listed.",
                     ],
+                    'figures' => [
+                        GlancePayload::figure('services', 'services listed', $total),
+                        GlancePayload::figure('groups', 'groups', count($counts)),
+                    ],
                 ],
             );
         });
