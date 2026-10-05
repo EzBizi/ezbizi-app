@@ -95,6 +95,35 @@ final class FleetGlance extends DescribedGlance
                 GlancePayload::figure('insurance_due', 'insurance due soon', $insuranceDue),
             ];
 
+            // What needs somebody (Dashboard, 2026-10-05): overdue is bad,
+            // inside thirty days is caution, overdue first. Counts of vehicles
+            // only — never what anything costs. The "soon" figures above
+            // include the overdue ones, so each caution row is the difference,
+            // and a vehicle is never counted as both.
+            $serviceOverdue = $this->serviceOverdueCount(clone $base);
+            $insuranceExpired = $this->insuranceExpiredCount(clone $base);
+            $serviceSoon = $serviceDue - $serviceOverdue;
+            $insuranceSoon = $insuranceDue - $insuranceExpired;
+
+            $attention = array_values(array_filter([
+                $serviceOverdue === 0 ? null : GlancePayload::attention('bad', $serviceOverdue === 1
+                    ? '1 vehicle is overdue for service.'
+                    : "{$serviceOverdue} vehicles are overdue for service."),
+                $insuranceExpired === 0 ? null : GlancePayload::attention('bad', $insuranceExpired === 1
+                    ? '1 vehicle has expired insurance.'
+                    : "{$insuranceExpired} vehicles have expired insurance."),
+                $serviceSoon === 0 ? null : GlancePayload::attention('caution', $serviceSoon === 1
+                    ? '1 vehicle needs service within 30 days.'
+                    : "{$serviceSoon} vehicles need service within 30 days."),
+                $insuranceSoon === 0 ? null : GlancePayload::attention('caution', $insuranceSoon === 1
+                    ? '1 vehicle has insurance expiring within 30 days.'
+                    : "{$insuranceSoon} vehicles have insurance expiring within 30 days."),
+            ]));
+
+            if ($attention !== []) {
+                $data['attention'] = array_slice($attention, 0, 3);
+            }
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),
@@ -123,6 +152,48 @@ final class FleetGlance extends DescribedGlance
                         ->whereNotNull('odometer_miles')
                         ->whereRaw('odometer_miles >= next_service_miles - 500');
                 });
+            })
+            ->count();
+    }
+
+    /**
+     * Past due: the day has gone, or the odometer has reached the mileage.
+     * Every vehicle here is also in serviceDueCount, whose window starts
+     * before today and whose mileage margin starts 500 earlier.
+     */
+    private function serviceOverdueCount(Builder $query): int
+    {
+        $today = now()->toDateString();
+
+        return (int) $query
+            ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
+            ->where(function (Builder $inner) use ($today): void {
+                $inner->where(function (Builder $date) use ($today): void {
+                    $date->whereNotNull('next_service_on')
+                        ->whereDate('next_service_on', '<', $today);
+                })->orWhere(function (Builder $miles): void {
+                    $miles->whereNotNull('next_service_miles')
+                        ->whereNotNull('odometer_miles')
+                        ->whereRaw('odometer_miles >= next_service_miles');
+                });
+            })
+            ->count();
+    }
+
+    /**
+     * The open policy's expiry has passed and nothing has replaced it, so the
+     * vehicle is uninsured on paper. A subset of insuranceDueCount.
+     */
+    private function insuranceExpiredCount(Builder $query): int
+    {
+        $today = now()->toDateString();
+
+        return (int) $query
+            ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
+            ->whereHas('insurancePolicies', function (Builder $policy) use ($today): void {
+                $policy->whereNull('ended_on')
+                    ->whereNotNull('expires_on')
+                    ->whereDate('expires_on', '<', $today);
             })
             ->count();
     }
