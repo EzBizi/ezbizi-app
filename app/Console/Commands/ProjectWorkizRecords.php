@@ -824,11 +824,12 @@ class ProjectWorkizRecords extends Command
     /**
      * The followed fields as the `jobs` row holds them, in the same shapes the
      * projection writes — the raw wall-clock string for the schedule, never a
-     * Carbon, because the cast stores naive time.
+     * Carbon, because the cast stores naive time. WorkizJobWriter::create()
+     * records the same when it links a job EzBizi made in Workiz.
      *
      * @return array{status: ?string, scheduled_for: ?string, amount_minor: ?int}
      */
-    private function followedValues(Job $job): array
+    public static function followedValues(Job $job): array
     {
         return [
             'status' => $job->status,

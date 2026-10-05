@@ -2,13 +2,19 @@
 
 namespace Tests\Feature\Workiz;
 
+use App\Console\Commands\ProjectWorkizRecords;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\SocialConnection;
+use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Models\WorkizTeamMember;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizJobWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
@@ -192,5 +198,184 @@ class WorkizJobWriterTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->inTenant($tenant['org'], fn () => $this->writer()->reschedule($job, '2026-10-30T07:00:00Z', '2026-10-30 08:00:00'));
+    }
+
+    // ── create(): a job EzBizi booked, made in Workiz too ─────────────
+
+    /** Workiz's answer to a create, captured live on 2026-10-05 (NY test client 1196, job Y7TCXI). */
+    private function created(string $clientId): array
+    {
+        return ['flag' => true, 'msg' => 'Created Job', 'data' => [[
+            'UUID' => 'Y7TCXI', 'SerialId' => '900018617', 'JobName' => '', 'ClientId' => $clientId, 'link' => 'https://api.workiz.com/root/job/Y7TCXI/',
+        ]], 'code' => 201];
+    }
+
+    /** A member's visit as BookJob books it, with the Workiz client numbers the member holds in the branch. */
+    private function booked(array $tenant, array $keys): Job
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $keys) {
+            $branch = $tenant['franchise']->id;
+            $customer = Customer::create([
+                'owning_franchise_id' => $branch, 'number' => 'C-1', 'name' => 'Mary Ann Rivera', 'is_active' => true,
+                'phone' => '+13055550142', 'email' => 'mary@example.com', 'address_line1' => '12 Main St', 'address_line2' => 'Apt 4',
+                'city' => 'Brooklyn', 'state' => 'NY', 'postal_code' => '11201',
+            ]);
+
+            foreach ($keys as $key) {
+                WorkizClient::create(['franchise_id' => $branch, 'client_id' => $key, 'customer_id' => $customer->id, 'synced_at' => now()]);
+            }
+
+            return Job::create([
+                'franchise_id' => $branch, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Membership visit',
+                'status' => 'Submitted', 'scheduled_for' => '2026-11-10 09:00:00', 'duration_minutes' => 90, 'currency' => 'USD',
+            ]);
+        });
+    }
+
+    private function counts(array $tenant): array
+    {
+        return $this->inTenant($tenant['org'], fn () => ['jobs' => Job::query()->count(), 'customers' => Customer::query()->count()]);
+    }
+
+    public function test_a_booked_visit_is_made_in_workiz_and_linked_before_the_projection_can_see_it(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: [1100, 1196]);
+        $lockFree = null;
+
+        Http::fake(['api.workiz.com/api/v1/api_NewYork/job/create/' => function () use (&$lockFree) {
+            $lockFree = Cache::lock(ProjectWorkizRecords::LOCK, 1)->get();
+
+            return Http::response($this->created('1196'));
+        }]);
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection', 'Recurring Client'));
+
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/job/create/')
+            && $r['auth_secret'] === 'sec_NewYork'
+            && $r['ClientId'] === 1196
+            && $r['FirstName'] === 'Mary Ann' && $r['LastName'] === 'Rivera'
+            && $r['Phone'] === '3055550142'
+            && $r['Email'] === 'mary@example.com'
+            && $r['Address'] === '12 Main St' && $r['Unit'] === 'Apt 4'
+            && $r['City'] === 'Brooklyn' && $r['State'] === 'NY' && $r['PostalCode'] === '11201'
+            && $r['JobDateTime'] === '2026-11-10 09:00:00' && $r['JobEndDateTime'] === '2026-11-10 10:30:00'
+            && $r['JobType'] === 'Chimney Inspection' && $r['JobSource'] === 'Recurring Client'
+            && ! isset($r['Comments']));
+
+        $this->assertFalse($lockFree, 'the projection is held off while the job and its link are made');
+        $this->assertNull($result['refused']);
+        $this->assertSame('Y7TCXI', $result['job']->remote_id);
+        $this->assertSame($visit->id, $result['job']->job_id);
+        $this->assertSame(900018617, (int) $result['job']->serial_id);
+        $this->assertSame('Submitted', $result['job']->projected['status'], 'it follows Workiz from here, like any Workiz job');
+        $this->assertSame(1, DB::table('audit_events')->where('action', 'workiz.job_created')->count());
+
+        $before = $this->counts($tenant);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame($before, $this->counts($tenant), 'the visit is not projected a second time');
+
+        // Twice is once: a retried call finds the job it already made.
+        $again = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection', 'Recurring Client'));
+        $this->assertSame($result['job']->id, $again['job']->id);
+        Http::assertSentCount(1);
+    }
+
+    /** A member Workiz does not know yet: the client Workiz makes is theirs, so the projection makes no second customer. */
+    public function test_the_client_workiz_makes_is_claimed_for_the_member(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: []);
+
+        Http::fake(['api.workiz.com/api/v1/api_NewYork/job/create/' => Http::response($this->created('2719'))]);
+
+        $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, null));
+
+        Http::assertSent(fn (Request $r) => ! array_key_exists('ClientId', $r->data()) && ! array_key_exists('JobType', $r->data()) && ! array_key_exists('JobSource', $r->data()));
+        $this->assertSame($visit->customer_id, $this->inTenant($tenant['org'], fn () => WorkizClient::query()->where('client_id', 2719)->value('customer_id')));
+
+        $before = $this->counts($tenant);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame($before, $this->counts($tenant));
+    }
+
+    /** Workiz may file the job under a client EzBizi knows as someone else: that key stays theirs, and the visit stays the member's. */
+    public function test_a_client_number_held_by_another_customer_is_not_taken(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: []);
+        $other = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $other = Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-2', 'name' => 'Dana Booker', 'is_active' => true]);
+            WorkizClient::create(['franchise_id' => $tenant['franchise']->id, 'client_id' => 2719, 'customer_id' => $other->id, 'synced_at' => now()]);
+
+            return $other;
+        });
+
+        Http::fake(['api.workiz.com/*' => Http::response($this->created('2719'))]);
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, null));
+
+        $this->assertSame($visit->id, $result['job']->job_id);
+        $this->assertSame($other->id, $this->inTenant($tenant['org'], fn () => WorkizClient::query()->where('client_id', 2719)->value('customer_id')));
+        $this->assertSame($visit->customer_id, $this->inTenant($tenant['org'], fn () => $visit->fresh()->customer_id));
+    }
+
+    /**
+     * A create Workiz accepted without naming the job cannot be linked; dispatch
+     * is told not to type it in again. Not a shape Workiz has sent -- the one
+     * answer here that was not captured -- but A1 Tools' guard for the same case.
+     */
+    public function test_an_answer_naming_no_job_is_not_called_a_success(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: [1196]);
+
+        Http::fake(['api.workiz.com/*' => Http::response(['flag' => true, 'msg' => 'Created Job', 'code' => 201, 'data' => [['SerialId' => '800019848', 'ClientId' => '1196']]])]);
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, null));
+
+        $this->assertNull($result['job']);
+        $this->assertStringContainsString('did not say which one', (string) $result['refused']);
+    }
+
+    /** Workiz's own sentence, field names included, and nothing linked. Captured live 2026-10-05: "Membership" is in no branch's source list. */
+    public function test_a_refused_create_comes_back_with_the_fields_workiz_named(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: [1196]);
+
+        Http::fake(['api.workiz.com/*' => Http::response(['error' => true, 'code' => 400, 'msg' => 'Error Validating Fields', 'details' => ['JobSource' => 'Could not find matching value for  JobSource - Membership']], 400)]);
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection', 'Membership'));
+
+        $this->assertSame(['job' => null, 'refused' => 'Error Validating Fields: JobSource: Could not find matching value for  JobSource - Membership'], $result);
+        $this->assertNull($this->inTenant($tenant['org'], fn () => WorkizJob::query()->where('job_id', $visit->id)->first()));
+        $this->assertSame(0, DB::table('audit_events')->where('action', 'workiz.job_created')->count());
+    }
+
+    /** A lost answer is not "nothing happened": Workiz may have made the job, so dispatch must look before typing it in. */
+    public function test_no_answer_says_the_job_may_exist(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: [1196]);
+
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection'));
+
+        $this->assertStringContainsString('look for it in Workiz before entering it', (string) $result['refused']);
+    }
+
+    public function test_a_branch_without_workiz_has_nothing_to_enter(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $visit = $this->booked($tenant, keys: []);
+
+        Http::fake();
+
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection'));
+
+        $this->assertSame(['job' => null, 'refused' => null], $result);
+        Http::assertNothingSent();
     }
 }
