@@ -10,11 +10,12 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\URL;
 
 /** One year of a customer's membership. A renewal is the next row. */
 #[Fillable([
     'franchise_id', 'customer_id', 'membership_plan_id', 'enrollment',
-    'starts_on', 'ends_on', 'cancelled_at', 'reminded_at', 'paid_minor',
+    'starts_on', 'ends_on', 'cancelled_at', 'reminded_at', 'visit_job_id', 'followed_up_at', 'paid_minor',
 ])]
 class Membership extends Model implements StatesRetention
 {
@@ -39,6 +40,7 @@ class Membership extends Model implements StatesRetention
             'ends_on'      => 'immutable_date',
             'cancelled_at' => 'datetime',
             'reminded_at'  => 'datetime',
+            'followed_up_at' => 'datetime',
             'paid_minor'   => 'integer',
         ];
     }
@@ -84,5 +86,24 @@ class Membership extends Model implements StatesRetention
             : $price;
 
         return max(0, $owed - $this->paid_minor);
+    }
+
+    public function visitJob(): BelongsTo
+    {
+        return $this->belongsTo(Job::class, 'visit_job_id');
+    }
+
+    /**
+     * `{{ confirm_visit_url }}` in the renewal reminder: the signed page where
+     * the customer picks the date of their next visit. Good until a month
+     * after the year ends.
+     */
+    public function getConfirmVisitUrlAttribute(): string
+    {
+        return URL::temporarySignedRoute(
+            'memberships.visit',
+            $this->ends_on->addMonth()->endOfDay(),
+            ['membership' => $this->getKey()],
+        );
     }
 }

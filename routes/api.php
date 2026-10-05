@@ -550,6 +550,11 @@ Route::get('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\Membersh
     ->name('memberships.join');
 Route::post('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'join'])
     ->middleware(['signed', 'throttle:20,1']);
+Route::get('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visitPage'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('memberships.visit');
+Route::post('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visit'])
+    ->middleware(['signed', 'throttle:20,1']);
 
 Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge'])
     ->middleware('throttle:web-enquiry')
