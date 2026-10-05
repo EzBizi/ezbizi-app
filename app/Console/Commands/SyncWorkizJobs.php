@@ -281,7 +281,9 @@ class SyncWorkizJobs extends Command
                 // it was still open and the complete listing this run just read
                 // did not hold it either: retired. Otherwise moved to the back
                 // of the queue rather than asked about again next minute.
-                if ($listedSince !== null && ! in_array($row->status, self::CLOSED, true)
+                // Held while services.workiz.retire_deleted is off: a deleted job
+                // can still be holding a seat its replacement has not taken yet.
+                if (config('services.workiz.retire_deleted') && $listedSince !== null && ! in_array($row->status, self::CLOSED, true)
                     && $row->scheduled_for !== null && $row->scheduled_for->gte($listedSince)) {
                     $gone[] = $row;
                 } else {

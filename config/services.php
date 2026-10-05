@@ -597,4 +597,13 @@ return [
         'hours_write' => (bool) env('GBP_HOURS_WRITE', false),
     ],
 
+    // The sweep retires a job Workiz deleted (SyncWorkizJobs::retire). Off
+    // until MA is connected (desk, 2026-10-05): the 43 Boston North jobs staff
+    // moved into MA's account still hold Massachusetts' seats, standing in for
+    // MA's own jobs until those arrive. Retired before then, Massachusetts reads
+    // ~43 spots open that are taken.
+    'workiz' => [
+        'retire_deleted' => (bool) env('WORKIZ_RETIRE_DELETED', false),
+    ],
+
 ];
