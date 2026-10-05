@@ -53,7 +53,7 @@ class MarketingModuleTest extends TestCase
         // 2026-09-29 the two panes are grantable one at a time as well (Jose:
         // tabs grantable "like all the others"), in the order the strip draws.
         $this->assertSame(
-            ['marketing.view', 'marketing.edit', 'marketing.posts.view', 'marketing.accounts.view'],
+            ['marketing.view', 'marketing.edit', 'marketing.posts.view', 'marketing.accounts.view', 'marketing.qr_codes.view'],
             $module->permissionKeys(),
         );
 

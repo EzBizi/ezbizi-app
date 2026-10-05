@@ -1505,7 +1505,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'marketing',
                 label: 'Marketing',
-                auditActionPrefixes: ['social'],
+                auditActionPrefixes: ['social', 'qr_code'],
                 actions: ['view', 'edit'],
                 /*
                  * Social Media Management's own two panes, grantable one at a
@@ -1523,6 +1523,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('posts', 'Posts'),
                     new TabDefinition('accounts', 'Accounts'),
+                    // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
+                    new TabDefinition('qr_codes', 'QR Codes'),
                 ],
                 triggers: [
                     /*

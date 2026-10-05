@@ -134,6 +134,7 @@ use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
+use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -1852,6 +1853,14 @@ Route::prefix('v1')
             Route::get('social/posts', [SocialPostsController::class, 'index']);
             Route::post('social/posts', [SocialPostsController::class, 'store']);
             Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
+        });
+        // Marketing > QR Codes. Writes also need marketing.edit (controller).
+        Route::middleware('permission:marketing.qr_codes.view')->group(function () {
+            Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);
+            Route::post('marketing/qr-codes', [QrCodesController::class, 'store']);
+            Route::put('marketing/qr-codes/{qrCode}', [QrCodesController::class, 'update']);
+            Route::delete('marketing/qr-codes/{qrCode}', [QrCodesController::class, 'destroy']);
+            Route::get('marketing/qr-codes/{qrCode}/image', [QrCodesController::class, 'image']);
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
