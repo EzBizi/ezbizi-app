@@ -9,6 +9,7 @@ import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/dashboard_grid.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
 
 /// The dashboard: one box per reachable module, one period for the page.
@@ -176,6 +177,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _saveLayout();
   }
 
+  /// Whether the server keeps a box hidden. Until it does there is no hide:
+  /// a box taken away here would come back on the next load.
+  bool get _hideable => _glances.any((glance) => glance.containsKey('hidden'));
+
+  /// Take a box off the dashboard, on this frame, and save.
+  Future<void> _hide(String key) async {
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == key) {...glance, 'hidden': true} else glance,
+      ];
+    });
+
+    await _saveLayout();
+  }
+
+  /// Put a hidden box back. It came without data (a hidden box costs the
+  /// server nothing), so the dashboard is read again to fill it.
+  Future<void> _addBox() async {
+    final hidden = [
+      for (final glance in _glances)
+        if (glance['hidden'] == true) glance,
+    ];
+    if (hidden.isEmpty) return;
+
+    final key = await showSearchPicker<String>(
+      context,
+      title: 'Add a box',
+      options: [
+        for (final glance in hidden)
+          SearchOption(value: glance['key'] as String, label: '${glance['label']}'),
+      ],
+    );
+    if (key == null || !mounted) return;
+
+    setState(() {
+      _glances = [
+        for (final glance in _glances)
+          if (glance['key'] == key) {...glance, 'hidden': false} else glance,
+      ];
+    });
+
+    await _saveLayout();
+    if (mounted) await _load();
+  }
+
   Future<void> _setPeriod(String period) async {
     if (period == _period) return;
 
@@ -251,6 +298,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'presentation': glance['presentation'] ?? 'text',
     'options': glance['options'] ?? <String, dynamic>{},
     if (glance['size'] is String) 'size': glance['size'],
+    if (glance['hidden'] is bool) 'hidden': glance['hidden'],
   };
 
   /// Compact, because the header already holds three 48-point move/drag
@@ -320,7 +368,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final byKey = {for (final glance in _glances) glance['key'] as String: glance};
     final sections = dashboardSections(
-      [for (final glance in _glances) glance['key'] as String],
+      [
+        for (final glance in _glances)
+          if (glance['hidden'] != true) glance['key'] as String,
+      ],
       widget.session.me?.navigationOrder ?? const [],
     );
 
@@ -336,6 +387,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           if (_customizing) _arrangeBar(context) else _periodRow(context),
           const SizedBox(height: 16),
+          // Every box hidden is a dashboard somebody emptied, not one with
+          // nothing to say: it says how to bring a box back.
+          if (sections.isEmpty && _glances.isNotEmpty)
+            DashboardNote(
+              _customizing
+                  ? 'Every box is hidden. Add a box brings one back.'
+                  : 'Every box is hidden. Customize, then Add a box, brings '
+                        'one back.',
+            ),
           for (final (i, section) in sections.indexed) ...[
             // The sidebar's own rule between its groups.
             if (i > 0) const Divider(height: 33),
@@ -347,6 +407,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               customizing: _customizing,
               onReorder: (keys) => _reorder(_withSection(keys)),
               onResize: _sized ? _setSize : null,
+              onHide: _hideable ? _hide : null,
               panels: [for (final key in section) _panelFor(byKey[key]!)],
             ),
           ],
@@ -388,14 +449,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Expanded(
             child: Text(
-              _sized
-                  ? 'Drag a box to move it, or pick its size.'
-                  : 'Drag a box to move it.',
+              switch ((_sized, _hideable)) {
+                (true, true) => 'Drag a box to move it, pick its size, or hide it.',
+                (true, false) => 'Drag a box to move it, or pick its size.',
+                (false, true) => 'Drag a box to move it, or hide it.',
+                (false, false) => 'Drag a box to move it.',
+              },
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onPrimaryContainer,
               ),
             ),
           ),
+          if (_glances.any((glance) => glance['hidden'] == true)) ...[
+            TextButton.icon(
+              onPressed: _addBox,
+              icon: const Icon(Icons.add),
+              label: const Text('Add a box'),
+            ),
+            const SizedBox(width: 4),
+          ],
           FilledButton(
             onPressed: () => setState(() => _customizing = false),
             child: const Text('Done'),
@@ -759,12 +831,13 @@ class _Figures extends StatelessWidget {
 
   final List<Map<String, dynamic>> figures;
 
-  /// "▲ 12%", "▼ <1%", "= 0%", or "▲ +15" from nothing. Null without a
-  /// previous value: a snapshot has no earlier self, and that is not a zero.
-  static String? trendOf(int value, int? previous, String Function(int) show) {
-    if (previous == null || previous < 0 || value < 0) return null;
+  /// "▲ 12%", "▼ <1%" or "= 0%". Null without a previous value, and null
+  /// against a previous zero: the Dashboard module's contract (2026-10-05)
+  /// draws no arrow there, because a change from nothing has no size and a
+  /// window with no history also reads zero.
+  static String? trendOf(int value, int? previous) {
+    if (previous == null || previous <= 0 || value < 0) return null;
     if (value == previous) return '= 0%';
-    if (previous == 0) return '▲ +${show(value)}';
 
     final percent = (value - previous) * 100 / previous;
     final arrow = percent > 0 ? '▲' : '▼';
@@ -803,7 +876,7 @@ class _Figures extends StatelessWidget {
     final previous = figure['previous'] is int
         ? figure['previous'] as int
         : null;
-    final trend = trendOf(value, previous, show);
+    final trend = trendOf(value, previous);
     final neutral = ToneColours.of(context, Tone.neutral);
 
     return Column(

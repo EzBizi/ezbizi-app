@@ -255,6 +255,106 @@ void main() {
     expect(sent.first['period'], 'week');
   });
 
+  group('hiding a box', () {
+    Map<String, dynamic> shown(String key, String label) => {
+      ..._glance(key, label, size: 'medium'),
+      'hidden': false,
+    };
+
+    testWidgets('a hidden box is off the dashboard, and Add a box brings it '
+        'back with its data', (tester) async {
+      final sent = <Map<String, dynamic>>[];
+      var loads = 0;
+
+      await _pumpScreen(
+        tester,
+        (request) async {
+          if (request.url.path.endsWith('/dashboard') && request.method == 'GET') {
+            loads++;
+          }
+          return _server(
+            [
+              shown('jobs', 'Jobs'),
+              {
+                'key': 'hr',
+                'label': 'Human Resources',
+                'hidden': true,
+                'size': 'medium',
+                'presentation': 'text',
+              },
+            ],
+            record: sent,
+          )(request);
+        },
+      );
+
+      expect(_titles(tester), ['Jobs']);
+
+      await _customize(tester);
+      await tester.tap(find.text('Add a box'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Human Resources'));
+      await tester.pumpAndSettle();
+
+      final entries = {
+        for (final g in sent.single['glances'] as List) g['key']: g['hidden'],
+      };
+      expect(entries, {'jobs': false, 'hr': false});
+      expect(loads, 2, reason: 'A box that came back has no data until it is read.');
+    });
+
+    testWidgets('hiding a box takes it away on the spot and saves it hidden', (
+      tester,
+    ) async {
+      final sent = <Map<String, dynamic>>[];
+
+      await _pumpScreen(
+        tester,
+        _server([shown('jobs', 'Jobs'), shown('hr', 'Human Resources')], record: sent),
+      );
+      await _customize(tester);
+
+      await tester.tap(find.byTooltip('Hide “Jobs”'));
+      await tester.pumpAndSettle();
+
+      expect(_titles(tester), ['Human Resources']);
+      expect(
+        {for (final g in sent.single['glances'] as List) g['key']: g['hidden']},
+        {'jobs': true, 'hr': false},
+      );
+    });
+
+    testWidgets('no hide until the server keeps a box hidden', (tester) async {
+      await _pumpScreen(tester, _server([_glance('jobs', 'Jobs', size: 'medium')]));
+      await _customize(tester);
+
+      // Control: Customize is open.
+      expect(find.byTooltip('Make “Jobs” large'), findsOneWidget);
+      expect(find.byTooltip('Hide “Jobs”'), findsNothing);
+      expect(find.text('Add a box'), findsNothing);
+    });
+
+    testWidgets('every box hidden says how to bring one back', (tester) async {
+      await _pumpScreen(
+        tester,
+        _server([
+          {
+            'key': 'jobs',
+            'label': 'Jobs',
+            'hidden': true,
+            'size': 'medium',
+            'presentation': 'text',
+          },
+        ]),
+      );
+
+      expect(
+        find.text('Every box is hidden. Customize, then Add a box, brings one back.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('sections on the screen', () {
     testWidgets('the sidebar’s groups are sections, with a rule between', (
       tester,
@@ -437,9 +537,8 @@ void main() {
       },
     );
 
-    testWidgets('the change since the period before, and none without one', (
-      tester,
-    ) async {
+    testWidgets('the change since the period before, and none without one '
+        'or from a zero', (tester) async {
       Map<String, dynamic> one(String key, int value, int? previous) => _glance(
         key,
         key,
@@ -461,7 +560,7 @@ void main() {
         tester,
         _server([
           one('down', 999, 1000),
-          one('same', 0, 0),
+          one('same', 37, 37),
           one('fresh', 15, 0),
           one('snapshot', 40, null),
         ]),
@@ -469,11 +568,13 @@ void main() {
 
       expect(find.text('▼ <1%'), findsOneWidget);
       expect(find.text('= 0%'), findsOneWidget);
-      expect(find.text('▲ +15'), findsOneWidget);
 
-      // Control: the snapshot's figure is drawn, and carries no change.
+      // The Dashboard module's contract: no arrow against a previous zero
+      // (a window with no history reads zero too) and none without one.
+      // Control: both figures are drawn, so the absence is the arrow's.
+      expect(find.text('15'), findsOneWidget);
       expect(find.text('40'), findsOneWidget);
-      expect(find.textContaining('▲'), findsOneWidget);
+      expect(find.textContaining('▲'), findsNothing);
       expect(find.textContaining('▼'), findsOneWidget);
     });
 

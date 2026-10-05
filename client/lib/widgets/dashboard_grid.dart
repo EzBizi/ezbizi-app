@@ -101,6 +101,7 @@ class DashboardGrid extends StatefulWidget {
     required this.panels,
     this.onReorder,
     this.onResize,
+    this.onHide,
     this.customizing = false,
     this.spacing = 16,
     this.fourColumnsFrom = 900,
@@ -111,6 +112,10 @@ class DashboardGrid extends StatefulWidget {
   final void Function(List<String> keys)? onReorder;
 
   final void Function(String key, String size)? onResize;
+
+  /// Take this panel off the dashboard. Null when the server cannot keep a
+  /// panel hidden, and then there is no hide button.
+  final void Function(String key)? onHide;
 
   /// Whether the arranging controls are drawn. Off, the cards are only cards.
   final bool customizing;
@@ -230,7 +235,9 @@ class _DashboardGridState extends State<DashboardGrid> {
     final panel = widget.panels[index];
     final arranging =
         widget.customizing &&
-        (widget.onReorder != null || widget.onResize != null);
+        (widget.onReorder != null ||
+            widget.onResize != null ||
+            widget.onHide != null);
 
     final card = DashboardCard(
       title: panel.title,
@@ -330,6 +337,13 @@ class _DashboardGridState extends State<DashboardGrid> {
                 : () => _move(index, index + 1, fromKeyboard: true),
           ),
         ],
+        if (widget.onHide != null)
+          IconButton(
+            onPressed: () => widget.onHide!(panel.key),
+            icon: const Icon(Icons.visibility_off_outlined),
+            iconSize: 18,
+            tooltip: 'Hide “${panel.title}”',
+          ),
       ],
     );
   }
