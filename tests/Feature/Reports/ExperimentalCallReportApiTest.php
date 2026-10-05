@@ -457,9 +457,15 @@ class ExperimentalCallReportApiTest extends TestCase
 
         $this->assertSame(['2026-09-14', '2026-09-20', 'week'], [$body['from'], $body['to'], $body['period']]);
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'call-log')
-            && str_contains(urldecode($request->url()), 'dateFrom=2026-09-14T00:00:00-04:00')
-            && str_contains(urldecode($request->url()), 'dateTo=2026-09-20T23:59:59-04:00'));
+        // Read a day at a time (so finished days can be cached): seven
+        // requests, the first starting Monday and the last ending Sunday.
+        $days = collect(Http::recorded())
+            ->map(fn ($pair) => urldecode($pair[0]->url()))
+            ->filter(fn ($url) => str_contains($url, 'call-log'));
+
+        $this->assertCount(7, $days);
+        $this->assertStringContainsString('dateFrom=2026-09-14T00:00:00-04:00', $days->first());
+        $this->assertStringContainsString('dateTo=2026-09-20T23:59:59-04:00', $days->last());
     }
 
     /** A dispatcher's tag is set by hand and comes back on their row. */

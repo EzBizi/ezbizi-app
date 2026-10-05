@@ -8,9 +8,11 @@ use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -478,19 +480,72 @@ class ExperimentalCallReportTest extends TestCase
 
     // ── paging ───────────────────────────────────────────────────
 
-    /** RingCentral pages on `totalPages`; a full last page is not a short page. */
+    /** RingCentral says there is another page with `navigation.nextPage`, and only that way. */
     public function test_the_call_log_reads_every_page(): void
     {
         $this->fakeToken();
 
         Http::fake(['*/call-log*' => Http::sequence()
-            ->push(['records' => [$this->inbound(rang: [['Trey Brannan', 'Call connected']])], 'paging' => ['totalPages' => 2]])
-            ->push(['records' => [$this->inbound(rang: [['Nelly Escobar', 'Call connected']])], 'paging' => ['totalPages' => 2]]),
+            // The shape the live API sends (measured 2026-10-05): no page
+            // count, and `navigation.nextPage` only while there is one.
+            ->push(['records' => [$this->inbound(rang: [['Trey Brannan', 'Call connected']])],
+                'paging' => ['page' => 1, 'perPage' => 1000, 'pageStart' => 0, 'pageEnd' => 0],
+                'navigation' => ['firstPage' => ['uri' => 'x'], 'nextPage' => ['uri' => 'x?page=2']]])
+            ->push(['records' => [$this->inbound(rang: [['Nelly Escobar', 'Call connected']])],
+                'paging' => ['page' => 2, 'perPage' => 1000, 'pageStart' => 1000, 'pageEnd' => 1000],
+                'navigation' => ['firstPage' => ['uri' => 'x']]]),
         ]);
 
         $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
 
         $this->assertSame(['Trey Brannan', 'Nelly Escobar'], array_column($calls, 'answered_by'));
+    }
+
+    /** A rate-limited page is waited for and asked again, not turned into an error. */
+    public function test_a_rate_limited_page_is_retried_after_the_wait(): void
+    {
+        $this->fakeToken();
+        Sleep::fake();
+
+        Http::fake(['*/call-log*' => Http::sequence()
+            ->push(['errorCode' => 'CMN-301'], 429, ['Retry-After' => '7'])
+            ->push(['records' => [$this->inbound(rang: [['Trey Brannan', 'Call connected']])], 'paging' => ['page' => 1]]),
+        ]);
+
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+
+        $this->assertSame(['Trey Brannan'], array_column($calls, 'answered_by'));
+        Sleep::assertSlept(fn ($duration) => $duration->totalSeconds === 7.0, 1);
+    }
+
+    /**
+     * A FINISHED DAY IS READ ONCE: the call log is in RingCentral's ten-a-minute
+     * group, so a week asked twice must not cost fourteen requests. Today is
+     * always read live.
+     */
+    public function test_a_period_reads_each_finished_day_once_and_today_live(): void
+    {
+        $this->fakeToken();
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-16 12:00', 'America/New_York'));
+
+        $asked = 0;
+        Http::fake(['*/call-log*' => function () use (&$asked) {
+            $asked++;
+
+            return Http::response(['records' => [$this->inbound(rang: [['Trey Brannan', 'Call connected']])], 'paging' => ['page' => 1]]);
+        }]);
+
+        $log = app(RingCentralCallLog::class);
+        $start = CarbonImmutable::parse('2026-09-14', 'America/New_York');
+        $end = CarbonImmutable::parse('2026-09-16', 'America/New_York')->endOfDay();
+
+        $this->assertCount(3, $log->forPeriod($start, $end)); // one call a day
+        $this->assertSame(3, $asked);
+
+        $log->forPeriod($start, $end);
+        $this->assertSame(4, $asked, 'only today should have been asked again');
+
+        CarbonImmutable::setTestNow();
     }
 
     /** Workiz caps a page at 100 and pages by offset; a short page is the last. */

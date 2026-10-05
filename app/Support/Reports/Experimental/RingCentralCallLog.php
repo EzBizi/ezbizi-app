@@ -2,7 +2,11 @@
 
 namespace App\Support\Reports\Experimental;
 
+use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RuntimeException;
 
 /**
@@ -99,16 +103,7 @@ final class RingCentralCallLog
         $page = 1;
 
         do {
-            $response = Http::withToken($token)
-                ->acceptJson()
-                ->get($server.'/restapi/v1.0/account/~/call-log', [
-                    'view' => 'Detailed',
-                    'direction' => 'Inbound',
-                    'dateFrom' => $from,
-                    'dateTo' => $to,
-                    'perPage' => 1000,
-                    'page' => $page,
-                ]);
+            $response = $this->page($token, $server, $from, $to, $page);
 
             if ($response->failed()) {
                 throw new RuntimeException(
@@ -122,14 +117,83 @@ final class RingCentralCallLog
                 $calls[] = $this->call($record);
             }
 
-            // `paging` carries the page count; stop when it says so rather than
-            // when a page comes back short, which is also true of the last page
-            // and would stop one page early on an exact multiple.
-            $pages = (int) ($body['paging']['totalPages'] ?? 1);
+            /*
+             * ANOTHER PAGE EXISTS WHEN `navigation.nextPage` DOES.
+             *
+             * The call log never sends a page count. Measured on the live API
+             * 2026-10-05: `paging` is {page, perPage, pageStart, pageEnd} and
+             * nothing more. The loop used to read `paging.totalPages`, which
+             * is absent, defaulted to 1, and so read the first 1,000 calls of
+             * any range and stopped - invisible on a day (A-1 takes ~660) and
+             * a third of a week. The fixture that pinned it had invented the
+             * field.
+             */
+            $more = ! empty($body['navigation']['nextPage']['uri']);
             $page++;
-        } while ($page <= $pages);
+        } while ($more);
 
         return $calls;
+    }
+
+    /**
+     * Every inbound call between two instants, a DAY AT A TIME, with each
+     * finished day kept for a week.
+     *
+     * The call log is in RingCentral's heavy rate group - ten requests a
+     * minute - so a month asked for whole would wait minutes on the limit.
+     * A day that has ended no longer changes, so it is fetched once and
+     * reused; only today is read live. `ezbizi:warm-call-log` reads yesterday
+     * each night, so a week or a month is normally all cache.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function forPeriod(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        $calls = [];
+        $today = CarbonImmutable::now($start->getTimezone())->startOfDay();
+
+        for ($day = $start->startOfDay(); $day <= $end; $day = $day->addDay()) {
+            $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
+
+            $calls = [...$calls, ...($day < $today
+                ? Cache::remember(self::dayKey($day), now()->addDays(7), $fetch)
+                : $fetch())];
+        }
+
+        return $calls;
+    }
+
+    /** One finished day's cache key; the zone is in it because a day's edges are. */
+    public static function dayKey(CarbonImmutable $day): string
+    {
+        return 'ringcentral-calls:'.$day->toDateString().':'.$day->getTimezone()->getName();
+    }
+
+    /**
+     * One page, waiting out RingCentral's rate limit rather than failing on it:
+     * a 429 says how long to wait, and the report would rather be slow once
+     * than refuse. Bounded, so a limit that never lifts still ends in an error.
+     */
+    private function page(string $token, string $server, string $from, string $to, int $page): Response
+    {
+        for ($attempt = 1; ; $attempt++) {
+            $response = Http::withToken($token)
+                ->acceptJson()
+                ->get($server.'/restapi/v1.0/account/~/call-log', [
+                    'view' => 'Detailed',
+                    'direction' => 'Inbound',
+                    'dateFrom' => $from,
+                    'dateTo' => $to,
+                    'perPage' => 1000,
+                    'page' => $page,
+                ]);
+
+            if ($response->status() !== 429 || $attempt >= 3) {
+                return $response;
+            }
+
+            Sleep::for(min(60, max(1, (int) ($response->header('Retry-After') ?: 30))))->seconds();
+        }
     }
 
     /**

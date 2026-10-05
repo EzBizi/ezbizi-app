@@ -24,6 +24,10 @@ Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 
+// Yesterday's RingCentral call log into the Experimental report's cache, so a
+// week or a month opens without waiting on RingCentral's rate limit.
+Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
+
 // Everything else's retention (§10), read off each model's own declaration.
 //
 // Ten minutes after the audit sweep rather than beside it, so the two never
