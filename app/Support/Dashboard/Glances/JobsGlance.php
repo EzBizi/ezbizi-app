@@ -17,13 +17,12 @@ use App\Support\Tenancy\TenantContext;
  *
  * Slices reuse JobsByStatus so the vocabulary stays the organization's own.
  *
- * No money, deliberately: Jose ruled on 2026-09-29 that the dashboard shows no
- * financial information, because anybody who can open Jobs — a dispatcher —
- * sees this box. Revenue used to be a list and a per-currency line here; the
- * widget that summed it went too, so no revenue total exists anywhere now --
- * only each job's own amount, and `earned_at` to total it by when somebody
- * asks. `line` left the presentations with it, since the revenue series was the
- * only thing it drew.
+ * Money only for a reader whose role holds `jobs.financials` (Jose,
+ * 2026-10-05: "as for the money remember its a role y permission things where
+ * ( can see financials ) should be toggled", replacing his 2026-09-29 rule of
+ * no money on the dashboard at all). Then the box adds what was earned in the
+ * period as figures, by `earned_at`; for anybody else the payload carries no
+ * amount at all.
  */
 final class JobsGlance extends DescribedGlance
 {
@@ -76,13 +75,6 @@ final class JobsGlance extends DescribedGlance
             ];
             $sentences = [];
 
-            // NO MONEY ON THE DASHBOARD — Jose, 2026-09-29: "do not show any
-            // financial info on the dashboard widgets, for example dispatchers
-            // may have access to jobs so they would see the widget." The box
-            // is operational: status, today, coming up. Revenue, its line and
-            // the "earned" lines were removed rather than hidden behind a
-            // permission, because the ruling names the surface, not a role.
-
             $today = 0;
             $yesterday = 0;
             $upcoming = 0;
@@ -122,9 +114,16 @@ final class JobsGlance extends DescribedGlance
                 GlancePayload::figure('upcoming', 'coming up', $upcoming),
             ];
 
+            $reach = ViewScope::forUser($user)->franchiseIds();
+
+            // After the counts, so money is never the headline a Small box
+            // shows a room. See the class docblock for who gets it.
+            if ($user->hasPermission('jobs.financials')) {
+                array_push($data['figures'], ...$this->earned($reach, $period));
+            }
+
             // What needs somebody (Dashboard, 2026-10-05): counts, never money,
             // and only rows with something in them.
-            $reach = ViewScope::forUser($user)->franchiseIds();
             $attention = array_values(array_filter([
                 $this->neverStarted($user, $reach),
                 $this->unplaced($reach),
@@ -144,6 +143,38 @@ final class JobsGlance extends DescribedGlance
                 data: $data,
             );
         });
+    }
+
+    /**
+     * What was earned in the period, against the same span before it: by
+     * `earned_at`, the moment a job first reached an earned status, so a job
+     * booked in June and finished in September counts in September. One
+     * figure per currency, never summed across them. UTC bounds, because
+     * `earned_at` is an instant, unlike `scheduled_for`.
+     *
+     * @param  list<string>  $reach
+     * @return list<array{key: string, label: string, value: int, previous: int|null, currency: string}>
+     */
+    private function earned(array $reach, DashboardPeriod $period): array
+    {
+        $sum = fn (DashboardPeriod $p) => Job::query()
+            ->whereIn('franchise_id', $reach)
+            ->whereBetween('earned_at', [$p->startsOn->copy()->utc(), $p->endsOn->copy()->utc()])
+            ->selectRaw('currency, SUM(amount_minor) AS total')
+            ->groupBy('currency')
+            ->pluck('total', 'currency');
+
+        $now = $sum($period);
+        $before = $sum($period->previous());
+
+        return $now->keys()->merge($before->keys())->unique()->sort()->values()
+            ->map(fn (string $currency) => GlancePayload::money(
+                'earned_'.strtolower($currency),
+                'earned '.$period->phrase(),
+                (int) ($now[$currency] ?? 0),
+                (int) ($before[$currency] ?? 0),
+                $currency,
+            ))->all();
     }
 
     /**

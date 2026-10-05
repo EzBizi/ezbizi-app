@@ -6,6 +6,8 @@ use App\Models\Assignment;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\ServiceArea;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
@@ -274,29 +276,101 @@ class JobsGlanceTest extends TestCase
     }
 
     /**
-     * No money reaches this box (Jose, 2026-09-29): a dispatcher who can open
-     * Jobs sees it. The job is earned, in reach and on the pie — the control —
-     * and its amount is nowhere in the payload, whichever key it might hide
-     * under, and there is no line to draw it with.
+     * Money follows the role (Jose, 2026-10-05: "as for the money remember its
+     * a role y permission things where ( can see financials ) should be
+     * toggled"). Without jobs.financials the amount is nowhere in the payload,
+     * under any key. The earned job is on the pie: the control.
      */
-    public function test_no_money_reaches_the_box(): void
+    public function test_no_money_reaches_a_reader_without_financials(): void
     {
         $this->earnedStatuses(['completed']);
         $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $reader = $this->reader(['jobs.view']);
 
-        $payload = app(JobsGlance::class)->resolve(
-            $this->alpha['admin'],
-            DashboardPeriod::for($this->alpha['admin'], 'year'),
-            [],
-        )->toArray();
+        $payload = app(JobsGlance::class)->resolve($reader, DashboardPeriod::for($reader, 'year'), [])->toArray();
 
         $this->assertContains(['label' => 'completed', 'total' => 1], $payload['data']['slices']);
         $json = json_encode($payload);
-        $this->assertStringNotContainsString('987654', $json);
-        $this->assertStringNotContainsString('9876.54', $json);
-        $this->assertStringNotContainsString('amount_minor', $json);
-        $this->assertStringNotContainsString('USD', $json);
+        foreach (['987654', '9876.54', 'amount_minor', 'USD', '"currency"'] as $needle) {
+            $this->assertStringNotContainsString($needle, $json);
+        }
         $this->assertNotContains('line', $payload['allowed_presentations']);
         $this->assertSame('pie', $payload['presentation']);
+    }
+
+    /**
+     * The pair: with jobs.financials, what was earned in the period against
+     * the same span before it, one figure per currency and never summed
+     * across them, after the counts, and nowhere but the figures.
+     */
+    public function test_a_financials_reader_gets_earned_money_as_figures(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-05 12:00:00', 'UTC'));
+        $this->earnedStatuses(['completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 5000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
+        $yesterday = $this->job($this->alpha['franchise'], ['amount_minor' => 111, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->inTenant(fn () => $yesterday->forceFill(['earned_at' => Carbon::parse('2026-10-04 11:00:00', 'UTC')])->save());
+        $this->job($this->alpha['franchise'], ['amount_minor' => 777, 'currency' => 'USD', 'status' => 'scheduled']);
+        $reader = $this->reader(['jobs.view', 'jobs.financials']);
+
+        $data = app(JobsGlance::class)->resolve($reader, DashboardPeriod::for($reader, 'day'), [])->toArray()['data'];
+
+        $this->assertSame(['today', 'upcoming'], array_column(array_slice($data['figures'], 0, 2), 'key'));
+        $this->assertSame([
+            ['key' => 'earned_cad', 'label' => 'earned today', 'value' => 5000, 'previous' => 0, 'currency' => 'CAD'],
+            ['key' => 'earned_usd', 'label' => 'earned today', 'value' => 987654, 'previous' => 111, 'currency' => 'USD'],
+        ], array_slice($data['figures'], 2));
+        $words = json_encode([$data['sentences'] ?? [], $data['notes'] ?? [], $data['attention'] ?? []]);
+        $this->assertStringNotContainsString('987654', $words);
+        $this->assertStringNotContainsString('9876.54', $words);
+    }
+
+    /**
+     * The period is the reader's own day, in their franchise's zone, and
+     * `earned_at` is an instant, so the bounds are converted rather than
+     * compared as wall clocks. 22:00 last night in New York is 02:00 UTC
+     * today, and it is not today's money.
+     */
+    public function test_earned_money_follows_the_readers_day(): void
+    {
+        $this->inTenant(fn () => $this->alpha['franchise']->forceFill(['timezone' => 'America/New_York'])->save());
+        Carbon::setTestNow(Carbon::parse('2026-10-05 12:00:00', 'UTC'));
+        $this->earnedStatuses(['completed']);
+        $lastNight = $this->job($this->alpha['franchise'], ['amount_minor' => 300, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $thisMorning = $this->job($this->alpha['franchise'], ['amount_minor' => 4000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->inTenant(function () use ($lastNight, $thisMorning) {
+            $lastNight->forceFill(['earned_at' => Carbon::parse('2026-10-05 02:00:00', 'UTC')])->save();
+            $thisMorning->forceFill(['earned_at' => Carbon::parse('2026-10-05 10:00:00', 'UTC')])->save();
+        });
+        $reader = $this->reader(['jobs.view', 'jobs.financials']);
+
+        $data = app(JobsGlance::class)->resolve($reader, DashboardPeriod::for($reader, 'day'), [])->toArray()['data'];
+
+        $this->assertSame(
+            [['key' => 'earned_usd', 'label' => 'earned today', 'value' => 4000, 'previous' => 0, 'currency' => 'USD']],
+            array_slice($data['figures'], 2),
+        );
+    }
+
+    /** A role holding exactly these permissions, reaching the first franchise. */
+    private function reader(array $permissionKeys): User
+    {
+        return $this->inTenant(function () use ($permissionKeys) {
+            $role = Role::create(['organization_id' => $this->alpha['org']->id, 'name' => 'Reader', 'is_system' => false]);
+            $role->permissions()->sync(Permission::whereIn('key', $permissionKeys)->pluck('id'));
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id, 'role_id' => $role->id,
+                'name' => 'Reader', 'email' => 'reader@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $user->id, 'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            return $user;
+        });
     }
 }
