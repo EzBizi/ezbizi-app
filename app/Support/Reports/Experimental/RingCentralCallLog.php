@@ -379,12 +379,27 @@ final class RingCentralCallLog
 
         $server = rtrim((string) $config['server'], '/');
 
-        $response = Http::asForm()
-            ->withBasicAuth((string) $config['client_id'], (string) $config['client_secret'])
-            ->post($server.'/restapi/oauth/token', [
-                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion' => (string) $config['jwt'],
-            ]);
+        // The sign-in is rate-limited too; a 429 is waited out like a page's.
+        for ($attempt = 1; ; $attempt++) {
+            $response = Http::asForm()
+                ->withBasicAuth((string) $config['client_id'], (string) $config['client_secret'])
+                ->post($server.'/restapi/oauth/token', [
+                    'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                    'assertion' => (string) $config['jwt'],
+                ]);
+
+            if ($response->status() !== 429 || $attempt >= 3) {
+                break;
+            }
+
+            Sleep::for(min(60, max(1, (int) ($response->header('Retry-After') ?: 30))))->seconds();
+        }
+
+        if ($response->status() === 429) {
+            // Busy, not wrong: saying "refused the credentials" here sent the
+            // deploy desk looking at the keys (2026-10-06).
+            throw new RuntimeException('RingCentral is limiting sign-ins right now (429). Try again in a minute.');
+        }
 
         if ($response->failed()) {
             // Deliberately does NOT include the body: a failed token exchange

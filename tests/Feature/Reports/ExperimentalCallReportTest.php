@@ -515,6 +515,51 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertCount(1, $signIns);
     }
 
+    /** A rate-limited sign-in is waited out too, and never reported as bad credentials. */
+    public function test_a_rate_limited_sign_in_is_waited_out(): void
+    {
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+        Sleep::fake();
+
+        Http::fake([
+            '*/oauth/token' => Http::sequence()
+                ->push([], 429, ['Retry-After' => '5'])
+                ->push(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/call-log*' => Http::response(['records' => [], 'paging' => ['page' => 1]]),
+        ]);
+
+        $this->assertSame([], app(RingCentralCallLog::class)->forDate('x', 'y'));
+        Sleep::assertSlept(fn ($duration) => $duration->totalSeconds === 5.0, 1);
+    }
+
+    /** Still limited after three tries: said as busy, not as refused credentials. */
+    public function test_a_sign_in_that_stays_limited_is_named_as_busy(): void
+    {
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+        Sleep::fake();
+        Http::fake(['*/oauth/token' => Http::response([], 429)]);
+
+        try {
+            app(RingCentralCallLog::class)->forDate('x', 'y');
+            $this->fail('expected the sign-in to give up');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('limiting sign-ins', $e->getMessage());
+            $this->assertStringNotContainsString('credentials', $e->getMessage());
+        }
+
+        Sleep::assertSleptTimes(2);
+    }
+
     /** A rate-limited page is waited for and asked again, not turned into an error. */
     public function test_a_rate_limited_page_is_retried_after_the_wait(): void
     {
