@@ -2,13 +2,18 @@
 
 namespace Tests\Feature\Workiz;
 
+use App\Console\Commands\ProjectWorkizRecords;
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -462,5 +467,136 @@ class SyncWorkizJobsTest extends TestCase
         $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 2, '--verify' => 1])->assertSuccessful();
 
         Http::assertSentCount(1 + 1); // the sweep, then ONE re-read of the only job
+    }
+
+    // ── a job Workiz deleted ──────────────────────────────────────────
+
+    /** An upcoming open job, projected onto an EzBizi job that still holds what the projection wrote. */
+    private function projected(array $tenant, SocialConnection $connection, string $uuid): array
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $connection, $uuid) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+            $job = Job::create([
+                'franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep',
+                'status' => 'Submitted', 'scheduled_for' => now()->addDays(3)->format('Y-m-d 09:00:00'), 'currency' => 'USD',
+            ]);
+            $row = $this->stale($tenant, $connection, $uuid, 'Submitted', now()->addDays(3)->format('Y-m-d 09:00:00'));
+            $row->forceFill(['job_id' => $job->id, 'projected' => ProjectWorkizRecords::followedValues($job)])->save();
+
+            return [$row, $job];
+        });
+    }
+
+    /**
+     * A-1 moved Massachusetts into its own account on 2026-10-05 by deleting 56
+     * upcoming jobs from Nationwide's. Measured: the listing stopped carrying
+     * them, and /job/get/ answers 204. The mirror kept all 56 open.
+     */
+    public function test_a_job_workiz_deleted_leaves_the_mirror_and_its_ezbizi_job_goes(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            $this->assertNull(WorkizJob::query()->find($row->id), 'the board and the openings read this table');
+            $this->assertTrue(Job::withTrashed()->find($job->id)->trashed());
+            $this->assertSame('deleted', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
+        });
+    }
+
+    /** Somebody moved the visit in EzBizi after the projection wrote it: the job is theirs and stays. */
+    public function test_a_deleted_job_a_person_changed_keeps_its_ezbizi_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        $this->inTenant($tenant['org'], fn () => $job->forceFill(['status' => 'Pending'])->save());
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            $this->assertNull(WorkizJob::query()->find($row->id));
+            $this->assertFalse(Job::withTrashed()->find($job->id)->trashed());
+        });
+    }
+
+    /**
+     * Two signals, not one: a 204 alone retires nothing. Not when the listing
+     * itself failed, and not for a past job the listing never covers -- that
+     * history stays, moved to the back of the queue as before.
+     */
+    public function test_a_204_alone_retires_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$upcoming] = $this->projected($tenant, $connection, '09RR7R');
+        $past = $this->stale($tenant, $connection, 'PAST01', 'Submitted', now()->subMonth()->format('Y-m-d 09:00:00'));
+        $done = $this->stale($tenant, $connection, 'DONE01', 'Done', now()->format('Y-m-d 08:00:00'));
+
+        // ONE fake: a second Http::fake stacks behind the first and never answers.
+        // The listing fails on the first run and comes back whole on the second.
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/*' => Http::response(null, 204),
+            'api.workiz.com/api/v1/*/job/all/*' => Http::sequence()
+                ->push(['error' => true, 'code' => 429, 'msg' => 'Account reached Api Quotas'], 429)
+                ->whenEmpty(Http::response(['flag' => true, 'data' => []])),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+        $this->inTenant($tenant['org'], fn () => $this->assertNotNull(WorkizJob::query()->find($upcoming->id), 'the listing failed'));
+
+        // Later than the first run's re-reads: synced_at keeps whole seconds,
+        // and a second run in the same second would re-read nothing at all.
+        $this->travel(2)->minutes();
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 5])->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($upcoming, $past, $done) {
+            $this->assertNull(WorkizJob::query()->find($upcoming->id), 'the control: with the listing whole, the upcoming one goes');
+            $this->assertNotNull(WorkizJob::query()->find($past->id), 'outside the listing');
+            $this->assertNotNull(WorkizJob::query()->find($done->id), 'finished work is history');
+        });
+    }
+
+    /**
+     * Work recorded against the visit in EzBizi -- a priced line, an estimate,
+     * a payment -- keeps it, though nobody touched the fields the projection
+     * follows (Customers, 2026-10-05: money must never hang off a deleted job).
+     */
+    public function test_a_deleted_job_with_work_recorded_against_it_keeps_its_ezbizi_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        [$row, $job] = $this->projected($tenant, $connection, '09RR7R');
+        // Written past the model, so the job's own amount stays what the projection wrote.
+        $this->inTenant($tenant['org'], fn () => DB::table('job_lines')->insert([
+            'id' => (string) Str::uuid(), 'organization_id' => $tenant['org']->id, 'job_id' => $job->id,
+            'name' => 'Chimney sweep', 'unit_price_minor' => 18900, 'qty' => 1, 'amount_minor' => 18900, 'created_at' => now(), 'updated_at' => now(),
+        ]));
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/09RR7R/' => Http::response(null, 204),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($row, $job) {
+            $this->assertNull(WorkizJob::query()->find($row->id));
+            $this->assertFalse(Job::withTrashed()->find($job->id)->trashed());
+            $this->assertSame('kept: something in EzBizi names it', json_decode(DB::table('audit_events')->where('action', 'workiz.job_gone')->sole()->metadata, true)['ezbizi_job']);
+        });
     }
 }
