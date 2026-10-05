@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0360',
+      date: '5 Oct 2026',
+      items: [
+        'Experimental call report: the Existing and Not booked lists show what was said on each recorded call, transcribed on EzBizi\'s own server or taken from the Local Services transcript of the same call.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0359',
       date: '5 Oct 2026',
       items: [
