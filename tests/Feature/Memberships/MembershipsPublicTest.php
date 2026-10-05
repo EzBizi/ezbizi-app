@@ -85,6 +85,22 @@ class MembershipsPublicTest extends TestCase
         $this->assertFalse(AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->first()->payload['after']['verified']);
     }
 
+    public function test_a_garbage_token_beside_a_phone_is_unverified_and_does_not_block_the_real_link(): void
+    {
+        $key = $this->site->public_key;
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'happy', 'c' => 'anything', 'phone' => '5552013344'])->assertOk();
+
+        $events = fn () => AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->orderBy('occurred_at')->get();
+        $this->assertCount(1, $events());
+        $this->assertFalse($events()->first()->payload['after']['verified']);
+        $this->assertSame('asked', $events()->first()->payload['after']['source']);
+
+        $c = $this->inTenant($this->t['org'], fn () => CustomerLinks::token($this->customer));
+        $this->postJson('/api/v1/web/review', ['key' => $key, 'rating' => 'happy', 'c' => $c])->assertOk();
+        $this->assertCount(2, $events(), 'A stranger typing the phone first does not block the real link.');
+        $this->assertEqualsCanonicalizing([false, true], $events()->map(fn ($e) => $e->payload['after']['verified'])->all());
+    }
+
     public function test_a_phone_on_two_customers_names_nobody(): void
     {
         $this->inTenant($this->t['org'], fn () => Customer::create([

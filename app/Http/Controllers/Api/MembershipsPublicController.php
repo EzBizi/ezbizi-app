@@ -58,20 +58,26 @@ class MembershipsPublicController extends Controller
         $organization = $this->tenant->runWithoutTenant(fn () => Organization::query()->find($site->organization_id));
 
         $this->tenant->run($organization, function () use ($input, $site) {
-            $customer = $this->identify($input);
-            // One a day per customer: a public key is in every page's source,
-            // so a typed phone must not let a stranger message someone at will.
+            // Verified only when the token itself checks out: a garbage `c`
+            // beside a typed phone is still just a typed phone.
+            $tokenId = CustomerLinks::customerId($input['c'] ?? null);
+            $verified = $tokenId !== null;
+            $customer = $verified ? Customer::query()->find($tokenId) : $this->identify($input);
+
+            // Once a day per customer AND kind: a public key is in every
+            // page's source, so a typed phone must not let a stranger message
+            // someone at will, nor block the customer's own link for a day.
             if ($customer === null || AutomationEvent::query()->where('event_key', 'customer.reviewed')
-                ->where('subject_id', $customer->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
+                ->where('subject_id', $customer->getKey())->where('occurred_at', '>=', now()->subDay())
+                ->where('payload->after->verified', $verified)->exists()) {
                 return;
             }
 
             $this->events->emit('customer.reviewed', $customer, ['after' => [
                 'rating'              => $input['rating'],
                 'comment'             => $input['comment'] ?? null,
-                'source'              => isset($input['c']) ? 'review_link' : 'asked',
-                // Only the token proves who it was; a typed phone or email is a claim.
-                'verified'            => isset($input['c']),
+                'source'              => $verified ? 'review_link' : 'asked',
+                'verified'            => $verified,
                 'site'                => $site->host,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
             ]]);
@@ -112,10 +118,6 @@ class MembershipsPublicController extends Controller
 
     private function identify(array $input): ?Customer
     {
-        if (($id = CustomerLinks::customerId($input['c'] ?? null)) !== null) {
-            return Customer::query()->find($id);
-        }
-
         $digits = substr(preg_replace('/\D/', '', (string) ($input['phone'] ?? '')), -10);
         if (strlen($digits) !== 10 && blank($input['email'] ?? null)) {
             return null;
