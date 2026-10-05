@@ -366,6 +366,29 @@ class WorkizJobWriterTest extends TestCase
         $this->assertStringContainsString('look for it in Workiz before entering it', (string) $result['refused']);
     }
 
+    /**
+     * The projection holds the lock: nothing is sent, and the refusal is the one
+     * sentence a caller may retry on. Answered well inside the queue worker's
+     * default 60 seconds, so a queued caller is never killed waiting
+     * (production runs queue:work with no --timeout and --tries=1).
+     */
+    public function test_a_busy_sync_refuses_in_time_and_sends_nothing(): void
+    {
+        [$tenant] = $this->world();
+        $visit = $this->booked($tenant, keys: [1196]);
+        Http::fake();
+        $held = Cache::lock(ProjectWorkizRecords::LOCK, 120);
+        $held->get();
+
+        $started = microtime(true);
+        $result = $this->inTenant($tenant['org'], fn () => $this->writer()->create($visit, 'Chimney Inspection'));
+
+        $this->assertSame(['job' => null, 'refused' => WorkizJobWriter::BUSY], $result);
+        $this->assertLessThan(30, microtime(true) - $started, "inside the worker's 60 seconds, with Workiz's own 30 to spare");
+        Http::assertNothingSent();
+        $held->release();
+    }
+
     public function test_a_branch_without_workiz_has_nothing_to_enter(): void
     {
         $tenant = $this->provisionTenant('Alpha');
