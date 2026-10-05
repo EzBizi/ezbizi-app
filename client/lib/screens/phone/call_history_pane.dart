@@ -284,6 +284,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
       if (returned != null && returned.at != null)
         'called back ${_clock(returned.at!)}',
       ?row.duration,
+      ?row.menuNote,
       ?row.answeredByName,
     ].join(' · ');
 
@@ -374,6 +375,8 @@ class CallRow {
     this.customerId,
     this.customerName,
     this.durationSeconds,
+    this.menuKey,
+    this.extensionDialed,
     required this.direction,
     required this.from,
     required this.to,
@@ -447,6 +450,18 @@ class CallRow {
 
   final int? durationSeconds;
 
+  /// What the caller pressed in the menu, and any extension they typed.
+  final String? menuKey;
+  final String? extensionDialed;
+
+  /// "pressed 1", "dialed ext 0101": Jose, 2026-10-05, "what client pressed
+  /// on the ivr menu". Null on a call that went through no menu.
+  String? get menuNote => extensionDialed != null
+      ? 'dialed ext $extensionDialed'
+      : menuKey == null
+      ? null
+      : 'pressed $menuKey';
+
   factory CallRow.fromJson(Map<String, dynamic> json) => CallRow(
     id: (json['id'] ?? '').toString(),
     peerName: json['peer_name'] as String?,
@@ -454,6 +469,8 @@ class CallRow {
     customerId: json['customer_id'] as String?,
     customerName: json['customer_name'] as String?,
     durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
+    menuKey: json['menu_key'] as String?,
+    extensionDialed: json['extension_dialed'] as String?,
     direction: (json['direction'] ?? '').toString(),
     from: (json['from_e164'] ?? '').toString(),
     to: (json['to_e164'] ?? '').toString(),

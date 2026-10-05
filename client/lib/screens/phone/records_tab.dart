@@ -895,6 +895,12 @@ class _RecordsTabState extends State<RecordsTab> {
             // and a customer ringing back to continue the conversation could
             // not be put through to the person they had it with.
             if (call.answeredByName != null) 'Answered by ${call.answeredByName}',
+
+            // What they pressed at the menu (Jose, 2026-10-05).
+            if (call.extensionDialed != null)
+              'Dialed ext ${call.extensionDialed}'
+            else if (call.menuKey != null)
+              'Pressed ${call.menuKey}',
           ].where((part) => part.isNotEmpty).join(' · '),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -1084,7 +1090,13 @@ class _Call {
     this.status = '',
     this.answeredBy,
     this.customerName,
+    this.menuKey,
+    this.extensionDialed,
   });
+
+  /// What the caller pressed in the menu, and any extension they typed.
+  final String? menuKey;
+  final String? extensionDialed;
 
   /// Twilio's status as stored: ringing, in-progress, completed, no-answer,
   /// busy, failed, canceled, or blocked.
@@ -1152,6 +1164,8 @@ class _Call {
     tagColor: json['tag_color'] as String?,
     errorCode: json['error_code'] as String?,
     errorMessage: json['error_message'] as String?,
+    menuKey: json['menu_key'] as String?,
+    extensionDialed: json['extension_dialed'] as String?,
   );
 }
 

@@ -80,6 +80,35 @@ void main() {
     expect(find.text('Tue 8 Sep'), findsOneWidget);
   });
 
+  /// What the caller pressed at the menu (Jose, 2026-10-05: "what client
+  /// pressed on the ivr menu"), on the row it belongs to and no other.
+  testWidgets('a recent call says what the caller pressed', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      calls: [
+        for (final (id, from, extra) in [
+          ('ca-1', '+13055550101', {'menu_key': '2'}),
+          ('ca-2', '+13055550102', {'extension_dialed': '0101'}),
+          ('ca-3', '+13055550103', <String, String>{}),
+        ])
+          {
+            'id': id,
+            'number_id': 'n-1',
+            'direction': 'inbound',
+            'from_e164': from,
+            'to_e164': '+12035550142',
+            'status': 'completed',
+            'created_at': '2026-09-08T17:00:00+00:00',
+            ...extra,
+          },
+      ],
+    );
+
+    expect(find.textContaining('pressed 2'), findsOneWidget);
+    expect(find.textContaining('dialed ext 0101'), findsOneWidget);
+  });
+
   /// The pin survives leaving Communication and coming back.
   ///
   /// ── What Jose reported ───────────────────────────────────────
