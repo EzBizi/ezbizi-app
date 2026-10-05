@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0362',
+      date: '5 Oct 2026',
+      items: [
+        'Workiz: EzBizi can now connect to Workiz\'s v2 API keys. Jobs Workiz\'s old API never listed now arrive too (Connecticut had 7 in the next two weeks, Ohio 5).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0361',
       date: '5 Oct 2026',
       items: [
