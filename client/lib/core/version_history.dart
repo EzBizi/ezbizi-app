@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0362',
+      date: '5 Oct 2026',
+      items: [
+        'Marketing has a new QR Codes tab beside Posts and Accounts. Each code is a card showing the code itself, where it sends people (with Change right on the card, and the printed code stays the same), its scans, and SVG or PNG downloads. Delete is in the card\'s ⋮ menu and asks first, because printed copies stop working. New QR code opens a side panel.',
+        'Monitoring Files: the drive list now opens even when a computer has an empty DVD or card reader drive.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0361 and 0.0.0360, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0361',
       date: '5 Oct 2026',
       items: [
