@@ -256,6 +256,46 @@ class OnboardingCatalogTest extends TestCase
         });
     }
 
+    /**
+     * Tools and equipment are the technician's to tick (Jose, 2026-10-05), in
+     * the catalog and in an organization's live contracts; an item the list
+     * does not have is accepted and printed after the listed ones.
+     */
+    public function test_checklists_become_the_technicians_and_take_an_added_item(): void
+    {
+        $catalog = collect(OnboardingCatalog::templates())->keyBy('name');
+        $tools = collect($catalog['Field Technician']['fields'])->firstWhere('key', 'tools');
+        $this->assertSame('employee', $tools['filled_by']);
+
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Field Repair Team', 'body' => "## Tools Checklist
+
+{{tools}}",
+            'fields' => [
+                ['key' => 'tools', 'label' => 'Tools issued', 'type' => 'checklist', 'options' => ['Hammer'],
+                    'filled_by' => 'employer', 'required' => false],
+                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
+                    'filled_by' => 'employee', 'required' => true],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Field Repair Team: checklists to the employee, as version 2')->assertSuccessful();
+        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
+
+        $field = $this->inTenant($alpha['org'], fn () => collect(Contract::findOrFail($id)->currentVersion->fieldSet()->fields)
+            ->firstWhere('key', 'tools'));
+        $this->assertSame('employee', $field->filledBy);
+
+        $html = \App\Support\Contracts\ChecklistTable::html($field, json_encode([
+            ['item' => 'Ladder', 'quantity' => '1', 'received' => '2026-10-05'],
+        ]));
+        $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
+    }
+
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void
     {
         $alpha = $this->provisionTenant('Alpha');

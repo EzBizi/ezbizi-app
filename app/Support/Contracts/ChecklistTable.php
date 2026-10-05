@@ -5,10 +5,10 @@ namespace App\Support\Contracts;
 /**
  * A checklist answer, as the table the document prints.
  *
- * Rows are the field's options, in the option order — never the JSON's. An
- * item that was not on the template is dropped rather than invented on the
- * signed page. Cells we did not receive stay blank; that is an unanswered
- * quantity, not a missing row.
+ * Rows are the field's options, in the option order, then any item the
+ * signer added that the list did not have (A1 Tools' "Add a tool not
+ * listed"). Cells we did not receive stay blank; that is an item not
+ * received, not a missing row.
  *
  * HTML is generated here so MergeTags never has to trust tenant markup.
  */
@@ -24,9 +24,10 @@ final class ChecklistTable
             .'<th>Received</th>'
             .'</tr></thead><tbody>';
 
-        foreach ($field->options as $item) {
+        $added = array_diff(array_keys($byItem), $field->options);
+        foreach ([...$field->options, ...$added] as $item) {
             $row = $byItem[$item] ?? ['quantity' => '', 'received' => ''];
-            $html .= '<tr><td>'.self::e($item).'</td>'
+            $html .= '<tr><td>'.self::e((string) $item).'</td>'
                 .'<td>'.self::e($row['quantity']).'</td>'
                 .'<td>'.self::e($row['received']).'</td></tr>';
         }
