@@ -186,6 +186,8 @@ class HrOnboardingsController extends Controller
             );
 
         $onboardings = $query
+            ->withExists(['documents', 'answers as imported_pdf_exists' => fn (Builder $a) => $a
+                ->where('field_key', OnboardingDocuments::IMPORTED_CONTRACT)->whereNotNull('value')])
             // Newest first: the list exists to be acted on, and the thing most
             // likely to need chasing is the thing just started.
             ->orderByDesc('started_at')
@@ -602,6 +604,27 @@ class HrOnboardingsController extends Controller
         $document = $revision === null
             ? $onboarding->currentDocument()
             : $onboarding->documents()->where('revision', (int) $revision)->first();
+
+        // Signed elsewhere and imported: the original PDF is the download.
+        if ($document === null && $revision === null
+            && ($imported = $this->documents->importedPdf($onboarding)) !== null) {
+            $this->audit->log('onboarding.document_copied', $onboarding, metadata: [
+                'format' => PdfRenderer::MIME,
+                'source' => 'imported',
+                'copy' => ['hash' => DocumentFingerprint::of($imported), 'algorithm' => DocumentFingerprint::ALGORITHM],
+            ]);
+            $filename = \Illuminate\Support\Str::slug(trim(($onboarding->user?->name ?? '').' signed contract')) ?: 'signed-contract';
+
+            return response($imported, Response::HTTP_OK, [
+                'Content-Type' => PdfRenderer::MIME,
+                'Content-Length' => (string) strlen($imported),
+                'Content-Disposition' => HeaderUtils::makeDisposition(
+                    HeaderUtils::DISPOSITION_ATTACHMENT, $filename.'.pdf', 'contract.pdf',
+                ),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
 
         if ($document === null) {
             abort(Response::HTTP_NOT_FOUND, $revision === null
@@ -1757,6 +1780,11 @@ class HrOnboardingsController extends Controller
             'company' => $onboarding->company_id === null ? null
                 : ['id' => $onboarding->company_id, 'name' => $onboarding->company?->name],
             'invitation_id' => $onboarding->invitation_id,
+            // Whether there is a signed PDF to download: its own document, or
+            // the contract an import brought (Jose, 2026-10-05).
+            'downloadable' => (bool) ($onboarding->documents_exists ?? $onboarding->documents()->exists())
+                || (bool) ($onboarding->imported_pdf_exists ?? $onboarding->answers()
+                    ->where('field_key', OnboardingDocuments::IMPORTED_CONTRACT)->whereNotNull('value')->exists()),
             'started_at'    => $onboarding->started_at?->toIso8601String(),
             'submitted_at'  => $onboarding->submitted_at?->toIso8601String(),
             'completed_at'  => $onboarding->completed_at?->toIso8601String(),

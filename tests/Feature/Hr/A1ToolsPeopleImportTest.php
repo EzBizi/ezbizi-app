@@ -245,6 +245,46 @@ class A1ToolsPeopleImportTest extends TestCase
         });
     }
 
+    /**
+     * The contract A1 Tools signed is the imported record's download, from
+     * the record and from the lists (Jose, 2026-10-05: "i can download the
+     * new onboarding but not the imported old ones").
+     */
+    public function test_the_imported_signed_contract_is_the_download(): void
+    {
+        $pdf = $this->file('%PDF-1.4 signed in A1', 'pdf', 'application/pdf');
+        $this->bundle([$this->newPerson(['onboarding' => [
+            'submitted_at' => '2026-08-01T15:20:00Z', 'answers' => [],
+            'documents' => [['kind' => 'signed_contract', 'file' => $pdf['path'], 'original_name' => 'contract.pdf']],
+        ]])], [$pdf]);
+        $this->assertSame(0, $this->import());
+
+        $jon = $this->jon();
+        $id = $this->inTenant($this->t['org'], fn () => Onboarding::query()->where('user_id', $jon->id)->sole()->id);
+
+        $this->signedInAs($this->t['admin']);
+        $this->getJson("/api/v1/hr/onboardings?user_id={$jon->id}")->assertOk()
+            ->assertJsonPath('data.0.downloadable', true);
+        $this->getJson("/api/v1/hr/onboardings/{$id}")->assertOk()->assertJsonPath('data.downloadable', true);
+        $response = $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertOk();
+        $this->assertSame('%PDF-1.4 signed in A1', $response->getContent());
+        $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
+    }
+
+    /** Imported with no signed contract: nothing to download, said so. */
+    public function test_an_imported_record_without_a_contract_has_no_download(): void
+    {
+        $this->bundle([$this->newPerson()], []);
+        $this->assertSame(0, $this->import());
+
+        $jon = $this->jon();
+        $id = $this->inTenant($this->t['org'], fn () => Onboarding::query()->where('user_id', $jon->id)->sole()->id);
+
+        $this->signedInAs($this->t['admin']);
+        $this->getJson("/api/v1/hr/onboardings/{$id}")->assertOk()->assertJsonPath('data.downloadable', false);
+        $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertNotFound();
+    }
+
     /** The version marks the SSN sensitive, so the screen masks it and a reveal is audited. */
     public function test_the_record_version_marks_the_sensitive_answers(): void
     {

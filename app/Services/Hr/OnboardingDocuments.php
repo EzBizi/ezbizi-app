@@ -219,6 +219,25 @@ class OnboardingDocuments
     }
 
     /**
+     * The signed contract an import brought as a PDF (A1 Tools' own,
+     * `signed_contract`), for an onboarding with no document of its own: its
+     * download (Jose, 2026-10-05: "i can download the new onboarding but not
+     * the imported old ones"). Null when there is none.
+     */
+    public function importedPdf(Onboarding $onboarding): ?string
+    {
+        $id = $onboarding->answers()->where('field_key', self::IMPORTED_CONTRACT)->first()?->value;
+        $attachment = $id === null ? null : Attachment::query()->find($id);
+
+        return $attachment?->mime === PdfRenderer::MIME
+            ? $this->files->contents($attachment->path, $attachment->disk)
+            : null;
+    }
+
+    /** The question an import files its signed contract PDF under. */
+    public const IMPORTED_CONTRACT = 'signed_contract';
+
+    /**
      * Render, store and fingerprint one revision.
      *
      * @param  string[]  $changedKeys  which fields this revision corrects; empty on the original

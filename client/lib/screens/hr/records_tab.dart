@@ -1935,7 +1935,28 @@ class _OnboardingSectionState extends State<_OnboardingSection> {
                           ),
                         ].where((part) => part.isNotEmpty).join(' · '),
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (row.downloadable && row.status == 'completed')
+                            IconButton(
+                              key: Key('record-onboarding-download-${row.id}'),
+                              tooltip: 'Download the signed PDF',
+                              icon: const Icon(Icons.download_outlined, size: 20),
+                              onPressed: () async {
+                                final refusal = await downloadSignedPdf(
+                                  widget.api,
+                                  row,
+                                );
+                                if (refusal == null || !context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(refusal)),
+                                );
+                              },
+                            ),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
                       onTap: () => widget.onOpen(row.id),
                     ),
                   ),
