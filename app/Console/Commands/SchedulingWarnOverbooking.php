@@ -24,14 +24,12 @@ use Illuminate\Console\Command;
  */
 class SchedulingWarnOverbooking extends Command
 {
-    public const DAYS = 7;
-
     /** The trigger the warning email's automation listens on. */
     public const TRIGGER = 'scheduling.overbooking_found';
 
     protected $signature = 'scheduling:warn-overbooking';
 
-    protected $description = 'Raise the overbooking trigger for areas overbooked or fully booked in the next 7 days';
+    protected $description = 'Raise the overbooking trigger for areas with no spot left for the next 10 days or more';
 
     public function handle(TenantContext $tenant, EventEmitter $events): int
     {
@@ -43,24 +41,26 @@ class SchedulingWarnOverbooking extends Command
                 $areas = ServiceArea::query()->get();
                 $check = app(Overbooking::class);
 
-                $over = $check->overbooked($areas, $from, self::DAYS);
-                $full = $check->fullyBooked($areas, $from, self::DAYS);
+                // Only the areas full for Overbooking::FULL_DAYS or more
+                // (Shoval, 2026-10-05: so ads there can be paused). Overbooked
+                // days are Scheduling › Overbooking's and the dashboard's, not
+                // the email's.
+                $full = $check->fullyBooked($areas, $from, Overbooking::FULL_DAYS);
 
-                if ($over === [] && $full === []) {
+                if ($full === []) {
                     return;
                 }
 
                 // Filed against the organization: the warning is about all of
                 // its areas, and an organization carries its own audience.
                 $events->emit(self::TRIGGER, $organization, ['after' => [
-                    'summary' => self::summary($over, $full),
-                    'overbooked_days' => count($over),
+                    'summary' => self::summary($full, $from->subDay()),
                     'fully_booked_areas' => count($full),
                     'from' => $from->toDateString(),
-                    'to' => $from->addDays(self::DAYS - 1)->toDateString(),
+                    'to' => $from->addDays(Overbooking::FULL_DAYS - 1)->toDateString(),
                 ]]);
 
-                $this->line("{$organization->name}: ".count($over).' overbooked, '.count($full).' fully booked');
+                $this->line("{$organization->name}: ".count($full).' fully booked for '.Overbooking::FULL_DAYS.'+ days');
             });
         }
 
@@ -68,54 +68,38 @@ class SchedulingWarnOverbooking extends Command
     }
 
     /**
-     * The warning as Markdown, days under headings (UI queue 39: Jose wanted
-     * it "more formatted ... not just text"). The trigger declares `summary`
-     * EzBizi-composed, so an email renders this as structure; the email's text
-     * part takes the marks back out. Area and franchise names are escaped: they
-     * are typed by somebody, and a name with a * in it is not emphasis.
+     * The warning as Markdown (UI queue 39: Jose wanted it "more formatted ...
+     * not just text"): every area with no spot left for the next
+     * Overbooking::FULL_DAYS days or more, the one furthest out first, with
+     * its next opening and how far away that is. The trigger declares
+     * `summary` EzBizi-composed, so an email renders this as structure; the
+     * email's text part takes the marks back out. Names are escaped: they are
+     * typed by somebody, and a name with a * in it is not emphasis.
      *
-     * @param  array<int, array<string, mixed>>  $over
-     * @param  array<int, array<string, mixed>>  $full
+     * @param  array<int, array<string, mixed>>  $full  Overbooking::fullyBooked() rows
      */
-    public static function summary(array $over, array $full): string
+    public static function summary(array $full, CarbonImmutable $today): string
     {
-        $day = fn (string $d) => CarbonImmutable::parse($d)->format('D M j');
         $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
-        $lines = [];
+        $lines = ['## FULLY BOOKED for '.Overbooking::FULL_DAYS.' days or more', ''];
 
-        if ($over !== []) {
-            $lines[] = '## OVERBOOKED';
-            foreach (collect($over)->groupBy('date') as $date => $rows) {
-                $lines[] = '';
-                $lines[] = "**{$day((string) $date)}**";
-                $lines[] = '';
-                foreach ($rows as $r) {
-                    $who = $r['level'] === 'franchise'
-                        ? "{$name($r['name'])} (whole franchise)"
-                        : ($r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']));
-                    $what = $r['closed']
-                        ? "{$r['booked']} booked on a closed day"
-                        : "{$r['booked']} booked of {$r['capacity']} ({$r['over']} over)";
-                    $lines[] = "- {$who}: {$what}";
-                }
-            }
-        }
+        $rows = collect($full)->sortByDesc(fn ($r) => $r['next_opening'] ?? '9999-12-31');
+        foreach ($rows as $r) {
+            $who = $r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']);
+            if ($r['next_opening'] === null) {
+                $lines[] = "- {$who}: no opening in the next year";
 
-        if ($full !== []) {
-            if ($lines !== []) {
-                $lines[] = '';
+                continue;
             }
-            $lines[] = '## FULLY BOOKED, no spot left in the next '.self::DAYS.' days';
-            $lines[] = '';
-            foreach ($full as $r) {
-                $who = $r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']);
-                $next = $r['next_opening'] !== null ? 'next opening '.$day($r['next_opening']) : 'no opening found';
-                $lines[] = "- {$who} ({$next})";
-            }
+            // In today's zone: a date parsed in UTC against New York's midnight
+            // reads a day short.
+            $next = CarbonImmutable::parse($r['next_opening'], $today->getTimezone());
+            $away = (int) $today->startOfDay()->diffInDays($next->startOfDay());
+            $lines[] = "- {$who}: next opening {$next->format('D M j')} ({$away} days away)";
         }
 
         $lines[] = '';
-        $lines[] = 'See Scheduling › Overbooking in EzBizi for the details.';
+        $lines[] = 'Consider pausing ads for these areas. See Scheduling › Overbooking in EzBizi.';
 
         return implode("\n", $lines);
     }

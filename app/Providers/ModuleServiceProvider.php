@@ -1212,9 +1212,11 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('settings', 'Settings'),
                 ],
                 /*
-                 * The first booking event (Jose, 2026-09-29: a warning email
-                 * when a service area is overbooked or fully booked for the
-                 * next 7 days). Raised once each morning by
+                 * The first booking event (Jose, 2026-09-29: a warning email).
+                 * Since 2026-10-05 it carries only the areas with no spot left
+                 * for Overbooking::FULL_DAYS days or more (Shoval: so their ads
+                 * can be paused). The key keeps its first name, because rules
+                 * already listen on it. Raised once each morning by
                  * scheduling:warn-overbooking with a Markdown `summary`, days
                  * under headings, declared composed so an email renders it as
                  * structure (UI queue 39); who is told is an automation on it.
@@ -1225,8 +1227,8 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         'scheduling.overbooking_found',
-                        'Overbooking found',
-                        'Each morning, when a service area is overbooked or has no spot left in the next 7 days. Its summary lists them.',
+                        'Fully booked for 10+ days',
+                        'Each morning, when a service area has no spot left for the next 10 days or more (Shoval: time to pause its ads). Its summary lists them with their next opening.',
                         composedFields: ['summary'],
                     ),
                 ],

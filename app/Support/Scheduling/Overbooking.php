@@ -91,6 +91,15 @@ final class Overbooking
     }
 
     /**
+     * How far ahead an area may be full before somebody must act. Shoval,
+     * 2026-10-05: "I basically want to know if there is a [service area]
+     * fully booked for over 10 days. 10 days and above ... I need to pause
+     * ads otherwise I'm going to lose money". The morning email, the
+     * Overbooking tab and the dashboard all read this one number.
+     */
+    public const FULL_DAYS = 10;
+
+    /**
      * Areas that work in the window and have no spot left on any day of it.
      *
      * @param  Collection<int, ServiceArea>  $areas
