@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\CallReportConversion;
+use App\Models\CallReportDispatcherTag;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
@@ -438,6 +440,97 @@ class ExperimentalCallReportApiTest extends TestCase
         // audio into somebody's Downloads folder.
         $this->assertSame('inline', $response->headers->get('Content-Disposition'));
         $this->assertSame('ID3-and-then-some', $response->getContent());
+    }
+
+    // ── period, tags, convert (Jose, 2026-10-05) ─────────────────────
+
+    /** A week runs Monday to Sunday around the day asked for. */
+    public function test_a_week_is_asked_of_ringcentral_monday_to_sunday(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-16&period=week&timezone=America/New_York')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(['2026-09-14', '2026-09-20', 'week'], [$body['from'], $body['to'], $body['period']]);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'call-log')
+            && str_contains(urldecode($request->url()), 'dateFrom=2026-09-14T00:00:00-04:00')
+            && str_contains(urldecode($request->url()), 'dateTo=2026-09-20T23:59:59-04:00'));
+    }
+
+    /** A dispatcher's tag is set by hand and comes back on their row. */
+    public function test_a_dispatcher_tag_is_set_and_shown(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson('/api/v1/reports/experimental/people/tag', ['person' => 'Trey Brannan', 'tag' => 'existing'])
+            ->assertOk();
+
+        $people = collect($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->json('people'))->keyBy('person');
+
+        $this->assertSame('existing', $people['Trey Brannan']['tag']);
+
+        // And cleared.
+        $this->signedInAs($tenant['admin'])
+            ->putJson('/api/v1/reports/experimental/people/tag', ['person' => 'Trey Brannan', 'tag' => null])
+            ->assertOk();
+
+        $this->assertSame(0, CallReportDispatcherTag::withoutGlobalScopes()->count());
+    }
+
+    /**
+     * CONVERT TO BOOKED marks the call booked and writes its history line;
+     * the call in the fixture has no Workiz job for its number, so only the
+     * mark can make it booked.
+     */
+    public function test_convert_to_booked_marks_the_call_and_records_who(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $before = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+
+        $this->assertSame(1, $before['totals']['not_booked']);
+        $this->assertFalse($before['calls'][0]['booked']);
+
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/experimental/calls/1/convert', ['started_at' => '2026-09-14T13:21:11Z'])
+            ->assertOk()
+            ->assertJsonPath('data.converted_by', $tenant['admin']->name);
+
+        $after = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+
+        $this->assertSame(0, $after['totals']['not_booked']);
+        $this->assertTrue($after['calls'][0]['booked']);
+        $this->assertSame('1', $after['conversions'][0]['call_id']);
+        $this->assertSame($tenant['admin']->name, $after['conversions'][0]['converted_by']);
+    }
+
+    /** Both writes sit behind the pane's own gate. */
+    public function test_tag_and_convert_need_the_experimental_tab(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $builder = $this->userWithRole($tenant, 'Analyst', ['reports.view', 'reports.build']);
+
+        $this->signedInAs($builder)
+            ->putJson('/api/v1/reports/experimental/people/tag', ['person' => 'X', 'tag' => 'new'])
+            ->assertForbidden();
+
+        $this->signedInAs($builder)
+            ->postJson('/api/v1/reports/experimental/calls/1/convert')
+            ->assertForbidden();
+
+        $this->assertSame(0, CallReportConversion::withoutGlobalScopes()->count());
     }
 
     private function notConnected(): void

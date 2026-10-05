@@ -94,7 +94,9 @@ class ExperimentalCallReportTest extends TestCase
      */
     public function test_a_call_that_reached_nobody_is_still_a_call(): void
     {
-        $this->fakeCallLog([$this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE)]);
+        // `Missed`: it reached a queue. An IVR-only `Accepted` call is spam
+        // since 2026-10-05 and is not counted at all - see the test below.
+        $this->fakeCallLog([$this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed')]);
 
         $day = $this->reconcile();
 
@@ -139,10 +141,64 @@ class ExperimentalCallReportTest extends TestCase
             $this->inbound(rang: [['Trey Brannan', 'Call connected']], result: 'Missed'),
         ]);
 
+        // Spam is gone from the list altogether (Jose, 2026-10-05).
         $this->assertSame(
-            ['spam', 'missed', 'voicemail', 'blocked', 'blocked', 'other', 'answered'],
+            ['missed', 'voicemail', 'blocked', 'blocked', 'other', 'answered'],
             array_column($this->reconcile()['calls'], 'outcome'),
         );
+    }
+
+    /**
+     * SPAM IS NOT COUNTED ANYWHERE (Jose, 2026-10-05: "remove Spam Calls
+     * completely, do not count them"): not in Calls, not in Missed, not in
+     * the list.
+     */
+    public function test_a_spam_call_is_not_counted_at_all(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [], result: 'Accepted'), // sat in the menu
+            $this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed'),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']]),
+        ]);
+
+        $day = $this->reconcile();
+
+        $this->assertSame(2, $day['totals']['calls']);
+        $this->assertSame(1, $day['totals']['reached_nobody']);
+        $this->assertNotContains('spam', array_column($day['calls'], 'outcome'));
+    }
+
+    /**
+     * NOT BOOKED: an answered new-client call whose number has no Workiz job
+     * in the period - unless somebody marked it booked by hand.
+     */
+    public function test_not_booked_matches_jobs_by_phone_and_honours_a_manual_mark(): void
+    {
+        $call = fn (string $id, string $phone) => array_merge(
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
+        );
+
+        $this->fakeCallLog([
+            $call('c-booked', '+12125551212'),
+            $call('c-marked', '+12125550000'),
+            $call('c-open', '+12125559999'),
+        ]);
+
+        $day = app(CallReconciliation::class)->forRange(
+            app(RingCentralCallLog::class)->forDate('x', 'y'),
+            [['created_at' => '2026-09-14 10:00:00', 'phone' => '(212) 555-1212', 'created_by' => 'Trey Brannan']],
+            '2026-09-14',
+            '2026-09-14',
+            converted: ['c-marked'],
+        );
+
+        $this->assertSame(1, $day['totals']['not_booked']);
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertTrue($byId['c-booked']['booked']);
+        $this->assertTrue($byId['c-marked']['booked']);
+        $this->assertTrue($byId['c-marked']['converted']);
+        $this->assertFalse($byId['c-open']['booked']);
     }
 
     // ── new versus existing ──────────────────────────────────────

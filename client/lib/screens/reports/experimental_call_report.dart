@@ -72,9 +72,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _connectError;
   bool _showConnect = false;
 
-  /// The Reached nobody card, opened, and which reason it is narrowed to.
-  bool _nobodyOpen = false;
+  /// Which card is open beneath the figures - 'missed', 'existing' or
+  /// 'not_booked' - and what the Missed list is narrowed to.
+  String? _panel;
   String? _nobodyFilter;
+  String? _clientFilter;
+
+  /// Day, week or month (Jose, 2026-10-05: "add options to choose period of
+  /// time"). The server works out the range around `_day`.
+  String _period = 'day';
+
+  /// The people table narrowed to one hand-set tag, or everybody.
+  String? _tagFilter;
+
+  /// Calls being marked as booked right now, so a double tap sends once.
+  final Set<String> _converting = {};
+
+  static const _newQueue = 'A1 - New Client';
+  static const _existingQueue = 'A1 - Existing Client';
 
   @override
   void dispose() {
@@ -135,6 +150,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     final response = await widget.api.get('/reports/experimental/calls', {
       'day': _dayKey,
+      'period': _period,
     });
 
     if (!mounted) return;
@@ -149,8 +165,55 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     });
   }
 
-  void _move(int days) {
-    setState(() => _day = _day.add(Duration(days: days)));
+  /// One period back or forward: a day, a week, or a calendar month.
+  void _move(int step) {
+    setState(() {
+      _day = switch (_period) {
+        'week' => _day.add(Duration(days: 7 * step)),
+        'month' => DateTime(_day.year, _day.month + step, 1),
+        _ => _day.add(Duration(days: step)),
+      };
+    });
+    _load();
+  }
+
+  /// Marks a not-booked call as booked by hand, then reloads so the figures,
+  /// the list and the history all agree.
+  Future<void> _convert(Map<String, dynamic> call) async {
+    final id = '${call['id']}';
+    if (!_converting.add(id)) return;
+    setState(() {});
+
+    final response = await widget.api.post(
+      '/reports/experimental/calls/$id/convert',
+      {'started_at': call['started_at']},
+    );
+
+    if (!mounted) return;
+    _converting.remove(id);
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
+    _load();
+  }
+
+  /// A dispatcher's New / Existing tag, set by hand; null clears it.
+  Future<void> _setTag(String person, String? tag) async {
+    final response = await widget.api.put('/reports/experimental/people/tag', {
+      'person': person,
+      'tag': tag,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
     _load();
   }
 
@@ -174,22 +237,63 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             '${today.month.toString().padLeft(2, '0')}-'
             '${today.day.toString().padLeft(2, '0')}';
 
+    final todayKey =
+        '${today.year.toString().padLeft(4, '0')}-'
+        '${today.month.toString().padLeft(2, '0')}-'
+        '${today.day.toString().padLeft(2, '0')}';
+    final from = '${_report?['from'] ?? _dayKey}';
+    final to = '${_report?['to'] ?? _dayKey}';
+
+    // A period that already reaches today has no "next".
+    final atToday = isToday || to.compareTo(todayKey) >= 0;
+    final unit = switch (_period) {
+      'week' => 'week',
+      'month' => 'month',
+      _ => 'day',
+    };
+
     return Row(
       children: [
-        IconButton(
-          onPressed: _loading ? null : () => _move(-1),
-          icon: const Icon(Icons.chevron_left),
-          tooltip: 'Previous day',
+        Expanded(
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SegmentedButton<String>(
+                key: const ValueKey('call-report-period'),
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'day', label: Text('Day')),
+                  ButtonSegment(value: 'week', label: Text('Week')),
+                  ButtonSegment(value: 'month', label: Text('Month')),
+                ],
+                selected: {_period},
+                onSelectionChanged: _loading
+                    ? null
+                    : (picked) {
+                        setState(() => _period = picked.first);
+                        _load();
+                      },
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _loading ? null : () => _move(-1),
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Previous $unit',
+              ),
+              Text(
+                from == to ? from : '$from – $to',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              // Forward is disabled on today rather than hidden: a control that
+              // vanishes reads as a bug, one that is greyed reads as a boundary.
+              IconButton(
+                onPressed: (_loading || atToday) ? null : () => _move(1),
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Next $unit',
+              ),
+            ],
+          ),
         ),
-        Text(_dayKey, style: Theme.of(context).textTheme.titleMedium),
-        // Forward is disabled on today rather than hidden: a control that
-        // vanishes reads as a bug, one that is greyed reads as a boundary.
-        IconButton(
-          onPressed: (_loading || isToday) ? null : () => _move(1),
-          icon: const Icon(Icons.chevron_right),
-          tooltip: 'Next day',
-        ),
-        const Spacer(),
         IconButton(
           onPressed: _loading ? null : _load,
           icon: const Icon(Icons.refresh),
@@ -228,7 +332,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
 
-    final ordered = _sorted(people);
+    final ordered = _sorted(
+      _tagFilter == null
+          ? people
+          : people.where((p) => p['tag'] == _tagFilter).toList(),
+    );
 
     /*
      * ── A CustomScrollView SO THE COLUMN HEADER CAN PIN ─────────
@@ -250,11 +358,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _totals(context, totals)),
-            if (_nobodyOpen)
+            if (_panel == 'missed')
               SliverToBoxAdapter(child: _reachedNobody(context, calls)),
+            if (_panel == 'existing')
+              SliverToBoxAdapter(child: _existingCalls(context, calls)),
+            if (_panel == 'not_booked')
+              SliverToBoxAdapter(
+                child: _notBooked(context, calls, report['conversions']),
+              ),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
             SliverToBoxAdapter(child: _coverage(context, report)),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            if (people.isNotEmpty)
+              SliverToBoxAdapter(child: _tagFilters(context)),
 
             if (people.isEmpty)
               SliverToBoxAdapter(child: _nothing(context))
@@ -328,22 +444,187 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       spacing: 12,
       runSpacing: 12,
       children: [
+        // Jose's order, 2026-10-05: Calls > Missed Calls > Existing Client >
+        // New Client > Jobs Booked > Conv. Rate > Not Booked.
         _stat(context, 'Calls', totals['calls']),
-        _stat(context, 'Answered', totals['answered']),
         _stat(
           context,
-          'Reached nobody',
+          'Missed calls',
           totals['reached_nobody'],
           key: const ValueKey('stat-reached-nobody'),
-          open: _nobodyOpen,
-          onTap: () => setState(() => _nobodyOpen = !_nobodyOpen),
+          open: _panel == 'missed',
+          onTap: () => _toggle('missed'),
+        ),
+        _stat(
+          context,
+          'Existing client',
+          totals['existing_client'],
+          key: const ValueKey('stat-existing'),
+          open: _panel == 'existing',
+          onTap: () => _toggle('existing'),
         ),
         _stat(context, 'New client', totals['new_client']),
-        _stat(context, 'Existing client', totals['existing_client']),
         _stat(context, 'Jobs booked', totals['jobs']),
-        _stat(context, 'Avg talk', _mmss(totals['avg_talk_seconds'])),
+        _stat(
+          context,
+          'Conv. rate',
+          _rate(totals['jobs'], totals['new_client']),
+        ),
+        _stat(
+          context,
+          'Not booked',
+          totals['not_booked'],
+          key: const ValueKey('stat-not-booked'),
+          open: _panel == 'not_booked',
+          onTap: () => _toggle('not_booked'),
+        ),
       ],
     );
+  }
+
+  void _toggle(String panel) =>
+      setState(() => _panel = _panel == panel ? null : panel);
+
+  /// Jobs over new-client calls, the same rule as each person's row; a dash
+  /// when there were no new-client calls to convert.
+  String _rate(Object? jobs, Object? newClient) {
+    final n = (newClient as num?) ?? 0;
+    if (n == 0) return '—';
+    return '${((((jobs as num?) ?? 0) / n) * 100).round()}%';
+  }
+
+  /// All, or only the dispatchers tagged for one kind of client.
+  Widget _tagFilters(BuildContext context) {
+    Widget chip(String? value, String label) => ChoiceChip(
+      key: ValueKey('people-tag-${value ?? 'all'}'),
+      label: Text(label),
+      selected: _tagFilter == value,
+      onSelected: (_) => setState(() => _tagFilter = value),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          chip(null, 'Everyone'),
+          chip('new', 'New client'),
+          chip('existing', 'Existing client'),
+        ],
+      ),
+    );
+  }
+
+  Widget _panelBox(BuildContext context, List<Widget> children) => Container(
+    margin: const EdgeInsets.only(top: 12),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    ),
+  );
+
+  /// Every existing-client call in the period. The reason tags (Complaint,
+  /// Reschedule, ETA, Billing, Other) need the calls transcribed and read,
+  /// which is not switched on yet - the list says so rather than inventing
+  /// numbers.
+  Widget _existingCalls(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final theme = Theme.of(context);
+    final mine = calls.where((c) => c['queue'] == _existingQueue).toList();
+
+    return _panelBox(context, [
+      Text(
+        'Reasons (Complaint, Reschedule, ETA, Billing, Other) appear here once '
+        'calls are transcribed.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      if (mine.isEmpty)
+        Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
+      else
+        for (final call in mine) _call(context, null, call),
+    ]);
+  }
+
+  /// New-client calls somebody answered that did not become a job: no Workiz
+  /// job for the caller's number in the period, and not marked by hand. Each
+  /// can be marked booked; the marks are the history beneath.
+  Widget _notBooked(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+    Object? conversions,
+  ) {
+    final theme = Theme.of(context);
+    final open = calls
+        .where(
+          (c) =>
+              c['queue'] == _newQueue &&
+              c['answered_by'] != null &&
+              c['booked'] != true,
+        )
+        .toList();
+    final history = ((conversions as List?) ?? const [])
+        .map((row) => (row as Map).cast<String, dynamic>())
+        .toList();
+
+    return _panelBox(context, [
+      if (open.isEmpty)
+        Text(
+          'Every new-client call was booked.',
+          style: theme.textTheme.bodyMedium,
+        )
+      else
+        for (final call in open)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _call(context, null, call),
+              // The caller's number and the mark, beneath the call so a phone
+              // never has to fit all three on one line.
+              Padding(
+                padding: const EdgeInsets.only(left: 24, bottom: 8),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    SelectableText(
+                      '${call['from'] ?? ''}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    OutlinedButton(
+                      key: ValueKey('convert-${call['id']}'),
+                      onPressed: _converting.contains('${call['id']}')
+                          ? null
+                          : () => _convert(call),
+                      child: const Text('Convert to booked'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+      const SizedBox(height: 16),
+      Text('Converted to booked', style: theme.textTheme.titleSmall),
+      const SizedBox(height: 4),
+      if (history.isEmpty)
+        Text('None in this period.', style: theme.textTheme.bodySmall)
+      else
+        for (final row in history)
+          Text(
+            '${_clock(row['call_started_at'])} call · marked by '
+            '${row['converted_by'] ?? 'someone no longer here'} at '
+            '${_clock(row['converted_at'])}',
+            style: theme.textTheme.bodySmall,
+          ),
+    ]);
   }
 
   Widget _stat(
@@ -396,7 +677,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static const _outcomes = {
     'missed': 'Missed call',
     'voicemail': 'Voicemail',
-    'spam': 'Spam call',
     'blocked': 'Blocked',
     'other': 'Other',
   };
@@ -407,7 +687,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     List<Map<String, dynamic>> calls,
   ) {
     final theme = Theme.of(context);
-    final nobody = calls.where((c) => c['outcome'] != 'answered').toList();
+    // New or Existing narrows the list and the reason counts together
+    // (Jose, 2026-10-05: "add filter for existing & new clients").
+    final nobody = calls
+        .where((c) => c['outcome'] != 'answered')
+        .where(
+          (c) =>
+              _clientFilter == null ||
+              c['queue'] ==
+                  (_clientFilter == 'new' ? _newQueue : _existingQueue),
+        )
+        .toList();
 
     final counts = <String, int>{};
     for (final call in nobody) {
@@ -433,6 +723,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              for (final (value, label) in const [
+                ('new', 'New client'),
+                ('existing', 'Existing client'),
+              ])
+                FilterChip(
+                  key: ValueKey('missed-client-$value'),
+                  label: Text(label),
+                  selected: _clientFilter == value,
+                  onSelected: (on) =>
+                      setState(() => _clientFilter = on ? value : null),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               for (final entry in _outcomes.entries)
                 // A reason with no calls is still offered, at zero, so the
                 // choices do not change shape from day to day - except
@@ -451,8 +759,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           Text(
             'Missed call: rang a line or queue, nobody picked up. '
             'Voicemail: the caller left a message. '
-            'Spam call: hung up in the phone menu without pressing anything. '
-            'Blocked: a blocked or rejected number.',
+            'Blocked: a blocked or rejected number. '
+            'Callers who hung up in the phone menu are spam and not counted.',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -922,6 +1230,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(name, overflow: TextOverflow.ellipsis),
+                                if (person['tag'] != null)
+                                  Text(
+                                    person['tag'] == 'new'
+                                        ? 'New client'
+                                        : 'Existing client',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
                                 if (only != null)
                                   Text(
                                     only,
@@ -981,14 +1298,51 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       return ((call['rang'] as List?) ?? const []).contains(name);
     }).toList();
 
+    final people = (_report?['people'] as List? ?? const []).map(
+      (row) => (row as Map).cast<String, dynamic>(),
+    );
+    final tag = people.where((p) => p['person'] == name).firstOrNull?['tag'];
+
+    // Set by hand per person (Jose, 2026-10-05). Three choices side by side
+    // rather than a popup, the house rule for short choices.
+    final tagger = Padding(
+      padding: const EdgeInsets.fromLTRB(32, 0, 16, 8),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          Text('Answers for', style: theme.textTheme.bodySmall),
+          SegmentedButton<String>(
+            key: ValueKey('tag-$name'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 'new', label: Text('New client')),
+              ButtonSegment(value: 'existing', label: Text('Existing client')),
+              ButtonSegment(value: 'none', label: Text('Not set')),
+            ],
+            selected: {'${tag ?? 'none'}'},
+            onSelectionChanged: (picked) =>
+                _setTag(name, picked.first == 'none' ? null : picked.first),
+          ),
+        ],
+      ),
+    );
+
     if (mine.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(32, 0, 16, 16),
-        child: Text(
-          'No calls for this person on this day. They are listed because '
-          'Workiz has them booking jobs.',
-          style: theme.textTheme.bodySmall,
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          tagger,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 0, 16, 16),
+            child: Text(
+              'No calls for this person in this period. They are listed '
+              'because Workiz has them booking jobs.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
       );
     }
 
@@ -997,7 +1351,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       padding: const EdgeInsets.fromLTRB(32, 8, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [for (final call in mine) _call(context, name, call)],
+        children: [tagger, for (final call in mine) _call(context, name, call)],
       ),
     );
   }
@@ -1013,6 +1367,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // mean" - an arrow and a bell told nobody which was which.
     final status = by == null
         ? (_outcomes[call['outcome']] ?? 'Nobody answered')
+        : name == null
+        ? 'Answered by $by'
         : by == name
         ? 'Answered'
         : 'Rang · $by answered';

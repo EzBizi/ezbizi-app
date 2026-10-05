@@ -150,18 +150,85 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
     await tester.pumpAndSettle();
 
-    // Both reasons, counted, and neither answered call.
+    // Both reasons, counted, and neither answered call. Spam is not a
+    // reason any more: the server drops it (Jose, 2026-10-05).
     expect(find.text('Missed call (1)'), findsOneWidget);
-    expect(find.text('Spam call (1)'), findsOneWidget);
+    expect(find.text('Voicemail (1)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('nobody-spam')), findsNothing);
     expect(find.textContaining('Burst pipe'), findsOneWidget);
     expect(find.textContaining('Silent line'), findsOneWidget);
     expect(find.textContaining('Kitchen tap'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('nobody-spam')));
+    await tester.tap(find.byKey(const ValueKey('nobody-voicemail')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Silent line'), findsOneWidget);
     expect(find.textContaining('Burst pipe'), findsNothing);
+  });
+
+  testWidgets('Missed calls narrow to new or existing clients', (tester) async {
+    await _pump(tester, width: 1400);
+
+    await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('missed-client-new')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+    expect(find.textContaining('Silent line'), findsNothing);
+  });
+
+  testWidgets('the cards run in the order Jose set', (tester) async {
+    await _pump(tester, width: 1400);
+
+    final labels = [
+      'Calls',
+      'Missed calls',
+      'Existing client',
+      'New client',
+      'Jobs booked',
+      'Conv. rate',
+      'Not booked',
+    ];
+    final xs = [
+      for (final label in labels)
+        tester.getTopLeft(find.text(label).first).dx +
+            tester.getTopLeft(find.text(label).first).dy * 10000,
+    ];
+
+    expect(xs, [...xs]..sort(), reason: 'cards out of order');
+    // 3 jobs over 6 new-client calls.
+    expect(find.text('50%'), findsWidgets);
+  });
+
+  testWidgets('Not booked lists the answered new-client call and marks it', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    await _pump(tester, width: 1400, posted: posted);
+
+    await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
+    await tester.pumpAndSettle();
+
+    // Kitchen tap: answered, new client, no job. Blocked drain was booked.
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+    expect(find.textContaining('Blocked drain'), findsNothing);
+    expect(find.text('+15550001111'), findsOneWidget); // the caller's number
+
+    await tester.tap(find.byKey(const ValueKey('convert-c1')));
+    await tester.pumpAndSettle();
+
+    expect(posted, ['/api/v1/reports/experimental/calls/c1/convert']);
+  });
+
+  testWidgets('choosing a week asks the server for a week', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pump(tester, width: 1400, asked: asked);
+
+    await tester.tap(find.text('Week'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last['period'], 'week');
   });
 
   testWidgets('only one person is open at a time', (tester) async {
@@ -241,7 +308,12 @@ List<String> _names(WidgetTester tester) => tester
     .where((data) => const ['Ada', 'Bo', 'Cy'].contains(data))
     .toList();
 
-Future<void> _pump(WidgetTester tester, {required double width}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  required double width,
+  List<String>? posted,
+  List<Map<String, String>>? asked,
+}) async {
   tester.view.physicalSize = Size(width, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -249,7 +321,12 @@ Future<void> _pump(WidgetTester tester, {required double width}) async {
   final api = ApiClient(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/reports/experimental/calls')) {
+        asked?.add(request.url.queryParameters);
         return _json(_report, 200);
+      }
+      if (request.method == 'POST' && request.url.path.endsWith('/convert')) {
+        posted?.add(request.url.path);
+        return _json({'data': {}}, 200);
       }
 
       return _json({'message': 'Nothing stubbed.'}, 500);
@@ -288,6 +365,7 @@ const _report = {
     'new_client': 6,
     'existing_client': 0,
     'jobs': 3,
+    'not_booked': 1,
     'avg_talk_seconds': 120,
   },
   'people': [
@@ -331,33 +409,35 @@ const _report = {
       'started_at': '2026-09-16T14:05:00Z',
       'from': '+15550001111',
       'caller_label': 'Kitchen tap',
-      'queue': 'New Client',
+      'queue': 'A1 - New Client',
       'result': 'Accepted',
       'talk_seconds': 100,
       'recording_id': 'rec-1',
       'answered_by': 'Ada',
       'rang': ['Ada'],
       'outcome': 'answered',
+      'booked': false,
     },
     {
       'id': 'c2',
       'started_at': '2026-09-16T15:30:00Z',
       'from': '+15550002222',
       'caller_label': 'Blocked drain',
-      'queue': 'New Client',
+      'queue': 'A1 - New Client',
       'result': 'Accepted',
       'talk_seconds': 300,
       'recording_id': null,
       'answered_by': 'Bo',
       'rang': ['Ada', 'Bo'],
       'outcome': 'answered',
+      'booked': true,
     },
     {
       'id': 'c3',
       'started_at': '2026-09-16T16:00:00Z',
       'from': '+15550003333',
       'caller_label': 'Burst pipe',
-      'queue': 'New Client',
+      'queue': 'A1 - New Client',
       'result': 'Missed',
       'talk_seconds': null,
       'recording_id': null,
@@ -370,13 +450,13 @@ const _report = {
       'started_at': '2026-09-16T16:10:00Z',
       'from': '+15550004444',
       'caller_label': 'Silent line',
-      'queue': null,
-      'result': 'Accepted',
+      'queue': 'A1 - Existing Client',
+      'result': 'Voicemail',
       'talk_seconds': null,
       'recording_id': null,
       'answered_by': null,
       'rang': [],
-      'outcome': 'spam',
+      'outcome': 'voicemail',
     },
   ],
 };
