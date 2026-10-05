@@ -2961,6 +2961,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 55 · Marketing · QR Codes (dynamic codes for the vehicles) — **out for decision** (`docs/previews/marketing-qr-codes-layouts.html`)
+
+From Marketing (`local_067b17d7…`), Jose 2026-10-05: a QR code printed for good on the company vehicles, *"1
+consistent qr code"* whose web address he changes in EzBizi without reprinting. Backend by Marketing: a tab
+`marketing.qr_codes.view` beside Posts and Accounts, edits need `marketing.edit`; codes {name, url (what is
+printed, never changes), destination_url, scans, last_scanned_at}; create, change, delete; image as SVG (vehicle
+wraps) or 2000px PNG. Desktop **1** a card per code (the real code drawn from `url`, where it goes with Change on
+the card, scans, downloads; delete asked inside the card: "Printed copies will stop working"; New QR code in a
+side panel) (recommended); **2** a table with the chosen code docked; **3** a list, a code opened in place. Phone
+**4** (recommended) – **6**. The change copy: "The printed code stays the same; people who scan it go here
+instead."
+
 ### 54 · Memberships · the page a customer joins from — **Jose: "go with ur recommended options as usual" (the Membership program) — 1 and 4** — **BUILT** `5d4d61c6` (`docs/previews/memberships-join-page-layouts.html`)
 
 The signed link in the review offer and the renewal reminder opens `resources/views/memberships/join.blade.php`
