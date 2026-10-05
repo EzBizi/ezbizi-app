@@ -378,6 +378,15 @@ class _OnboardingTabState extends State<OnboardingTab> {
             Wrap(
               alignment: WrapAlignment.end,
               children: [
+                if (row.downloadable &&
+                    (row.status == 'completed' ||
+                        row.status == 'awaiting_approval'))
+                  IconButton(
+                    key: Key('onboarding-download-${row.id}'),
+                    tooltip: 'Download the signed PDF',
+                    icon: const Icon(Icons.download_outlined, size: 20),
+                    onPressed: () => _download(row),
+                  ),
                 if (_canCancel(row))
                   Refused(
                     reason: widget.session.me?.refusal(
@@ -470,6 +479,12 @@ class _OnboardingTabState extends State<OnboardingTab> {
     setState(() => _open = started);
 
     await _load();
+  }
+
+  Future<void> _download(OnboardingSummary row) async {
+    final refusal = await downloadSignedPdf(widget.api, row);
+    if (refusal == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(refusal)));
   }
 
   // Whatever its state (Jose, 2026-10-05: "regardless of anything").

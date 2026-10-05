@@ -58,7 +58,12 @@ class OnboardingSummary {
     required this.submittedAt,
     required this.completedAt,
     this.cancelledAt,
+    this.downloadable = false,
   });
+
+  /// There is a signed PDF to download: its own, or the one an import
+  /// brought (Jose, 2026-10-05).
+  final bool downloadable;
 
   final String id;
 
@@ -132,6 +137,7 @@ class OnboardingSummary {
       submittedAt: json['submitted_at'] as String?,
       completedAt: json['completed_at'] as String?,
       cancelledAt: json['cancelled_at'] as String?,
+      downloadable: json['downloadable'] == true,
     );
   }
 
@@ -195,7 +201,11 @@ class Onboarding {
     this.employerAddressEditable = false,
     this.approvalBy,
     this.approvalMine = false,
+    this.downloadable = false,
   });
+
+  /// There is a signed PDF to download, its own or an imported one.
+  final bool downloadable;
 
   /// Signed by both sides and waiting for the sender's final approval (Jose,
   /// 2026-10-05): [approvalBy] is who sent it, [approvalMine] whether this
@@ -373,6 +383,7 @@ class Onboarding {
       employerAddressEditable: employer?['editable'] == true,
       approvalBy: approval?['by'] as String?,
       approvalMine: approval?['mine'] == true,
+      downloadable: json['downloadable'] == true,
     );
   }
 }

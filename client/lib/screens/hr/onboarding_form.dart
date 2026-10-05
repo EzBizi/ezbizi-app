@@ -1113,7 +1113,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
   Widget _contractHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final frozen = _paper != null && !_paper!.isPreview;
+    final frozen =
+        (_paper != null && !_paper!.isPreview) ||
+        (_form?.downloadable ?? false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1215,6 +1217,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
               _paperError ??
                   (_previewing
                       ? 'Drawing the contract…'
+                      : (_form?.downloadable ?? false)
+                      ? 'Signed before EzBizi. Download PDF to read it.'
                       : 'The contract will show here.'),
               style: note,
             )
@@ -3013,4 +3017,26 @@ class _CountySearchState extends State<_CountySearch> {
       ],
     );
   }
+}
+
+/// Save an onboarding's signed PDF straight away, from a list (Jose,
+/// 2026-10-05: "make a button on onboarding to download them faster").
+/// Null when it was saved, otherwise the reason it could not be.
+Future<String?> downloadSignedPdf(
+  ApiClient api,
+  OnboardingSummary row,
+) async {
+  final response = await api.getBytesResponse(
+    '/hr/onboardings/${row.id}/document/pdf',
+  );
+  final bytes = response.bytes;
+  if (!response.ok || bytes == null) {
+    return response.message ?? 'The PDF could not be made.';
+  }
+  final name = [
+    if (row.contractName.isNotEmpty) row.contractName,
+    if (row.personName.isNotEmpty) row.personName,
+  ].join(' - ');
+  Files.download('${name.isEmpty ? 'Signed contract' : name}.pdf', bytes);
+  return null;
 }

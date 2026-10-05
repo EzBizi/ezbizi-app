@@ -616,6 +616,14 @@ void main() {
 
   // Andy's Suggestion, built on Jose's word (2026-10-01): "a seperate
   // archieved for all the forms that are already done".
+  // Jose, 2026-10-05: "make a button on onboarding to download them faster".
+  testWidgets('a signed one offers its PDF from the list', (tester) async {
+    await _pumpTab(tester, _handler());
+
+    expect(find.byKey(const Key('onboarding-download-o-2')), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-download-o-1')), findsNothing);
+  });
+
   testWidgets('finished onboardings are their own list', (tester) async {
     final asked = <Map<String, String>>[];
 
@@ -2339,6 +2347,7 @@ const _list = [
     'id': 'o-2',
     'invitation_id': 'i-4',
     'status': 'completed',
+    'downloadable': true,
     'person': {
       'user_id': 'u-4',
       'name': 'Sam Reyes',
