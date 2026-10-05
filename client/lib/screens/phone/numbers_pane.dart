@@ -58,6 +58,141 @@ class _NumbersPaneState extends State<NumbersPane> {
   List<_Group> _groups = const [];
   List<_Schedule> _schedules = const [];
 
+  /// Lines ticked for a change made to all of them at once. Jose,
+  /// 2026-10-05: "bulk edit capabilities".
+  final Set<String> _bulkPicked = {};
+
+  /// What the bulk bar sets; null leaves that field as each line has it.
+  String? _bulkGroup;
+  String? _bulkSchedule;
+  bool? _bulkRecord;
+  String? _bulkNote;
+
+  /// One PATCH per line, the same request the line's own editor sends, so
+  /// each is validated and authorized exactly as a single edit is.
+  // ponytail: sequential requests; a bulk endpoint if accounts reach hundreds
+  // of lines.
+  Future<void> _saveBulk() async {
+    final body = <String, dynamic>{
+      if (_bulkGroup != null) 'ring_group_id': _bulkGroup,
+      if (_bulkSchedule != null)
+        'hours_schedule_id': _bulkSchedule == '' ? null : _bulkSchedule,
+      if (_bulkRecord != null) 'record': _bulkRecord,
+    };
+    if (body.isEmpty) {
+      setState(() => _bulkNote = 'Pick something to change first.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _bulkNote = null;
+    });
+
+    final failed = <String>[];
+    for (final id in _bulkPicked.toList()) {
+      final response = await widget.api.patch('/phone/numbers/$id', body);
+      if (!response.ok) failed.add(response.reason);
+    }
+    if (!mounted) return;
+
+    final done = _bulkPicked.length - failed.length;
+    setState(() {
+      _saving = false;
+      _bulkNote = failed.isEmpty
+          ? 'Changed $done ${done == 1 ? 'line' : 'lines'}.'
+          : 'Changed $done; ${failed.length} refused: ${failed.first}';
+      if (failed.isEmpty) {
+        _bulkPicked.clear();
+        _bulkGroup = null;
+        _bulkSchedule = null;
+        _bulkRecord = null;
+      }
+    });
+
+    await _load();
+  }
+
+  Widget _bulkBar(ThemeData theme) {
+    return Card(
+      key: const ValueKey('bulk-bar'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${_bulkPicked.length} selected',
+              style: theme.textTheme.titleSmall,
+            ),
+            SizedBox(
+              width: 220,
+              child: SearchPickerField<String>(
+                key: const ValueKey('bulk-group'),
+                value: _bulkGroup,
+                label: 'Rings',
+                isDense: true,
+                border: const OutlineInputBorder(),
+                options: [
+                  for (final g in _groups)
+                    SearchOption(value: g.id, label: g.name),
+                ],
+                onChanged: (v) => setState(() => _bulkGroup = v),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: SearchPickerField<String>(
+                key: const ValueKey('bulk-hours'),
+                value: _bulkSchedule,
+                label: 'Business hours',
+                isDense: true,
+                border: const OutlineInputBorder(),
+                options: [
+                  const SearchOption(value: '', label: 'Always open'),
+                  for (final s in _schedules)
+                    SearchOption(value: s.id, label: s.name),
+                ],
+                onChanged: (v) => setState(() => _bulkSchedule = v),
+              ),
+            ),
+            SizedBox(
+              width: 180,
+              child: SearchPickerField<String>(
+                key: const ValueKey('bulk-record'),
+                value: _bulkRecord == null ? null : (_bulkRecord! ? 'on' : 'off'),
+                label: 'Recording',
+                isDense: true,
+                border: const OutlineInputBorder(),
+                options: const [
+                  SearchOption(value: 'on', label: 'Record calls'),
+                  SearchOption(value: 'off', label: 'Do not record'),
+                ],
+                onChanged: (v) =>
+                    setState(() => _bulkRecord = v == null ? null : v == 'on'),
+              ),
+            ),
+            FilledButton(
+              key: const ValueKey('bulk-save'),
+              onPressed: _saving ? null : _saveBulk,
+              child: Text(_saving ? 'Saving…' : 'Change these lines'),
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                _bulkPicked.clear();
+                _bulkNote = null;
+              }),
+              child: const Text('Clear'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Lines Twilio holds that EzBizi has no row for, per connection scope.
   List<_Importable> _importable = const [];
   String? _importNote;
@@ -490,6 +625,12 @@ class _NumbersPaneState extends State<NumbersPane> {
             ),
             const SizedBox(height: 12),
           ],
+          if (_bulkNote != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_bulkNote!, style: theme.textTheme.bodySmall),
+            ),
+          if (_bulkPicked.isNotEmpty) _bulkBar(theme),
           _linesTable(theme),
         ],
       ],
@@ -578,6 +719,7 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     return ListTable(
       columns: [
+        if (_canEdit) const ListColumn('', flex: 1),
         const ListColumn('Line', flex: 3),
         const ListColumn('Number', flex: 3),
         const ListColumn('What answers it', flex: 4),
@@ -592,6 +734,17 @@ class _NumbersPaneState extends State<NumbersPane> {
       rows: [
         for (final line in shown)
           [
+            if (_canEdit)
+              Checkbox(
+                key: ValueKey('pick:${line.id}'),
+                value: _bulkPicked.contains(line.id),
+                onChanged: (on) => setState(() {
+                  on == true
+                      ? _bulkPicked.add(line.id)
+                      : _bulkPicked.remove(line.id);
+                  _bulkNote = null;
+                }),
+              ),
             Text(
               line.label.trim().isEmpty || line.label == line.e164
                   ? formatPhoneNumber(line.e164)

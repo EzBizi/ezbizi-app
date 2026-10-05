@@ -724,6 +724,51 @@ void main() {
       expect(find.textContaining('Busy line'), findsNothing);
     });
 
+    // Jose, 2026-10-05: "bulk edit capabilities". Tick lines, set a field
+    // once, and each line is saved with it - and nothing else touched.
+    testWidgets('several lines can be changed at once', (tester) async {
+      final patched = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        onNumberPatch: patched.add,
+        numbers: const [
+          {
+            'id': 'n-1',
+            'e164': '+15612323929',
+            'label': 'First',
+            'record': true,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+          },
+          {
+            'id': 'n-2',
+            'e164': '+15612323930',
+            'label': 'Second',
+            'record': true,
+            'transcribe': false,
+            'after_hours': 'voicemail',
+          },
+        ],
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.byKey(const ValueKey('pick:n-1')));
+      await _tap(tester, find.byKey(const ValueKey('pick:n-2')));
+
+      await _tap(tester, find.byKey(const ValueKey('bulk-record')));
+      await _tap(tester, find.text('Do not record').last);
+      await _tap(tester, find.byKey(const ValueKey('bulk-save')));
+
+      expect(patched, hasLength(2));
+      for (final body in patched) {
+        expect(body, {'record': false}, reason: 'a field nobody picked was sent');
+      }
+      expect(find.textContaining('Changed 2 lines'), findsOneWidget);
+    });
+
     testWidgets('editing a line saves what it rings and how it behaves', (tester) async {
       Map<String, dynamic>? patched;
 
