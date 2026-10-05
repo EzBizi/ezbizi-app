@@ -69,6 +69,9 @@ class WorkizConnectController extends Controller
 
         $data = $request->validate([
             'api_token' => ['required', 'string', 'max:120'],
+            // The account's second key, beside the token on Workiz's Developer
+            // page. Without it EzBizi reads the jobs but cannot change them.
+            'auth_secret' => ['nullable', 'string', 'max:120'],
             'label' => ['nullable', 'string', 'max:120'],
         ], [
             'api_token.required' => 'Paste the API Token from the v1 tab of this account’s Workiz Developer page.',
@@ -124,16 +127,24 @@ class WorkizConnectController extends Controller
         // scoped to read-only — measured, the per-resource permissions wizard
         // belongs to Workiz's v2 system and its key is refused by the v1
         // endpoint this reads. A leaked one can delete A-1's jobs.
-        $connection->connect([
+        // connect() replaces the credentials whole, so a reconnect that left
+        // the secret blank would switch this branch's writes off unsaid. The
+        // same token keeps the secret it had; a new token is a new account.
+        $secret = $data['auth_secret']
+            ?? (($connection->credentials['api_token'] ?? null) === $data['api_token'] ? ($connection->credentials['auth_secret'] ?? null) : null);
+
+        $connection->connect(array_filter([
             'refresh_token' => $data['api_token'],
             'api_token' => $data['api_token'],
-        ]);
+            'auth_secret' => $secret,
+        ]));
         $connection->save();
 
         $this->audit->log('social.connected', $connection, [
             'provider' => SocialProvider::Workiz->value,
             'display_name' => $connection->display_name,
             'scope_type' => $connection->scope_type,
+            'write_key' => $secret !== null,
         ], actor: $user);
 
         return response()->json(['data' => [

@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -166,6 +167,32 @@ class WorkizConnectTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('api_second', $rows->first()->credentials['api_token']);
+    }
+
+    /**
+     * The write key rides in with the token: a branch with nothing to copy it
+     * from (MA, 2026-10-05) gets one only here. A reconnect that leaves it blank
+     * keeps it for the same token -- connect() replaces the credentials whole --
+     * and drops it for a new token, which is another account.
+     */
+    public function test_the_write_key_is_kept_for_the_same_token_and_dropped_for_a_new_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $viewer = $this->viewing($tenant, $this->branch($tenant, 'Massachusetts'));
+        $this->workizAccepts();
+        $secret = fn () => $this->inTenant($tenant['org'], fn () => SocialConnection::query()
+            ->where('provider', SocialProvider::Workiz->value)->sole()->credentials['auth_secret'] ?? null);
+
+        $this->signedInAs($viewer)->postJson('/api/v1/social/workiz', ['api_token' => 'api_ma', 'auth_secret' => 'sec_ma'])->assertCreated();
+        $this->assertSame('sec_ma', $secret());
+
+        $this->signedInAs($viewer)->postJson('/api/v1/social/workiz', ['api_token' => 'api_ma', 'auth_secret' => ''])->assertCreated();
+        $this->assertSame('sec_ma', $secret(), 'the same account keeps its write key');
+
+        $this->signedInAs($viewer)->postJson('/api/v1/social/workiz', ['api_token' => 'api_other'])->assertCreated();
+        $this->assertNull($secret(), 'a new token is another account: the old key would be refused');
+
+        $this->assertStringNotContainsString('sec_ma', (string) json_encode(DB::table('audit_events')->pluck('metadata')));
     }
 
     // ── fixtures ─────────────────────────────────────────────────

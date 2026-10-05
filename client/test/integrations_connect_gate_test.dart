@@ -58,6 +58,9 @@ void main() {
 
     await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsOneWidget);
+    // The write key comes in with the token: a branch A1 Tools never held
+    // (MA, 2026-10-05) has nowhere else to get one.
+    expect(find.text('API secret'), findsOneWidget);
 
     await _back(tester);
     await _open(tester, 'airtable');
