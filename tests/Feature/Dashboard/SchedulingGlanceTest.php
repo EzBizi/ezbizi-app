@@ -315,6 +315,44 @@ class SchedulingGlanceTest extends TestCase
     }
 
     /**
+     * Rows that need somebody (Dashboard, 2026-10-05), counted from BOOKINGS
+     * the way Scheduling › Overbooking counts them, and only when there is
+     * something to act on. Pinned to Wednesday 30 Sept: Monday 5 Oct is inside
+     * both windows.
+     */
+    public function test_an_overbooked_day_and_a_fully_booked_area_need_somebody(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-09-30 10:00:00', 'America/New_York'));
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->area($tenant, 'Dallas');
+        $this->slot($dallas, 1, 1);
+
+        $resolve = fn () => $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin']), [])
+            ->toArray()['data'];
+
+        $this->assertArrayNotHasKey('attention', $resolve(), 'Nothing booked, nothing to act on.');
+
+        app(TenantContext::class)->set($tenant['org']);
+        foreach (['07:00', '08:00'] as $t) {
+            \App\Models\WorkizJob::create([
+                'franchise_id' => $tenant['franchise']->id,
+                'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+                'service_area' => 'Dallas',
+                'status' => 'Submitted',
+                'scheduled_for' => "2026-10-05 {$t}:00",
+                'payload' => ['Tags' => []],
+                'synced_at' => now(),
+            ]);
+        }
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => 'Overbooked on 1 of the next 7 days'],
+            ['tone' => 'caution', 'text' => '1 service area fully booked for the next 7 days'],
+        ], $resolve()['attention']);
+    }
+
+    /**
      * An area with no hours contributes zero to every bar, so it is invisible
      * on the chart and looks exactly like a quiet business. It gets a sentence.
      */
