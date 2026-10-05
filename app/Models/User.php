@@ -346,7 +346,7 @@ class User extends Authenticatable implements HoldsPersonalData
      */
     public function hasPermission(string $key): bool
     {
-        if (! $this->is_active) {
+        if (! $this->is_active || $this->awaitingOnboardingApproval()) {
             return false;
         }
 
@@ -355,6 +355,30 @@ class User extends Authenticatable implements HoldsPersonalData
         }
 
         return $this->role?->hasPermission($key) ?? false;
+    }
+
+    /**
+     * A new starter whose paperwork is not yet approved, where the
+     * organization asks for approval (Jose, 2026-10-05: "until then, the
+     * employee cannot access the app completely"). They hold no permission
+     * and see only their paperwork. An Administrator is never held.
+     *
+     * ponytail: one indexed EXISTS per call while the switch is on; memoize
+     * per request if hasPermission-heavy screens show it.
+     */
+    public function awaitingOnboardingApproval(): bool
+    {
+        $organization = $this->organization;
+        if ($organization === null || $this->isAdministrator()) {
+            return false;
+        }
+
+        // In this person's own tenant: hasPermission is also asked where no
+        // request has set one, and both reads below are tenant-scoped.
+        return app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => (bool) app(\App\Support\Settings\SettingsResolver::class)
+            ->get('hr.onboarding_approval', $organization)
+            && Onboarding::query()->where('user_id', $this->getKey())
+                ->whereIn('status', Onboarding::OPEN)->exists());
     }
 
     // ── authority (§4) ───────────────────────────────────────────

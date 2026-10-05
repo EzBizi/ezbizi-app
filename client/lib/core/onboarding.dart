@@ -193,7 +193,16 @@ class Onboarding {
     this.employerAddress,
     this.employerAddressDefault,
     this.employerAddressEditable = false,
+    this.approvalBy,
+    this.approvalMine = false,
   });
+
+  /// Signed by both sides and waiting for the sender's final approval (Jose,
+  /// 2026-10-05): [approvalBy] is who sent it, [approvalMine] whether this
+  /// person may give it.
+  bool get awaitingApproval => status == 'awaiting_approval';
+  final String? approvalBy;
+  final bool approvalMine;
 
   final String id;
   final String status;
@@ -312,6 +321,7 @@ class Onboarding {
     final contract = json['contract'] as Map<String, dynamic>?;
     final ceremony = json['ceremony'] as Map<String, dynamic>?;
     final employer = json['employer_address'] as Map<String, dynamic>?;
+    final approval = json['approval'] as Map<String, dynamic>?;
 
     // What has actually been signed, keyed so the fields below can find their
     // own. `signature_fields` says what the version asks for; `signatures` says
@@ -361,6 +371,8 @@ class Onboarding {
       employerAddress: employer?['typed'] as String?,
       employerAddressDefault: employer?['default'] as String?,
       employerAddressEditable: employer?['editable'] == true,
+      approvalBy: approval?['by'] as String?,
+      approvalMine: approval?['mine'] == true,
     );
   }
 }
@@ -654,6 +666,7 @@ class OnboardingSignature {
 String onboardingStatusLabel(String status) => switch (status) {
   'in_progress' => 'In progress',
   'submitted' => 'Submitted',
+  'awaiting_approval' => 'To approve',
   'completed' => 'Completed',
   'cancelled' => 'Cancelled',
   _ => status,

@@ -466,12 +466,12 @@ class HrOnboardingTest extends TestCase
 
         $mine = fn (User $who) => $this->as($who)->getJson('/api/v1/me')->assertOk()->json('data.onboarding');
 
-        $this->assertSame(['id' => $id], $mine($employee));
+        $this->assertSame(['id' => $id, 'status' => 'in_progress', 'held' => false], $mine($employee));
         // The control: the employer RUNS it and is not its subject.
         $this->assertNull($mine($alpha['admin']));
 
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
-        $this->assertSame(['id' => $id], $mine($employee), 'Their own signature is still owed.');
+        $this->assertSame($id, $mine($employee)['id'] ?? null, 'Their own signature is still owed.');
 
         $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
         $this->assertNull($mine($employee), 'A finished form stayed on their screen.');
@@ -1407,6 +1407,53 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
+     * The final approval (Jose, 2026-10-05): with the switch on, the two
+     * signatures in either order leave it waiting for the sender, and the new
+     * starter holds no permission until the sender approves.
+     */
+    public function test_with_approval_on_the_signed_paperwork_waits_for_the_sender(): void
+    {
+        [$alpha, $employee, $id] = $this->completeForm();
+        $before = $this->as($employee)->getJson('/api/v1/me')->assertOk()->json('data.permissions');
+        $this->assertNotSame([], $before, 'The control: the starter holds something before the switch.');
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set(Onboarding::APPROVAL_SETTING, $alpha['org'], true));
+        $me = fn () => $this->as($employee)->getJson('/api/v1/me')->assertOk()->json('data');
+
+        $this->assertSame([], $me()['permissions']);
+        $this->assertTrue($me()['onboarding']['held']);
+
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz')->assertCreated();
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva')->assertCreated();
+
+        $form = $this->form($alpha['admin'], $id);
+        $this->assertSame('awaiting_approval', $form['status']);
+        $this->assertTrue($form['approval']['mine']);
+        $this->assertSame('awaiting_approval', $me()['onboarding']['status']);
+        $this->assertTrue($me()['onboarding']['held']);
+
+        $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/approve")->assertForbidden();
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/approve")
+            ->assertOk()->assertJsonPath('data.status', 'completed');
+
+        $this->assertNull($me()['onboarding']);
+        $this->assertSame($before, $me()['permissions']);
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/approve")->assertStatus(422);
+    }
+
+    /** Off, which is the default, both signatures complete it as before. */
+    public function test_with_approval_off_both_signatures_complete_it(): void
+    {
+        [$alpha, $employee, $id] = $this->completeForm();
+
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz')->assertCreated();
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva')->assertCreated();
+
+        $this->assertSame('completed', $this->form($alpha['admin'], $id)['status']);
+        $this->assertFalse($this->as($employee)->getJson('/api/v1/me')->json('data.onboarding.held') ?? false);
+    }
+
+    /**
      * Revoked after it was accepted (Jose, 2026-10-05: "she should be able to
      * still revoke it. regardless of anything"): the paperwork is cancelled
      * and the account it opened is switched off. A rule still may not.
@@ -1530,7 +1577,7 @@ class HrOnboardingTest extends TestCase
         $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?status=completed')
             ->assertOk()
             ->assertJsonPath('meta.total', 0)
-            ->assertJsonPath('meta.tiles', ['in_progress' => 1, 'submitted' => 0, 'completed' => 0, 'cancelled' => 0]);
+            ->assertJsonPath('meta.tiles', ['in_progress' => 1, 'submitted' => 0, 'awaiting_approval' => 0, 'completed' => 0, 'cancelled' => 0]);
     }
 
     private function scenario(?array $fields = null): array

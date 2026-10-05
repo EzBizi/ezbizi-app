@@ -308,6 +308,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// reads as typed.
   bool? _typedSchedule;
 
+  bool _approving = false;
+
   /// What has been changed and not yet saved, by field key.
   ///
   /// Only these are sent. A form that PATCHed everything it was holding would
@@ -809,6 +811,72 @@ class _OnboardingFormState extends State<OnboardingForm> {
     widget.onChanged?.call();
   }
 
+  /// Both sides signed; the sender's final approval finishes it and opens
+  /// the app to the new starter (Jose, 2026-10-05).
+  Future<void> _approve() async {
+    setState(() {
+      _approving = true;
+      _actionError = null;
+    });
+
+    final response = await widget.api.post(
+      '/hr/onboardings/${widget.onboardingId}/approve',
+      const {},
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _approving = false;
+      if (!response.ok) {
+        _actionError = response.reason;
+        return;
+      }
+      _adopt(response);
+    });
+
+    widget.onChanged?.call();
+  }
+
+  Widget _approvalNote(BuildContext context, Onboarding form) {
+    final theme = Theme.of(context);
+    final who = form.personName.isEmpty ? 'the new starter' : form.personName;
+    final by = form.approvalBy ?? 'whoever sent it';
+
+    return Container(
+      key: const Key('onboarding-approval'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            form.approvalMine
+                ? 'Signed by both sides. Approve it to finish, and the rest of '
+                      'the app opens to $who.'
+                : 'Signed by both sides. Waiting for $by to approve it.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (form.approvalMine) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const Key('onboarding-approve'),
+              onPressed: _approving ? null : _approve,
+              icon: const Icon(Icons.verified_outlined, size: 18),
+              label: const Text('Approve'),
+            ),
+          ],
+          if (_actionError != null) ...[
+            const SizedBox(height: 8),
+            ErrorNote(_actionError!),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ── drawing it ───────────────────────────────────────────────────
 
   @override
@@ -891,6 +959,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
         final body = <Widget>[
           _resumeNote(context, form, questions),
+          if (form.awaitingApproval) ...[
+            const SizedBox(height: 16),
+            _approvalNote(context, form),
+          ],
           // Only when there is no Save bar to carry it. A refused save
           // belongs beside the button that was pressed; a refused reveal
           // on a record nobody may write has no button to sit beside, and

@@ -174,6 +174,27 @@ class OnboardingPolicy
         return $this->reach->covers($user, $scope['type'], $scope['id']);
     }
 
+    /**
+     * The final approval (Jose, 2026-10-05: "a final approval is pending from
+     * the employer who sent it out"). The sender's, or an Administrator's,
+     * and anybody's who may start one when the sender has gone.
+     */
+    public function approve(User $user, Onboarding $onboarding): Response
+    {
+        $response = $this->employerResponse($user, $onboarding, 'hr.create', 'approve this onboarding');
+        $sender = $onboarding->startedBy;
+
+        if ($response->denied() || $sender === null || ! $sender->is_active
+            || $sender->is($user) || $user->isAdministrator()) {
+            return $response;
+        }
+
+        return Response::deny(sprintf(
+            '%s sent this paperwork, so the final approval is theirs, or an Administrator\'s.',
+            $sender->name,
+        ));
+    }
+
     private function employerResponse(
         User $user,
         Onboarding $onboarding,

@@ -69,6 +69,7 @@ class SettingRegistry
             'email' => ['Shared inboxes',       $this->email()],
             'customers' => ['Customers',            $this->customers()],
             'jobs' => ['Jobs',                 $this->jobs()],
+            'human_resources' => ['Human Resources', $this->humanResources()],
             // Clock in and paid time off: every setting this group ever held.
             // Renamed from Human Resources when the pane left HR (2026-09-24).
             'work_hours' => ['Work Hours',       $this->hr()],
@@ -1140,6 +1141,24 @@ class SettingRegistry
                 options: [5, 10, 15, 30, 60],
                 editPermission: 'field.manage',
                 help: 'A phone that should be reporting and has been silent this long raises an alert.',
+            ),
+        ];
+    }
+
+    private function humanResources(): array
+    {
+        return [
+            // Jose, 2026-10-05: "a final approval is pending from the employer
+            // who sent it out ... this also should be toggable".
+            new SettingDefinition(
+                key: 'hr.onboarding_approval',
+                label: 'Approve onboardings before access',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When on, an onboarding signed by both sides waits for the final approval of '
+                    .'whoever sent it, or an Administrator. Until then the new starter sees only '
+                    .'their paperwork.',
             ),
         ];
     }

@@ -66,6 +66,7 @@ class OnboardingsInFlight implements Widget
         $rows = [
             ['title' => 'Being filled in', 'total' => (int) ($counts[Onboarding::IN_PROGRESS] ?? 0)],
             ['title' => 'Waiting on a signature', 'total' => (int) ($counts[Onboarding::SUBMITTED] ?? 0)],
+            ['title' => 'Waiting for approval', 'total' => (int) ($counts[Onboarding::AWAITING_APPROVAL] ?? 0)],
         ];
 
         $oldest = $this->inFlight($places)->min('started_at');
@@ -87,7 +88,7 @@ class OnboardingsInFlight implements Widget
     private function inFlight(array $places): Builder
     {
         return Onboarding::query()
-            ->whereIn('status', [Onboarding::IN_PROGRESS, Onboarding::SUBMITTED])
+            ->whereIn('status', Onboarding::OPEN)
             ->where(function (Builder $visible) use ($places) {
                 $visible->whereHas(
                     'invitation',
