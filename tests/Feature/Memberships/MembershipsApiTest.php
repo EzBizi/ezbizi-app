@@ -59,6 +59,8 @@ class MembershipsApiTest extends TestCase
         $rows = $this->signedInAs($this->alpha['admin'])->getJson('/api/v1/memberships')->assertOk()->json('data');
         $this->assertCount(1, $rows);
         $this->assertSame('renewal', $rows[0]['enrollment']);
+        $this->assertArrayHasKey('customer_phone', $rows[0]);
+        $this->assertArrayHasKey('customer_email', $rows[0]);
 
         $years = $this->signedInAs($this->alpha['admin'])->getJson('/api/v1/memberships?customer_id='.$this->customer)->json('data');
         $this->assertSame(['2026-10-05', '2025-10-05'], array_column($years, 'starts_on'), 'One customer: every year, newest first.');
