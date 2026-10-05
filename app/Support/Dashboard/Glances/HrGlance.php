@@ -164,6 +164,27 @@ final class HrGlance extends DescribedGlance
 
             [$joinedBefore, $leftBefore] = $this->joinedAndLeftIn($user, $period->previous());
 
+            // What needs somebody (Dashboard, 2026-10-05): overdue first, at
+            // most three, counts only.
+            $row = fn (array $widget, string $title) => (int) (collect($widget['rows'] ?? [])->firstWhere('title', $title)['total'] ?? 0);
+            $lapsed = (int) ($certifications['lapsed'] ?? 0);
+            $coming = (int) ($certifications['total'] ?? 0) - $lapsed;
+            $expired = $row($stalled, 'Expired before anyone accepted');
+            $toApprove = $row($inFlight, 'Waiting for approval');
+            $unopened = $row($stalled, 'Sent but never opened');
+            $attention = array_slice(array_values(array_filter([
+                $lapsed > 0 ? GlancePayload::attention('bad', $lapsed === 1
+                    ? '1 certification has lapsed.' : "{$lapsed} certifications have lapsed.") : null,
+                $expired > 0 ? GlancePayload::attention('bad', $expired === 1
+                    ? '1 invitation expired before anyone accepted.' : "{$expired} invitations expired before anyone accepted.") : null,
+                $toApprove > 0 ? GlancePayload::attention('caution', $toApprove === 1
+                    ? '1 onboarding waits for approval.' : "{$toApprove} onboardings wait for approval.") : null,
+                $coming > 0 ? GlancePayload::attention('caution', $coming === 1
+                    ? '1 certification expires soon.' : "{$coming} certifications expire soon.") : null,
+                $unopened > 0 ? GlancePayload::attention('caution', $unopened === 1
+                    ? '1 invitation was never opened.' : "{$unopened} invitations were never opened.") : null,
+            ])), 0, 3);
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),
@@ -184,6 +205,7 @@ final class HrGlance extends DescribedGlance
                         GlancePayload::figure('joined', 'joined '.$periodWord, $joined, $joinedBefore),
                         GlancePayload::figure('left', 'left '.$periodWord, $left, $leftBefore),
                     ],
+                    ...($attention === [] ? [] : ['attention' => $attention]),
                 ],
             );
         });

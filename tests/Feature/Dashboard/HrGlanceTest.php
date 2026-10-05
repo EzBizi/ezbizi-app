@@ -429,6 +429,29 @@ class HrGlanceTest extends TestCase
     }
 
     /**
+     * What needs somebody, overdue first (Dashboard, 2026-10-05): an
+     * invitation that expired unaccepted is bad; nothing to act on sends no
+     * `attention` at all.
+     */
+    public function test_attention_names_what_needs_somebody_and_only_then(): void
+    {
+        $data = fn () => app(HrGlance::class)
+            ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])
+            ->toArray()['data'];
+
+        $this->assertArrayNotHasKey('attention', $data());
+
+        $this->invite('late@example.test');
+        $this->inTenant(fn () => \App\Models\Invitation::query()->where('email', 'late@example.test')
+            ->update(['expires_at' => now()->subDay()]));
+
+        $this->assertSame(
+            [['tone' => 'bad', 'text' => '1 invitation expired before anyone accepted.']],
+            $data()['attention'],
+        );
+    }
+
+    /**
      * A view-timezone wall clock must be converted before it meets a UTC column.
      *
      * `DashboardPeriod::startsOn` is local midnight in the ORGANIZATION timezone;
