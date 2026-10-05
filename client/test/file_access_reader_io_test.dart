@@ -1,0 +1,96 @@
+@TestOn('vm')
+library;
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:ezbizi_client/core/file_access_reader_io.dart';
+import 'package:ezbizi_client/core/file_access_types.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// The agent's disk reader — the half that shipped untested and broke on the
+/// first real machine (an empty drive letter threw "device not ready" and took
+/// the whole roots listing down). `flutter test` runs on the VM, so the dart:io
+/// reader is exercised against a real temp directory here.
+void main() {
+  late Directory tmp;
+
+  setUp(() => tmp = Directory.systemTemp.createTempSync('files_reader_'));
+  tearDown(() => tmp.deleteSync(recursive: true));
+
+  const reader = IoFileAccessReader();
+
+  test('list returns a directory\'s entries with dir/size/modified', () async {
+    Directory('${tmp.path}/sub').createSync();
+    File('${tmp.path}/note.txt').writeAsStringSync('hello');
+
+    final entries = await reader.list(tmp.path);
+    final byName = {for (final e in entries) e['name']: e};
+
+    expect(byName.keys, containsAll(['sub', 'note.txt']));
+    expect(byName['sub']!['is_dir'], true);
+    expect(byName['sub']!['size_bytes'], isNull);
+    expect(byName['note.txt']!['is_dir'], false);
+    expect(byName['note.txt']!['size_bytes'], 5);
+    expect(byName['note.txt']!['modified_at'], isNotNull);
+  });
+
+  test('list of a path that does not exist is not_found', () async {
+    await expectLater(
+      reader.list('${tmp.path}/nope'),
+      throwsA(isA<FileAccessException>()
+          .having((e) => e.slug, 'slug', 'not_found')),
+    );
+  });
+
+  test('read returns a file\'s bytes as base64', () async {
+    File('${tmp.path}/f.bin').writeAsBytesSync([1, 2, 3, 4]);
+
+    final out = await reader.read('${tmp.path}/f.bin', 1024);
+
+    expect(out['name'], 'f.bin');
+    expect(out['size'], 4);
+    expect(base64Decode(out['content_base64'] as String), [1, 2, 3, 4]);
+  });
+
+  test('read refuses an over-cap file as too_large, before reading it',
+      () async {
+    File('${tmp.path}/big.bin').writeAsBytesSync(List.filled(2048, 0));
+
+    await expectLater(
+      reader.read('${tmp.path}/big.bin', 1024),
+      throwsA(isA<FileAccessException>()
+          .having((e) => e.slug, 'slug', 'too_large')),
+    );
+  });
+
+  test('read of a missing file is not_found', () async {
+    await expectLater(
+      reader.read('${tmp.path}/ghost', 1024),
+      throwsA(isA<FileAccessException>()
+          .having((e) => e.slug, 'slug', 'not_found')),
+    );
+  });
+
+  // THE PRODUCTION BUG. A drive letter whose probe throws (device not ready)
+  // must be skipped, not fail the whole roots listing.
+  test('roots skips a drive whose probe throws, and keeps the good ones',
+      () async {
+    final reader = IoFileAccessReader(
+      driveProbe: (root) {
+        if (root == 'D:\\') throw const FileSystemException('device not ready');
+        return root == 'C:\\'; // only C: has media
+      },
+    );
+
+    final roots = await reader.list('');
+
+    final names = roots.map((e) => e['name']).toList();
+    expect(names, contains('C:\\'),
+        reason: 'A readable drive must be listed.');
+    expect(names, isNot(contains('D:\\')),
+        reason: 'The drive whose probe threw is skipped, not fatal.');
+    // And it is a listing, not a throw — the bug was the whole call failing.
+    expect(roots, isNotEmpty);
+  });
+}

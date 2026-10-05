@@ -13,7 +13,13 @@ import 'file_access_types.dart';
 /// ACLs — a path Windows refuses comes back `access_denied`, not a path this
 /// code decided to hide.
 class IoFileAccessReader implements FileAccessReader {
-  const IoFileAccessReader();
+  /// [driveProbe] is the seam for testing the roots listing: it answers "does
+  /// this drive letter have readable media", and is allowed to THROW to stand
+  /// in for a not-ready device. Null in production → the real guarded probe.
+  const IoFileAccessReader({this.driveProbe});
+
+  /// Test seam only. `(String root) => bool`, may throw.
+  final bool Function(String root)? driveProbe;
 
   @override
   Future<List<Map<String, Object?>>> list(String path) async {
@@ -95,7 +101,21 @@ class IoFileAccessReader implements FileAccessReader {
 
     for (var c = 'A'.codeUnitAt(0); c <= 'Z'.codeUnitAt(0); c++) {
       final root = '${String.fromCharCode(c)}:\\';
-      if (Directory(root).existsSync()) {
+      // Each probe is guarded, and that is the whole point: a drive LETTER
+      // that exists as a device but has no media — an empty DVD or card
+      // reader, a mapped-but-disconnected network drive — makes existsSync
+      // THROW "device not ready" (Win32 21), not return false. Unguarded, one
+      // such drive took the WHOLE roots listing down as `unreadable` (Jose hit
+      // exactly this on the first real machine: the drives would not open). A
+      // throwing drive is skipped, as a listing skips a child it cannot stat.
+      bool present;
+      try {
+        present = (driveProbe ?? _realDriveProbe)(root);
+      } catch (_) {
+        continue;
+      }
+
+      if (present) {
         drives.add({
           'name': root,
           'is_dir': true,
@@ -107,6 +127,8 @@ class IoFileAccessReader implements FileAccessReader {
 
     return drives;
   }
+
+  static bool _realDriveProbe(String root) => Directory(root).existsSync();
 
   /// The last segment of a path, tolerant of either separator and of a trailing
   /// one. `C:\Users\toula\` → `toula`, `C:\` → `C:\` (a bare drive keeps its
