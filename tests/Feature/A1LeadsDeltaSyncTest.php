@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Console\Commands\A1LeadsDeltaSync;
 use App\Models\A1LeadsReview;
+use App\Services\A1Leads\A1LeadsClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -189,6 +190,58 @@ class A1LeadsDeltaSyncTest extends TestCase
         $answered = $this->signedInAs($reader)->getJson('/api/v1/a1leads-gbp/reviews?replied=true')->assertOk()->json('data');
         $this->assertSame('Thank you', $answered['reviews'][0]['reply']);
         $this->assertSame(1, $this->signedInAs($reader)->getJson('/api/v1/a1leads-gbp/reviews?matched=true')->json('data.meta.total'));
+    }
+
+    /**
+     * Rodrigo, 2 October: a matched customer must show whether or not the
+     * review has a workflow card, and `match` events carry it as well as
+     * `review` ones. The shape is the measured live one (seq 13179, 5 October).
+     */
+    public function test_a_matched_customer_shows_without_a_card_and_from_a_match_event(): void
+    {
+        Carbon::setTestNow('2026-09-25T16:05:00Z');
+        $match = self::record(2, 'm', ['rating' => 1, 'customer_match' => [
+            'matched' => true, 'candidates' => [['customerName' => 'A guess']], 'evidence' => ['source' => 'operator_selection'],
+        ]]);
+        $match['kind'] = 'match';
+        $match['customer'] = [
+            'matched' => true, 'match_basis' => 'operator_selected', 'client_id' => 5222, 'name' => 'Travis Leighton',
+            'phone' => '6034893132', 'phones' => ['6034893132', '6035550000'], 'email' => 'travis@example.com',
+            'service_address' => 'W358 Surrey Dr', 'workiz_tenant' => 'IL', 'workiz_url' => 'https://app.workiz.com/root/client/5222',
+            'technician' => 'ms chimney', 'assignee_kind' => 'team',
+            'last_job' => ['id' => 'OJFQOZ', 'number' => 400594793, 'date' => '2026-09-22 14:00:00', 'tech' => 'ms chimney'],
+        ];
+        $match['contact'] = ['name' => 'Travis Leighton', 'phone' => '6034893132', 'phones' => [], 'email' => null, 'address' => 'W358 Surrey Dr'];
+        $this->page('0', [self::record(1, 'm', ['rating' => 1]), $match], '2', false);
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $reader = $this->userWithRole($this->t, 'Bridge', ['a1leads_gbp.view']);
+        $row = $this->signedInAs($reader)->getJson('/api/v1/a1leads-gbp')->assertOk()->json('data.reviews.0');
+
+        $this->assertNull($row['board'], 'no card');
+        $this->assertSame([
+            'name' => 'Travis Leighton', 'basis' => 'operator_selected', 'manual' => true,
+            'workiz_account' => 'IL', 'client_id' => '5222', 'job_number' => '400594793',
+            'job_date' => '2026-09-22 14:00:00', 'technician' => 'ms chimney', 'assignee_kind' => 'team',
+            'phones' => ['6034893132', '6035550000'], 'email' => 'travis@example.com', 'address' => 'W358 Surrey Dr',
+            'workiz_url' => 'https://app.workiz.com/root/client/5222',
+        ], $row['customer']);
+        $this->assertArrayNotHasKey('customer_match', $row, 'candidates and evidence stay on their side');
+        $this->assertArrayNotHasKey('contact', $row);
+
+        // A card's contact is `workiz_contact` on the wire.
+        $card = A1LeadsClient::card(['workiz_contact' => ['phone' => '6034893132', 'email' => 'travis@example.com']]);
+        $this->assertSame('6034893132', $card['contact']['phone']);
+    }
+
+    public function test_an_unmatched_review_carries_no_customer(): void
+    {
+        Carbon::setTestNow('2026-09-25T16:05:00Z');
+        $this->page('0', [self::record(1, 'u', ['customer' => ['matched' => false, 'name' => 'A guess']])], '1', false);
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $reader = $this->userWithRole($this->t, 'Bridge', ['a1leads_gbp.view']);
+        $this->assertNull($this->signedInAs($reader)->getJson('/api/v1/a1leads-gbp')->assertOk()->json('data.reviews.0.customer'));
     }
 
     public function test_a_copy_that_stopped_syncing_is_not_served(): void

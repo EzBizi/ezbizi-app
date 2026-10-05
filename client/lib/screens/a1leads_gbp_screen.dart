@@ -537,13 +537,28 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   static List<String> _contactLines(Map<String, dynamic> review) {
     final card = (review['board'] as Map?)?.cast<String, dynamic>();
     final contact = (card?['contact'] as Map?) ?? const {};
-    final customer = (card?['customer'] as Map?) ?? const {};
+    final customer = _customerOf(review) ?? const {};
 
     return <String>{
-      for (final value in [contact['phone'], customer['phone'], contact['email']])
+      for (final value in [
+        ...((customer['phones'] as List?) ?? const []),
+        contact['phone'],
+        customer['phone'],
+        customer['email'],
+        contact['email'],
+      ])
         if (value is String && value.trim().isNotEmpty) value.trim(),
     }.toList();
   }
+
+  /// The customer A1 Leads matched to this review.
+  ///
+  /// The live copy sends it on the review itself, card or no card (Rodrigo,
+  /// 2 October: most matched reviews have no card). The day-old snapshot only
+  /// has it on the card, so that is the fallback.
+  static Map<String, dynamic>? _customerOf(Map<String, dynamic> review) =>
+      (review['customer'] as Map?)?.cast<String, dynamic>() ??
+      ((review['board'] as Map?)?['customer'] as Map?)?.cast<String, dynamic>();
 
   /// The band that makes the age of the data impossible to miss.
   Widget _sourceBand(ThemeData theme) {
@@ -927,8 +942,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     final name = '${review['reviewer_name'] ?? ''}'.trim();
     final comment = '${review['comment'] ?? ''}'.trim();
     final reply = '${review['reply'] ?? ''}'.trim();
-    final matched = review['match_tier'] == 'high' || review['match_tier'] == 'medium';
-    final customer = '${review['match_customer_name'] ?? ''}'.trim();
+    final matchedCustomer = _customerOf(review);
+    final matched = matchedCustomer != null ||
+        review['match_tier'] == 'high' ||
+        review['match_tier'] == 'medium';
+    final customer = '${matchedCustomer?['name'] ?? review['match_customer_name'] ?? ''}'.trim();
     final quiet = theme.textTheme.bodySmall
         ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
 
@@ -985,8 +1003,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                   ),
                 if (_placeOf(review).isNotEmpty)
                   Text(_placeOf(review), style: quiet, overflow: TextOverflow.ellipsis),
-                if (_jobLine(card).isNotEmpty)
-                  Text(_jobLine(card), style: quiet, overflow: TextOverflow.ellipsis),
+                if (_jobLine(review, card).isNotEmpty)
+                  Text(_jobLine(review, card), style: quiet, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -1429,13 +1447,18 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   }
 
   /// The customer's last job and who has the card, in one line.
-  static String _jobLine(Map<String, dynamic>? card) {
-    final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
+  ///
+  /// A1 Leads says whether the job went to a person or a team; a team is
+  /// never written as if it were one technician.
+  static String _jobLine(Map<String, dynamic> review, Map<String, dynamic>? card) {
+    final customer = _customerOf(review);
 
     return [
+      if (customer?['workiz_account'] != null) 'Workiz ${customer!['workiz_account']}',
       if (customer?['job_number'] != null) 'Job #${customer!['job_number']}',
       if (customer?['job_date'] != null) '${customer!['job_date']}',
-      if (customer?['technician'] != null) 'Tech: ${customer!['technician']}',
+      if (customer?['technician'] != null)
+        '${customer!['assignee_kind'] == 'team' ? 'Team' : 'Tech'}: ${customer['technician']}',
       if (card?['assignee'] != null) 'Assigned to ${card!['assignee']}',
     ].join(' · ');
   }
@@ -1449,17 +1472,21 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// none of it, which is most reviews.
   Widget _customerContext(ThemeData theme, Map<String, dynamic> review) {
     final card = (review['board'] as Map?)?.cast<String, dynamic>();
-    final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
+    final customer = _customerOf(review);
     final updates = ((card?['updates'] as List?) ?? const []).whereType<Map>().toList();
-    final job = _jobLine(card);
+    final job = _jobLine(review, card);
     final url = customer?['workiz_url'] as String?;
 
     if (customer == null && job.isEmpty && updates.isEmpty) return const SizedBox.shrink();
 
     final quiet = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-    final who = [customer?['name'], customer?['phone'], customer?['address']]
-        .whereType<String>()
-        .join(' · ');
+    final who = [
+      customer?['name'],
+      if (customer?['manual'] == true) 'matched by hand',
+      if (customer?['manual'] == false) 'matched automatically',
+      ..._contactLines(review),
+      customer?['address'],
+    ].whereType<String>().join(' · ');
 
     return Padding(
       key: ValueKey('gbp-customer-${review['google_review_name']}'),
