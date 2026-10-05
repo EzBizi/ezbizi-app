@@ -86,6 +86,26 @@ class DashboardPeriodTest extends TestCase
         $this->assertSame('this week', DashboardPeriod::for($this->alpha['admin'], 'week')->phrase());
     }
 
+    /**
+     * A box's arrow compares like with like: today so far against yesterday
+     * to the same time, not against all of yesterday.
+     */
+    public function test_previous_is_the_same_span_one_period_back(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-03-31 15:30:00', 'America/New_York'));
+
+        $day = DashboardPeriod::for($this->alpha['admin'], 'day')->previous();
+        $this->assertSame('2026-03-30T00:00:00-04:00', $day->startsOn->toIso8601String());
+        $this->assertSame('2026-03-30T15:30:00-04:00', $day->endsOn->toIso8601String());
+        $this->assertSame('day', $day->key);
+
+        // 31 March looks back to the last day of February, never into March.
+        $month = DashboardPeriod::for($this->alpha['admin'], 'month')->previous();
+        $this->assertSame('2026-02-01T00:00:00-05:00', $month->startsOn->toIso8601String());
+        $this->assertSame('2026-02-28T15:30:00-05:00', $month->endsOn->toIso8601String());
+        $this->assertTrue($month->endsOn->lt(DashboardPeriod::for($this->alpha['admin'], 'month')->startsOn));
+    }
+
     /** One bucket for a whole day drew every line chart as a single dot. */
     public function test_a_day_is_charted_by_the_hour_and_a_week_by_the_day(): void
     {

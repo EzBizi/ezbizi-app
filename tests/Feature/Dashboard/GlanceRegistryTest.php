@@ -299,6 +299,11 @@ final class LiveInventoryStubGlance implements Glance
         return 'pie';
     }
 
+    public function defaultSize(): string
+    {
+        return 'medium';
+    }
+
     public function snapshot(): bool
     {
         return true;

@@ -718,6 +718,7 @@ class DashboardTest extends TestCase
             public function allowedPresentations(): array { return ['pie', 'text']; }
             public function defaultPresentation(): string { return 'pie'; }
             public function snapshot(): bool { return true; }
+            public function defaultSize(): string { return 'medium'; }
 
             public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
             {
@@ -755,6 +756,8 @@ class DashboardTest extends TestCase
         $this->assertSame('This panel could not load right now.', $broken['data']['sentence']);
         $this->assertSame([], $broken['allowed_presentations']);
         $this->assertFalse($broken['coming_soon']);
+        $this->assertTrue($broken['failed']);
+        $this->assertArrayNotHasKey('failed', $glances['newsletter'], 'only the broken box is marked');
 
         // Not silent to us either.
         Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'ads_account_states'));
@@ -777,11 +780,47 @@ class DashboardTest extends TestCase
 
         $this->inTenant(fn () => User::find($this->alpha['admin']->id)
             ->forceFill(['preferences' => ['dashboard.glances' => [
-                ['key' => 'broken', 'presentation' => 'pie'],
+                ['key' => 'broken', 'presentation' => 'pie', 'size' => 'large'],
             ]]])->save());
 
         $broken = collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'broken');
 
         $this->assertSame('pie', $broken['presentation']);
+        $this->assertSame('large', $broken['size']);
+    }
+
+    // ── size (Jose, 2026-10-05: "change the widget sizes") ─────────────
+
+    public function test_a_box_is_its_glances_default_size_until_somebody_picks_one(): void
+    {
+        $this->registryOf([
+            new ComingSoonGlance('newsletter', 'Newsletter', 'Soon.'),
+            $this->brokenGlance(),
+        ]);
+        Exceptions::fake();
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        // Two different defaults, so a hard-coded size cannot pass.
+        $this->assertSame('small', $glances['newsletter']['size']);
+        $this->assertSame('medium', $glances['broken']['size']);
+    }
+
+    public function test_a_chosen_size_is_stored_and_returned_and_an_unknown_one_falls_back(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [
+                ['key' => 'jobs', 'presentation' => 'pie', 'size' => 'large'],
+                ['key' => 'hr', 'size' => 'enormous'],
+            ],
+        ])->assertOk();
+
+        $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])->keyBy('key');
+        $this->assertSame('large', $stored['jobs']['size']);
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+        $this->assertSame('large', $glances['jobs']['size']);
+        $this->assertSame(app(\App\Support\Dashboard\Glances\HrGlance::class)->defaultSize(), $glances['hr']['size']);
+        $this->assertNotSame('enormous', $stored['hr']['size']);
     }
 }

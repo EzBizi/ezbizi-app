@@ -33,6 +33,9 @@ interface Glance
     /** True when the chart ignores the dashboard period. */
     public function snapshot(): bool;
 
+    /** small, medium or large — the box's size until somebody picks one. */
+    public function defaultSize(): string;
+
     /**
      * ── Before you copy another glance's test fixture, read this ──────
      *

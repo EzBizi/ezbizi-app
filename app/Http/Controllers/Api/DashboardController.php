@@ -20,6 +20,9 @@ use Throwable;
  */
 class DashboardController extends Controller
 {
+    /** What a box can be sized to (Jose, 2026-10-05, the sizes gallery). */
+    private const SIZES = ['small', 'medium', 'large'];
+
     public function __construct(private GlanceRegistry $registry) {}
 
     /**
@@ -36,6 +39,7 @@ class DashboardController extends Controller
                 'label' => $g->label(),
                 'allowed_presentations' => array_values($g->allowedPresentations()),
                 'default_presentation' => $g->defaultPresentation(),
+                'default_size' => $g->defaultSize(),
             ], $this->registry->availableTo($request->user())),
         ];
     }
@@ -82,6 +86,7 @@ class DashboardController extends Controller
                 $payload = $this->failedPanel($glance);
             }
             $payload['presentation'] = $presentation;
+            $payload['size'] = $this->declaredSize($glance, $entry['size'] ?? null);
 
             // No glance takes options: the last one, Jobs' earned statuses, left
             // with the money on 2026-09-29. Always empty, so whatever a glance
@@ -124,6 +129,7 @@ class DashboardController extends Controller
             'glances' => ['sometimes', 'array'],
             'glances.*.key' => ['required', 'string', 'max:64'],
             'glances.*.presentation' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'glances.*.size' => ['sometimes', 'nullable', 'string', 'max:16'],
             'glances.*.options' => ['sometimes', 'array'],
         ]);
 
@@ -248,6 +254,9 @@ class DashboardController extends Controller
             if (isset($entry['presentation']) && is_string($entry['presentation'])) {
                 $row['presentation'] = $entry['presentation'];
             }
+            if (isset($entry['size']) && is_string($entry['size'])) {
+                $row['size'] = $entry['size'];
+            }
             if (isset($entry['options']) && is_array($entry['options'])) {
                 $row['options'] = $entry['options'];
             }
@@ -258,9 +267,16 @@ class DashboardController extends Controller
         $row = [
             'key' => $glance->key(),
             'presentation' => $this->declaredPresentation($glance, $entry['presentation'] ?? null),
+            'size' => $this->declaredSize($glance, $entry['size'] ?? null),
         ];
 
         return $row;
+    }
+
+    /** A size nobody offers drops to the glance's default, like presentation. */
+    private function declaredSize(Glance $glance, mixed $given): string
+    {
+        return in_array($given, self::SIZES, true) ? $given : $glance->defaultSize();
     }
 
     private function declaredPresentation(Glance $glance, mixed $given): string
@@ -283,9 +299,9 @@ class DashboardController extends Controller
      *
      * `empty` + `sentence` is the statement branch the renderer has always
      * had, so an installed desktop or phone build that predates this draws it
-     * correctly with no client release. A new `failed` flag would be ignored
-     * by exactly those builds, which are the ones still out there when a
-     * partial deploy is the cause.
+     * correctly with no client release. `failed` is ADDED beside them, not
+     * instead of them, for the sized dashboard (2026-10-05), which draws a
+     * failed box differently from an empty one; older builds ignore it.
      *
      * `allowed_presentations` is empty so no chart menu sits on a broken box.
      * What it does NOT do is reset `presentation`: the caller overwrites it
@@ -314,8 +330,9 @@ class DashboardController extends Controller
                 'empty' => true,
                 'sentence' => 'This panel could not load right now.',
             ],
-        ))->toArray();
+        ))->toArray() + ['failed' => true];
     }
+
     private function periodFor(User $user): DashboardPeriod
     {
         $key = $user->preferences['dashboard.period'] ?? 'day';

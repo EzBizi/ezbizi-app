@@ -100,6 +100,27 @@ final class DashboardPeriod
     }
 
     /**
+     * The same elapsed span one period back: today 00:00 to now against
+     * yesterday 00:00 to the same time; this month so far against last month
+     * to the same day. What a figure's `previous` counts, so the arrow on a
+     * box compares like with like rather than a part-day with a whole one.
+     *
+     * NoOverflow so 31 March looks back to 28 February, not into March.
+     */
+    public function previous(): self
+    {
+        $back = fn (Carbon $at) => match ($this->key) {
+            'day' => $at->copy()->subDay(),
+            'week' => $at->copy()->subWeek(),
+            'month' => $at->copy()->subMonthNoOverflow(),
+            'quarter' => $at->copy()->subQuarterNoOverflow(),
+            'year' => $at->copy()->subYearNoOverflow(),
+        };
+
+        return new self($this->key, $back($this->startsOn), $back($this->endsOn), $this->timezone, $this->weekStartsAt);
+    }
+
+    /**
      * The words a sentence uses for this window: "today", "this week".
      */
     public function phrase(): string

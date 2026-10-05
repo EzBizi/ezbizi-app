@@ -24,6 +24,14 @@ namespace App\Support\Dashboard;
  */
 abstract class DescribedGlance implements Glance
 {
+    /** Medium unless the module says otherwise; a quiet module says small. */
+    protected const DEFAULT_SIZE = 'medium';
+
+    public function defaultSize(): string
+    {
+        return static::DEFAULT_SIZE;
+    }
+
     public function key(): string
     {
         return static::KEY;

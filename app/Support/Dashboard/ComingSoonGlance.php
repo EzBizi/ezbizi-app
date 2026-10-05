@@ -48,6 +48,12 @@ final class ComingSoonGlance implements Glance
         return true;
     }
 
+    /** A sentence and nothing to plot: the smallest box holds it. */
+    public function defaultSize(): string
+    {
+        return 'small';
+    }
+
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return new GlancePayload(
