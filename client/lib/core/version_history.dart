@@ -27,6 +27,7 @@ class VersionHistory {
         'Dashboard › Customize: hide a box, and bring it back with Add a box.',
         'Marketing › Posts: posting to TikTok now asks who can see the video, whether to allow comments, duets and stitches, and whether it promotes a brand, as TikTok requires.',
         'TikTok connections stay connected: their sign-in is renewed automatically, and one that cannot be renewed asks to be reconnected.',
+        'Menus and voicemail greetings can play a recording instead of reading the text aloud: under Settings › IVR menus or Voicemail, choose \'Use a recording instead\' and upload an MP3 or WAV. If the recording ever can\'t play, the text is read instead.',
       ],
     ),
     VersionRelease(
