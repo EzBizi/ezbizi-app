@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0357',
+      date: '5 Oct 2026',
+      items: [
+        'HR: contracts imported from A1 Tools can be downloaded as the PDF signed in A1 Tools.',
+        'HR: a download button for the signed PDF on the Onboarding list and on Records › Onboarding.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0356',
       date: '5 Oct 2026',
       items: [
