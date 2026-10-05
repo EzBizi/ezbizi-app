@@ -215,6 +215,12 @@ void main() {
     expect(find.textContaining('Blocked drain'), findsNothing);
     expect(find.text('+15550001111'), findsOneWidget); // the caller's number
 
+    // The words, folded until asked for.
+    expect(find.text('How much is a sweep?'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('transcript-c1')));
+    await tester.pumpAndSettle();
+    expect(find.text('How much is a sweep?'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('convert-c1')));
     await tester.pumpAndSettle();
 
@@ -416,6 +422,7 @@ const _report = {
       'answered_by': 'Ada',
       'rang': ['Ada'],
       'outcome': 'answered',
+      'transcript': 'How much is a sweep?',
       'booked': false,
     },
     {

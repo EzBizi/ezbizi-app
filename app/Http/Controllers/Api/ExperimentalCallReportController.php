@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
@@ -229,15 +230,34 @@ class ExperimentalCallReportController extends Controller
                 'converted_by' => $c->converter?->name,
             ])->values()->all(),
 
-            ...$reconcile->forRange(
+            ...$this->withTranscripts($reconcile->forRange(
                 $legs,
                 $jobs,
                 $start->toDateString(),
                 $end->toDateString(),
                 $conversions->pluck('call_id')->all(),
                 CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
-            ),
+            )),
         ]);
+    }
+
+    /**
+     * Each call's words, where `ezbizi:transcribe-report-calls` has them. Null
+     * means not transcribed (yet, or it could not be done) - never an empty
+     * call, which is an empty string.
+     */
+    private function withTranscripts(array $day): array
+    {
+        $words = CallReportTranscript::query()
+            ->whereIn('call_id', array_column($day['calls'] ?? [], 'id'))
+            ->pluck('transcript', 'call_id');
+
+        $day['calls'] = array_map(
+            fn (array $call) => $call + ['transcript' => $words[$call['id']] ?? null],
+            $day['calls'] ?? [],
+        );
+
+        return $day;
     }
 
     /**

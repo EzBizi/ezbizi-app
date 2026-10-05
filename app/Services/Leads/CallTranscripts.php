@@ -56,7 +56,18 @@ class CallTranscripts
      */
     public function transcribeHere(LeadConversation $row, SocialConnection $connection): string
     {
-        $audio = $this->recording($row, $connection);
+        return $this->whisperAudio($this->recording($row, $connection));
+    }
+
+    /**
+     * Any recording's words through Whisper on this server - shared with the
+     * Experimental call report (Reports, 2026-10-05), so there is one way to
+     * run it. The audio is written to a temp file, read, and deleted.
+     *
+     * @throws RuntimeException with a sentence, when it cannot be done
+     */
+    public function whisperAudio(string $audio): string
+    {
         $file = tempnam(sys_get_temp_dir(), 'call-');
         file_put_contents($file, $audio);
 

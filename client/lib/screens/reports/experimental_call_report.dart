@@ -88,6 +88,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Calls being marked as booked right now, so a double tap sends once.
   final Set<String> _converting = {};
 
+  /// Calls whose transcript is unfolded.
+  final Set<String> _openTranscripts = {};
+
   static const _newQueue = 'A1 - New Client';
   static const _existingQueue = 'A1 - Existing Client';
 
@@ -549,8 +552,56 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       if (mine.isEmpty)
         Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
       else
-        for (final call in mine) _call(context, null, call),
+        for (final call in mine) ...[
+          _call(context, null, call),
+          _transcript(context, call),
+        ],
     ]);
+  }
+
+  /// A call's words, folded until asked for: whole calls in a list would bury
+  /// the list. Transcribed on EzBizi's server, or reused from the same call's
+  /// Local Services lead; null until that has happened.
+  Widget _transcript(BuildContext context, Map<String, dynamic> call) {
+    final theme = Theme.of(context);
+    final id = '${call['id']}';
+    final words = call['transcript'];
+
+    if (words is! String) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 24, bottom: 8),
+        child: Text(
+          'Not transcribed yet.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      );
+    }
+
+    final open = _openTranscripts.contains(id);
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 24, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextButton(
+            key: ValueKey('transcript-$id'),
+            onPressed: () => setState(
+              () =>
+                  open ? _openTranscripts.remove(id) : _openTranscripts.add(id),
+            ),
+            child: Text(open ? 'Hide transcript' : 'Transcript'),
+          ),
+          if (open)
+            SelectableText(
+              words.isEmpty ? 'Nothing was said.' : words,
+              style: theme.textTheme.bodySmall,
+            ),
+        ],
+      ),
+    );
   }
 
   /// New-client calls somebody answered that did not become a job: no Workiz
@@ -609,6 +660,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ],
                 ),
               ),
+              _transcript(context, call),
             ],
           ),
       const SizedBox(height: 16),
