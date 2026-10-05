@@ -449,6 +449,32 @@ class VoiceWebhookTest extends TestCase
         $this->assertSame($connection->id, $call->connection_id);
     }
 
+    /**
+     * What the caller pressed is kept on the call. Jose, 2026-10-05: a report
+     * of "what client pressed on the ivr menu" — the digits reached here on
+     * every press and were dropped.
+     */
+    public function test_the_key_pressed_and_the_extension_typed_are_kept(): void
+    {
+        $t = $this->provisionTenant();
+        [$connection, , $authToken] = $this->inTenant($t['org'], fn () => $this->openLine($t, e164: '+12035551009'));
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = $this->inboundParams('CAkeyskeyskeyskeyskeyskeyskeyskeys', '+15551113333', '+12035551009');
+
+        $this->signedPost($url, $params, $authToken)->assertOk();
+        $this->signedPost($url, $params + ['Digits' => '2'], $authToken)->assertOk();
+
+        $call = fn () => $this->inTenant($t['org'], fn () => PhoneCall::query()->firstOrFail());
+        $this->assertSame('2', $call()->menu_key);
+        $this->assertNull($call()->extension_dialed);
+
+        // Typed at the extension prompt: the same field, a different URL.
+        $this->signedPost($url.'?extension=1', $params + ['Digits' => '0101'], $authToken)->assertOk();
+        $this->assertSame('0101', $call()->extension_dialed);
+        $this->assertSame('2', $call()->menu_key, 'the extension overwrote the menu key');
+    }
+
     public function test_a_bad_signature_is_still_forbidden_and_writes_nothing(): void
     {
         $t = $this->provisionTenant();

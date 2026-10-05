@@ -1287,6 +1287,10 @@ class CallsController extends Controller
             // The name beside the id, so a history row can say who rather
             // than a number (UI/UX's Dial redesign, 2026-09-30).
             'customer_name' => $customerNames[$customerIds[$outside] ?? ''] ?? null,
+
+            // What they pressed in the menu, and any extension they typed.
+            'menu_key' => $call->menu_key,
+            'extension_dialed' => $call->extension_dialed,
             'created_at' => $call->created_at?->toIso8601String(),
         ];
     }

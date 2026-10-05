@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
@@ -55,6 +56,8 @@ class _ReportsTabState extends State<ReportsTab> {
     'user': 'By who answered',
     'line': 'By line',
     'direction': 'In or out',
+    'key': 'By key pressed in the menu',
+    'caller': 'By caller',
   };
 
   bool _loading = true;
@@ -627,6 +630,8 @@ class _ReportsTabState extends State<ReportsTab> {
     'user' => 'Answered by',
     'line' => 'Line',
     'direction' => 'Direction',
+    'key' => 'Key pressed',
+    'caller' => 'Caller',
     _ => '',
   };
 
@@ -637,6 +642,7 @@ class _ReportsTabState extends State<ReportsTab> {
       return switch (_groupBy) {
         'tag' => 'Not tagged',
         'user' => 'Nobody answered',
+        'key' => 'No key pressed',
         _ => 'Not set',
       };
     }
@@ -644,6 +650,13 @@ class _ReportsTabState extends State<ReportsTab> {
     if (_groupBy == 'hour') return '$bucket:00';
     if (_groupBy == 'direction') {
       return bucket == 'inbound' ? 'Incoming' : 'Outgoing';
+    }
+    if (_groupBy == 'key') return 'Pressed $bucket';
+    if (_groupBy == 'caller') {
+      final name = _labels[bucket];
+      return name == null
+          ? formatPhoneNumber(bucket)
+          : '$name · ${formatPhoneNumber(bucket)}';
     }
 
     return _labels[bucket] ?? bucket;

@@ -162,6 +162,10 @@ class NumbersController extends Controller
         $rows = $this->access->visibleTo($request->user())
             ->map(fn (PhoneNumber $number) => [
                 'id' => $number->id,
+
+                // Which company's answer this line falls back to, so the Call
+                // flow screen can list each company's lines under it.
+                'connection_id' => $number->connection_id,
                 'e164' => $number->e164,
                 'label' => $number->label,
                 'record' => $number->record,

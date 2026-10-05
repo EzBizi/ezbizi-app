@@ -249,6 +249,10 @@ class ReportsController extends Controller
                 ->get()
                 ->mapWithKeys(fn (PhoneNumber $n) => [$n->id => $n->label ?: $n->e164])
                 ->all(),
+
+            // A caller's number names the customer who holds it, by the same
+            // exact match the call history uses.
+            'caller' => \App\Models\Customer::query()->whereIn('phone', $ids)->pluck('name', 'phone')->all(),
             default => [],
         };
     }

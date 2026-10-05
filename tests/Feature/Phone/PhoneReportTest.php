@@ -82,6 +82,42 @@ class PhoneReportTest extends TestCase
     }
 
     /**
+     * By key pressed in the menu, and by caller with the customer's name.
+     * Jose, 2026-10-05: "what client pressed on the ivr menu" and "where did
+     * the calls come from".
+     */
+    public function test_calls_group_by_menu_key_and_by_caller(): void
+    {
+        [$t, $number] = $this->lineWithCalls(['completed', 'completed', 'no-answer']);
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.reports.view']);
+        $this->grant($t, $number, $admin);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ids = PhoneCall::query()->orderBy('twilio_sid')->pluck('id');
+            PhoneCall::query()->whereKey($ids[0])->update(['menu_key' => '1']);
+            PhoneCall::query()->whereKey($ids[1])->update(['menu_key' => '1']);
+
+            \App\Models\Customer::factory()->create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'name' => 'Marta Delgado',
+                'phone' => '+12035550111',
+            ]);
+        });
+
+        $byKey = $this->signedInAs($admin)
+            ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=key')->assertOk();
+        $rows = collect($byKey->json('data.rows'))->keyBy('bucket');
+        $this->assertSame(2, $rows['1']['calls']);
+        $this->assertSame(1, $rows['']['calls'], 'the call with no key pressed went missing');
+
+        $byCaller = $this->signedInAs($admin)
+            ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=caller')->assertOk();
+        $this->assertSame(3, $byCaller->json('data.rows.0.calls'));
+        $this->assertSame('+12035550111', $byCaller->json('data.rows.0.bucket'));
+        $this->assertSame('Marta Delgado', $byCaller->json('data.labels')['+12035550111']);
+    }
+
+    /**
      * Reports read only granted lines — the same gate Records uses — so a
      * report test without a grant counts nothing and proves nothing.
      */

@@ -122,7 +122,32 @@ class VoiceWebhookController extends Controller
             voicemail: $this->isVoicemailDocument($xml),
         );
 
+        $this->recordKeys($request, $outbound);
+
         return $this->twiml($xml);
+    }
+
+    /**
+     * Keep what the caller pressed. Jose, 2026-10-05: a report of "what client
+     * pressed on the ivr menu". The last menu key wins (a repeat key followed
+     * by 1 is a 1); typed extension digits are kept apart, because the same
+     * `Digits` field carries both and only the URL says which.
+     */
+    private function recordKeys(Request $request, bool $outbound): void
+    {
+        $digits = (string) $request->input('Digits', '');
+        if ($outbound || $digits === '') {
+            return;
+        }
+
+        $call = $this->findCall($request);
+        if ($call === null) {
+            return;
+        }
+
+        $call->forceFill($request->boolean('extension')
+            ? ['extension_dialed' => substr($digits, 0, 8)]
+            : ['menu_key' => substr($digits, 0, 8)])->save();
     }
 
     /**

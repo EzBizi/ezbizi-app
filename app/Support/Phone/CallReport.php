@@ -161,6 +161,12 @@ final class CallReport
             'tag' => ['tag_id', [], 'calls'],
             'user' => ['user_id', [], 'calls'],
             'line' => ['number_id', [], 'calls'],
+            'key' => ['menu_key', [], 'calls'],
+
+            // The other end of the call: who called in, or who was called.
+            // ponytail: one row per number, no cap; add a top-N if a busy
+            // account's report grows too long to read.
+            'caller' => ["CASE WHEN direction = 'inbound' THEN from_e164 ELSE to_e164 END", [], 'calls'],
             default => ["DATE($local)", [$offsetMinutes], 'bucket'],
         };
 

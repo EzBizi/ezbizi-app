@@ -55,6 +55,58 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
+  // Jose, 2026-10-05: "what client pressed on the ivr menu". The key is a
+  // sentence, and a call where nothing was pressed says so.
+  testWidgets('by key pressed names each key and the calls with none', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) return _json({'data': _me});
+        if (path.endsWith('/phone/reports/run')) {
+          final key = request.url.queryParameters['group_by'] == 'key';
+          return _json({
+            'data': {
+              'totals': {'calls': 3, 'missed': 1},
+              'rows': key
+                  ? [
+                      {'bucket': '1', 'calls': 2, 'missed': 0},
+                      {'bucket': '', 'calls': 1, 'missed': 1},
+                    ]
+                  : [
+                      {'bucket': '2026-09-27', 'calls': 3, 'missed': 1},
+                    ],
+              'labels': <Object>[],
+            },
+          });
+        }
+        if (path.endsWith('/phone/reports')) {
+          return _json({'data': <Object>[], 'meta': <String, Object>{}});
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: ReportsTab(api: api, session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('report-grouping')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('By key pressed in the menu').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pressed 1'), findsOneWidget);
+    expect(find.text('No key pressed'), findsOneWidget);
+  });
+
   // Tiles over a table (Mia, 2026-10-02). Incoming narrows by the Direction
   // filter the run endpoint has; the tiles keep counting the whole period,
   // so Outgoing still says 1 while Incoming is picked. Missed has no filter

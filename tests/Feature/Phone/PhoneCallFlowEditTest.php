@@ -147,7 +147,7 @@ class PhoneCallFlowEditTest extends TestCase
     public function test_the_company_default_says_whether_it_reaches_anybody(): void
     {
         [$t, $number, , $group] = $this->line();
-        $reader = $this->userWithRole($t, 'Reader', ['phone.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['phone.view', 'phone.settings.view']);
 
         $this->inTenant($t['org'], function () use ($number, $group) {
             $number->connection->forceFill(['default_ring_group_id' => $group->id])->save();
@@ -164,6 +164,12 @@ class PhoneCallFlowEditTest extends TestCase
             ->assertOk()->json('data'))->firstWhere('id', $number->connection_id)['default_reaches'];
 
         $this->assertTrue($reaches());
+
+        // And each line on the call-flow list names its company's account.
+        $this->assertSame(
+            $number->connection_id,
+            $this->signedInAs($reader)->getJson('/api/v1/phone/call-flow')->assertOk()->json('data.0.connection_id'),
+        );
 
         // The control: the same group, emptied.
         $this->inTenant($t['org'], fn () => $group->forceFill(['member_user_ids' => []])->save());

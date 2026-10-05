@@ -26,7 +26,9 @@ class PhoneReport extends Model implements StatesRetention
         'last_7', 'last_30', 'last_90', 'this_month', 'last_month', 'custom',
     ];
 
-    public const GROUPINGS = ['day', 'hour', 'tag', 'user', 'line', 'direction'];
+    // `key` and `caller`: Jose, 2026-10-05, "what client pressed on the ivr
+    // menu" and "where did the calls come from".
+    public const GROUPINGS = ['day', 'hour', 'tag', 'user', 'line', 'direction', 'key', 'caller'];
 
     public static function retention(): RetentionPolicy
     {
