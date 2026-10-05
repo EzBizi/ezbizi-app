@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/list_table.dart';
@@ -23,7 +24,15 @@ import 'settings_pane.dart';
 /// their retention there; this screen is the greeting and the settings, so
 /// deleting a box silences a line rather than erasing what a caller said.
 class VoicemailPane extends StatefulWidget {
-  const VoicemailPane({super.key, required this.api, required this.session});
+  const VoicemailPane({
+    super.key,
+    required this.api,
+    required this.session,
+    this.pickAudio,
+  });
+
+  /// Picks a recording. Defaults to the file dialog; a test passes its own.
+  final Future<PickedBytes?> Function()? pickAudio;
 
   final ApiClient api;
   final Session session;
@@ -50,6 +59,39 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   List<String> _emails = const [];
   bool _transcribe = false;
   String? _connectionId;
+
+  /// The recorded greeting's link, or null to speak [_greeting]. Jose,
+  /// 2026-10-05: "voicemail settings ... text to speech or recorded".
+  String? _greetingAudio;
+  bool _uploading = false;
+
+  Future<void> _uploadGreeting() async {
+    final picked = await (widget.pickAudio ??
+        () => Files.pickBytes(accept: '.mp3,.wav'))();
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _uploading = true;
+      _error = null;
+    });
+
+    final response = await widget.api.postFile(
+      '/phone/audio',
+      'audio',
+      picked.name,
+      picked.bytes,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _uploading = false;
+      if (response.ok) {
+        _greetingAudio = (response.data as Map?)?['url'] as String?;
+      } else {
+        _error = response.reason;
+      }
+    });
+  }
 
   /// The tile picked (tiles over a table, Mia 2026-10-02): `unused` or
   /// `transcribed`; null is every mailbox. Counted here - the endpoint is
@@ -119,6 +161,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _seconds.text = (box?.maxSeconds ?? 300).toString();
       _emails = List<String>.from(box?.notifyEmails ?? const []);
       _transcribe = box?.transcribe ?? false;
+      _greetingAudio = box?.greetingAudioUrl;
       _connectionId = box?.connectionId ?? _connectionId;
       _email.clear();
       _error = null;
@@ -134,8 +177,9 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 
     final body = {
       'name': _name.text.trim(),
-      'greeting_mode': 'tts',
+      'greeting_mode': _greetingAudio == null ? 'tts' : 'audio',
       'greeting_text': _greeting.text.trim(),
+      'greeting_audio_url': _greetingAudio,
       'max_seconds': seconds,
       'transcribe': _transcribe,
       'notify_emails': _emails,
@@ -190,6 +234,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   Map<String, Object?> _formValues() => {
     'name': _name.text.trim(),
     'greeting_text': _greeting.text.trim(),
+    'greeting_audio': _greetingAudio,
     'max_seconds': int.tryParse(_seconds.text.trim()) ?? 300,
     'transcribe': _transcribe,
     'notify_emails': _emails,
@@ -207,6 +252,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
     const names = {
       'name': 'the name',
       'greeting_text': 'the greeting',
+      'greeting_audio': 'the recording',
       'max_seconds': 'the message length',
       'transcribe': 'whether messages are written down',
       'notify_emails': 'who is told',
@@ -475,6 +521,36 @@ class _VoicemailPaneState extends State<VoicemailPane> {
               ),
             ),
 
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('voicemail-recording-upload'),
+                  icon: const Icon(Icons.mic_none_outlined, size: 18),
+                  label: Text(
+                    _greetingAudio == null
+                        ? 'Use a recording instead'
+                        : 'Replace the recording',
+                  ),
+                  onPressed: _uploading ? null : _uploadGreeting,
+                ),
+                if (_greetingAudio != null)
+                  TextButton(
+                    key: const ValueKey('voicemail-recording-remove'),
+                    onPressed: () => setState(() => _greetingAudio = null),
+                    child: const Text('Use text-to-speech'),
+                  ),
+              ],
+            ),
+            if (_greetingAudio != null)
+              Text(
+                'Callers hear your recording, not the text.',
+                style: theme.textTheme.bodySmall,
+              ),
+
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -633,6 +709,7 @@ class _Box {
     this.ownerType,
     this.ownerName,
     this.lineCount,
+    this.greetingAudioUrl,
   });
 
   const _Box.blank()
@@ -646,7 +723,8 @@ class _Box {
       notifyEmails = const [],
       ownerType = null,
       ownerName = null,
-      lineCount = null;
+      lineCount = null,
+      greetingAudioUrl = null;
 
   final String id;
   final String connectionId;
@@ -663,6 +741,9 @@ class _Box {
 
   /// How many lines send voicemail here; null from a server that does not say.
   final int? lineCount;
+
+  /// The recorded greeting, when the box plays one instead of [greetingText].
+  final String? greetingAudioUrl;
 
   /// "A person · Ana Ruiz" - the kind from `owner_type`, the name from
   /// `owner_name`, both the server's.
@@ -692,6 +773,9 @@ class _Box {
           connectionId: (row['connection_id'] ?? '').toString(),
           name: (row['name'] ?? '').toString(),
           greetingText: (row['greeting_text'] ?? '').toString(),
+          greetingAudioUrl: row['greeting_mode'] == 'audio'
+              ? row['greeting_audio_url'] as String?
+              : null,
           spokenGreeting: (row['spoken_greeting'] ?? '').toString(),
           maxSeconds: (row['max_seconds'] as num?)?.toInt() ?? 300,
           transcribe: row['transcribe'] == true,

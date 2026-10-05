@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/flows_pane.dart';
@@ -14,6 +15,8 @@ import 'package:http/testing.dart';
 /// Jose, 2026-09-28: the menu rang the line when it ended, and *"spam callers
 /// are getting through that way"*.
 void main() {
+  _recordingTests();
+
   testWidgets('a menu can be set to end the call when nobody presses a key', (
     tester,
   ) async {
@@ -54,10 +57,41 @@ void main() {
   });
 }
 
+/// Jose, 2026-10-05: "text to speech or recorded". A recording uploaded in
+/// the editor is saved with the menu, and can be swapped back for the text.
+void _recordingTests() {
+  testWidgets('a menu can play a recording instead of the text', (
+    tester,
+  ) async {
+    final saved = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      onSave: saved.add,
+      pickAudio: () async => const PickedBytes('greeting.mp3', [1, 2, 3]),
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('flow-recording-upload')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Callers hear your recording'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(
+      saved.single['prompt_audio'],
+      '11111111-2222-3333-4444-555555555555.mp3',
+    );
+  });
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required void Function(Map<String, dynamic>) onSave,
   bool extraFlow = false,
+  Future<PickedBytes?> Function()? pickAudio,
 }) async {
   tester.view.physicalSize = const Size(1100, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -68,6 +102,12 @@ Future<void> _pump(
       final path = request.url.path;
 
       if (path.endsWith('/me')) return _json({'data': _me});
+
+      if (path.endsWith('/phone/audio') && request.method == 'POST') {
+        return _json({
+          'data': {'name': '11111111-2222-3333-4444-555555555555.mp3'},
+        }, 201);
+      }
 
       if (path.endsWith('/phone/flows/f-1') && request.method == 'PATCH') {
         onSave(jsonDecode(request.body) as Map<String, dynamic>);
@@ -98,7 +138,11 @@ Future<void> _pump(
                 'name': 'Garage menu',
                 'prompt': 'Press 1 for sales.',
                 'options': [
-                  {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'g-1'},
+                  {
+                    'digit': '1',
+                    'action': 'ring_group',
+                    'ring_group_id': 'g-1',
+                  },
                   {'digit': '9', 'action': 'repeat'},
                 ],
                 'number_ids': <String>[],
@@ -135,7 +179,7 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: FlowsPane(api: api, session: session),
+        body: FlowsPane(api: api, session: session, pickAudio: pickAudio),
       ),
     ),
   );

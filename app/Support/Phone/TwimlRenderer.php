@@ -5,6 +5,7 @@ namespace App\Support\Phone;
 use App\Models\PhoneCall;
 use App\Models\PhoneDeviceRegistration;
 use App\Models\PhoneExtension;
+use App\Http\Controllers\Api\Phone\AudioController;
 use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
@@ -196,7 +197,14 @@ final class TwimlRenderer
                     'numDigits' => 1,
                     'timeout' => $noInput['wait_seconds'],
                 ]);
-                $gather->say($prompt, ['language' => $language]);
+
+                // The recording when there is one and its file is still here;
+                // the text otherwise, so a deleted file never means silence.
+                if (AudioController::exists($noInput['audio'])) {
+                    $gather->play(AudioController::url($noInput['audio']));
+                } else {
+                    $gather->say($prompt, ['language' => $language]);
+                }
             }
 
             // Jose, 2026-09-28: the menu can END the call when nobody presses
@@ -2380,7 +2388,7 @@ final class TwimlRenderer
      * many more times it plays, and whether it then ends the call. The
      * defaults are what every menu did before the setting existed.
      *
-     * @return array{wait_seconds: int, replays: int, hang_up: bool}
+     * @return array{wait_seconds: int, replays: int, hang_up: bool, audio: ?string}
      */
     private function menuNoInput(PhoneNumber $number): array
     {
@@ -2392,6 +2400,10 @@ final class TwimlRenderer
             'wait_seconds' => max(1, min(30, (int) ($menu['wait_seconds'] ?? 5))),
             'replays' => max(0, min(5, (int) ($menu['replays'] ?? 0))),
             'hang_up' => ($menu['no_input'] ?? 'ring') === 'hangup',
+
+            // The menu's recorded prompt, read here because this is the one
+            // lookup of the menu node the Gather loop already makes.
+            'audio' => is_string($menu['prompt_audio'] ?? null) ? $menu['prompt_audio'] : null,
         ];
     }
 

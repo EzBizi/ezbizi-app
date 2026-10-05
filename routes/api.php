@@ -543,6 +543,12 @@ Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge']
     ->middleware('throttle:web-enquiry')
     ->name('web.form.challenge');
 
+// A phone recording (menu prompt, voicemail greeting), fetched by Twilio with
+// no session — the signed link is the permission. See Phone\AudioController.
+Route::get('v1/phone/audio/{name}', [\App\Http\Controllers\Api\Phone\AudioController::class, 'file'])
+    ->middleware('signed')
+    ->name('phone.audio');
+
 // A form upload, by the signed link in its enquiry — never guessable.
 Route::get('v1/web/form/files/{name}', [WebEnquiriesController::class, 'file'])
     ->middleware('signed')
@@ -2003,6 +2009,8 @@ Route::prefix('v1')
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
         // Reports. Literal paths before {report}, or "run" is captured as an id.
+        Route::post('phone/audio', [\App\Http\Controllers\Api\Phone\AudioController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
         Route::get('phone/reports/run', [PhoneReportsController::class, 'run'])
             ->middleware('permission:phone.reports.view');
         Route::get('phone/reports', [PhoneReportsController::class, 'index'])

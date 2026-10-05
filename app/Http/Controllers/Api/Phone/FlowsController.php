@@ -138,6 +138,11 @@ class FlowsController extends Controller
             'name' => ['required', 'string', 'max:191'],
             'prompt' => ['required', 'string', 'max:1000'],
 
+            // A recording played instead of the text (Jose, 2026-10-05: "text
+            // to speech or recorded"). The name POST /phone/audio returned;
+            // the text stays, as what the chart shows and the fallback.
+            'prompt_audio' => ['sometimes', 'nullable', 'string', 'regex:/^[0-9a-f-]{36}\.(mp3|wav)$/'],
+
             // WHEN NOBODY PRESSES A KEY. Jose, 2026-09-28: *"after the menu
             // ends, it tries to connect the call, instead of ending the call,
             // where do i set it up"*. How long to wait for a key, how many
@@ -209,6 +214,7 @@ class FlowsController extends Controller
         return [
             'type' => 'menu',
             'prompt' => trim((string) $input['prompt']),
+            'prompt_audio' => $input['prompt_audio'] ?? null,
             'wait_seconds' => (int) ($input['wait_seconds'] ?? 5),
             'replays' => (int) ($input['replays'] ?? 0),
             'no_input' => (string) ($input['no_input'] ?? 'ring'),
@@ -236,6 +242,7 @@ class FlowsController extends Controller
             'connection_id' => $flow->connection_id,
             'name' => $flow->name,
             'prompt' => $nodes['prompt'] ?? '',
+            'prompt_audio' => $nodes['prompt_audio'] ?? null,
             'wait_seconds' => (int) ($nodes['wait_seconds'] ?? 5),
             'replays' => (int) ($nodes['replays'] ?? 0),
             'no_input' => (string) ($nodes['no_input'] ?? 'ring'),

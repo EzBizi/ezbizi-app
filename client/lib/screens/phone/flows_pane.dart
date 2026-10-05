@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
@@ -28,10 +29,18 @@ import '../../widgets/status_pill.dart';
 /// Most lines want no menu at all — ring the desk. A line with no flow rings
 /// its group directly, and the Numbers screen is where a menu gets attached.
 class FlowsPane extends StatefulWidget {
-  const FlowsPane({super.key, required this.api, required this.session});
+  const FlowsPane({
+    super.key,
+    required this.api,
+    required this.session,
+    this.pickAudio,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Picks a recording. Defaults to the file dialog; a test passes its own.
+  final Future<PickedBytes?> Function()? pickAudio;
 
   @override
   State<FlowsPane> createState() => _FlowsPaneState();
@@ -63,6 +72,35 @@ class _FlowsPaneState extends State<FlowsPane> {
 
   _Draft? _draft;
   bool _saving = false;
+  bool _uploading = false;
+
+  Future<void> _uploadRecording(_Draft draft) async {
+    final picked = await (widget.pickAudio ??
+        () => Files.pickBytes(accept: '.mp3,.wav'))();
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _uploading = true;
+      _formError = null;
+    });
+
+    final response = await widget.api.postFile(
+      '/phone/audio',
+      'audio',
+      picked.name,
+      picked.bytes,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _uploading = false;
+      if (response.ok) {
+        draft.promptAudio = (response.data as Map?)?['name'] as String?;
+      } else {
+        _formError = response.reason;
+      }
+    });
+  }
   String? _formError;
 
   @override
@@ -170,6 +208,7 @@ class _FlowsPaneState extends State<FlowsPane> {
     final body = <String, dynamic>{
       'name': draft.name.trim(),
       'prompt': draft.prompt.trim(),
+      'prompt_audio': draft.promptAudio,
       'wait_seconds': draft.waitSeconds,
       'replays': draft.replays,
       'no_input': draft.noInput,
@@ -448,11 +487,6 @@ class _FlowsPaneState extends State<FlowsPane> {
           ],
         ),
 
-        if (_formError != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_formError!),
-        ],
-
         const SizedBox(height: 16),
         TextFormField(
           initialValue: draft.name,
@@ -474,6 +508,41 @@ class _FlowsPaneState extends State<FlowsPane> {
             border: OutlineInputBorder(),
           ),
           onChanged: (v) => draft.prompt = v,
+        ),
+
+        // TEXT-TO-SPEECH OR A RECORDING. Jose, 2026-10-05: "automatic audio
+        // replies — text to speech or recorded".
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              key: const ValueKey('flow-recording-upload'),
+              icon: const Icon(Icons.mic_none_outlined, size: 18),
+              label: Text(
+                draft.promptAudio == null
+                    ? 'Use a recording instead'
+                    : 'Replace the recording',
+              ),
+              onPressed: _uploading ? null : () => _uploadRecording(draft),
+            ),
+            if (draft.promptAudio != null)
+              TextButton(
+                key: const ValueKey('flow-recording-remove'),
+                onPressed: () => setState(() => draft.promptAudio = null),
+                child: const Text('Use text-to-speech'),
+              ),
+          ],
+        ),
+        Text(
+          draft.promptAudio == null
+              ? 'Callers hear the text above, read aloud. An MP3 or WAV can '
+                    'play instead.'
+              : 'Callers hear your recording. The text above is what the '
+                    'chart shows, and what is read if the recording cannot play.',
+          style: theme.textTheme.bodySmall,
         ),
 
         const SizedBox(height: 20),
@@ -560,6 +629,12 @@ class _FlowsPaneState extends State<FlowsPane> {
           ],
         ),
 
+        // Beside Save, where the person who pressed it is looking. At the
+        // top it scrolled out of a long form and the refusal was invisible.
+        if (_formError != null) ...[
+          const SizedBox(height: 16),
+          ErrorNote(_formError!),
+        ],
         const SizedBox(height: 24),
         Row(
           children: [
@@ -782,6 +857,7 @@ class _Draft {
     this.waitSeconds = 5,
     this.replays = 0,
     this.noInput = 'ring',
+    this.promptAudio,
   });
 
   final String? id;
@@ -789,6 +865,9 @@ class _Draft {
   String name;
   String prompt;
   final List<_OptionDraft> options;
+
+  /// The recording played instead of [prompt], or null for text-to-speech.
+  String? promptAudio;
 
   /// What happens when nobody presses a key; see the form.
   int waitSeconds;
@@ -811,6 +890,7 @@ class _Draft {
     waitSeconds: flow.waitSeconds,
     replays: flow.replays,
     noInput: flow.noInput,
+    promptAudio: flow.promptAudio,
     options: [
       for (final option in flow.options)
         _OptionDraft(
@@ -838,8 +918,10 @@ class _Flow {
     this.waitSeconds = 5,
     this.replays = 0,
     this.noInput = 'ring',
+    this.promptAudio,
   });
 
+  final String? promptAudio;
   final int waitSeconds;
   final int replays;
   final String noInput;
@@ -882,6 +964,7 @@ class _Flow {
             waitSeconds: (row['wait_seconds'] as num?)?.toInt() ?? 5,
             replays: (row['replays'] as num?)?.toInt() ?? 0,
             noInput: row['no_input']?.toString() ?? 'ring',
+            promptAudio: row['prompt_audio'] as String?,
           );
         })
         .toList(growable: false);
