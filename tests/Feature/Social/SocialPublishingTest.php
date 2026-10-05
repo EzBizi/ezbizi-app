@@ -120,7 +120,7 @@ class SocialPublishingTest extends TestCase
 
         $id = (new TikTokPublisher)->publish(
             $this->connection(SocialProvider::TikTok),
-            new PostPayload(body: 'Hello', filePath: $file),
+            new PostPayload(body: 'Hello', filePath: $file, options: ['privacy_level' => 'SELF_ONLY']),
         );
 
         $this->assertSame('pub-7', $id);
@@ -216,7 +216,7 @@ class SocialPublishingTest extends TestCase
 
         Publishers::for(SocialProvider::TikTok)->publish(
             $this->connection(SocialProvider::TikTok),
-            new PostPayload(body: 'hello', filePath: $this->temp('mp4', 'VIDEOBYTES')),
+            new PostPayload(body: 'hello', filePath: $this->temp('mp4', 'VIDEOBYTES'), options: ['privacy_level' => 'SELF_ONLY']),
         );
 
         // And it asks what the creator allows first, which is the thing TikTok

@@ -126,6 +126,50 @@ final class TikTokOAuth implements SocialOAuth
         );
     }
 
+    /**
+     * A fresh access token from the lasting one.
+     *
+     * TikTok access tokens last 24 hours; the refresh token lasts a year and
+     * may come back rotated, so the caller must store what this returns.
+     * Measured 2026-10-05: the only live connection had been "connected" since
+     * 08-28 with an access token dead since 08-29, because nothing renewed it.
+     */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
+                'https://open.tiktokapis.com/v2/oauth/token/',
+                [
+                    'client_key'    => (string) config('services.tiktok.client_key'),
+                    'client_secret' => (string) config('services.tiktok.client_secret'),
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                ],
+            );
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('TikTok');
+        }
+
+        $access = $response->json('access_token') ?? $response->json('data.access_token');
+
+        if ($response->json('error') === 'invalid_grant') {
+            throw SocialOAuthRefused::noLongerPermitted('TikTok no longer accepts this connection. It needs connecting again.');
+        }
+
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('TikTok');
+        }
+
+        $rotated = $response->json('refresh_token') ?? $response->json('data.refresh_token');
+        $expires = $response->json('expires_in') ?? $response->json('data.expires_in');
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
+            expiresIn: is_numeric($expires) ? (int) $expires : null,
+        );
+    }
+
     public function identify(SocialOAuthGrant $grant): array
     {
         try {

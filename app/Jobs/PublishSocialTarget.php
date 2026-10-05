@@ -87,6 +87,7 @@ final class PublishSocialTarget implements ShouldQueue
         }
 
         [$payload, $temp] = $post->payload();
+        $payload = $payload->withOptions((array) ($target->options ?? []));
 
         try {
             $remoteId = $publisher->publish($connection, $payload);

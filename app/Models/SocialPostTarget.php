@@ -42,11 +42,11 @@ class SocialPostTarget extends Model implements StatesRetention
         );
     }
 
-    protected $fillable = ['social_post_id', 'social_connection_id', 'status'];
+    protected $fillable = ['social_post_id', 'social_connection_id', 'status', 'options'];
 
     protected function casts(): array
     {
-        return ['sent_at' => 'datetime'];
+        return ['sent_at' => 'datetime', 'options' => 'array'];
     }
 
     public function post(): BelongsTo

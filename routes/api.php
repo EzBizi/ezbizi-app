@@ -1822,6 +1822,7 @@ Route::prefix('v1')
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
         // (instagram_manage_comments). Gated in the controller like posting.

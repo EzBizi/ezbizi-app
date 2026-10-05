@@ -4,8 +4,13 @@ namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialOAuthRefused;
+use App\Support\Social\TikTokOAuth;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * A video, uploaded to TikTok in three calls.
@@ -87,14 +92,35 @@ final class TikTokPublisher implements SocialPublisher
     private function initDirect(string $token, PostPayload $post, int $size): array
     {
         $creator = $this->creatorInfo($token);
+        $chosen = $post->options;
+        $privacy = (string) ($chosen['privacy_level'] ?? '');
+
+        // Every answer comes from the person in the composer; nothing here
+        // picks for them. A post without them (queued before the composer
+        // asked) is refused rather than published at a guessed visibility.
+        if (! in_array($privacy, (array) ($creator['privacy_level_options'] ?? []), strict: true)) {
+            throw new SocialPublishFailed(
+                'Choose who can see this TikTok post, then send it again. Nothing was posted.'
+            );
+        }
+
+        $branded = (bool) ($chosen['branded_content'] ?? false);
+
+        if ($branded && $privacy === 'SELF_ONLY') {
+            throw new SocialPublishFailed('Branded content cannot be private on TikTok. Nothing was posted.');
+        }
 
         return $this->call($token, '/post/publish/video/init/', [
             'post_info' => [
-                'title'           => mb_substr($post->body !== '' ? $post->body : ($post->title ?? 'EzBizi'), 0, 2200),
-                'privacy_level'   => $this->privacyFor($creator),
-                'disable_comment' => false,
-                'disable_duet'    => false,
-                'disable_stitch'  => false,
+                'title'           => mb_substr($post->body !== '' ? $post->body : ($post->title ?? ''), 0, 2200),
+                'privacy_level'   => $privacy,
+                // Off unless chosen, and off whatever was chosen when the
+                // account itself has switched the interaction off.
+                'disable_comment' => ! ($chosen['allow_comment'] ?? false) || (bool) ($creator['comment_disabled'] ?? false),
+                'disable_duet'    => ! ($chosen['allow_duet'] ?? false) || (bool) ($creator['duet_disabled'] ?? false),
+                'disable_stitch'  => ! ($chosen['allow_stitch'] ?? false) || (bool) ($creator['stitch_disabled'] ?? false),
+                'brand_content_toggle' => $branded,
+                'brand_organic_toggle' => (bool) ($chosen['your_brand'] ?? false),
             ],
             'source_info' => $this->source($size),
         ]);
@@ -183,31 +209,6 @@ final class TikTokPublisher implements SocialPublisher
     }
 
     /**
-     * The most private level this creator offers.
-     *
-     * Private on purpose. An unaudited app may only post SELF_ONLY, and until a
-     * composer exists to ask a person what they want, anything more public would
-     * be EzBizi choosing to publish on their behalf.
-     *
-     * @param  array<string, mixed>  $creator
-     */
-    private function privacyFor(array $creator): string
-    {
-        $offered = (array) ($creator['privacy_level_options'] ?? []);
-
-        foreach (['SELF_ONLY', 'MUTUAL_FOLLOW_FRIENDS', 'PUBLIC_TO_EVERYONE'] as $level) {
-            if (in_array($level, $offered, strict: true)) {
-                return $level;
-            }
-        }
-
-        throw SocialPublishFailed::network(
-            'TikTok',
-            'that account offers no privacy level EzBizi can post at.',
-        );
-    }
-
-    /**
      * Where a publish got to. TikTok processes after the bytes land.
      *
      * @return array<string, mixed>
@@ -249,10 +250,60 @@ final class TikTokPublisher implements SocialPublisher
         return $body;
     }
 
-    private function token(SocialConnection $connection): string
+    /**
+     * A live access token, renewed first when the stored one is (nearly) dead.
+     *
+     * TikTok access tokens last 24 hours. Renewed under a per-connection lock
+     * and re-read inside it, because TikTok may rotate the refresh token and a
+     * second worker replaying the old one would be refused.
+     */
+    public function token(SocialConnection $connection): string
     {
-        $credentials = $connection->getAttribute('credentials');
-        $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
+        $credentials = (array) ($connection->getAttribute('credentials') ?? []);
+        $expires = $credentials['expires_at'] ?? null;
+
+        // No recorded expiry means nothing to go on; the stored token is tried.
+        if (! is_string($expires) || Carbon::parse($expires)->isAfter(now()->addMinutes(10))
+            || ($credentials['refresh_token'] ?? '') === '') {
+            return $this->stored($credentials);
+        }
+
+        return Cache::lock('tiktok-refresh:'.$connection->getKey(), 30)->block(15, function () use ($connection) {
+            $connection->refresh();
+            $credentials = (array) ($connection->getAttribute('credentials') ?? []);
+            $expires = $credentials['expires_at'] ?? null;
+
+            if (is_string($expires) && Carbon::parse($expires)->isAfter(now()->addMinutes(10))) {
+                return $this->stored($credentials); // another worker renewed it while we waited
+            }
+
+            try {
+                $grant = app(TikTokOAuth::class)->refresh((string) $credentials['refresh_token']);
+            } catch (SocialOAuthRefused $e) {
+                if ($e->status === Response::HTTP_CONFLICT) {
+                    $connection->forceFill([
+                        'status' => SocialConnection::STATUS_BROKEN,
+                        'status_reason' => 'TikTok no longer accepts this connection. It needs connecting again.',
+                    ])->save();
+                }
+
+                throw new SocialPublishFailed($e->getMessage());
+            }
+
+            $credentials['access_token'] = $grant->accessToken;
+            $credentials['refresh_token'] = $grant->refreshToken;
+            $credentials['expires_at'] = now()->addSeconds($grant->expiresIn ?? 86400)->toIso8601String();
+            $connection->setAttribute('credentials', $credentials);
+            $connection->save();
+
+            return $grant->accessToken;
+        });
+    }
+
+    /** @param  array<string, mixed>  $credentials */
+    private function stored(array $credentials): string
+    {
+        $token = $credentials['access_token'] ?? null;
 
         if (! is_string($token) || $token === '') {
             throw SocialPublishFailed::network('TikTok', 'that connection has no usable token. Reconnect it.');

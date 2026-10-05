@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\Publishing\Publishers;
+use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackAccount;
@@ -111,6 +113,9 @@ class SocialConnectionsController extends Controller
                  * so the screen draws nothing rather than a reassurance.
                  */
                 'posting_note' => Publishers::postingNoteFor($c->providerEnum()),
+                // TikTok Direct Post: the composer must ask privacy, interactions
+                // and disclosure for this account (GET .../tiktok-creator).
+                'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok && Publishers::tiktokIsAudited(),
             ])->all(),
         ]);
     }
@@ -130,6 +135,49 @@ class SocialConnectionsController extends Controller
      * "unnamed" has exactly one representation and the screen never has to
      * decide whether '' means anything.
      */
+    /**
+     * Who a TikTok account is and what it allows, for the composer's
+     * Direct Post panel: nickname, privacy levels to offer, which of
+     * comment/duet/stitch the account has switched off, and the longest
+     * video it may post. TikTok's guidelines require all of it on screen.
+     */
+    public function tiktokCreator(Request $request, string $connection): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user->hasPermission('marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('publish to a social account')->message(),
+        );
+
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if(
+            $row === null || ! $this->access->inView($user, $row) || $row->providerEnum() !== SocialProvider::TikTok,
+            Status::HTTP_NOT_FOUND,
+        );
+
+        $publisher = new TikTokPublisher;
+
+        try {
+            $info = $publisher->creatorInfo($publisher->token($row));
+        } catch (SocialPublishFailed $e) {
+            return response()->json(['message' => $e->getMessage()], Status::HTTP_BAD_GATEWAY);
+        }
+
+        return response()->json(['data' => [
+            'nickname' => (string) ($info['creator_nickname'] ?? $row->display_name),
+            'username' => $info['creator_username'] ?? null,
+            'avatar_url' => $info['creator_avatar_url'] ?? null,
+            'privacy_level_options' => array_values((array) ($info['privacy_level_options'] ?? [])),
+            'comment_disabled' => (bool) ($info['comment_disabled'] ?? false),
+            'duet_disabled' => (bool) ($info['duet_disabled'] ?? false),
+            'stitch_disabled' => (bool) ($info['stitch_disabled'] ?? false),
+            'max_video_post_duration_sec' => isset($info['max_video_post_duration_sec']) ? (int) $info['max_video_post_duration_sec'] : null,
+        ]]);
+    }
+
     public function rename(Request $request, string $connection): JsonResponse
     {
         $user = $request->user();

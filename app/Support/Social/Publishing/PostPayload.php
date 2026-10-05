@@ -18,7 +18,15 @@ final readonly class PostPayload
         public string $body = '',
         public ?string $filePath = null,
         public ?string $title = null,
+        /** @var array<string, mixed> what the person chose for this one account (TikTok's privacy etc.) */
+        public array $options = [],
     ) {}
+
+    /** @param  array<string, mixed>  $options */
+    public function withOptions(array $options): self
+    {
+        return new self($this->body, $this->filePath, $this->title, $options);
+    }
 
     public function kind(): SocialMediaKind
     {

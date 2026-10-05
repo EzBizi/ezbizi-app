@@ -14,6 +14,7 @@ use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialProvider;
 use App\Support\Time\ViewTimezone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -217,7 +218,9 @@ class SocialPostsController extends Controller
 
         $this->assertEveryNetworkTakesThis($connections, $kind);
 
-        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule) {
+        $options = $this->tiktokChoices($request, $connections);
+
+        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options) {
             $post = new SocialPost([
                 'body' => $data['body'] ?? null,
                 'title' => $data['title'] ?? null,
@@ -239,6 +242,7 @@ class SocialPostsController extends Controller
             foreach ($connections as $connection) {
                 $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
+                    'options' => $options[$connection->getKey()] ?? null,
                     'status' => $schedule['for'] === null
                         ? SocialPostTarget::STATUS_QUEUED
                         : SocialPostTarget::STATUS_SCHEDULED,
@@ -411,6 +415,73 @@ class SocialPostsController extends Controller
         }
 
         return $found;
+    }
+
+    /**
+     * What the person chose for each TikTok account, as TikTok's Direct Post
+     * rules require: who sees it (never defaulted), comments/duets/stitches
+     * (off unless ticked), and whether it promotes their own brand or someone
+     * else's. Drafts need none of it - the creator decides inside TikTok.
+     *
+     * Sent as `tiktok[<connection id>][privacy_level]` and so on.
+     *
+     * @param  Collection<int, SocialConnection>  $connections
+     * @return array<string, array<string, mixed>>
+     */
+    private function tiktokChoices(Request $request, Collection $connections): array
+    {
+        if (! Publishers::tiktokIsAudited()) {
+            return [];
+        }
+
+        $choices = [];
+
+        foreach ($connections as $connection) {
+            if ($connection->providerEnum() !== SocialProvider::TikTok) {
+                continue;
+            }
+
+            $key = 'tiktok.'.$connection->getKey();
+            $data = $request->validate([
+                $key.'.privacy_level' => ['required', 'string', 'in:PUBLIC_TO_EVERYONE,MUTUAL_FOLLOW_FRIENDS,FOLLOWER_OF_CREATOR,SELF_ONLY'],
+                $key.'.allow_comment' => ['sometimes', 'boolean'],
+                $key.'.allow_duet' => ['sometimes', 'boolean'],
+                $key.'.allow_stitch' => ['sometimes', 'boolean'],
+                $key.'.disclose' => ['sometimes', 'boolean'],
+                $key.'.your_brand' => ['sometimes', 'boolean'],
+                $key.'.branded_content' => ['sometimes', 'boolean'],
+            ], [
+                $key.'.privacy_level.required' => 'Choose who can see the post on '.$connection->display_name.'.',
+            ]);
+
+            $chosen = (array) data_get($data, $key, []);
+            $disclose = filter_var($chosen['disclose'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $yourBrand = $disclose && filter_var($chosen['your_brand'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $branded = $disclose && filter_var($chosen['branded_content'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+            if ($disclose && ! $yourBrand && ! $branded) {
+                throw ValidationException::withMessages([
+                    $key => 'You said this promotes a brand. Tick "Your brand", "Branded content" or both.',
+                ]);
+            }
+
+            if ($branded && $chosen['privacy_level'] === 'SELF_ONLY') {
+                throw ValidationException::withMessages([
+                    $key => 'Branded content cannot be private on TikTok. Choose who else can see it.',
+                ]);
+            }
+
+            $choices[$connection->getKey()] = [
+                'privacy_level' => $chosen['privacy_level'],
+                'allow_comment' => filter_var($chosen['allow_comment'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'allow_duet' => filter_var($chosen['allow_duet'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'allow_stitch' => filter_var($chosen['allow_stitch'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'your_brand' => $yourBrand,
+                'branded_content' => $branded,
+            ];
+        }
+
+        return $choices;
     }
 
     /**
