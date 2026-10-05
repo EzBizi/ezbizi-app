@@ -113,7 +113,7 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
     protected $attributes = ['provider' => self::PROVIDER_SELF];
 
     protected $fillable = [
-        'organization_id', 'contract_version_id', 'field_key',
+        'organization_id', 'contract_version_id', 'onboarding_id', 'field_key',
         'subject_user_id', 'signer_user_id', 'signer_label', 'signer_party',
         'ip_address', 'user_agent',
         'content_hash', 'hash_algorithm', 'content_length',
@@ -402,7 +402,9 @@ class ContractSignature extends Model implements HoldsPersonalData, RecordsConse
                 .'defeats the only reason it is stored');
         }
 
-        if ($this->subject_user_id === null) {
+        // An employer may sign before the new starter has an account; the
+        // onboarding then says who it is about (Jose, 2026-10-05).
+        if ($this->subject_user_id === null && $this->onboarding_id === null) {
             $this->refuse('it is not about anybody. A signature has a subject — the person '
                 .'the contract is for — and one without is a record nobody can be shown');
         }

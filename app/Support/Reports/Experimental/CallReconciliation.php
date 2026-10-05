@@ -84,7 +84,50 @@ final class CallReconciliation
      */
     public function forDay(array $calls, array $jobs, string $day): array
     {
-        $booked = $this->jobsCreatedOn($jobs, $day);
+        return $this->forRange($calls, $jobs, $day, $day);
+    }
+
+    /**
+     * The same report over a PERIOD (Jose, 2026-10-05: "add options to choose
+     * period of time"), inclusive of both dates.
+     *
+     * @param  list<string>  $converted  call ids somebody marked as booked by hand
+     * @param  array<string, string>  $tags  person => 'new'|'existing', set by hand
+     */
+    public function forRange(
+        array $calls,
+        array $jobs,
+        string $from,
+        string $to,
+        array $converted = [],
+        array $tags = [],
+    ): array {
+        /*
+         * SPAM IS NOT A CALL (Jose, 2026-10-05: "remove Spam Calls completely,
+         * do not count them"). A caller who sat in the phone menu and pressed
+         * nothing is dropped here, before anything is counted, so no total,
+         * card or list can include one.
+         */
+        $calls = array_values(array_filter($calls, fn (array $call) => $this->outcome($call) !== 'spam'));
+
+        $booked = $this->jobsCreatedBetween($jobs, $from, $to);
+
+        /*
+         * WHICH CALLS BECAME JOBS, matched on the caller's number: a Workiz job
+         * created in the period for the same phone (last ten digits). Plus any
+         * call somebody marked as booked by hand, for jobs Workiz cannot tie
+         * back to a number.
+         */
+        $bookedPhones = [];
+
+        foreach ($booked as $job) {
+            if (($phone = self::phoneKey($job['phone'] ?? null)) !== null) {
+                $bookedPhones[$phone] = true;
+            }
+        }
+
+        $converted = array_flip($converted);
+        $notBooked = 0;
 
         $rang = [];
         $answered = [];
@@ -135,6 +178,10 @@ final class CallReconciliation
             if ($talk !== null) {
                 $talkSeconds[$who] = ($talkSeconds[$who] ?? 0) + (int) $talk;
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
+            }
+
+            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted)) {
+                $notBooked++;
             }
 
             // Attributed to whoever TOOK it. A call that rang four people was
@@ -223,11 +270,16 @@ final class CallReconciliation
                 // not be flagged as a mismatch.
                 'in_calls' => isset($rang[$name]) || isset($answered[$name]),
                 'in_jobs' => isset($workizRoster[$name]),
+
+                // Set by hand per person (Jose, 2026-10-05, item 5).
+                'tag' => $tags[$name] ?? null,
             ];
         }
 
         return [
-            'day' => $day,
+            'day' => $from,
+            'from' => $from,
+            'to' => $to,
             'totals' => [
                 'calls' => count($calls),
                 'answered' => array_sum($answered),
@@ -235,6 +287,7 @@ final class CallReconciliation
                 'new_client' => $newTotal,
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
+                'not_booked' => $notBooked,
 
                 'avg_talk_seconds' => array_sum($talkCalls) > 0
                     ? (int) round(array_sum($talkSeconds) / array_sum($talkCalls))
@@ -268,6 +321,8 @@ final class CallReconciliation
                 'queue' => $call['queue'] ?? null,
                 'result' => $call['result'] ?? null,
                 'outcome' => $this->outcome($call),
+                'booked' => $this->isBooked($call, $bookedPhones, $converted),
+                'converted' => isset($converted[(string) ($call['id'] ?? '')]),
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
                 'answered_by' => $this->canonical($call['answered_by'] ?? null),
@@ -317,11 +372,35 @@ final class CallReconciliation
      * @param  list<array{created_at: ?string}>  $jobs
      * @return list<array{created_at: ?string}>
      */
-    private function jobsCreatedOn(array $jobs, string $day): array
+    private function jobsCreatedBetween(array $jobs, string $from, string $to): array
     {
-        return array_values(array_filter(
-            $jobs,
-            fn (array $job) => str_starts_with((string) ($job['created_at'] ?? ''), $day),
-        ));
+        return array_values(array_filter($jobs, function (array $job) use ($from, $to) {
+            $day = substr((string) ($job['created_at'] ?? ''), 0, 10);
+
+            return $day !== '' && $day >= $from && $day <= $to;
+        }));
+    }
+
+    /**
+     * @param  array<string, true>  $bookedPhones
+     * @param  array<string, int>  $converted
+     */
+    private function isBooked(array $call, array $bookedPhones, array $converted): bool
+    {
+        if (isset($converted[(string) ($call['id'] ?? '')])) {
+            return true;
+        }
+
+        $phone = self::phoneKey($call['from'] ?? null);
+
+        return $phone !== null && isset($bookedPhones[$phone]);
+    }
+
+    /** The last ten digits, so "+1 (212) 555-1212" and "2125551212" agree. */
+    private static function phoneKey(?string $phone): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+
+        return strlen($digits) >= 10 ? substr($digits, -10) : null;
     }
 }

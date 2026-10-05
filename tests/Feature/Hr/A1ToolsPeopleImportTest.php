@@ -254,13 +254,32 @@ class A1ToolsPeopleImportTest extends TestCase
     {
         $pdf = $this->file('%PDF-1.4 signed in A1', 'pdf', 'application/pdf');
         $this->bundle([$this->newPerson(['onboarding' => [
-            'submitted_at' => '2026-08-01T15:20:00Z', 'answers' => [],
+            'submitted_at' => '2026-08-01T15:20:00Z', 'answers' => ['ssn' => '123456789'],
             'documents' => [['kind' => 'signed_contract', 'file' => $pdf['path'], 'original_name' => 'contract.pdf']],
         ]])], [$pdf]);
         $this->assertSame(0, $this->import());
 
         $jon = $this->jon();
         $id = $this->inTenant($this->t['org'], fn () => Onboarding::query()->where('user_id', $jon->id)->sole()->id);
+        $rows = $this->inTenant($this->t['org'], fn () => app(\App\Services\Hr\OnboardingDocuments::class)
+            ->recordRows(Onboarding::findOrFail($id)));
+        $this->assertContains('123456789', array_column($rows, 'value'), 'The record carries what A1 held, in the clear.');
+
+        // qpdf joins the original and the record; without it, the original alone.
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(exitCode: 1)]);
+        $this->signedInAs($this->t['admin']);
+        $this->assertSame('%PDF-1.4 signed in A1', $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertOk()->getContent());
+        $joined = null;
+        \Illuminate\Support\Facades\Process::fake(['*' => function ($process) use (&$joined) {
+            $command = $process->command;
+            $joined = [$command[0], count($command), file_get_contents($command[3])];
+            file_put_contents(end($command), '%PDF joined');
+
+            return \Illuminate\Support\Facades\Process::result();
+        }]);
+        $this->assertSame('%PDF joined', $this->get("/api/v1/hr/onboardings/{$id}/document/pdf")->assertOk()->getContent());
+        $this->assertSame(['qpdf', 7, '%PDF-1.4 signed in A1'], $joined, 'qpdf --empty --pages original record -- out');
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(exitCode: 1)]);
 
         $this->signedInAs($this->t['admin']);
         $this->getJson("/api/v1/hr/onboardings?user_id={$jon->id}")->assertOk()

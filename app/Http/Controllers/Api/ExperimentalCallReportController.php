@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\CallReportConversion;
+use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
+use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
@@ -38,6 +42,8 @@ use Symfony\Component\HttpFoundation\Response as Status;
  */
 class ExperimentalCallReportController extends Controller
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     /**
      * A booking can be entered AFTER the appointment, so the window reaches back.
      *
@@ -130,11 +136,26 @@ class ExperimentalCallReportController extends Controller
 
         $validated = $request->validate([
             'day' => ['nullable', 'date_format:Y-m-d'],
+            'period' => ['nullable', 'in:day,week,month'],
             'timezone' => ['nullable', 'string', 'timezone'],
         ]);
 
         $zone = $validated['timezone'] ?? (string) config('app.timezone');
         $day = CarbonImmutable::parse($validated['day'] ?? 'today', $zone)->startOfDay();
+
+        /*
+         * THE PERIOD the day falls in (Jose, 2026-10-05: "add options to choose
+         * period of time"). Weeks run Monday to Sunday, as the Work Hours report
+         * does; a month is the calendar month.
+         */
+        $period = $validated['period'] ?? 'day';
+        [$start, $end] = match ($period) {
+            'week' => [$day->startOfWeek(CarbonImmutable::MONDAY), $day->endOfWeek(CarbonImmutable::SUNDAY)],
+            'month' => [$day->startOfMonth(), $day->endOfMonth()],
+            default => [$day, $day->endOfDay()],
+        };
+        $start = $start->startOfDay();
+        $end = $end->endOfDay();
 
         // Both vendors are optional and their absence is a STATE. An empty
         // report and a missing connection look identical and mean opposite
@@ -148,7 +169,13 @@ class ExperimentalCallReportController extends Controller
             ]);
         }
 
-        $legs = $calls->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
+        $legs = $calls->forPeriod($start, $end);
+
+        $conversions = CallReportConversion::query()
+            ->with('converter:id,name')
+            ->whereBetween('call_started_at', [$start->utc(), $end->utc()])
+            ->latest()
+            ->get();
 
         $jobs = [];
         $accounts = $workiz->accounts($request->user());
@@ -159,7 +186,7 @@ class ExperimentalCallReportController extends Controller
                 $result = $workiz->all(
                     $request->user(),
                     1000,
-                    $day->subDays(self::LOOKBACK_DAYS)->toDateString(),
+                    $start->subDays(self::LOOKBACK_DAYS)->toDateString(),
                 );
                 $jobs = $result['jobs'];
                 $failed = $result['failed'];
@@ -192,7 +219,101 @@ class ExperimentalCallReportController extends Controller
             // words. See UNREACHABLE.
             'workiz_unreachable' => self::UNREACHABLE,
 
-            ...$reconcile->forDay($legs, $jobs, $day->toDateString()),
+            'period' => $period,
+
+            // Who marked which call as booked in this period, newest first:
+            // the not-booked-to-booked history.
+            'conversions' => $conversions->map(fn (CallReportConversion $c) => [
+                'call_id' => $c->call_id,
+                'call_started_at' => $c->call_started_at?->toIso8601String(),
+                'converted_at' => $c->created_at?->toIso8601String(),
+                'converted_by' => $c->converter?->name,
+            ])->values()->all(),
+
+            ...$this->withTranscripts($reconcile->forRange(
+                $legs,
+                $jobs,
+                $start->toDateString(),
+                $end->toDateString(),
+                $conversions->pluck('call_id')->all(),
+                CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
+            )),
         ]);
+    }
+
+    /**
+     * Each call's words, where `ezbizi:transcribe-report-calls` has them. Null
+     * means not transcribed (yet, or it could not be done) - never an empty
+     * call, which is an empty string.
+     */
+    private function withTranscripts(array $day): array
+    {
+        $words = CallReportTranscript::query()
+            ->whereIn('call_id', array_column($day['calls'] ?? [], 'id'))
+            ->pluck('transcript', 'call_id');
+
+        $day['calls'] = array_map(
+            fn (array $call) => $call + ['transcript' => $words[$call['id']] ?? null],
+            $day['calls'] ?? [],
+        );
+
+        return $day;
+    }
+
+    /**
+     * PUT reports/experimental/people/tag - a dispatcher's New / Existing tag,
+     * set by hand (Jose, 2026-10-05). A null tag clears it.
+     */
+    public function tag(Request $request): JsonResponse
+    {
+        $this->authorize('createOnOrganization', SavedReport::class);
+
+        $data = $request->validate([
+            'person' => ['required', 'string', 'max:191'],
+            'tag' => ['nullable', 'in:'.implode(',', CallReportDispatcherTag::TAGS)],
+        ]);
+
+        if ($data['tag'] === null) {
+            CallReportDispatcherTag::query()->where('person', $data['person'])->delete();
+        } else {
+            CallReportDispatcherTag::query()->updateOrCreate(
+                ['organization_id' => $request->user()->organization_id, 'person' => $data['person']],
+                ['tag' => $data['tag']],
+            );
+        }
+
+        $this->audit->log('call_report.tag_set', null, metadata: $data);
+
+        return response()->json(['data' => ['person' => $data['person'], 'tag' => $data['tag']]]);
+    }
+
+    /**
+     * POST reports/experimental/calls/{call}/convert - "Convert to booked":
+     * a dispatcher marks a not-booked call as booked by hand, and the row is
+     * its history line (Jose, 2026-10-05: manual mark + history).
+     */
+    public function convert(Request $request, string $call): JsonResponse
+    {
+        $this->authorize('createOnOrganization', SavedReport::class);
+
+        $data = $request->validate([
+            'started_at' => ['nullable', 'date'],
+        ]);
+
+        $row = CallReportConversion::query()->firstOrCreate(
+            ['organization_id' => $request->user()->organization_id, 'call_id' => $call],
+            [
+                'call_started_at' => isset($data['started_at']) ? CarbonImmutable::parse($data['started_at']) : null,
+                'converted_by' => $request->user()->getKey(),
+            ],
+        );
+
+        $this->audit->log('call_report.converted', $row, metadata: ['call_id' => $call]);
+
+        return response()->json(['data' => [
+            'call_id' => $row->call_id,
+            'converted_at' => $row->created_at?->toIso8601String(),
+            'converted_by' => $row->converter?->name,
+        ]]);
     }
 }

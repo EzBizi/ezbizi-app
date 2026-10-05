@@ -128,8 +128,18 @@ class A1LeadsLiveReviews
         $reply = (array) ($row->reply ?? []);
         $card = $row->card;
 
+        // The customer comes from the review, not the card: most matched
+        // reviews have no card. The raw match evidence (candidates, scores) is
+        // dropped here, like the card's, before it reaches a response.
+        $customer = A1LeadsClient::matchedCustomer(
+            is_array($review['customer'] ?? null) ? $review['customer'] : ($review['customer_match'] ?? null),
+            $review['contact'] ?? null,
+        );
+        unset($review['customer'], $review['contact'], $review['customer_match']);
+
         return [
             ...$review,
+            'customer' => $customer,
             'reply' => trim((string) ($reply['text'] ?? '')) !== '' ? $reply['text'] : null,
             'reply_at' => $reply['at'] ?? null,
             'board' => is_array($card)

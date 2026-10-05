@@ -182,13 +182,14 @@ class LeadsController extends Controller
         $user = $request->user();
 
         /*
-         * The reader's own mark rides along on a left join, so "unread" costs
-         * no query per row. Unread means no mark, or a mark older than the
-         * newest thing on the lead - a message after you read it makes it
-         * unread again, which is what a1tools does and what a person expects.
+         * Read is the LEAD's mark, shared by everyone (Jose, 2026-10-05); the
+         * star stays the reader's own, on a left join. Unread means no mark,
+         * or a mark older than the newest thing on the lead - a message after
+         * somebody read it makes it unread again. `read_by_me_at` keeps its
+         * name so present() and the client are unchanged.
          */
         $query = Lead::query()
-            ->select('leads.*', 'lead_reads.read_at as read_by_me_at', 'lead_reads.starred_at as starred_by_me_at')
+            ->select('leads.*', 'leads.read_at as read_by_me_at', 'lead_reads.starred_at as starred_by_me_at')
             ->leftJoin('lead_reads', function ($join) use ($user) {
                 $join->on('lead_reads.lead_id', '=', 'leads.id')
                     ->where('lead_reads.user_id', '=', $user->getKey());
@@ -214,8 +215,8 @@ class LeadsController extends Controller
         // leads before any source, status or search narrowing, keyed as the
         // strip keys them - Google split into ls_call / ls_text.
         $unreadBySource = (clone $query)
-            ->where(fn ($q) => $q->whereNull('lead_reads.read_at')
-                ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > lead_reads.read_at'))
+            ->where(fn ($q) => $q->whereNull('leads.read_at')
+                ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at'))
             ->reorder()
             ->select(DB::raw("CASE WHEN leads.source = 'local_services' THEN "
                 ."(CASE WHEN leads.lead_type = 'PHONE_CALL' THEN 'ls_call' WHEN leads.lead_type = 'BOOKING' THEN 'ls_booking' ELSE 'ls_text' END) "
@@ -280,8 +281,8 @@ class LeadsController extends Controller
 
         if ($request->boolean('unread')) {
             $query->where(function ($q) {
-                $q->whereNull('lead_reads.read_at')
-                    ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > lead_reads.read_at');
+                $q->whereNull('leads.read_at')
+                    ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at');
             });
         }
 
@@ -1069,18 +1070,15 @@ class LeadsController extends Controller
     /**
      * POST /api/v1/leads/{lead}/read
      *
-     * This person has seen this lead as it stands now. A later message makes
-     * it unread again for them; nobody else's mark moves.
+     * Somebody has seen this lead as it stands now, so it is read for
+     * everyone. A later message makes it unread again.
      */
     public function read(Request $request, Lead $lead): JsonResponse
     {
         $this->authorize('view', $lead);
 
-        DB::table('lead_reads')->upsert(
-            [['lead_id' => $lead->getKey(), 'user_id' => $request->user()->getKey(), 'read_at' => now()]],
-            ['lead_id', 'user_id'],
-            ['read_at'],
-        );
+        // The query builder, so updated_at does not move for a glance.
+        DB::table('leads')->where('id', $lead->getKey())->update(['read_at' => now()]);
 
         return response()->json(['data' => ['id' => $lead->getKey(), 'is_unread' => false]]);
     }
@@ -1088,8 +1086,8 @@ class LeadsController extends Controller
     /**
      * POST /api/v1/leads/read-all
      *
-     * Every lead this person can see, marked read for them, now. Chunked
-     * because "every lead" is twenty-four thousand rows on the first tenant.
+     * Every lead this person can see, marked read (for everyone), now.
+     * Chunked because "every lead" is tens of thousands of rows.
      */
     public function readAll(Request $request): JsonResponse
     {
@@ -1116,13 +1114,9 @@ class LeadsController extends Controller
             });
         }
 
-        $ids->chunkById(1000, function ($chunk) use ($user, $now, &$count) {
-            $rows = $chunk->map(fn ($l) => [
-                'lead_id' => $l->id, 'user_id' => $user->getKey(), 'read_at' => $now,
-            ])->all();
-
-            DB::table('lead_reads')->upsert($rows, ['lead_id', 'user_id'], ['read_at']);
-            $count += count($rows);
+        $ids->chunkById(1000, function ($chunk) use ($now, &$count) {
+            DB::table('leads')->whereIn('id', $chunk->pluck('id'))->update(['read_at' => $now]);
+            $count += $chunk->count();
         });
 
         return response()->json(['data' => ['marked' => $count]]);

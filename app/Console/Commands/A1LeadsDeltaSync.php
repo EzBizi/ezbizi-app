@@ -123,6 +123,16 @@ class A1LeadsDeltaSync extends Command
             return;
         }
 
+        // The matched customer and their contact ride on every record kind -
+        // `match` events included - and do not depend on a workflow card. The
+        // record's own copy is the one A1 Leads emitted with this seq, so it is
+        // kept on the review, where the tab reads it.
+        foreach (['customer', 'contact'] as $key) {
+            if (is_array($record[$key] ?? null)) {
+                $review[$key] = $record[$key];
+            }
+        }
+
         $seq = (int) ($record['seq'] ?? 0);
         $row = A1LeadsReview::query()->where('google_review_name', $name)->first();
         if ($row !== null && $row->seq > $seq) {

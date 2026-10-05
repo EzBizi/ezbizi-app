@@ -1141,6 +1141,10 @@ Route::prefix('v1')
             Route::get('reports/experimental/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording']);
 
             Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
+
+            // Hand-set facts the phones cannot say (Jose, 2026-10-05).
+            Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
         });
 
         /*

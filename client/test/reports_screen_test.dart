@@ -266,7 +266,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Trey Brannan'), findsOneWidget);
-    expect(find.text('183'), findsOneWidget);
+    // The Answered card left the figures (Jose's order, 2026-10-05); the
+    // per-person Answered column still carries it.
+    expect(find.text('51'), findsOneWidget);
+    expect(find.text('Missed calls'), findsOneWidget);
   });
 
   testWidgets('a person only one system knows is marked, never merged', (
@@ -403,7 +406,9 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
-    expect(find.text('2:28'), findsOneWidget); // 148s, the day's average
+    // The day's average card left the figures (Jose's order, 2026-10-05);
+    // each person's average is still in the table.
+    expect(find.text('2:28'), findsNothing);
     expect(find.text('3:05'), findsOneWidget); // 185s, Trey Brannan
 
     // Ranya Lara answered nothing. No average is a different fact from an

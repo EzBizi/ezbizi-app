@@ -21,6 +21,9 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/ezbizi-current
 ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-lead-calls --minutes=4
+# Then the Experimental call report's calls - after Leads, never beside it:
+# both run Whisper on the same four cores.
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-report-calls --minutes=3
 Nice=19
 CPUQuota=400%
 TimeoutStartSec=900
