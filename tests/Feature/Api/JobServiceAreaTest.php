@@ -75,6 +75,23 @@ class JobServiceAreaTest extends TestCase
         $this->assertSame($connecticut->id, $this->resolve($alpha, $ct, 'New York', '06457'));
     }
 
+    /**
+     * A franchise's area that shares another franchise's pool covers that
+     * pool's zips. Boston North, 2026-10-05: MA's row holds the 292 zips and
+     * Nationwide's Boston North shares MA's pool, so a Nationwide job in one of
+     * them tagged "Boston South" or nothing (about 7%) is still Boston North.
+     */
+    public function test_a_zip_in_a_pool_my_area_shares_places_the_job_in_my_area(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();
+        $pool = $this->area($alpha, $ny, 'Boston North', ['01801']);
+        $mine = $this->area($alpha, $ct, 'Boston North', []);
+        $this->inTenant($alpha['org'], fn () => $mine->forceFill(['shares_with_id' => $pool->id])->save());
+
+        $this->assertSame($mine->id, $this->resolve($alpha, $ct, 'Boston South', '01801'));
+        $this->assertSame($mine->id, $this->resolve($alpha, $ct, null, '01801'));
+    }
+
     /** Empty rather than wrong: the zip's area is another franchise's. */
     public function test_a_zip_whose_area_is_in_another_franchise_gives_no_area(): void
     {
