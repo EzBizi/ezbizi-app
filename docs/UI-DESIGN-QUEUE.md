@@ -2977,7 +2977,7 @@ sentence, lines in two groups. Phone **4** (recommended) – **6** the same thre
 option: each step's `from: company | line` on `GET /phone/call-flow`. Entry 18's rule holds in all of them: the
 screen shows what the phone system will do (1 and 3 re-read the trace after each save).
 
-### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **Jose: "go ahead with ur recommendations" — 1 and 4** — building (`docs/previews/dashboard-sizes-layouts.html`)
+### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **Jose: "go ahead with ur recommendations" — 1 and 4** — **BUILT** `11f20d00` (`docs/previews/dashboard-sizes-layouts.html`)
 
 Jose, 2026-10-05, with Workiz's dashboard beside ours: *"it would be nice to be able to not only move around stuff but
 change the widget sizes between different available sizes, obviously smaller ones would show less information"*.
@@ -2996,6 +2996,14 @@ should be toggled"* — replaces the 2026-09-29 rule. A box carries money only f
 module's `financials`; for anyone else the server sends no amount at all. Proposed to the Dashboard module: money
 only as a figure with `currency` (value and previous in minor units), never inside a sentence, so the guard can
 check for the key. Pick and both messages sent to the Dashboard module 2026-10-05.
+
+**As built (`11f20d00`):** sections are the person's own sidebar groups (`navigation.order` dividers), unnamed
+like the sidebar's, with its rule between them; the menu has no group names, so the gallery's "People / Work"
+headings were not real. No separate top row of tiles: it repeated each box's headline, and Small boxes are the
+tiles. Move and size live in Customize (handle, S·M·L, earlier/later). With figures a box draws `notes`, not
+its `sentences` (those stay for installed builds); Small and Medium count attention rows, Large lists them.
+Waiting on the Dashboard module: `hidden` (then hide and "Add a box"), `notes` per glance, and PUT keeping a
+stored size an entry omits. A phone picks the period from one chip, as phone 4 drew it.
 
 ### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **Jose: "go with ur recommendations" — 1 and 4** (`docs/previews/scheduling-locations-layouts.html`)
 
