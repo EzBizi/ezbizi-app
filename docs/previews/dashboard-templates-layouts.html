@@ -1,0 +1,384 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard · templates</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every figure and the organization are invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every figure and the organization are invented. */
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px;position:relative}
+.editbar{display:flex;align-items:center;gap:8px;background:var(--pric);border:1px solid var(--edge);border-radius:var(--r);padding:6px 10px;font-size:12px;color:var(--prid);flex:0 0 auto}
+.undo{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:var(--r);padding:7px 10px 7px 14px;font-size:12px;flex:0 0 auto}
+.undo .btn{border-color:#5b6672;color:#fff;background:transparent;height:26px}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.s1{grid-column:span 1}.s2{grid-column:span 2}.s4{grid-column:span 4}
+.w{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
+.wt{font:800 9.5px Inter,"Segoe UI",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big{font:800 18px Inter,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.side{position:absolute;right:0;top:0;bottom:0;width:360px;background:var(--paper);border-left:1px solid var(--line);box-shadow:-8px 0 22px rgba(6,8,8,.10);display:flex;flex-direction:column}
+.side .sh2{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:800}
+.side .sb{padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.tpl{border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:start}
+.tpl.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.tpl b{font-size:12.5px}
+.tpl .tiny{line-height:1.35}
+.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;width:76px}
+.mini i{display:block;height:9px;border-radius:2px;background:#c9dbe2}
+.mini i.l{grid-column:span 4;height:13px;background:var(--pri)}
+.mini i.m{grid-column:span 2;background:#7fb3c6}
+.chips2{display:flex;gap:6px;flex-wrap:wrap}
+.tchip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);color:var(--neu)}
+.tchip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.cards3{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.card3{border:1px solid var(--line);border-radius:var(--r);padding:8px;background:var(--paper);display:flex;flex-direction:column;gap:5px}
+.card3 .mini{width:100%}
+.card3 .mini i{height:12px}
+.card3 .mini i.l{height:16px}
+.card3.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.ask{background:var(--cauc);color:var(--cau);border-radius:8px;padding:5px 7px;font-size:11px}
+</style>
+
+<div class="wrap">
+<h1>Dashboard · templates you can apply</h1>
+<p class="sub">Jose, 2026-10-05, to the Dashboard module: <i>"also make some recommended layouts, like templates a user can apply"</i>. The server side is on main (<code>90ea5d42</code>): five templates built for the reader's reach (Whole business, Office and dispatch, Field operations, Sales and marketing, People). Each one is boxes in order with a size; every other box comes back hidden, so Add a box can still bring any of them back. Applying one keeps each box's chart type.</p>
+<p class="need"><b>Data:</b> nothing new. <code>GET /dashboard/catalogue</code> carries <code>templates</code> (label, description, the boxes and their sizes). A template is applied by saving the layout with its boxes, and the standard layout comes back from an empty save.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>Templates in a side panel, applied at once, with Undo <span class="rec">Recommended</span></h2>
+<p class="cap">In Customize, a <b>Templates</b> button opens a side panel: each template has its name, what it is for, and a miniature of the layout (large, medium and small boxes as they will sit). <b>Use this layout</b> applies it right away and closes the panel. The dashboard rearranges behind it and a bar says what happened, with <b>Undo</b>, so there is no "are you sure" in the way. <b>Back to the standard layout</b> sits at the bottom of the panel. <span class="why">Why: the description and the miniature say what you are choosing, and Undo makes trying one free.</span></p>
+<div class="win" style="height:520px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="dash">
+   <div class="editbar">Drag a box to move it, pick its size, or hide it. <span class="sp"></span><span class="btn">▦ Templates</span><span class="btn">+ Add a box</span><span class="btn f">Done</span></div>
+   <div class="g4">
+    <div class="w s4" style="height:92px"><span class="wt">Jobs</span><span class="big">181</span><span class="tiny">today · 977 coming up</span></div>
+    <div class="w s2" style="height:80px"><span class="wt">Scheduling</span><span class="big">2</span><span class="tiny">overbooked days ahead</span></div>
+    <div class="w s2" style="height:80px"><span class="wt">Communication</span><span class="big">85</span><span class="tiny">calls answered</span></div>
+   </div>
+   <div class="side">
+    <div class="sh2">Templates <span class="sp"></span><span class="ib">✕</span></div>
+    <div class="sb">
+     <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i></div><div><b>Whole business</b><div class="tiny">Work, sales and people at a glance: jobs large, the rest small.</div><span class="more">Use this layout</span></div></div>
+     <div class="tpl on"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i></div><div><b>Office and dispatch</b><div class="tiny">Today's jobs, the schedule, calls and new leads.</div><span class="btn f" style="height:26px;margin-top:4px">Use this layout</span></div></div>
+     <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i></div><div><b>Field operations</b><div class="tiny">Who is out, the vans, and the work in front of them.</div><span class="more">Use this layout</span></div></div>
+     <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i><i></i></div><div><b>Sales and marketing</b><div class="tiny">Leads, posts, reviews and listings.</div><span class="more">Use this layout</span></div></div>
+     <span class="more" style="margin-top:4px">↺ Back to the standard layout</span>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px">After <b>Use this layout</b>, on the dashboard:</p>
+<div class="win" style="height:250px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="dash">
+   <div class="undo">Using <b>Office and dispatch</b>. 11 boxes are hidden; Add a box brings any of them back. <span class="sp"></span><span class="btn">Undo</span></div>
+   <div class="g4">
+    <div class="w s4" style="height:70px"><span class="wt">Jobs</span><span class="big">181</span></div>
+    <div class="w s2" style="height:60px"><span class="wt">Scheduling</span><span class="big">2</span></div>
+    <div class="w s2" style="height:60px"><span class="wt">Communication</span><span class="big">85</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>A row of template chips in Customize</h2>
+<p class="cap">The five templates as chips under the Customize bar: <b>Start from</b> Whole business · Office and dispatch · … Tapping one applies it with the same Undo bar. The quickest, but a chip has room for a name only, so what each template is for lives in a tooltip.</p>
+<div class="win" style="height:250px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="dash">
+   <div class="editbar">Drag a box to move it, pick its size, or hide it. <span class="sp"></span><span class="btn">+ Add a box</span><span class="btn f">Done</span></div>
+   <div class="chips2"><span class="tiny" style="align-self:center">Start from</span><span class="tchip">Whole business</span><span class="tchip on">Office and dispatch</span><span class="tchip">Field operations</span><span class="tchip">Sales and marketing</span><span class="tchip">People</span><span class="tchip">↺ Standard</span></div>
+   <div class="g4">
+    <div class="w s4" style="height:60px"><span class="wt">Jobs</span><span class="big">181</span></div>
+    <div class="w s2" style="height:52px"><span class="wt">Scheduling</span><span class="big">2</span></div>
+    <div class="w s2" style="height:52px"><span class="wt">Communication</span><span class="big">85</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>Pick a layout first: five cards above the boxes, asked once</h2>
+<p class="cap">Customize opens with <b>Start from a layout</b>: five cards with a larger miniature each. Picking one asks inside the card, "This hides 11 boxes. Use it?", rather than offering Undo afterwards. The most visible, but every Customize visit starts with five cards most people will only want once.</p>
+<div class="win" style="height:300px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="dash">
+   <div class="editbar">Drag a box to move it, pick its size, or hide it. <span class="sp"></span><span class="btn">+ Add a box</span><span class="btn f">Done</span></div>
+   <div class="lbl">Start from a layout</div>
+   <div class="cards3">
+    <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i></div><b style="font-size:12px">Whole business</b></div>
+    <div class="card3 on"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i></div><b style="font-size:12px">Office and dispatch</b><div class="ask">This hides 11 boxes. <b>Use it?</b> Yes · No</div></div>
+    <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i></div><b style="font-size:12px">Field operations</b></div>
+    <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i></div><b style="font-size:12px">Sales and marketing</b></div>
+    <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i></div><b style="font-size:12px">People</b></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · The panel full width, Undo on the dashboard <span class="rec">Recommended</span></p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Templates</span></div>
+  <div class="pb">
+   <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i></div><div><b>Whole business</b><div class="tiny">Work, sales and people at a glance.</div><span class="more">Use this layout</span></div></div>
+   <div class="tpl on"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i></div><div><b>Office and dispatch</b><div class="tiny">Today's jobs, the schedule, calls and new leads.</div><span class="btn f" style="height:26px;margin-top:4px">Use this layout</span></div></div>
+   <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i></div><div><b>Field operations</b><div class="tiny">Who is out, the vans, and the work in front of them.</div><span class="more">Use this layout</span></div></div>
+   <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i><i></i><i></i><i></i></div><div><b>Sales and marketing</b><div class="tiny">Leads, posts, reviews and listings.</div><span class="more">Use this layout</span></div></div>
+   <div class="tpl"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i></div><div><b>People</b><div class="tiny">Who is on the books, on the clock, due for training.</div><span class="more">Use this layout</span></div></div>
+   <span class="more">↺ Back to the standard layout</span>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · Chips that scroll sideways</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Dashboard</span></div>
+  <div class="pb">
+   <div class="editbar" style="font-size:11px">Drag to move, pick a size, hide. <span class="sp"></span><span class="btn f" style="height:26px">Done</span></div>
+   <div class="hs"><span class="tchip">Whole business</span><span class="tchip on">Office and dispatch</span><span class="tchip">Field operations</span><span class="tchip">Sales</span></div>
+   <div class="undo" style="font-size:11px">Using Office and dispatch. <span class="sp"></span><span class="btn">Undo</span></div>
+   <div class="w" style="height:70px"><span class="wt">Jobs</span><span class="big">181</span></div>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · Cards first, asked once</p>
+ <div class="phn">
+  <div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Dashboard</span></div>
+  <div class="pb">
+   <div class="lbl">Start from a layout</div>
+   <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i></i><i></i></div><b style="font-size:12px">Whole business</b></div>
+   <div class="card3 on"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i><i></i></div><b style="font-size:12px">Office and dispatch</b><div class="ask">This hides 11 boxes. <b>Use it?</b> Yes · No</div></div>
+   <div class="card3"><div class="mini"><i class="l"></i><i class="m"></i><i class="m"></i><i class="m"></i></div><b style="font-size:12px">Field operations</b></div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:22px">Every figure and the organization are invented. Each miniature is drawn from the template's own sizes, so it is always the layout you will get.</p>
+</div>
