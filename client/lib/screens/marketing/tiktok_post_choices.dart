@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../widgets/search_picker.dart';
+
 /// What a TikTok account allows, read from TikTok just before posting.
 class TikTokCreator {
   const TikTokCreator({
@@ -145,18 +147,18 @@ class TikTokPostChoices extends StatelessWidget {
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
+        SearchPickerField<String>(
           key: ValueKey('tiktok-privacy-$account'),
-          initialValue: choice.privacy,
-          decoration: const InputDecoration(labelText: 'Who can see this video'),
-          hint: const Text('Choose'),
-          items: [
+          value: choice.privacy,
+          label: 'Who can see this video',
+          hint: 'Choose',
+          options: [
             for (final o in creator.privacyOptions)
-              DropdownMenuItem(
+              SearchOption<String>(
                 value: o,
+                label: _privacyLabels[o] ?? o,
                 // Branded content cannot be private (TikTok's rule).
                 enabled: !(choice.branded && o == 'SELF_ONLY'),
-                child: Text(_privacyLabels[o] ?? o),
               ),
           ],
           onChanged: enabled ? (v) => set(() => choice.privacy = v) : null,
