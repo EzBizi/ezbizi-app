@@ -156,7 +156,10 @@ class MembershipsPublicController extends Controller
     {
         return response()->view('memberships.join', [
             'customer' => $c,
-            'company'  => $this->tenant->runWithoutTenant(fn () => Organization::query()->find($c->organization_id))?->name,
+            // The customer's company ("A-1 Chimney"), not the organization
+            // above it, which the customer has never heard of.
+            'company'  => \App\Models\Franchise::query()->with('company')->find($c->owning_franchise_id)?->company?->name
+                ?? $this->tenant->runWithoutTenant(fn () => Organization::query()->find($c->organization_id))?->name,
             'current'  => $this->current($c)?->load('plan'),
             'plans'    => MembershipPlan::query()->where('is_active', true)->orderBy('price_minor')->get(),
         ]);

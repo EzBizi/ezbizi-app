@@ -165,6 +165,8 @@ class MembershipsController extends Controller
         return $request->validate([
             'name'        => [$required, 'string', 'max:120', Rule::unique('membership_plans')
                 ->where('organization_id', $this->tenant->idOrFail())->ignore($plan?->getKey())],
+            // What a visit includes, one line, shown on the join page.
+            'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price_minor' => [$required, 'integer', 'min:0'],
             'billing'     => [$required, Rule::in(MembershipPlan::BILLINGS)],
             'is_active'   => ['sometimes', 'boolean'],
