@@ -2961,6 +2961,20 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 50 · Dashboard · widgets you move and resize, grouped like Workiz's — **out for decision** (`docs/previews/dashboard-sizes-layouts.html`)
+
+Jose, 2026-10-05, with Workiz's dashboard beside ours: *"it would be nice to be able to not only move around stuff but
+change the widget sizes between different available sizes, obviously smaller ones would show less information"*.
+Supersedes 45 (never picked), which had sizes as its option 3. Every option: three sizes — Small one figure with its
+change against the period before, Medium adds the chart, Large the breakdown and what needs someone. Desktop **1**
+a row of Small tiles, then sections named like the menu's groups on a four-column grid, Customize puts S·M·L and a
+handle on each (recommended); **2** a free six-column grid, resized by dragging a corner that snaps to a size; **3**
+a tile row plus two lanes, sizes from each widget's ⋮ menu. Phone **4** two columns, Small half and the rest full
+(recommended); **5** one column, the size is how tall; **6** swiping tiles over stacked cards. Money stays out per
+Jose's 2026-09-29 rule (Workiz's sales tiles become counts); asked whether that changed. Needs from the Dashboard
+module: `figures` with the previous period's value, `series`, the breakdown, `attention` rows, and `size` beside
+`presentation` in `PUT /dashboard/layout`; option 2 also each widget's grid place.
+
 ### 49 · Scheduling · a Locations tab: every branch, the closest one, who to call — **Jose: "go with ur recommendations" — 1 and 4** (`docs/previews/scheduling-locations-layouts.html`)
 
 Jovanni Martin (A1-Group), suggestion 0080, via Scheduling: *"Add a general information tab that displays company

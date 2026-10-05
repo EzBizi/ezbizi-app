@@ -1,0 +1,441 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard · sizes and sections</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light): tone pills are ToneColours (never Tone.review,
+   the violet), avatars are PersonColours, the on-the-clock dot is StateColour.on. The day cells
+   use StateColour.on (on time), EzBiziTheme.meterWarning (late), and DashboardChart's red and
+   blue (missed, away), so all four read at 3:1 or better on white. One 10px radius for every
+   control and card; the window and phone frames are frames, not cards. Every person, number and
+   the organization are invented; the numbers are judged by TimeClockStats' own rules. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every number, person and the organization are invented. */
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.g6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;grid-auto-rows:74px}
+.s1{grid-column:span 1}.s2{grid-column:span 2}.s3{grid-column:span 3}.s4{grid-column:span 4}.s6{grid-column:span 6}
+.r2{grid-row:span 2}.r3{grid-row:span 3}
+.w{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-width:0;min-height:0;overflow:hidden;position:relative}
+.w.edit{outline:2px dashed var(--edge);outline-offset:-2px}
+.wh{display:flex;align-items:center;gap:6px;min-width:0}
+.wt{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big{font:800 22px Inter,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;line-height:1.1}
+.mid{font:800 17px Inter,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.tr-up{font-size:10.5px;font-weight:800;color:var(--ok);background:var(--okc);border-radius:999px;padding:1px 6px}
+.tr-dn{font-size:10.5px;font-weight:800;color:var(--bad);background:var(--badc);border-radius:999px;padding:1px 6px}
+.tr-eq{font-size:10.5px;font-weight:800;color:var(--neu);background:var(--neuc);border-radius:999px;padding:1px 6px}
+.bars{display:flex;align-items:flex-end;gap:3px;flex:1;min-height:30px}
+.bars i{flex:1;background:#2a78d6;border-radius:3px 3px 0 0;display:block;min-height:2px}
+.bars i.lo{background:#a9c6ec}
+.ring{width:64px;height:64px;border-radius:50%;flex:0 0 auto;background:conic-gradient(#2a78d6 0 58%,#e8a33d 58% 74%,#1a7f37 74% 92%,#e34948 92% 100%);-webkit-mask:radial-gradient(circle,transparent 19px,#000 20px);mask:radial-gradient(circle,transparent 19px,#000 20px)}
+.leg{display:flex;flex-direction:column;gap:3px;font-size:11.5px;min-width:0}
+.leg span{display:flex;align-items:center;gap:6px}
+.leg b{margin-left:auto;font-variant-numeric:tabular-nums}
+.sw{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+.secth{display:flex;align-items:center;gap:8px;margin:2px 0 -2px;font:800 12.5px Inter,"Segoe UI",sans-serif}
+.secth .tiny{font-weight:600}
+.sz{display:inline-flex;border:1px solid #b9c7cd;border-radius:8px;overflow:hidden;flex:0 0 auto;margin-left:auto}
+.sz b{font:800 10px Inter,"Segoe UI",sans-serif;padding:2px 7px;color:var(--neu);background:var(--paper)}
+.sz b.on{background:var(--pri);color:#fff}
+.grip{color:#93a3ab;font-size:13px;letter-spacing:-2px;flex:0 0 auto}
+.handle{position:absolute;right:3px;bottom:2px;width:14px;height:14px;border-right:3px solid var(--pri);border-bottom:3px solid var(--pri);border-radius:0 0 5px 0}
+.att{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:4px 0;border-top:1px solid var(--line2)}
+.att .p-cau,.att .p-bad{flex:0 0 auto}
+.sizes{display:grid;grid-template-columns:150px 300px minmax(0,1fr);gap:14px;align-items:start;margin:8px 0 4px}
+.sizes .slbl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px 2px}
+.editbar{display:flex;align-items:center;gap:8px;background:var(--pric);border:1px solid var(--edge);border-radius:var(--r);padding:6px 10px;font-size:12px;color:var(--prid);flex:0 0 auto}
+.lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.lanes .span{grid-column:span 2}
+.pg2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pg2 .full{grid-column:span 2}
+.ps{display:flex;flex-direction:column;gap:8px}
+.hrow{display:flex;gap:8px;overflow:hidden;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.hrow .w{flex:0 0 130px}
+.one-l{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);font-size:12.5px}
+</style>
+
+<div class="wrap">
+<h1>Dashboard · widgets you move and resize, grouped like Workiz's</h1>
+<p class="sub">Jose, 2026-10-05, with Workiz's dashboard beside ours: <i>"it would be nice to be able to not only move around stuff but change the widget sizes between different available sizes, obviously smaller ones would show less information"</i>.</p>
+<p class="cap"><b>Three sizes in every option.</b> <b>Small</b> is one figure with its change against the period before, like Workiz's tiles. <b>Medium</b> adds the chart and the few lines behind it. <b>Large</b> adds the breakdown with numbers and anything that needs someone. The figures come from each module; nothing is added up on the screen.</p>
+<p class="need"><b>Money stays out</b>, as you ruled on 2026-09-29: where Workiz shows sales and collected, these show counts (bookings, jobs done). Say so if that has changed and a widget may carry money. <b>From the Dashboard module, for every option:</b> each box's <code>figures</code> (label, value and the previous period's value, for the arrow) <span class="new">new</span>, its 14-day or 24-hour <code>series</code>, its breakdown, its <code>attention</code> rows <span class="new">new</span>, and a <code>size</code> beside <code>presentation</code> in <code>PUT /dashboard/layout</code> <span class="new">new</span>.</p>
+
+<h2 class="plain">One widget, three sizes</h2>
+<div class="sizes">
+ <div><p class="slbl">Small</p>
+  <div class="w" style="height:96px"><div class="wh"><span class="wt">Jobs today</span></div><div class="big">181</div><div class="wh"><span class="tr-up">▲ 12%</span><span class="tiny">vs yesterday</span></div></div></div>
+ <div><p class="slbl">Medium</p>
+  <div class="w" style="height:190px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div>
+   <div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div><div><div class="mid">64</div><div class="tiny">done</div></div></div>
+   <div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:38%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div>
+   <div class="tiny">Last 7 days · today in dark</div></div></div>
+ <div><p class="slbl">Large</p>
+  <div class="w" style="height:190px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up">▲ 12%</span><span class="tiny">vs yesterday</span></div>
+   <div style="display:grid;grid-template-columns:150px 74px minmax(0,1fr) 240px;gap:14px;align-items:center;flex:1;min-height:0">
+    <div><div class="big">181</div><div class="tiny">jobs today</div><div class="mid" style="margin-top:6px">977</div><div class="tiny">coming up</div></div>
+    <div class="ring"></div>
+    <div class="leg"><span><i class="sw" style="background:#2a78d6"></i>Submitted<b>105</b></span><span><i class="sw" style="background:#e8a33d"></i>In progress<b>29</b></span><span><i class="sw" style="background:#1a7f37"></i>Done<b>33</b></span><span><i class="sw" style="background:#e34948"></i>Canceled<b>14</b></span></div>
+    <div><div class="att"><span class="pill p-bad">Late</span>6 jobs past their window</div><div class="att"><span class="pill p-cau">Unassigned</span>11 jobs with no technician</div><div class="att"><span class="pill p-cau">Pending</span>4 done, waiting approval</div></div>
+   </div></div></div>
+</div>
+
+<h2><span class="n">1</span>Sections like the menu, a four-column grid, a size switch on each widget <span class="rec">Recommended</span></h2>
+<p class="cap">The dashboard reads like Workiz's: a row of Small tiles for today, then sections named and ordered like the menu (People, Work, Leads, Assets). Each section is a four-column grid: Small takes one column, Medium two, Large all four. <b>Customize</b> puts a size switch (S · M · L) and a handle on every widget: drag one within or across sections, switch its size, hide it, then <b>Done</b>. <span class="why">Why: three sizes and a grid of four make every arrangement line up by itself, and the sections keep a busy dashboard findable.</span></p>
+<p class="need"><b>Data:</b> the four above. Sections need nothing new: they are the menu's groups.</p>
+<div class="win" style="height:760px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div></div>
+  <div class="dash" style="gap:9px">
+   <div class="prow"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span><span class="sp"></span><span class="btn">Customize</span></div>
+   <div class="g4" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+    <div class="w"><span class="wt">Leads in</span><div class="big">24</div><div class="wh"><span class="tr-up">▲ 9%</span></div></div>
+    <div class="w"><span class="wt">Calls answered</span><div class="big">85</div><div class="wh"><span class="tr-dn">▼ 4%</span></div></div>
+    <div class="w"><span class="wt">Jobs today</span><div class="big">181</div><div class="wh"><span class="tr-up">▲ 12%</span></div></div>
+    <div class="w"><span class="wt">Jobs done</span><div class="big">64</div><div class="wh"><span class="tr-up">▲ 3%</span></div></div>
+    <div class="w"><span class="wt">On the clock</span><div class="big">37</div><div class="wh"><span class="tr-eq">= 0%</span></div></div>
+    <div class="w"><span class="wt">Overbooked days</span><div class="big" style="color:var(--bad)">2</div><div class="wh"><span class="tiny">next 7 days</span></div></div>
+   </div>
+   <div class="secth">Work <span class="tiny">Jobs · Customers · Inspection</span></div>
+   <div class="g4">
+    <div class="w s2" style="height:168px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div><div><div class="mid">64</div><div class="tiny">done</div></div></div><div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:38%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div></div>
+    <div class="w s1" style="height:168px"><span class="wt">Customers</span><div class="big">15</div><div class="tiny">new today</div><div class="wh"><span class="tr-up">▲ 25%</span></div><div class="tiny" style="margin-top:auto">43,968 listed</div></div>
+    <div class="w s1" style="height:168px"><span class="wt">Inspection</span><div class="big">1</div><div class="tiny">in progress</div><div class="wh"><span class="tr-eq">= 0%</span></div><div class="tiny" style="margin-top:auto">0 submitted today</div></div>
+   </div>
+   <div class="secth">People <span class="tiny">Human Resources · Work Hours · Scheduling</span></div>
+   <div class="g4">
+    <div class="w s4" style="height:150px"><div class="wh"><span class="wt">Human Resources</span><span class="tiny">82 on the books</span></div>
+     <div style="display:grid;grid-template-columns:74px minmax(0,1fr) 300px;gap:16px;align-items:center;flex:1;min-height:0"><div class="ring" style="background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div>
+      <div class="leg"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span><span class="tiny">2 onboardings in flight · 1 left today</span></div>
+      <div><div class="att"><span class="pill p-cau">Waiting</span>Gino's paperwork, 2 days on his side</div><div class="att"><span class="pill p-cau">Expiring</span>1 driver's licence in 14 days</div></div></div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:10px"><b>Customize</b>, the same dashboard:</p>
+<div class="win" style="height:330px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="dash" style="gap:9px">
+   <div class="editbar">Drag a widget to move it, pick its size, or hide it. <span class="sp"></span><span class="btn">+ Add a widget</span><span class="btn f">Done</span></div>
+   <div class="secth">Work</div>
+   <div class="g4">
+    <div class="w s2 edit" style="height:120px"><div class="wh"><span class="grip">⋮⋮</span><span class="wt">Jobs</span><span class="sz"><b>S</b><b class="on">M</b><b>L</b></span><span class="ib" style="width:22px;height:22px;font-size:13px">✕</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div></div></div>
+    <div class="w s1 edit" style="height:120px"><div class="wh"><span class="grip">⋮⋮</span><span class="wt">Customers</span></div><div class="sz" style="margin:0"><b class="on">S</b><b>M</b><b>L</b></div><div class="big">15</div></div>
+    <div class="w s1 edit" style="height:120px"><div class="wh"><span class="grip">⋮⋮</span><span class="wt">Inspection</span></div><div class="sz" style="margin:0"><b class="on">S</b><b>M</b><b>L</b></div><div class="big">1</div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">2</span>A free grid: drag a widget's corner and it snaps to the next size</h2>
+<p class="cap">No sections: one six-column grid, as Grafana or a phone's home screen. Each widget's corner is a handle. Dragging it snaps to the size that fits: Small (two columns, one row), Medium (three columns, two rows), Large (six columns, two rows). More freedom, but also more ways to leave a gap.</p>
+<p class="need"><b>Data:</b> the four above. The layout also keeps each widget's place on the grid (column and row) <span class="new">new</span>, not just its order.</p>
+<div class="win" style="height:560px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div></div>
+  <div class="dash">
+   <div class="prow"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="sp"></span><span class="btn f">Done arranging</span></div>
+   <div class="g6">
+    <div class="w s2 edit"><span class="wt">Leads in</span><div class="wh"><span class="big">24</span><span class="tr-up">▲ 9%</span></div><span class="handle"></span></div>
+    <div class="w s2 edit"><span class="wt">Calls answered</span><div class="wh"><span class="big">85</span><span class="tr-dn">▼ 4%</span></div><span class="handle"></span></div>
+    <div class="w s2 edit"><span class="wt">On the clock</span><div class="wh"><span class="big">37</span><span class="tr-eq">= 0%</span></div><span class="handle"></span></div>
+    <div class="w s3 r2 edit"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div></div><div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:38%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div><span class="handle"></span></div>
+    <div class="w s3 r2 edit" style="outline-color:var(--pri)"><div class="wh"><span class="wt">Leads</span><span class="tiny" style="margin-left:auto">dragging to Medium…</span></div><div class="wh" style="gap:14px"><div><div class="big">24</div><div class="tiny">in today</div></div><div><div class="mid">7</div><div class="tiny">waiting</div></div></div><div class="leg"><span><i class="sw" style="background:#2a78d6"></i>Thumbtack<b>11</b></span><span><i class="sw" style="background:#e8a33d"></i>Google LSA<b>8</b></span></div><span class="handle"></span></div>
+    <div class="w s6 r2 edit"><div class="wh"><span class="wt">Human Resources</span><span class="tiny">82 on the books</span></div><div style="display:grid;grid-template-columns:74px minmax(0,1fr) 300px;gap:16px;align-items:center;flex:1"><div class="ring" style="background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div><div class="leg"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span></div><div><div class="att"><span class="pill p-cau">Waiting</span>Gino's paperwork, 2 days on his side</div></div></div><span class="handle"></span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">3</span>A row of tiles and two lanes: sizes from each widget's menu</h2>
+<p class="cap">The simplest of the three. Small widgets line up in the tile row at the top. Medium ones sit in two lanes below, and a Large one spans both lanes. Size, move up, move down and hide live in the ⋮ menu each widget already has, so there is no separate edit mode. Picking Small sends a widget up into the tile row.</p>
+<p class="need"><b>Data:</b> the four above, nothing else.</p>
+<div class="win" style="height:560px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Dashboard</div></div>
+  <div class="dash">
+   <div class="prow"><span class="chip on">Day</span><span class="chip">Week</span><span class="chip">Month</span><span class="chip">Quarter</span><span class="chip">Year</span></div>
+   <div class="g4" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+    <div class="w"><span class="wt">Leads in</span><div class="wh"><span class="big">24</span><span class="tr-up">▲ 9%</span></div></div>
+    <div class="w"><span class="wt">Calls answered</span><div class="wh"><span class="big">85</span><span class="tr-dn">▼ 4%</span></div></div>
+    <div class="w"><span class="wt">Customers new</span><div class="wh"><span class="big">15</span><span class="tr-up">▲ 25%</span></div></div>
+    <div class="w"><span class="wt">On the clock</span><div class="wh"><span class="big">37</span><span class="tr-eq">= 0%</span></div></div>
+    <div class="w"><span class="wt">Inspections</span><div class="wh"><span class="big">1</span><span class="tr-eq">= 0%</span></div></div>
+   </div>
+   <div class="lanes">
+    <div class="w" style="height:150px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up">▲ 12%</span><span class="ib" style="margin-left:auto;width:22px;height:22px">⋮</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div></div><div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div></div>
+    <div class="w" style="height:150px"><div class="wh"><span class="wt">Leads</span><span class="ib" style="margin-left:auto;width:22px;height:22px">⋮</span></div>
+     <div class="card" style="position:absolute;right:12px;top:30px;width:170px;box-shadow:0 4px 14px rgba(0,0,0,.12)"><div class="one">Size: <span class="sz" style="margin-left:6px"><b>S</b><b class="on">M</b><b>L</b></span></div><div class="one">Move up</div><div class="one">Move down</div><div class="one">Hide</div></div>
+     <div class="wh" style="gap:14px"><div><div class="big">24</div><div class="tiny">in today</div></div><div><div class="mid">7</div><div class="tiny">waiting</div></div></div></div>
+    <div class="w span" style="height:130px"><div class="wh"><span class="wt">Human Resources</span><span class="tiny">82 on the books</span><span class="ib" style="margin-left:auto;width:22px;height:22px">⋮</span></div><div style="display:grid;grid-template-columns:74px minmax(0,1fr) 300px;gap:16px;align-items:center;flex:1"><div class="ring" style="background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div><div class="leg"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span></div><div><div class="att"><span class="pill p-cau">Waiting</span>Gino's paperwork, 2 days on his side</div></div></div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · Two columns: Small is half, Medium and Large full <span class="rec">Recommended</span></p>
+ <div class="phn">
+  <div class="bk"><span class="b">Dashboard</span><span class="sp"></span><span class="chip on">Day</span><span class="btn">Customize</span></div>
+  <div class="pb" style="flex:1;overflow:hidden;padding:10px;display:flex;flex-direction:column;gap:8px">
+   <div class="pg2">
+    <div class="w"><span class="wt">Leads in</span><div class="wh"><span class="big">24</span><span class="tr-up">▲ 9%</span></div></div>
+    <div class="w"><span class="wt">Calls answered</span><div class="wh"><span class="big">85</span><span class="tr-dn">▼ 4%</span></div></div>
+    <div class="w"><span class="wt">Jobs today</span><div class="wh"><span class="big">181</span><span class="tr-up">▲ 12%</span></div></div>
+    <div class="w"><span class="wt">On the clock</span><div class="wh"><span class="big">37</span><span class="tr-eq">=</span></div></div>
+    <div class="w full" style="height:150px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div></div><div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div></div>
+    <div class="w full" style="height:150px"><div class="wh"><span class="wt">Human Resources</span><span class="tiny" style="margin-left:auto">82 on the books</span></div><div class="wh" style="gap:12px"><div class="ring" style="width:54px;height:54px;background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div><div class="leg" style="flex:1"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span></div></div><div class="att"><span class="pill p-cau">Waiting</span>Gino's paperwork</div></div>
+   </div>
+   <p class="tiny">Customize: a size switch and a handle on each; hold and drag to move.</p>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · One column, the size is how tall</p>
+ <div class="phn">
+  <div class="bk"><span class="b">Dashboard</span><span class="sp"></span><span class="chip on">Day</span><span class="btn">Customize</span></div>
+  <div class="ps" style="padding:10px">
+   <div class="one-l"><span class="wt" style="flex:1">Leads in</span><span class="mid">24</span><span class="tr-up">▲ 9%</span></div>
+   <div class="one-l"><span class="wt" style="flex:1">Calls answered</span><span class="mid">85</span><span class="tr-dn">▼ 4%</span></div>
+   <div class="w" style="height:120px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div><div><div class="mid">64</div><div class="tiny">done</div></div></div></div>
+   <div class="w" style="height:170px"><div class="wh"><span class="wt">Human Resources</span></div><div class="wh" style="gap:12px"><div class="ring" style="width:54px;height:54px;background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div><div class="leg" style="flex:1"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span></div></div><div class="att"><span class="pill p-cau">Waiting</span>Gino's paperwork, 2 days</div><div class="att"><span class="pill p-cau">Expiring</span>1 licence in 14 days</div></div>
+   <p class="tiny">Small is one line, Medium the figures, Large the chart and what needs someone.</p>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · Tiles that swipe, cards below</p>
+ <div class="phn">
+  <div class="bk"><span class="b">Dashboard</span><span class="sp"></span><span class="chip on">Day</span></div>
+  <div class="ps" style="padding:10px">
+   <div class="hrow">
+    <div class="w"><span class="wt">Leads in</span><div class="wh"><span class="big">24</span><span class="tr-up">▲ 9%</span></div></div>
+    <div class="w"><span class="wt">Calls</span><div class="wh"><span class="big">85</span><span class="tr-dn">▼ 4%</span></div></div>
+    <div class="w"><span class="wt">Jobs today</span><div class="wh"><span class="big">181</span></div></div>
+   </div>
+   <div class="w" style="height:150px"><div class="wh"><span class="wt">Jobs</span><span class="tr-up" style="margin-left:auto">▲ 12%</span></div><div class="wh" style="gap:14px"><div><div class="big">181</div><div class="tiny">today</div></div><div><div class="mid">977</div><div class="tiny">coming up</div></div></div><div class="bars"><i class="lo" style="height:30%"></i><i class="lo" style="height:45%"></i><i class="lo" style="height:60%"></i><i class="lo" style="height:52%"></i><i class="lo" style="height:70%"></i><i style="height:84%"></i></div></div>
+   <div class="w" style="height:120px"><div class="wh"><span class="wt">Human Resources</span></div><div class="wh" style="gap:12px"><div class="ring" style="width:54px;height:54px;background:conic-gradient(#2a78d6 0 94%,#e8a33d 94% 100%)"></div><div class="leg" style="flex:1"><span><i class="sw" style="background:#2a78d6"></i>Active<b>77</b></span><span><i class="sw" style="background:#e8a33d"></i>Inactive<b>5</b></span></div></div></div>
+   <p class="tiny">Small widgets swipe along the top; the rest stack. Sizes come from each widget's ⋮ menu.</p>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:22px">Numbers, people and the organization are invented. An arrow compares the period with the one before it (Day with yesterday, Week with last week). Workiz is drawn from your screenshot, not copied.</p>
+</div>
