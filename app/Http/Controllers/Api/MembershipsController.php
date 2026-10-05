@@ -233,6 +233,9 @@ class MembershipsController extends Controller
             'enrollment' => $m->enrollment,
             'starts_on'  => $m->starts_on->toDateString(),
             'ends_on'    => $m->ends_on->toDateString(),
+            // For a message to read naturally: "Hi Marta, ... on October 4, 2027".
+            'customer_name' => Customer::query()->whereKey($m->customer_id)->value('name'),
+            'ends_on_text'  => $m->ends_on->format('F j, Y'),
         ];
     }
 

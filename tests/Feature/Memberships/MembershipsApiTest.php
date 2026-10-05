@@ -47,7 +47,9 @@ class MembershipsApiTest extends TestCase
         $this->assertSame('2026-10-05', $data['starts_on']);
         $this->assertSame('2027-10-04', $data['ends_on']);
         $this->assertSame('new', $data['enrollment']);
-        $this->assertSame(1, AutomationEvent::withoutGlobalScopes()->where('event_key', 'membership.created')->count());
+        $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'membership.created')->sole();
+        $this->assertSame('A Customer', $event->payload['after']['customer_name']);
+        $this->assertSame('October 4, 2027', $event->payload['after']['ends_on_text']);
     }
 
     public function test_a_second_year_is_a_renewal_and_the_list_shows_the_latest(): void
