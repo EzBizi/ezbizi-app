@@ -1143,6 +1143,10 @@ void main() {
     expect(find.byType(TaxFormPanel), findsNothing);
     expect(find.text('Signed W-4 attached.'), findsOneWidget);
     expect(find.byKey(const Key('tax-form-view')), findsOneWidget);
+
+    // The signed form is a picture of the page now (HR caae3171).
+    await _tap(tester, find.byKey(const Key('tax-form-view')));
+    expect(find.byKey(const Key('tax-form-signed-page')), findsOneWidget);
   });
 
   testWidgets('a server that does not sign the tax form here still takes an '
@@ -1643,6 +1647,14 @@ MockClientHandler _handler({
           ],
         },
       });
+    }
+
+    if (path.endsWith('/attachments/att-9')) {
+      return http.Response.bytes(
+        _png,
+        200,
+        headers: {'content-type': 'image/png'},
+      );
     }
 
     if (path.endsWith('/me/signature')) {

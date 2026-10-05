@@ -2181,12 +2181,22 @@ class _OnboardingFormState extends State<OnboardingForm> {
       setState(() => _actionError = response.message);
       return;
     }
+    final signed = Uint8List.fromList(bytes);
+    // The signed form is a picture of the page since HR caae3171 (so the
+    // contract's PDF can print it); one signed before that is a PDF.
+    final pdf = bytes.length > 4 && String.fromCharCodes(bytes.take(4)) == '%PDF';
     await showSidePanel<void>(
       context,
       builder: (_) => SidePanel(
         title: 'Signed $label',
         width: 600,
-        child: PdfView(bytes: Uint8List.fromList(bytes)),
+        child: pdf
+            ? PdfView(bytes: signed)
+            : DecoratedBox(
+                key: const Key('tax-form-signed-page'),
+                decoration: const BoxDecoration(color: EzBiziTheme.paper),
+                child: Image.memory(signed, fit: BoxFit.fitWidth),
+              ),
       ),
     );
   }

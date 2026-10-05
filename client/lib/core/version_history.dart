@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0350',
+      date: '5 Oct 2026',
+      items: [
+        'Leads, Settings: Office hours (when the office answers leads; Monday to Friday 8 to 5 unless changed) and an email for customer photos, per branch. Automations can check whether the office is open and say when it opens again, such as tomorrow at 8:00 AM; the rules that use it start switched off.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0349',
       date: '2 Oct 2026',
       items: [

@@ -1061,6 +1061,37 @@ class SettingRegistry
                     .'name, full service address, email - only the ones not given yet), {{availability}} '
                     .'the first open day and windows for the ZIP the customer gave.',
             ),
+            /*
+             * When somebody is there to answer leads - separate from
+             * ops.business_hours, which Clock In enforces (Jose, 2026-10-05:
+             * the closed-office auto replies). Read by LeadOfficeHours.
+             */
+            new SettingDefinition(
+                key: 'leads.office_hours',
+                label: 'Office hours',
+                type: SettingDefinition::TYPE_HOURS,
+                default: [
+                    'monday' => ['open' => '08:00', 'close' => '17:00'],
+                    'tuesday' => ['open' => '08:00', 'close' => '17:00'],
+                    'wednesday' => ['open' => '08:00', 'close' => '17:00'],
+                    'thursday' => ['open' => '08:00', 'close' => '17:00'],
+                    'friday' => ['open' => '08:00', 'close' => '17:00'],
+                    'saturday' => null,
+                    'sunday' => null,
+                ],
+                editPermission: 'leads.edit',
+                help: 'When the office answers leads. Outside these hours the closed-office auto '
+                    .'replies say when you open again ({{office_opens}}).',
+            ),
+            new SettingDefinition(
+                key: 'leads.photos_email',
+                label: 'Email for customer photos',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                editPermission: 'leads.edit',
+                help: 'Where a customer who mentions pictures or documents is asked to email them, '
+                    .'e.g. office@ny.a-1chimney.com. Set per branch. Empty: they are not asked.',
+            ),
         ];
     }
 
