@@ -2808,8 +2808,9 @@ class _SigningStepState extends State<_SigningStep> {
 }
 
 /// "County for disputes": a search of the chosen state's counties
-/// (`GET /places/counties`, HR d834214e). Only a picked name is an answer;
-/// typing is the search.
+/// (`GET /places/counties`, HR d834214e). What is typed is the answer and the
+/// list only suggests (Jose, 2026-10-05: Eve typed Cook, the search found
+/// nothing, and "she should be able to just save").
 class _CountySearch extends StatefulWidget {
   const _CountySearch({
     super.key,
@@ -2840,6 +2841,10 @@ class _CountySearchState extends State<_CountySearch> {
   bool _looking = false;
   List<String> _found = [];
 
+  /// The text the last finished search was for, so "nothing found" is said
+  /// only about what is in the box.
+  String? _searched;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -2863,6 +2868,7 @@ class _CountySearchState extends State<_CountySearch> {
       if (!mounted || run != _run) return;
       setState(() {
         _looking = false;
+        _searched = query;
         _found = response.ok && response.data is List
             ? [for (final name in response.data as List) '$name']
             : [];
@@ -2897,11 +2903,18 @@ class _CountySearchState extends State<_CountySearch> {
                     ),
                   )
                 : null,
-            helperText: typed.isNotEmpty && typed != widget.answer
-                ? 'Pick the county from the list to answer.'
+            helperText:
+                typed.isNotEmpty &&
+                    !_looking &&
+                    _searched == typed &&
+                    _found.isEmpty
+                ? 'Not in the list. What you typed is saved as the county.'
                 : null,
           ),
-          onChanged: _search,
+          onChanged: (text) {
+            _search(text);
+            widget.onPicked(text.trim());
+          },
         ),
         if (_found.isNotEmpty) ...[
           const SizedBox(height: 4),

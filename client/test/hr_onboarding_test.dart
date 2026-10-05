@@ -854,7 +854,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(asked.single, {'state': 'Florida', 'q': 'pa'});
-    expect(find.text('Pick the county from the list to answer.'), findsOneWidget);
 
     await _tap(tester, find.byKey(const Key('county-Palm Beach')));
     expect(_countyBox(tester).controller!.text, 'Palm Beach');
@@ -866,6 +865,32 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
     expect(saved, {
       'answers': {'county': '', 'state': 'Alaska'},
+    });
+  });
+
+  // Jose, 2026-10-05: Eve typed Cook, the search found nothing, and "she
+  // should be able to just save, even if the finder does not find anything".
+  testWidgets('a county the search cannot find is saved as typed', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pumpForm(
+      tester,
+      _handler(form: _catalogForm, onSave: (body) => saved = body),
+    );
+
+    await _type(tester, 'county', 'Cook');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Not in the list. What you typed is saved as the county.'),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {'county': 'Cook'},
     });
   });
 
