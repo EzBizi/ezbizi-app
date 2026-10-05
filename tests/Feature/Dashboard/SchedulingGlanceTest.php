@@ -348,7 +348,7 @@ class SchedulingGlanceTest extends TestCase
 
         $this->assertSame([
             ['tone' => 'bad', 'text' => 'Overbooked on 1 of the next 7 days'],
-            ['tone' => 'caution', 'text' => '1 service area fully booked for the next 7 days'],
+            ['tone' => 'caution', 'text' => '1 service area with no spot for 10+ days'],
         ], $resolve()['attention']);
     }
 

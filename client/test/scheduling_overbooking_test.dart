@@ -27,7 +27,9 @@ void main() {
     expect(find.text('1 booked on a day this area is closed'), findsOneWidget);
 
     expect(find.text('Ohio › Cleveland'), findsOneWidget);
-    expect(find.text('Next opening Mon, Oct 12'), findsOneWidget);
+    expect(find.textContaining('Next opening Mon, Oct 12 ('), findsOneWidget);
+    // The threshold is the server's (Shoval, 2026-10-05: 10 days and above).
+    expect(find.text('Fully booked for 10 days or more'), findsOneWidget);
 
     // The two counters are one size.
     final sizes = {
@@ -120,7 +122,7 @@ const _data = {
     },
   ],
   'full_from': '2026-10-01',
-  'full_days': 7,
+  'full_days': 10,
   'fully_booked': [
     {
       'area_id': 'a-9', 'name': 'Cleveland', 'franchise_name': 'Ohio', //

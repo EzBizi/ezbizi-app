@@ -224,13 +224,13 @@ final class SchedulingGlance extends DescribedGlance
         $check = app(Overbooking::class);
 
         $days = collect($check->overbooked($areas, $tomorrow->subDay(), 7))->pluck('date')->unique()->count();
-        $full = count($check->fullyBooked($areas, $tomorrow, 7));
+        $full = count($check->fullyBooked($areas, $tomorrow, Overbooking::FULL_DAYS));
 
         return array_values(array_filter([
             $days === 0 ? null : GlancePayload::attention('bad', "Overbooked on {$days} of the next 7 days"),
             $full === 0 ? null : GlancePayload::attention('caution', $full === 1
-                ? '1 service area fully booked for the next 7 days'
-                : "{$full} service areas fully booked for the next 7 days"),
+                ? '1 service area with no spot for '.Overbooking::FULL_DAYS.'+ days'
+                : "{$full} service areas with no spot for ".Overbooking::FULL_DAYS.'+ days'),
         ]));
     }
 

@@ -758,56 +758,72 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
-     * The morning warning raises `scheduling.overbooking_found` with a summary
-     * an automation emails as written — and raises nothing on a quiet morning.
+     * The morning warning (Shoval, 2026-10-05: "fully booked for over 10 days
+     * ... I need to pause ads"). It raises `scheduling.overbooking_found` only
+     * for an area with no spot left for the next 10 days or more, and stays
+     * quiet for an area that is merely overbooked or full for a few days.
      */
-    public function test_the_morning_check_raises_the_trigger_only_when_something_is_wrong(): void
+    public function test_the_morning_check_warns_only_of_areas_full_for_ten_days(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $this->dallas($tenant);
+        $dallas = $this->dallas($tenant);
+        $events = fn () => DB::table('automation_events')->where('event_key', 'scheduling.overbooking_found');
 
-        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
-        $this->assertSame(0, DB::table('automation_events')->where('event_key', 'scheduling.overbooking_found')->count());
-
+        // Monday Oct 5 overbooked; Dallas works Mondays only, so it has no spot
+        // until Monday Oct 12 — but a Thursday takes 1 first.
         foreach (['07:00', '08:00', '11:00', '12:00'] as $t) {
             $this->booked($tenant, "2026-10-05 {$t}:00");
         }
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$dallas->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+            ['weekday' => 4, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 1],
+        ]])->assertOk();
+
+        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->assertSame(0, $events()->count(), 'Overbooked and open on Thursday: nothing to pause.');
+
+        // Mondays only again: nothing until Oct 12, twelve days from today.
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$dallas->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+        ]])->assertOk();
 
         $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
 
-        $event = DB::table('automation_events')->where('event_key', 'scheduling.overbooking_found')->first();
-        $this->assertNotNull($event);
-        $summary = json_decode($event->payload, true)['after']['summary'];
-        $this->assertStringContainsString('Mon Oct 5', $summary);
-        $this->assertStringContainsString('Dallas: 4 booked of 3 (1 over)', $summary);
-        $this->assertStringContainsString('FULLY BOOKED', $summary);
+        $after = json_decode($events()->first()->payload, true)['after'];
+        $this->assertSame(1, $after['fully_booked_areas']);
+        $this->assertArrayNotHasKey('overbooked_days', $after);
+        $this->assertStringStartsWith('## FULLY BOOKED for 10 days or more', $after['summary']);
+        $this->assertStringContainsString('Dallas: next opening Mon Oct 12 (12 days away)', $after['summary']);
+        $this->assertStringNotContainsString('over)', $after['summary'], 'Overbooked days are not the email\'s.');
     }
 
     /**
-     * UI queue 39: the summary is Markdown an email renders as structure, one
-     * heading per day with its areas under it, and a name's own punctuation
+     * The summary is Markdown an email renders as structure (UI queue 39):
+     * the area furthest from an opening first, and a name's own punctuation
      * stays text rather than becoming emphasis.
      */
-    public function test_the_warning_summary_puts_each_day_over_its_areas(): void
+    public function test_the_warning_summary_lists_the_furthest_out_first(): void
     {
-        $row = fn (string $date, string $name, ?string $franchise, int $booked, int $capacity, bool $closed = false, string $level = 'area') => [
-            'date' => $date, 'level' => $level, 'name' => $name, 'franchise_name' => $franchise,
-            'booked' => $booked, 'capacity' => $capacity, 'over' => $booked - $capacity, 'closed' => $closed,
+        $row = fn (string $name, ?string $franchise, ?string $next) => [
+            'area_id' => $name, 'name' => $name, 'franchise_name' => $franchise, 'working_days' => 5, 'next_opening' => $next,
         ];
 
         $summary = \App\Console\Commands\SchedulingWarnOverbooking::summary([
-            $row('2026-10-05', 'Dallas', 'Texas', 4, 3),
-            $row('2026-10-05', 'St. *Louis*', null, 2, 0, closed: true),
-            $row('2026-10-06', 'Texas', null, 9, 8, level: 'franchise'),
-        ], []);
+            $row('Dallas', 'Texas', '2026-10-12'),
+            $row('St. *Louis*', null, '2026-10-26'),
+            $row('Houston', 'Texas', null),
+        ], CarbonImmutable::parse('2026-09-30'));
 
-        $this->assertSame(1, substr_count($summary, '**Mon Oct 5**'), 'one heading per day');
-        $this->assertStringContainsString(
-            "**Mon Oct 5**\n\n- Texas › Dallas: 4 booked of 3 (1 over)\n- St\\. \\*Louis\\*: 2 booked on a closed day",
+        $this->assertSame(
+            "## FULLY BOOKED for 10 days or more\n\n"
+            ."- Texas › Houston: no opening in the next year\n"
+            ."- St\. \*Louis\*: next opening Mon Oct 26 (26 days away)\n"
+            ."- Texas › Dallas: next opening Mon Oct 12 (12 days away)\n\n"
+            .'Consider pausing ads for these areas. See Scheduling › Overbooking in EzBizi.',
             $summary,
         );
-        $this->assertStringContainsString("**Tue Oct 6**\n\n- Texas (whole franchise): 9 booked of 8 (1 over)", $summary);
-        $this->assertStringStartsWith('## OVERBOOKED', $summary);
     }
 
     /**

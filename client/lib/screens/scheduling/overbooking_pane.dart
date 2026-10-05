@@ -113,6 +113,9 @@ class _OverbookingPaneState extends State<OverbookingPane> {
         .cast<Map<String, dynamic>>();
     final full = (data?['fully_booked'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
+    // The server's number (Shoval, 2026-10-05: full "10 days and above" is
+    // when ads get paused), so the tab and the morning email always agree.
+    final fullDays = (data?['full_days'] as num?)?.toInt() ?? 10;
 
     final byDate = <String, List<Map<String, dynamic>>>{};
     for (final r in over) {
@@ -137,8 +140,9 @@ class _OverbookingPaneState extends State<OverbookingPane> {
           ),
           Text(
             'Days booked past what an area or a franchise takes, and '
-            'areas with no spot left in the next 7 days. A warning '
-            'email goes out each morning when there are any.',
+            'areas with no spot left for the next $fullDays days or more. '
+            'A warning email goes out each morning when an area is that '
+            'full.',
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
           const SizedBox(height: 14),
@@ -166,8 +170,8 @@ class _OverbookingPaneState extends State<OverbookingPane> {
                   key: 'full',
                   count: full.length,
                   label: full.length == 1
-                      ? 'area fully booked (7 days)'
-                      : 'areas fully booked (7 days)',
+                      ? 'area fully booked ($fullDays+ days)'
+                      : 'areas fully booked ($fullDays+ days)',
                   tone: full.isEmpty ? Tone.ok : Tone.caution,
                 ),
               ),
@@ -243,14 +247,14 @@ class _OverbookingPaneState extends State<OverbookingPane> {
           ],
         const SizedBox(height: 24),
         Text(
-          'Fully booked in the next 7 days',
+          'Fully booked for $fullDays days or more',
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 6),
         if (full.isEmpty)
           _allClear(
             theme,
-            'Every area that works in the next 7 days still has a '
+            'Every area that works in the next $fullDays days still has a '
             'spot.',
           )
         else
@@ -401,8 +405,15 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       title: [r['franchise_name'], r['name']].whereType<String>().join(' › '),
       detail: next == null
           ? 'No opening found in the next year'
-          : 'Next opening ${_day(next)}',
+          : 'Next opening ${_day(next)} (${_daysAway(next)} days away)',
     );
+  }
+
+  static int _daysAway(String ymd) {
+    final now = DateTime.now();
+    return DateTime.parse(
+      ymd,
+    ).difference(DateTime(now.year, now.month, now.day)).inDays;
   }
 
   Widget _allClear(ThemeData theme, String text) {
