@@ -22,12 +22,13 @@ class VersionHistory {
         'Call flow also flags a ring group that has nobody available to ring.',
         'Calls now remember which menu key the caller pressed and any extension they typed. Reports can show calls by key pressed and by caller, with the customer\'s name when they\'re on file. Calls before this release show \'No key pressed\'.',
         'The Phone box on the dashboard now flags what needs someone: a phone account that stopped working, and voicemails waiting (over a day in red).',
-        'Dashboard › Jobs: flags jobs from the past week still in your first status, and upcoming jobs with no service area. The box also loads much faster.',
+        'Dashboard › Jobs: flags jobs from the past week still in your first status, and jobs from today on with no service area. The box also loads much faster.',
         'Dashboard boxes show money only to people whose role can see that module\'s financials; Inventory shows stock value to them.',
         'Dashboard › Customize: hide a box, and bring it back with Add a box.',
         'Marketing › Posts: posting to TikTok now asks who can see the video, whether to allow comments, duets and stitches, and whether it promotes a brand, as TikTok requires.',
         'TikTok connections stay connected: their sign-in is renewed automatically.',
-        'Menus and voicemail greetings can play a recording instead of reading the text aloud: under Settings › IVR menus or Voicemail, choose \'Use a recording instead\' and upload an MP3 or WAV. If the recording ever can\'t play, the text is read instead.',
+        'Menus and voicemail greetings can play a recording instead of reading the text aloud: under Settings › IVR menus or Voicemail, choose \'Use a recording instead\' and upload an MP3 or WAV. If the recording file has been removed, the text is read instead.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0354 and 0.0.0353, which reached the web first.',
       ],
     ),
     VersionRelease(
@@ -42,7 +43,6 @@ class VersionHistory {
         'Dashboard › Scheduling: flags days overbooked and service areas fully booked in the next 7 days.',
         'Dashboard: the Reports box warns when a scheduled report stopped sending because its automation switched itself off.',
         'Work Hours: when people edit their own hours, the shift reads Edited, as it does after anyone else\'s edit.',
-        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0353, which reached the web first.',
       ],
     ),
     VersionRelease(
