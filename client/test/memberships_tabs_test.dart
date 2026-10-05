@@ -250,6 +250,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the next visit shows once the server says, and an unanswered '
+      'reminder stands out', (tester) async {
+    final server = _Server()..visits = true;
+    await _pump(
+      tester,
+      (api, session) => MembershipsMembers(api: api, session: session),
+      server: server,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('member:m-2')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('member-visit'))).data,
+      'No date picked yet',
+    );
+
+    await tester.tap(find.byTooltip('Back to members'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member:m-1')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('member-visit'))).data,
+      startsWith('Visit booked for '),
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('member-visit'))).data,
+      endsWith(' · job 1234'),
+    );
+
+    // Control: a server from before the visit says nothing about it, rather
+    // than "no date picked yet" about a reminder it cannot see answered.
+    await _pump(
+      tester,
+      (api, session) => MembershipsMembers(api: api, session: session),
+    );
+    await tester.tap(find.byKey(const ValueKey('member:m-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('member-visit')), findsNothing);
+    expect(find.textContaining('Sent '), findsOneWidget);
+  });
+
   group('Dashboard', () {
     testWidgets('the figures are counted from the members, money only with '
         'financials', (tester) async {
@@ -266,6 +307,9 @@ void main() {
       // Riley renews within 30 days and is listed by name; Morgan is not.
       expect(find.text('Riley Park'), findsOneWidget);
       expect(find.text('Morgan Ellis'), findsNothing);
+
+      // Without the visit from the server, the line says only the reminder.
+      expect(find.textContaining('reminder sent'), findsOneWidget);
 
       await _pump(
         tester,
@@ -405,6 +449,10 @@ String _day(int fromToday) {
 
 class _Server {
   bool amounts = true;
+
+  /// Whether the rows carry the next visit (visit_on, visit_job_number), as
+  /// a server from 450895cd on does.
+  bool visits = false;
   final patches = <(String, Map<String, dynamic>)>[];
   final posts = <(String, Map<String, dynamic>)>[];
   int reads = 0;
@@ -420,6 +468,9 @@ class _Server {
     String zip = '33901',
     int due = 0,
     int paid = 19900,
+    int? remindedIn,
+    int? visitIn,
+    String? job,
   }) => {
     'id': id,
     'customer_id': customerId,
@@ -433,7 +484,9 @@ class _Server {
     'starts_on': _day(endsIn - 364),
     'ends_on': _day(endsIn),
     'status': status,
-    'reminded_at': null,
+    'reminded_at': remindedIn == null ? null : _day(remindedIn),
+    if (visits) 'visit_on': visitIn == null ? null : _day(visitIn),
+    if (visits) 'visit_job_number': job,
     'currency': 'USD',
     'price_minor': amounts ? 19900 : null,
     'paid_minor': amounts ? paid : null,
@@ -449,6 +502,9 @@ class _Server {
       status: 'active',
       endsIn: 200,
       enrollment: 'new',
+      remindedIn: -2,
+      visitIn: 30,
+      job: '1234',
     ),
     _row(
       'm-2',
@@ -460,6 +516,7 @@ class _Server {
       zip: '34102',
       due: 5400,
       paid: 16200,
+      remindedIn: -20,
     ),
     _row(
       'm-3',
