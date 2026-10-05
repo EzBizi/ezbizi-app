@@ -326,7 +326,8 @@ class _VoicemailPaneState extends State<VoicemailPane> {
         ListColumn('Mailbox', flex: 5),
         ListColumn('Belongs to', flex: 3),
         ListColumn('Lines', flex: 2),
-        ListColumn('Written down', flex: 2),
+        // No Written down column, as on Numbers: stacked it was a bare "Yes"
+        // (Jose, 2026-10-05). The mailbox's own editor has it.
         ListColumn('', flex: 2, end: true),
       ],
       rowKey: (i) => ValueKey('vm:${shown[i].id}'),
@@ -357,7 +358,6 @@ class _VoicemailPaneState extends State<VoicemailPane> {
             ),
             Text(box.belongsTo, style: small),
             _lines(box),
-            Text(box.transcribe ? 'Yes' : 'No', style: small),
             if (_canEdit)
               Row(
                 mainAxisSize: MainAxisSize.min,

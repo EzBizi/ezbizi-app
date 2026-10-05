@@ -565,8 +565,10 @@ class _NumbersPaneState extends State<NumbersPane> {
         const ListColumn('Number', flex: 3),
         const ListColumn('What answers it', flex: 4),
         if (showCompany) const ListColumn('Company', flex: 3),
-        const ListColumn('Recorded', flex: 2),
-        const ListColumn('Written down', flex: 2),
+        // No Recorded or Written down columns: stacked on a narrow pane they
+        // were a bare "Yes Yes" with nothing saying what (Jose, 2026-10-05:
+        // "a random yes yes floating there without explanation ... get rid of
+        // it"). Both are on the line's own editor, and Recorded is a tile.
         const ListColumn('', flex: 3, end: true),
       ],
       rowKey: (i) => ValueKey('line:${shown[i].id}'),
@@ -590,8 +592,6 @@ class _NumbersPaneState extends State<NumbersPane> {
                 ? Text(_answeredBy(line))
                 : const StatusPill('Nobody answers', tone: Tone.bad),
             if (showCompany) Text(_company(line), style: small),
-            Text(line.record ? 'Yes' : 'No', style: small),
-            Text(line.transcribe ? 'Yes' : 'No', style: small),
             if (_canEdit)
               Row(
                 mainAxisSize: MainAxisSize.min,

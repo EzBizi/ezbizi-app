@@ -84,6 +84,10 @@ void main() {
 
     // The server's own words for what answers it.
     expect(find.text('Rings Dispatch'), findsNWidgets(2));
+    // No bare Yes / No for recording and writing down: stacked, they read as
+    // "Yes Yes" with nothing saying what (Jose, 2026-10-05: "get rid of it").
+    expect(find.text('Yes'), findsNothing);
+    expect(find.text('No'), findsNothing);
 
     await _pick(tester, 'lines', 'silent');
     expect(find.text('Old line'), findsOneWidget);
@@ -184,6 +188,8 @@ void main() {
     expect(_count(tester, 'voicemail-boxes', 'all'), '3');
     expect(_count(tester, 'voicemail-boxes', 'unused'), '1');
     expect(_count(tester, 'voicemail-boxes', 'transcribed'), '2');
+    expect(find.text('Yes'), findsNothing);
+    expect(find.text('No'), findsNothing);
 
     await _pick(tester, 'voicemail-boxes', 'unused');
     expect(find.text('Old line'), findsOneWidget);
