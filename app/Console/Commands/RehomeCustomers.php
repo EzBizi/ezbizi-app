@@ -9,6 +9,7 @@ use App\Models\WorkizClient;
 use App\Support\Customers\ReassignCustomerOwner;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Hand every customer a Workiz account knows to the franchise that account
@@ -21,6 +22,10 @@ use Illuminate\Console\Command;
  * 56 MA customers), and a zip prefix crosses state lines. `--from` narrows the
  * move to named current owners, so a branch nobody ruled on stays put.
  *
+ * `--state` exists because MA's Workiz account turned out to hold 64 clients,
+ * not the ~800 MA customers Nationwide's account brought in: a state is the
+ * only rule that reaches the rest. Pair it with `--from`, always.
+ *
  * Each move goes through ReassignCustomerOwner -- its own audit row and its
  * own `customer.owner_reassigned` event -- so check what listens to that event
  * before a real run: one per customer moved.
@@ -30,6 +35,7 @@ class RehomeCustomers extends Command
     protected $signature = 'ezbizi:customers-rehome
         {--to= : Franchise id that becomes the owner}
         {--via-workiz-connection= : Workiz connection id whose clients name the customers}
+        {--state=* : Also take customers whose state is one of these (e.g. MA)}
         {--from=* : Only move customers owned by these franchise ids}
         {--dry-run : Report the moves and change nothing}';
 
@@ -39,8 +45,9 @@ class RehomeCustomers extends Command
     {
         $to = $tenant->runWithoutTenant(fn () => Franchise::query()->find($this->option('to')));
         $connection = (string) $this->option('via-workiz-connection');
-        if ($to === null || $connection === '') {
-            $this->error('--to must be a franchise id and --via-workiz-connection is required.');
+        $states = array_map(fn ($s) => strtoupper(trim($s)), (array) $this->option('state'));
+        if ($to === null || ($connection === '' && $states === [])) {
+            $this->error('--to must be a franchise id, and --via-workiz-connection or --state names the customers.');
 
             return self::FAILURE;
         }
@@ -49,10 +56,13 @@ class RehomeCustomers extends Command
         $from = (array) $this->option('from');
         $organization = $tenant->runWithoutTenant(fn () => Organization::query()->find($to->organization_id));
 
-        return $tenant->run($organization, function () use ($to, $connection, $from, $dryRun, $reassign) {
+        return $tenant->run($organization, function () use ($to, $connection, $states, $from, $dryRun, $reassign) {
             $candidates = Customer::query()
                 ->with('owningFranchise:id,name')
-                ->whereIn('id', WorkizClient::query()->where('connection_id', $connection)->whereNotNull('customer_id')->select('customer_id'))
+                ->where(fn ($q) => $q
+                    ->when($connection !== '', fn ($w) => $w->orWhereIn('id', WorkizClient::query()
+                        ->where('connection_id', $connection)->whereNotNull('customer_id')->select('customer_id')))
+                    ->when($states !== [], fn ($w) => $w->orWhereIn(DB::raw('UPPER(TRIM(state))'), $states)))
                 ->where('owning_franchise_id', '!=', $to->getKey())
                 ->get();
 
@@ -67,7 +77,7 @@ class RehomeCustomers extends Command
 
             if (! $dryRun) {
                 foreach ($moving as $customer) {
-                    $reassign($customer, $to, 'Re-homed to the franchise of Workiz connection '.$connection);
+                    $reassign($customer, $to, 'Re-homed to '.$to->name.($connection !== '' ? ' via Workiz connection '.$connection : '').($states !== [] ? ' by state '.implode(',', $states) : ''));
                 }
             }
 

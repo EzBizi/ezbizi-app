@@ -98,6 +98,26 @@ class RehomeCustomersTest extends TestCase
         $this->assertSame($this->ct->id, $this->ownerOf($connecticut));
     }
 
+    public function test_state_reaches_customers_the_account_never_knew(): void
+    {
+        // MA's Workiz held 64 clients against ~800 MA customers: a state is
+        // the only rule that reaches the rest. Lower-cased, as an import can leave it.
+        $ma = $this->customer('MA house', $this->alpha['franchise'], null);
+        $ma->forceFill(['state' => 'ma'])->saveQuietly();
+        $ct = $this->customer('CT-state house', $this->alpha['franchise'], null);
+        $ct->forceFill(['state' => 'CT'])->saveQuietly();
+        $ctOwned = $this->customer('CT-owned MA house', $this->ct, null);
+        $ctOwned->forceFill(['state' => 'MA'])->saveQuietly();
+
+        $this->artisan('ezbizi:customers-rehome', [
+            '--to' => $this->ma->id, '--state' => ['MA'], '--from' => [$this->alpha['franchise']->id],
+        ])->assertSuccessful();
+
+        $this->assertSame($this->ma->id, $this->ownerOf($ma));
+        $this->assertSame($this->alpha['franchise']->id, $this->ownerOf($ct));
+        $this->assertSame($this->ct->id, $this->ownerOf($ctOwned));
+    }
+
     public function test_a_dry_run_changes_nothing(): void
     {
         $known = $this->customer('Known to MA', $this->alpha['franchise'], $this->maConnection);
