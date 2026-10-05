@@ -108,6 +108,22 @@ class SchedulingBoardController extends Controller
             ];
         }
 
+        // A branch switched to Workiz v2 retires each v1 team row and records
+        // the USR- id that took over (`payload.succeeded_by`). A job whose
+        // payload still names the old id is the same person: follow it, or
+        // the board draws them twice.
+        $successor = [];
+        foreach (DB::table('workiz_team_members')
+            ->where('organization_id', $organization)
+            ->whereIn('franchise_id', $franchiseIds)
+            ->where('is_active', false)
+            ->get(['franchise_id', 'remote_id', 'payload']) as $retired) {
+            $next = json_decode((string) $retired->payload, true)['succeeded_by'] ?? null;
+            if (is_string($next) && $next !== '') {
+                $successor[$retired->franchise_id.'|'.$retired->remote_id] = $next;
+            }
+        }
+
         foreach ($jobs as $job) {
             if (in_array(mb_strtolower(trim((string) $job->status)), Openings::FREE_STATUSES, true)) {
                 continue;
@@ -134,10 +150,13 @@ class SchedulingBoardController extends Controller
                 'franchise_name' => $franchises[$job->franchise_id] ?? null,
             ];
 
-            $team = array_values(array_filter(
-                is_array($payload['Team'] ?? null) ? $payload['Team'] : [],
-                fn ($t) => is_array($t) && isset($t['id']),
-            ));
+            $team = array_map(
+                fn (array $t) => ['id' => $successor[$job->franchise_id.'|'.$t['id']] ?? $t['id']] + $t,
+                array_values(array_filter(
+                    is_array($payload['Team'] ?? null) ? $payload['Team'] : [],
+                    fn ($t) => is_array($t) && isset($t['id']),
+                )),
+            );
 
             // Who is on it, by mirror row where the mirror has them — the key
             // an Unassign needs.
