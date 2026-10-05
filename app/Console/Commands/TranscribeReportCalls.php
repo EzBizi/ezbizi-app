@@ -46,6 +46,12 @@ class TranscribeReportCalls extends Command
 
     public function handle(RingCentralCallLog $calls, CallTranscripts $whisper, TenantContext $tenant): int
     {
+        if (! config('experimental_reports.transcribe')) {
+            $this->info('Call report transcription is switched off (REPORT_CALL_TRANSCRIPTS).');
+
+            return self::SUCCESS;
+        }
+
         if (! $calls->configured()) {
             $this->info('RingCentral is not configured.');
 

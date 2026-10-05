@@ -30,7 +30,7 @@ class TranscribeReportCallsTest extends TestCase
     public function test_a_call_already_transcribed_as_a_lead_reuses_those_words(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-05 15:00', 'America/New_York'));
-        config(['app.timezone' => 'America/New_York', 'services.whisper.python' => '']);
+        config(['app.timezone' => 'America/New_York', 'services.whisper.python' => '', 'experimental_reports.transcribe' => true]);
 
         $tenant = $this->provisionTenant('Alpha');
         $this->leadCall($tenant, '+1 (212) 555-1212', '2026-10-05T17:01:30Z', 'Hi, I need a chimney sweep.');
@@ -53,6 +53,19 @@ class TranscribeReportCallsTest extends TestCase
         $this->assertNull($rows['rc-2']->transcript);
 
         $this->assertFalse($rows->has('rc-3'), 'only the New and Existing client queues are transcribed');
+    }
+
+    /** Off by default: nothing is read or written until it is switched on. */
+    public function test_it_does_nothing_while_switched_off(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->ringCentral([$this->rcCall('rc-1', '+12125551212', '2026-10-05T17:00:00Z', 'A1 - New Client')]);
+
+        $this->artisan('ezbizi:transcribe-report-calls', ['--organization' => $tenant['org']->id])
+            ->assertSuccessful();
+
+        $this->assertSame(0, CallReportTranscript::withoutGlobalScopes()->count());
+        Http::assertNothingSent();
     }
 
     public function test_the_report_carries_each_calls_words(): void

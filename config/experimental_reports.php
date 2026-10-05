@@ -25,6 +25,12 @@ return [
         'jwt' => env('RINGCENTRAL_JWT'),
     ],
 
+    // Transcribing the call report's calls (ezbizi:transcribe-report-calls).
+    // OFF until the privacy page says EzBizi transcribes calls - a published
+    // privacy claim must be true before the processing it describes starts
+    // (deploy desk, 2026-10-06). Turn on with REPORT_CALL_TRANSCRIPTS=true.
+    'transcribe' => (bool) env('REPORT_CALL_TRANSCRIPTS', false),
+
     /*
      * ── WORKIZ IS NOT HERE ANY MORE, AND THAT IS THE POINT ──────────
      *
