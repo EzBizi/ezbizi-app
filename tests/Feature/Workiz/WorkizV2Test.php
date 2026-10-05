@@ -369,4 +369,73 @@ class WorkizV2Test extends TestCase
         $this->assertFalse(Cache::lock(ProjectWorkizRecords::LOCK, 1)->get() === false, 'the lock is let go');
         @unlink($file);
     }
+
+    /**
+     * Connecticut, 2026-10-05: two "Adir Shemesh" in Workiz with one email, one
+     * active, and two v1 rows the same. The first choice was a tie and left his
+     * active v1 row beside the active v2 one: twice on the board, two seats.
+     */
+    public function test_two_people_by_one_email_still_end_as_one_active_row(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $user = $this->inTenant($tenant['org'], fn () => User::factory()->create(['organization_id' => $tenant['org']->id]));
+        $this->inTenant($tenant['org'], function () use ($connection, $user) {
+            foreach ([['437573', true, $user->id], ['400001', false, null]] as [$id, $active, $linked]) {
+                WorkizTeamMember::create([
+                    'franchise_id' => $connection->scope_id, 'remote_id' => $id, 'name' => 'Adir Shemesh', 'email' => 'adir@example.test',
+                    'is_active' => $active, 'is_field_tech' => true, 'user_id' => $linked, 'payload' => [], 'synced_at' => now(),
+                ]);
+            }
+        });
+        $person = fn (string $id, bool $active) => ['id' => $id, 'name' => 'Adir Shemesh', 'emailAddress' => 'adir@example.test', 'fieldTech' => true, 'active' => $active];
+        Http::fake(['api.workiz.com/crm/api/v2/users*' => Http::response($this->page([$person('USR-old', false), $person('USR-live', true)]))]);
+
+        $this->artisan('ezbizi:sync-workiz-team')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($user) {
+            $this->assertSame(0, WorkizTeamMember::query()->where('remote_id', 'not like', 'USR-%')->where('is_active', true)->count(), 'no v1 row left active');
+            $this->assertSame('USR-live', WorkizTeamMember::query()->where('remote_id', '437573')->sole()->payload['succeeded_by']);
+            $this->assertSame($user->id, WorkizTeamMember::query()->where('remote_id', 'USR-live')->value('user_id'), 'the live row has his link');
+        });
+    }
+
+    /** Rows v1 landed carry no JOB- id, and v2 reads a job by nothing else: a refresh lands each once through v2. */
+    public function test_a_refresh_backfill_gives_rows_v1_landed_their_v2_id(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => 'NYCZ7W',
+            'status' => 'Submitted', 'payload' => ['UUID' => 'NYCZ7W'], 'synced_at' => now()->subDay(),
+        ]));
+        Http::fake(['api.workiz.com/crm/api/v2/jobs*' => Http::response($this->page([$this->v2Job(['status' => 'Done'])]))]);
+
+        $this->artisan('ezbizi:backfill-workiz', ['--refresh' => true, '--restart' => true, '--pause' => 0])->assertSuccessful();
+
+        $row = $this->inTenant($tenant['org'], fn () => WorkizJob::query()->sole());
+        $this->assertSame('JOB-8ApvxXebm23oQV4E', $row->payload['v2']['id']);
+        $this->assertSame('Done', $row->status, "and Workiz's status today");
+    }
+
+    /** v2 answers 500 for any page holding one New Jersey job: the page is read around it, and paging goes on. */
+    public function test_a_page_workiz_cannot_list_is_read_around_its_bad_job(): void
+    {
+        [, $connection] = $this->branch();
+        $job = fn (int $n) => $this->v2Job(['uuid' => sprintf('J%05d', $n), 'id' => 'JOB-'.$n]);
+        Http::fake(function (Request $r) use ($job) {
+            [$page, $size] = [(int) $r['page'], (int) $r['pageSize']];
+            $first = ($page - 1) * $size + 1;
+            $items = range($first, min($first + $size - 1, 150));
+            if (in_array(57, $items, true) && $size > 1 || ($size === 1 && $page === 57)) {
+                return Http::response(['code' => 'INTERNAL_SERVER_ERROR', 'status' => 500], 500);
+            }
+
+            return Http::response($this->page(array_map($job, $first > 150 ? [] : $items), $first + $size - 1 < 150));
+        });
+
+        $read = app(WorkizJobs::class)->raw($connection, 1000, '2023-01-01');
+
+        $this->assertNull($read['failed']);
+        $this->assertCount(149, $read['jobs'], 'all but the one Workiz cannot list, across both pages');
+        $this->assertNotContains('J00057', array_column($read['jobs'], 'UUID'));
+    }
 }

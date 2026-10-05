@@ -13,6 +13,7 @@ use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -408,7 +409,7 @@ final class WorkizJobs
 
             // A short page is the last page. `$limit` bounds the loop against an
             // API that ignored the offset and answered the same page for ever.
-            if (count($read['jobs']) < self::PAGE) {
+            if (count($read['jobs']) + ($read['skipped'] ?? 0) < self::PAGE) {
                 break;
             }
         }
@@ -441,6 +442,10 @@ final class WorkizJobs
         if (WorkizV2::uses($connection)) {
             $read = WorkizV2::send($connection, 'GET', '/jobs', self::v2Page($since, $page), $timeout);
 
+            if ($read['status'] >= 500) {
+                return $this->v2Around($connection, $since, $page, $timeout);
+            }
+
             if ($read['refused'] !== null) {
                 return ['jobs' => [], 'failed' => $read['refused'] === self::UNANSWERED ? self::UNANSWERED : 'Workiz refused the job list ('.$read['refused'].').'];
             }
@@ -471,6 +476,60 @@ final class WorkizJobs
         }
 
         return ['jobs' => array_values(array_filter($response->json('data') ?? [], 'is_array')), 'failed' => null];
+    }
+
+    /**
+     * A v2 page Workiz answers 500 for, read in tens and then one by one, so
+     * one bad job does not hide the 99 beside it. v2 answers 500 for any list
+     * page holding one New Jersey job (measured 2026-10-05). The jobs it
+     * cannot read are skipped and logged by position; the rest come back.
+     *
+     * @return array{jobs: list<array<string, mixed>>, failed: ?string}
+     */
+    private function v2Around(SocialConnection $connection, string $since, int $page, int $timeout): array
+    {
+        $jobs = [];
+        $skipped = [];
+        $read = fn (int $index, int $size) => WorkizV2::send($connection, 'GET', '/jobs',
+            ['page' => $index, 'pageSize' => $size] + self::v2Page($since, 0), $timeout);
+
+        for ($ten = $page * 10 + 1; $ten <= ($page + 1) * 10; $ten++) {
+            $tens = $read($ten, 10);
+
+            if ($tens['refused'] === null) {
+                $rows = array_values(array_filter($tens['data']['data'] ?? [], 'is_array'));
+                array_push($jobs, ...array_map([WorkizV2::class, 'job'], $rows));
+
+                if (count($rows) < 10) {
+                    break;
+                }
+
+                continue;
+            }
+
+            if ($tens['status'] < 500) {
+                return ['jobs' => $jobs, 'failed' => 'Workiz refused the job list ('.$tens['refused'].').'];
+            }
+
+            for ($one = ($ten - 1) * 10 + 1; $one <= $ten * 10; $one++) {
+                $single = $read($one, 1);
+
+                if ($single['refused'] !== null) {
+                    $skipped[] = $one;
+
+                    continue;
+                }
+
+                array_push($jobs, ...array_map([WorkizV2::class, 'job'], array_values(array_filter($single['data']['data'] ?? [], 'is_array'))));
+            }
+        }
+
+        if ($skipped !== []) {
+            Log::warning('Workiz v2: '.$connection->display_name.': skipped job(s) at position '.implode(', ', $skipped).' that Workiz cannot list.');
+        }
+
+        // `skipped` keeps "a short page is the last page" true for the caller.
+        return ['jobs' => $jobs, 'failed' => null, 'skipped' => count($skipped)];
     }
 
     /**

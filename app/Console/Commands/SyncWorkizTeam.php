@@ -10,7 +10,9 @@ use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizTeam;
 use App\Support\Workiz\WorkizTeamAttributes;
+use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 
 /**
  * Mirror every connected branch's Workiz team, and propose EzBizi users for
@@ -135,6 +137,10 @@ class SyncWorkizTeam extends Command
                     $mirrored++;
                 }
 
+                if (WorkizV2::uses($connection)) {
+                    $this->settle($connection->scope_id);
+                }
+
                 return [$mirrored, $proposed];
             });
 
@@ -166,27 +172,79 @@ class SyncWorkizTeam extends Command
      */
     private function succeed(WorkizTeamMember $row, array $attributes): void
     {
-        $v1 = WorkizTeamMember::query()
-            ->where('franchise_id', $row->franchise_id)
-            ->where('remote_id', 'not like', 'USR-%')
-            ->get();
+        $old = self::one(
+            WorkizTeamMember::query()->where('franchise_id', $row->franchise_id)->where('remote_id', 'not like', 'USR-%')->get()
+                ->filter(fn ($m) => ! isset($m->payload['succeeded_by'])),
+            $attributes['email'],
+            (string) $attributes['name'],
+            (bool) $attributes['is_active'],
+        );
 
-        $old = $v1->filter(fn ($m) => $attributes['email'] !== null && mb_strtolower((string) $m->email) === $attributes['email']);
-        $old = $old->count() === 1 ? $old : $v1->filter(fn ($m) => mb_strtolower(trim((string) $m->name)) === mb_strtolower(trim((string) $attributes['name'])));
-
-        if ($old->count() !== 1) {
+        if ($old === null) {
             return;
         }
 
-        $old = $old->first();
-        $row->forceFill([
-            'user_id' => $old->user_id,
-            'link_confirmed_at' => $old->link_confirmed_at,
-            'auto_matched' => $old->auto_matched,
-        ]);
+        if ($row->user_id === null && $row->link_confirmed_at === null) {
+            $row->forceFill([
+                'user_id' => $old->user_id,
+                'link_confirmed_at' => $old->link_confirmed_at,
+                'auto_matched' => $old->auto_matched,
+            ]);
+        }
+
         // `succeeded_by` is how the board takes an old payload's v1 id to the
         // person's live row (Scheduling, d458d49f).
         $old->forceFill(['is_active' => false, 'payload' => ['succeeded_by' => $row->remote_id] + (array) $old->payload])->save();
+    }
+
+    /**
+     * A v1 row still active in a v2 branch, after every member has landed:
+     * one succession could not choose. Connecticut, 2026-10-05: Workiz holds
+     * two "Adir Shemesh" users with one email, one active, and so did the v1
+     * rows; the first choice was a tie and his active v1 row stayed beside the
+     * active v2 one, a person twice on the board and two seats.
+     */
+    private function settle(string $franchiseId): void
+    {
+        $v2 = WorkizTeamMember::query()->where('franchise_id', $franchiseId)->where('remote_id', 'like', 'USR-%')->get();
+
+        foreach (WorkizTeamMember::query()->where('franchise_id', $franchiseId)->where('remote_id', 'not like', 'USR-%')
+            ->where('is_active', true)->get() as $old) {
+            if (isset($old->payload['succeeded_by'])) {
+                continue;
+            }
+
+            $new = self::one($v2, $old->email === null ? null : mb_strtolower((string) $old->email), (string) $old->name, true);
+
+            if ($new === null) {
+                continue;
+            }
+
+            if ($new->user_id === null && $new->link_confirmed_at === null && $old->user_id !== null) {
+                $new->forceFill(['user_id' => $old->user_id, 'link_confirmed_at' => $old->link_confirmed_at, 'auto_matched' => $old->auto_matched])->save();
+            }
+
+            $old->forceFill(['is_active' => false, 'payload' => ['succeeded_by' => $new->remote_id] + (array) $old->payload])->save();
+        }
+    }
+
+    /**
+     * The one row among $rows that is this person: by email, else by name;
+     * when two answer, the one whose active flag matches. Null unless exactly
+     * one does.
+     *
+     * @param  Collection<int, WorkizTeamMember>  $rows
+     */
+    private static function one($rows, ?string $email, string $name, bool $active): ?WorkizTeamMember
+    {
+        $match = $rows->filter(fn ($m) => $email !== null && mb_strtolower((string) $m->email) === $email);
+        $match = $match->isEmpty() ? $rows->filter(fn ($m) => mb_strtolower(trim((string) $m->name)) === mb_strtolower(trim($name))) : $match;
+
+        if ($match->count() > 1) {
+            $match = $match->filter(fn ($m) => (bool) $m->is_active === $active);
+        }
+
+        return $match->count() === 1 ? $match->first() : null;
     }
 
     private function nameOf(SocialConnection $connection): string

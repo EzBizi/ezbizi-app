@@ -48,6 +48,7 @@ class BackfillWorkizJobs extends Command
         {--pages=100 : Most pages to read in this run, across every branch}
         {--pause=10 : Seconds between pages, leaving the minute sync its quota}
         {--restart : Forget the saved progress and start every branch from its first page}
+        {--refresh : Land every job read, not only the ones the mirror lacks}
         {--dry-run : Read and count, landing nothing; its own progress, so the real run is not moved}';
 
     protected $description = 'Mirror Workiz jobs from before the mirror began, paced and resumable';
@@ -131,7 +132,7 @@ class BackfillWorkizJobs extends Command
                 $tally = $tenant->run($organization, fn () => $this->tally($connection, $page['jobs'], $at['clients'], $dry));
                 $at = ['jobs' => $at['jobs'] + count($page['jobs']), 'new' => $at['new'] + $tally['new'],
                     'attach' => $at['attach'] + $tally['attach'], 'clients' => $tally['clients'],
-                    'done' => count($page['jobs']) < WorkizJobs::PAGE, 'page' => $at['page'] + 1];
+                    'done' => count($page['jobs']) + ($page['skipped'] ?? 0) < WorkizJobs::PAGE, 'page' => $at['page'] + 1];
 
                 $progress['branches'][$connection->scope_id] = $at;
                 Cache::forever($key, $progress);
@@ -198,6 +199,16 @@ class BackfillWorkizJobs extends Command
             }
 
             if (! $dry) {
+                WorkizJob::land($connection, $payload);
+            }
+        }
+
+        // A branch moved to v2 has rows landed through v1, which v2 can only
+        // re-read by a JOB- id they do not carry (2026-10-05). Landing every
+        // job once through v2 gives each its id, and its status as Workiz
+        // holds it today.
+        if ($this->option('refresh') && ! $dry) {
+            foreach (array_filter($jobs, fn (array $job) => $mirrored->has((string) ($job['UUID'] ?? ''))) as $payload) {
                 WorkizJob::land($connection, $payload);
             }
         }

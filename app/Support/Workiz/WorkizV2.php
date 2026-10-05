@@ -139,25 +139,25 @@ final class WorkizV2
      * can tell "no such job" from "could not ask".
      *
      * @param  array<string, mixed>  $data
-     * @return array{data: mixed, refused: ?string, missing: bool}
+     * @return array{data: mixed, refused: ?string, missing: bool, status: int}
      */
     public static function send(SocialConnection $connection, string $method, string $path, array $data = [], int $timeout = 30): array
     {
         $key = (string) ($connection->credentials['api_token'] ?? '');
 
         if ($key === '') {
-            return ['data' => null, 'refused' => 'This branch has no stored Workiz key.', 'missing' => false];
+            return ['data' => null, 'refused' => 'This branch has no stored Workiz key.', 'missing' => false, 'status' => 0];
         }
 
         try {
             // GET sends $data as the query, the others as a JSON body.
             $response = self::http($key, $timeout)->{strtolower($method)}(self::BASE.$path, $data);
         } catch (ConnectionException) {
-            return ['data' => null, 'refused' => WorkizJobs::UNANSWERED, 'missing' => false];
+            return ['data' => null, 'refused' => WorkizJobs::UNANSWERED, 'missing' => false, 'status' => 0];
         }
 
         if ($response->successful()) {
-            return ['data' => $response->json(), 'refused' => null, 'missing' => false];
+            return ['data' => $response->json(), 'refused' => null, 'missing' => false, 'status' => $response->status()];
         }
 
         // v2 refuses as {"message", "error", "statusCode"}, sometimes with a
@@ -165,7 +165,7 @@ final class WorkizV2
         $message = $response->json('message');
         $said = is_array($message) ? implode('; ', array_map('strval', $message)) : (string) ($message ?: 'Workiz refused it ('.$response->status().').');
 
-        return ['data' => null, 'refused' => $said, 'missing' => $response->status() === 404];
+        return ['data' => null, 'refused' => $said, 'missing' => $response->status() === 404, 'status' => $response->status()];
     }
 
     /**
