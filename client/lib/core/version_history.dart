@@ -19,8 +19,10 @@ class VersionHistory {
       items: [
         'Experimental call report: the Existing and Not booked lists show what was said on each recorded call, transcribed on EzBizi\'s own server or taken from the Local Services transcript of the same call.',
         'Settings › Integrations › Workiz: connecting a branch asks for the API secret as well as the token.',
-        'Workiz: a client EzBizi already has (same phone, name and zip) is attached to that customer instead of becoming a second one, and a job deleted in Workiz leaves EzBizi too, unless someone changed it in EzBizi or something refers to it.',
-        'RingCentral reports sign in once an hour instead of once per request, so long periods no longer hit RingCentral\'s sign-in limit.',
+        'Workiz: a client EzBizi already has (same phone, name and zip) is attached to that customer instead of becoming a second one.',
+        'RingCentral reports sign in once an hour and wait out RingCentral\'s limits instead of failing; a busy RingCentral is no longer reported as wrong credentials.',
+        'Memberships: a visit a member books from the reminder is created in their branch\'s Workiz too, under the plan\'s Workiz job type, and retried a minute later if the Workiz sync is busy. If Workiz refuses it, a trigger tells staff to enter it by hand.',
+        'The Members list shows each member\'s phone, and their email when there is one; search finds them by either.',
       ],
     ),
     VersionRelease(
