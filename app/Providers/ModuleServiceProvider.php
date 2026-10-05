@@ -1029,7 +1029,21 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'membership.renewal_due',
                         label: 'Renewal due in a month',
                         description: 'Once, a month before a membership year ends: the time to '
-                            .'remind the customer to book their next yearly visit.',
+                            .'remind the customer to book their next yearly visit. Put {{ confirm_visit_url }} '
+                            .'in the message: it lets them pick the day, and books the job.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'membership.visit_confirmed',
+                        label: 'Next visit confirmed',
+                        description: 'The customer picked a date from the reminder\'s {{ confirm_visit_url }} '
+                            .'and a job was booked for it ("job_number", "visit_on"). Not in Workiz: '
+                            .'a dispatcher who works there has to enter it.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'membership.visit_unconfirmed',
+                        label: 'No visit date two weeks after the reminder',
+                        description: 'Once, when the customer has not picked a date 14 days after the '
+                            .'renewal reminder: the time for staff to call them.',
                     ),
                 ],
             ),
