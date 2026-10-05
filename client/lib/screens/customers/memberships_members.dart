@@ -872,7 +872,11 @@ class _AddMemberState extends State<_AddMember> {
           border: const OutlineInputBorder(),
           options: [
             for (final plan in widget.plans)
-              SearchOption(value: plan.id, label: plan.label),
+              SearchOption(
+                value: plan.id,
+                label: plan.label,
+                detail: plan.description,
+              ),
           ],
           onChanged: (id) => setState(() => _planId = id),
         ),
@@ -1113,6 +1117,7 @@ class MembershipPlan {
     required this.currency,
     required this.billing,
     required this.active,
+    this.description,
   });
 
   final String id;
@@ -1121,6 +1126,10 @@ class MembershipPlan {
   final String currency;
   final String billing;
   final bool active;
+
+  /// What a visit includes, in a line; null on a plan without one, or from a
+  /// server from before plans had one.
+  final String? description;
 
   /// The price is the YEAR's, however it is billed: the server charges a
   /// twelfth of it for every month begun on a monthly plan (Membership's
@@ -1146,6 +1155,9 @@ class MembershipPlan {
           currency: '${row['currency'] ?? 'USD'}',
           billing: '${row['billing'] ?? 'yearly'}',
           active: row['is_active'] != false,
+          description: row['description'] is String
+              ? row['description'] as String
+              : null,
         ),
     ];
   }

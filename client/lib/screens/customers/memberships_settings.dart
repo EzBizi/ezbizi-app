@@ -45,6 +45,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
   String? _formError;
   final _name = TextEditingController();
   final _price = TextEditingController();
+  final _description = TextEditingController();
   String _billing = 'yearly';
 
   bool get _canEdit => widget.session.me?.can('memberships.edit') ?? false;
@@ -58,6 +59,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
   @override
   void dispose() {
     _name.dispose();
+    _description.dispose();
     _price.dispose();
     super.dispose();
   }
@@ -103,6 +105,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
         ? ''
         : (plan.priceMinor / 100).toStringAsFixed(2);
     _billing = plan?.billing ?? 'yearly';
+    _description.text = plan?.description ?? '';
   });
 
   Future<void> _save() async {
@@ -123,10 +126,15 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
       _formError = null;
     });
 
+    // `description` is what the join page shows under the plan's name. A
+    // server from before it drops the key (planInput validates), so it is
+    // safe to send to either.
+    final description = _description.text.trim();
     final body = {
       'name': _name.text.trim(),
       'price_minor': price,
       'billing': _billing,
+      'description': description.isEmpty ? null : description,
     };
     final response = _editing == 'new'
         ? await widget.api.post('/memberships/plans', {
@@ -232,11 +240,21 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
             rows: [
               for (final plan in _plans)
                 [
-                  Text(
-                    plan.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plan.name,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if ((plan.description ?? '').isNotEmpty)
+                        Text(
+                          plan.description!,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                    ],
                   ),
                   Text(plan.price),
                   Text(plan.billing == 'monthly' ? 'Monthly' : 'Yearly'),
@@ -339,6 +357,19 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('plan-description'),
+              controller: _description,
+              maxLength: 255,
+              decoration: const InputDecoration(
+                labelText: 'What it includes',
+                hintText: 'One sweep and inspection a year',
+                helperText:
+                    'Shown under the plan on the page a customer joins from.',
+                border: OutlineInputBorder(),
+              ),
             ),
             if (_formError != null) ...[
               const SizedBox(height: 12),

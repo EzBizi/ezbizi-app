@@ -304,6 +304,10 @@ void main() {
           'Gutter care',
         );
         await tester.enterText(find.byKey(const Key('plan-price')), '19.99');
+        await tester.enterText(
+          find.byKey(const Key('plan-description')),
+          'Gutters cleared twice a year',
+        );
         await tester.tap(find.byKey(const Key('plan-save')));
         await tester.pumpAndSettle();
 
@@ -312,8 +316,12 @@ void main() {
           'name': 'Gutter care',
           'price_minor': 1999,
           'billing': 'yearly',
+          'description': 'Gutters cleared twice a year',
           'is_active': true,
         });
+
+        // What a plan includes is on its row, as the join page shows it.
+        expect(find.text('One sweep and inspection a year'), findsOneWidget);
 
         await tester.tap(find.byKey(const ValueKey('plan:p-1')));
         await tester.pumpAndSettle();
@@ -322,10 +330,12 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(server.patches.single.$1, '/api/v1/memberships/plans/p-1');
+        // The plan's description comes back unchanged with the edit.
         expect(server.patches.single.$2, {
           'name': 'Yearly sweep',
           'price_minor': 20900,
           'billing': 'yearly',
+          'description': 'One sweep and inspection a year',
         });
       },
     );
@@ -473,6 +483,7 @@ class _Server {
             'currency': 'USD',
             'billing': 'yearly',
             'is_active': true,
+            'description': 'One sweep and inspection a year',
           },
           {
             'id': 'p-2',
