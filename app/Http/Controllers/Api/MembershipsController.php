@@ -169,6 +169,8 @@ class MembershipsController extends Controller
             'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price_minor' => [$required, 'integer', 'min:0'],
             'billing'     => [$required, Rule::in(MembershipPlan::BILLINGS)],
+            // Jose: the Workiz job type a confirmed visit carries, per plan.
+            'workiz_job_type' => ['sometimes', 'nullable', 'string', 'max:120'],
             'is_active'   => ['sometimes', 'boolean'],
         ]);
     }
