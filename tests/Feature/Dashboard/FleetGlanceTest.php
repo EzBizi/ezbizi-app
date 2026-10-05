@@ -253,4 +253,64 @@ class FleetGlanceTest extends TestCase
         $this->assertArrayNotHasKey('revenue', $payload['data']);
         $this->assertArrayNotHasKey('amount_minor', $payload['data']);
     }
+
+    /**
+     * Attention: overdue is bad and comes first, inside thirty days is
+     * caution, at most three rows. Two overdue vans — one by date, one by
+     * mileage — so a broken branch changes the number. The fourth row
+     * (insurance soon) is real and must be dropped by the cap.
+     */
+    public function test_attention_puts_overdue_first_and_keeps_three(): void
+    {
+        $this->inTenant(function () {
+            $van = fn (array $attributes = []) => Vehicle::factory()->create([
+                'company_id' => $this->alpha['company']->id,
+                'franchise_id' => $this->alpha['franchise']->id,
+                'status' => VehicleStatus::Active,
+                ...$attributes,
+            ]);
+
+            $van(['next_service_on' => now()->subDay()->toDateString()]);
+            $van(['odometer_miles' => 50000, 'next_service_miles' => 49000]);
+            $van(['next_service_on' => now()->addDays(10)->toDateString()]);
+
+            VehicleInsurancePolicy::factory()->create([
+                'vehicle_id' => $van()->id,
+                'expires_on' => now()->subDay()->toDateString(),
+            ]);
+            VehicleInsurancePolicy::factory()->create([
+                'vehicle_id' => $van()->id,
+                'expires_on' => now()->addDays(10)->toDateString(),
+            ]);
+        });
+
+        $data = app(FleetGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '2 vehicles are overdue for service.'],
+            ['tone' => 'bad', 'text' => '1 vehicle has expired insurance.'],
+            ['tone' => 'caution', 'text' => '1 vehicle needs service within 30 days.'],
+        ], $data['attention']);
+
+        // The figures still count every due vehicle, overdue included, so the
+        // rows are a split of them and not a second opinion.
+        $figures = collect($data['figures'])->keyBy('key');
+        $this->assertSame(3, $figures['service_due']['value']);
+        $this->assertSame(2, $figures['insurance_due']['value']);
+    }
+
+    public function test_no_attention_when_nothing_is_due(): void
+    {
+        // Control: a vehicle exists, so this is the non-empty branch.
+        $this->taggedVehicle($this->alpha['franchise']);
+
+        $data = app(FleetGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertFalse($data['empty']);
+        $this->assertArrayNotHasKey('attention', $data);
+    }
 }

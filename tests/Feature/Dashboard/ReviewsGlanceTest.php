@@ -261,7 +261,7 @@ class ReviewsGlanceTest extends TestCase
         $this->assertNotEmpty($data['sentences']);
 
         $this->assertSame(
-            ['empty', 'series', 'slices', 'sentences', 'figures', 'notes'],
+            ['empty', 'series', 'slices', 'sentences', 'figures', 'attention', 'notes'],
             array_keys($data),
             'the Reviews box draws a line, its slices, its sentences and its figures; any other '
             .'key is a query on every dashboard load for a figure nobody sees, and '

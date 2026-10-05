@@ -112,6 +112,31 @@ final class AutomationsGlance extends DescribedGlance
                 GlancePayload::figure('stopped', 'stopped', $off->count()),
             ];
 
+            // WHAT NEEDS SOMEBODY, counts only, at most three. Bad: a rule that
+            // switched itself off, or events the engine has not picked up for
+            // a quarter of an hour (the worker is behind or stopped). Caution:
+            // a live rule that has failed enough times in a row to be close to
+            // switching itself off.
+            $stuck = AutomationEvent::query()->whereNull('delivered_at')
+                ->where('available_at', '<', now()->subMinutes(15))->count();
+            $nearly = Automation::query()->where('is_active', true)->whereNull('disabled_at')
+                ->where('consecutive_failures', '>=', Automation::FAILURE_LIMIT - 2)->count();
+
+            $attention = array_values(array_filter([
+                $off->isEmpty() ? null : GlancePayload::attention('bad', $off->count() === 1
+                    ? '1 automation stopped itself'
+                    : "{$off->count()} automations stopped themselves"),
+                $stuck === 0 ? null : GlancePayload::attention('bad', $stuck === 1
+                    ? '1 event waiting over 15 minutes'
+                    : "{$stuck} events waiting over 15 minutes"),
+                $nearly === 0 ? null : GlancePayload::attention('caution', $nearly === 1
+                    ? '1 automation close to stopping itself'
+                    : "{$nearly} automations close to stopping themselves"),
+            ]));
+            if ($attention !== []) {
+                $data['attention'] = $attention;
+            }
+
             return new GlancePayload(
                 key: $this->key(),
                 label: $this->label(),

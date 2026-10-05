@@ -195,6 +195,41 @@ class AutomationsGlanceTest extends TestCase
         ], $data['figures']);
     }
 
+    /**
+     * What needs somebody, by count. Each row has its near miss beside it: an
+     * event waiting one minute (normal), and a rule two failures in (not yet
+     * close to the five that switch it off).
+     */
+    public function test_attention_names_what_needs_somebody_and_nothing_else(): void
+    {
+        $this->runWithStatus(AutomationRun::SUCCEEDED);
+        $this->stoppedRule('Chase completions');
+
+        $this->inTenant(function () {
+            $org = $this->alpha['org']->id;
+            foreach ([20, 1] as $minutes) {
+                (new AutomationEvent)->forceFill(['organization_id' => $org, 'event_key' => 'job.created',
+                    'payload' => [], 'occurred_at' => now()->subMinutes($minutes),
+                    'available_at' => now()->subMinutes($minutes)])->save();
+            }
+            foreach ([3, 2] as $failures) {
+                Automation::create(['organization_id' => $org, 'name' => "Failing {$failures}",
+                    'trigger_key' => 'job.created', 'is_active' => true])
+                    ->forceFill(['consecutive_failures' => $failures])->save();
+            }
+        });
+
+        $data = app(AutomationsGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 automation stopped itself'],
+            ['tone' => 'bad', 'text' => '1 event waiting over 15 minutes'],
+            ['tone' => 'caution', 'text' => '1 automation close to stopping itself'],
+        ], $data['attention']);
+    }
+
     public function test_idle_is_a_sentence_not_zero_over_zero(): void
     {
         $payload = app(AutomationsGlance::class)->resolve(

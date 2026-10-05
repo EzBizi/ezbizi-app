@@ -78,6 +78,12 @@ final class ReviewsGlance extends DescribedGlance
                 ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))
                 ->count();
 
+            // The ones that cost most left unanswered: 1 to 3 stars.
+            $lowUnanswered = (int) $inReach(Review::query())
+                ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))
+                ->where('rating', '<=', 3)
+                ->count();
+
             // Only rated reviews count toward an average. Google occasionally
             // returns one with no stars, and folding those in as zero would
             // libel the business by arithmetic.
@@ -146,6 +152,9 @@ final class ReviewsGlance extends DescribedGlance
                     GlancePayload::figure('arrived', 'arrived '.$period->phrase(), $inPeriod, $this->arrivedIn($period->previous(), $inReach)),
                     GlancePayload::figure('unanswered', 'unanswered', $unanswered),
                 ],
+                ...($lowUnanswered === 0 ? [] : ['attention' => [GlancePayload::attention('bad', $lowUnanswered === 1
+                    ? '1 review of 1 to 3 stars unanswered'
+                    : "{$lowUnanswered} reviews of 1 to 3 stars unanswered")]]),
                 /*
                  * `organization_total` was here and is gone. Dashboard's rule,
                  * 2026-09-15: a glance sends what its box draws, and nothing

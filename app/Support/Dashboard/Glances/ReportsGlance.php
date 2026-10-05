@@ -4,6 +4,7 @@ namespace App\Support\Dashboard\Glances;
 
 use App\Models\SavedReport;
 use App\Models\User;
+use App\Support\Automations\ReportSenders;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
@@ -32,7 +33,7 @@ final class ReportsGlance extends DescribedGlance
         return app(TenantContext::class)->run($user->organization, function () use ($user) {
             $view = ViewScope::forUser($user);
 
-            $total = SavedReport::query()
+            $ids = SavedReport::query()
                 ->unless($view->isOrganization(), function ($query) use ($view) {
                     $companyIds = $view->companyIds();
 
@@ -40,7 +41,10 @@ final class ReportsGlance extends DescribedGlance
                         $query->whereIn('company_id', $companyIds);
                     }
                 })
-                ->count();
+                ->pluck('id')
+                ->all();
+
+            $total = count($ids);
 
             if ($total === 0) {
                 return new GlancePayload(
@@ -77,8 +81,47 @@ final class ReportsGlance extends DescribedGlance
                     'figures' => [
                         GlancePayload::figure('saved', 'reports saved', $total),
                     ],
+                    ...$this->attention($ids),
                 ],
             );
         });
+    }
+
+    /**
+     * The one thing in Reports that needs somebody: a scheduled report that
+     * STOPPED. An automation switches itself off after five refusals in a row
+     * (Automation::FAILURE_LIMIT), and the report then simply stops arriving -
+     * nobody is told, because the thing that would tell them is what stopped.
+     *
+     * Counted, never named: rule names are Automations' data and this box is
+     * shown to anyone holding reports.view. A report another rule still sends
+     * is not stopped and is not counted.
+     *
+     * @param  list<string>  $ids
+     * @return array{attention?: list<array{tone: string, text: string}>}
+     */
+    private function attention(array $ids): array
+    {
+        $stopped = 0;
+
+        foreach (ReportSenders::for(ReportSenders::REPORT_SAVED, $ids) as $rules) {
+            $sending = collect($rules)->contains(fn (array $r) => $r['is_active'] && $r['disabled_at'] === null);
+            $switchedOff = collect($rules)->contains(fn (array $r) => $r['disabled_at'] !== null);
+
+            if ($switchedOff && ! $sending) {
+                $stopped++;
+            }
+        }
+
+        if ($stopped === 0) {
+            return [];
+        }
+
+        return ['attention' => [GlancePayload::attention(
+            'bad',
+            $stopped === 1
+                ? '1 scheduled report stopped sending: its automation switched itself off.'
+                : "{$stopped} scheduled reports stopped sending: their automations switched themselves off.",
+        )]];
     }
 }

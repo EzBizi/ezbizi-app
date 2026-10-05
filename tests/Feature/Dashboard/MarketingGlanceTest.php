@@ -416,6 +416,42 @@ class MarketingGlanceTest extends TestCase
     }
 
     /**
+     * Attention, most broken first: what failed, the account every post will
+     * fail on, and the post still waiting on it. Each row is distinguishable:
+     * a failure on a CONNECTED account must not count as a disconnection.
+     */
+    public function test_attention_names_failures_then_disconnected_accounts_then_stranded_posts(): void
+    {
+        $healthy = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'healthy');
+        $revoked = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'revoked');
+        $this->inTenant(fn () => $revoked->forceFill(['status' => SocialConnection::STATUS_REVOKED])->save());
+
+        $this->target($healthy, SocialPostTarget::STATUS_FAILED, now()->subHour()->toDateTimeString());
+        $this->target($healthy, SocialPostTarget::STATUS_SCHEDULED, null, now()->addDay()->format('Y-m-d H:i'));
+        $this->target($revoked, SocialPostTarget::STATUS_SCHEDULED, null, now()->addDay()->format('Y-m-d H:i'));
+        $this->target($revoked, SocialPostTarget::STATUS_QUEUED);
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 post did not reach its account.'],
+            ['tone' => 'bad', 'text' => '1 account needs reconnecting.'],
+            ['tone' => 'caution', 'text' => '2 waiting posts are on accounts that need reconnecting.'],
+        ], $this->payloadFor($this->alpha['admin'])['data']['attention']);
+    }
+
+    /** Nothing to act on, so no rows at all - not an empty list. */
+    public function test_a_healthy_box_sends_no_attention(): void
+    {
+        $account = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'head');
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subHour()->toDateTimeString());
+        $this->target($account, SocialPostTarget::STATUS_SCHEDULED, null, now()->addDay()->format('Y-m-d H:i'));
+
+        $data = $this->payloadFor($this->alpha['admin'])['data'];
+
+        $this->assertFalse($data['empty']);
+        $this->assertArrayNotHasKey('attention', $data);
+    }
+
+    /**
      * Published and failed compare with yesterday up to the same time, not the
      * whole of yesterday: the later sends yesterday would make both previous
      * figures larger if the window were a whole day.

@@ -9,7 +9,10 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Scheduling\Openings;
+use App\Support\Scheduling\Overbooking;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -151,7 +154,7 @@ final class SchedulingGlance extends DescribedGlance
                     GlancePayload::figure('areas', $areas === 1 ? 'service area' : 'service areas', $areas),
                     GlancePayload::figure('zips', $zips === 1 ? 'zip code' : 'zip codes', $zips),
                 ],
-            ]);
+            ] + array_filter(['attention' => $this->attention($areaIds, $user)]));
         });
     }
 
@@ -201,6 +204,34 @@ final class SchedulingGlance extends DescribedGlance
         $out[] = 'These are the numbers configured, not what is booked.';
 
         return $out;
+    }
+
+    /**
+     * What needs somebody (Dashboard, 2026-10-05): BOOKINGS, unlike every
+     * number above, counted the way Scheduling › Overbooking counts them.
+     * Overbooked from today, because an overbooked today still needs solving;
+     * fully booked from tomorrow, because that is what can still be offered.
+     * An area with no hours stays a note: some are left empty on purpose, and
+     * a row that never clears teaches the reader to skip the rows.
+     *
+     * @param  \Illuminate\Support\Collection<int, string>  $areaIds
+     * @return list<array{tone: string, text: string}>
+     */
+    private function attention($areaIds, User $user): array
+    {
+        $areas = ServiceArea::whereIn('id', $areaIds)->get();
+        $tomorrow = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $user->organization));
+        $check = app(Overbooking::class);
+
+        $days = collect($check->overbooked($areas, $tomorrow->subDay(), 7))->pluck('date')->unique()->count();
+        $full = count($check->fullyBooked($areas, $tomorrow, 7));
+
+        return array_values(array_filter([
+            $days === 0 ? null : GlancePayload::attention('bad', "Overbooked on {$days} of the next 7 days"),
+            $full === 0 ? null : GlancePayload::attention('caution', $full === 1
+                ? '1 service area fully booked for the next 7 days'
+                : "{$full} service areas fully booked for the next 7 days"),
+        ]));
     }
 
     /** @param \Illuminate\Support\Collection<int, string> $areaIds */

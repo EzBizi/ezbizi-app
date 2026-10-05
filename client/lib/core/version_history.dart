@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0354',
+      date: '5 Oct 2026',
+      items: [
+        'Dashboard: make each box Small, Medium or Large, and move boxes around, from the new Customize button. Boxes are grouped the way your sidebar is grouped. On a phone, the period is one chip.',
+        'Dashboard: each box leads with its main figure and, where there is an earlier period, its change against it.',
+        'Dashboard: boxes list what needs somebody. A Large box lists it and a smaller box says how much there is. This covers Leads, Reviews, Business Profile, Ads, Marketing, Automations, Fleet, Training and Web Management, plus the four below.',
+        'Dashboard › Work Hours flags a shift left open past its end and waiting correction requests.',
+        'Dashboard, Field box: lists what needs a manager, meaning an SOS waiting, a technician who lost signal, or one stopped too long.',
+        'Dashboard › Scheduling: flags days overbooked and service areas fully booked in the next 7 days.',
+        'Dashboard: the Reports box warns when a scheduled report stopped sending because its automation switched itself off.',
+        'Windows, Android, iPhone and Mac: also bring everything listed under 0.0.0353, which reached the web first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0353',
       date: '5 Oct 2026',
       items: [

@@ -140,7 +140,11 @@ final class TrainingGlance extends DescribedGlance
                     GlancePayload::figure('due', 'due to retake', $due),
                     GlancePayload::figure('tests', 'tests tracked', count($testIds)),
                 ],
-            ]);
+            ] + ($due > 0 ? [
+                // A lapsed pass is already overdue: `bad`. Nothing is
+                // "about to" lapse here — the box has no lookahead, on purpose.
+                'attention' => [GlancePayload::attention('bad', $this->sentenceFor($due))],
+            ] : []));
         });
     }
 

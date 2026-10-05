@@ -70,6 +70,10 @@ final class AdsPerformanceGlance extends DescribedGlance
                     GlancePayload::figure('certification', 'certification problems', $certification),
                     GlancePayload::figure('paused', 'campaigns paused', (int) $paused),
                 ],
+                // Paused is not here: Jose pauses campaigns on purpose.
+                ...($certification === 0 ? [] : ['attention' => [GlancePayload::attention('bad', $certification === 1
+                    ? '1 account with a certification problem'
+                    : "{$certification} accounts with a certification problem")]]),
             ]);
         });
     }
