@@ -75,7 +75,15 @@ final class ServicesGlance extends DescribedGlance
                     ],
                     'figures' => [
                         GlancePayload::figure('services', 'services listed', $total),
-                        GlancePayload::figure('groups', 'groups', count($counts)),
+                        // Groups the listed services actually sit in. NOT count($counts):
+                        // that map carries an 'Ungrouped' bucket for the pie, and counted
+                        // here it turns services with no group into a group — A-1
+                        // Chimney read "2 groups" with one real one.
+                        GlancePayload::figure(
+                            'groups',
+                            'groups',
+                            $rows->pluck('group_id')->filter()->unique()->count(),
+                        ),
                     ],
                 ],
             );
