@@ -126,4 +126,14 @@ class MembershipsPublicTest extends TestCase
         $this->assertSame(1, Membership::withoutGlobalScopes()->count());
         $this->assertSame(1, AutomationEvent::withoutGlobalScopes()->where('event_key', 'membership.created')->count());
     }
+
+    public function test_the_join_page_names_the_customers_company_and_what_a_plan_includes(): void
+    {
+        $this->inTenant($this->t['org'], fn () => MembershipPlan::query()->update(['description' => 'Sweep and camera inspection']));
+        $url = $this->inTenant($this->t['org'], fn () => $this->customer->membership_join_url);
+
+        $this->get($url)->assertOk()
+            ->assertSee($this->t['company']->name)
+            ->assertDontSee($this->t['org']->name.' yearly maintenance');
+    }
 }
