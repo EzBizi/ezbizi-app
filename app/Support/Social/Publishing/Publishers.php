@@ -83,6 +83,12 @@ final class Publishers
                 .'Open TikTok to finish and post it.';
         }
 
+        // TikTok's Direct Post guidelines: say the video takes a while to show.
+        if ($provider === SocialProvider::TikTok) {
+            return 'Posts straight to the profile. TikTok can take a few minutes to process '
+                .'the video before it appears.';
+        }
+
         return null;
     }
 

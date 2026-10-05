@@ -1208,6 +1208,50 @@ void main() {
       );
     });
 
+    testWidgets('TikTok Direct Post asks privacy with no default before Publish', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_tiktokDirect]),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+      );
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Posting to TikTok as EzBizi US'), findsOneWidget);
+      expect(_publishRefusal(tester), contains('Choose who can see'));
+      expect(find.textContaining('Music Usage Confirmation'), findsOneWidget);
+
+      // Duet is switched off on the account, so its tick cannot be set.
+      final duet = tester.widget<CheckboxListTile>(
+        find.widgetWithText(CheckboxListTile, 'Duet'),
+      );
+      expect(duet.onChanged, isNull);
+
+      await tester.tap(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Everyone').last);
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+
+      // Disclosure on with nothing chosen blocks again.
+      await tester.tap(find.byKey(const ValueKey('tiktok-disclose-ezbizi_us')));
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), contains('promotes yourself'));
+
+      await tester.tap(find.textContaining('Branded content —'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Paid partnership'), findsOneWidget);
+      expect(find.textContaining('Branded Content Policy'), findsOneWidget);
+      expect(_publishRefusal(tester), isNull);
+    });
+
     testWidgets('a network with no detour says nothing rather than reassuring', (
       tester,
     ) async {
@@ -2811,6 +2855,19 @@ MockClientHandler _handler({
       return _json({'data': audiences ?? <Map<String, Object?>>[]});
     }
 
+    if (path.endsWith('/tiktok-creator')) {
+      return _json({
+        'data': {
+          'nickname': 'EzBizi US',
+          'privacy_level_options': ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'],
+          'comment_disabled': false,
+          'duet_disabled': true,
+          'stitch_disabled': false,
+          'max_video_post_duration_sec': 600,
+        },
+      });
+    }
+
     if (path.endsWith('/social/connections')) {
       return _json({'data': connections ?? <Map<String, Object?>>[]});
     }
@@ -3084,6 +3141,18 @@ const _tiktokDrafts = {
   'posting_note':
       'Goes to this account’s TikTok drafts, not straight to the profile. '
       'Open TikTok to finish and post it.',
+};
+
+const _tiktokDirect = {
+  'id': 'conn-7',
+  'display_name': 'ezbizi_us',
+  'provider': 'tiktok',
+  'provider_label': 'TikTok',
+  'handle': 'ezbizi_us',
+  'can_publish': true,
+  'cannot_publish_because': null,
+  'posting_note': null,
+  'asks_tiktok_choices': true,
 };
 
 const _blueskyAccount = {

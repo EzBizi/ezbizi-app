@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
 import 'instagram_comments_panel.dart';
+import 'tiktok_post_choices.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
@@ -909,6 +910,9 @@ class _ComposeColumn extends StatefulWidget {
 class _ComposeColumnState extends State<_ComposeColumn> {
   final TextEditingController _body = TextEditingController();
   final Set<String> _picked = <String>{};
+
+  /// Per ticked TikTok account, what the person chose (see TikTokChoice).
+  final Map<String, TikTokChoice> _tiktok = <String, TikTokChoice>{};
   PickedBytes? _media;
   bool _sending = false;
   String? _error;
@@ -1007,6 +1011,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     }
     final over = _overLimit;
     if (over != null) return over;
+    for (final account in widget.connections) {
+      final choice = _tiktok[account.id];
+      if (choice == null || !_picked.contains(account.id)) continue;
+      final why = choice.refusal(
+        account.displayName,
+        _player?.value.duration,
+      );
+      if (why != null) return why;
+    }
     if (_sending) return 'Sending.';
 
     return null;
@@ -1123,6 +1136,26 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     });
   }
 
+  /// Read what this TikTok account allows, for its panel. Asked fresh on
+  /// every tick: TikTok's guidelines want the current answer, not a cached one.
+  Future<void> _askTikTok(String id) async {
+    final choice = TikTokChoice();
+    _tiktok[id] = choice;
+
+    final response = await widget.api.get('/social/connections/$id/tiktok-creator');
+    if (!mounted || _tiktok[id] != choice) return;
+
+    setState(() {
+      if (response.ok) {
+        choice.creator = TikTokCreator.fromJson(
+          response.body['data'] as Map<String, dynamic>? ?? const {},
+        );
+      } else {
+        choice.loadError = response.reason;
+      }
+    });
+  }
+
   Future<void> _publish() async {
     setState(() {
       _sending = true;
@@ -1137,6 +1170,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       // Indexed rather than repeated: a multipart body carries flat name/value
       // pairs, so `connections[]` three times would arrive as one value.
       for (final (index, id) in _picked.indexed) 'connections[$index]': id,
+      for (final id in _picked) ...?_tiktok[id]?.fields(id),
     };
 
     final media = _media;
@@ -1188,6 +1222,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _releaseMedia();
       _media = null;
       _picked.clear();
+      _tiktok.clear();
       _when.clear();
       _scheduling = false;
     });
@@ -1271,6 +1306,11 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                               on
                                   ? _picked.add(account.id)
                                   : _picked.remove(account.id);
+                              if (on && account.asksTikTokChoices) {
+                                _askTikTok(account.id);
+                              } else if (!on) {
+                                _tiktok.remove(account.id);
+                              }
                             }),
                     ),
                   ),
@@ -1321,6 +1361,16 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           const SizedBox(height: 14),
           label('Picture or video'),
           _attachment(context),
+          for (final account in widget.connections)
+            if (_picked.contains(account.id) && _tiktok[account.id] != null) ...[
+              const SizedBox(height: 14),
+              TikTokPostChoices(
+                account: account.displayName,
+                choice: _tiktok[account.id]!,
+                enabled: !_sending,
+                onChanged: () => setState(() {}),
+              ),
+            ],
           const SizedBox(height: 14),
           label('When'),
           _scheduleRow(context),
@@ -2676,6 +2726,7 @@ class _SocialConnection {
     this.canPublish = false,
     this.cannotPublishBecause,
     this.postingNote,
+    this.asksTikTokChoices = false,
   });
 
   final String id;
@@ -2696,6 +2747,10 @@ class _SocialConnection {
   /// sentence; null when the network holds no surprise.
   final String? postingNote;
 
+  /// TikTok Direct Post: privacy, interactions and disclosure must be asked
+  /// for this account on every post (TikTokPostChoices).
+  final bool asksTikTokChoices;
+
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
       id: json['id'] as String? ?? '',
@@ -2706,6 +2761,7 @@ class _SocialConnection {
       canPublish: json['can_publish'] as bool? ?? false,
       cannotPublishBecause: json['cannot_publish_because'] as String?,
       postingNote: json['posting_note'] as String?,
+      asksTikTokChoices: json['asks_tiktok_choices'] as bool? ?? false,
     );
   }
 }

@@ -240,7 +240,7 @@ class SocialPublishingTest extends TestCase
         );
 
         config(['services.tiktok.direct_post' => true]);
-        $this->assertNull(Publishers::postingNoteFor(SocialProvider::TikTok));
+        $this->assertStringContainsString('few minutes', (string) Publishers::postingNoteFor(SocialProvider::TikTok));
 
         // A network that holds no surprise says nothing, rather than reassuring.
         $this->assertNull(Publishers::postingNoteFor(SocialProvider::Pinterest));
