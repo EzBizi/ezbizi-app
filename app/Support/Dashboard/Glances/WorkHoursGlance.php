@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
 use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\TimeClock;
 use Illuminate\Support\Collection;
@@ -20,9 +21,17 @@ use Illuminate\Support\Collection;
  * reader — TimeClock::visiblePeople, so reach and `work_hours.all` answer
  * here the same way they answer there. A box that counted somebody the
  * screen does not show would be a number nobody could reconcile.
+ *
+ * NARROWED BY THE VIEW (2026-10-05). Jose's dashboard on the A1-Group company
+ * "EzBizi", where nobody is placed, read "32 clocked in" beside HR's "Nobody
+ * in this view": this box counted the reader's whole reach and ignored the
+ * top-bar switcher. It now takes the places in view exactly as the HR box
+ * does (ScopesToPlaces), inside the same reach as the screen.
  */
 final class WorkHoursGlance extends DescribedGlance
 {
+    use ScopesToPlaces;
+
     protected const KEY = 'work_hours';
 
     protected const LABEL = 'Work Hours';
@@ -40,7 +49,17 @@ final class WorkHoursGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $people = $this->timeClock->visiblePeople($user)->where('is_active', true)->pluck('id');
+            $places = $this->placesInView($user);
+            $people = $this->timeClock->visiblePeople($user)
+                ->where('is_active', true)
+                ->where(function ($inView) use ($places) {
+                    $inView->whereHas('assignments', fn ($a) => $this->constrainToPlaces($a, $places));
+                    // Nobody placed anywhere counts only at the whole organization.
+                    if ($places['organization'] !== null) {
+                        $inView->orWhereDoesntHave('assignments');
+                    }
+                })
+                ->pluck('id');
 
             $payload = fn (array $data) => new GlancePayload(
                 key: $this->key(),
