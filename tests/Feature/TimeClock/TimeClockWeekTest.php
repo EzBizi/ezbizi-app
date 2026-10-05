@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\TimeClock;
 
+use App\Models\Company;
 use App\Models\Organization;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -116,6 +117,27 @@ class TimeClockWeekTest extends TestCase
 
         $this->assertSame(['id' => $worker->role_id, 'name' => 'Tech'], $people->firstWhere('id', $worker->id)['role']);
         $this->assertSame('Hr', $people->firstWhere('id', $viewer->id)['role']['name']);
+    }
+
+    /**
+     * The screen follows the top-bar view, as HR's does (2026-10-05): on a
+     * company nobody is placed in it lists nobody. The control is the same
+     * reader on the whole organization.
+     */
+    public function test_the_week_lists_only_the_people_in_view(): void
+    {
+        [$alpha, $worker] = $this->tenantWithAWeek();
+        $this->midweek();
+        $empty = $this->inTenant($alpha['org'], fn () => Company::query()->create([
+            'organization_id' => $alpha['org']->id, 'name' => 'Nobody Here',
+        ]));
+
+        $ids = fn ($response) => array_column($response->assertOk()->json('data.people'), 'id');
+
+        $this->assertContains($worker->id, $ids($this->signedInAs($alpha['admin'])->getJson('/api/v1/hr/time-clock/week')));
+        $this->assertSame([], $ids($this->signedInAs($alpha['admin'])
+            ->withHeader('X-EzBizi-View', 'company:'.$empty->id)
+            ->getJson('/api/v1/hr/time-clock/week')));
     }
 
     public function test_the_organization_can_start_its_week_on_another_day(): void

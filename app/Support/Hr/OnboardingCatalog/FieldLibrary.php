@@ -99,11 +99,14 @@ final class FieldLibrary
                 'retired'   => false,
                 'is_expiry' => false,
             ],
+            // The technician ticks what they received, as in A1 Tools (Jose,
+            // 2026-10-05: "that's something to be filled on the technician
+            // side"). Only the field contracts ask them.
             'tools' => self::checklist(
-                'tools', 'Tools issued', self::TOOLS, FilledBy::EMPLOYER,
+                'tools', 'Tools issued', self::TOOLS, FilledBy::EMPLOYEE,
             ),
             'equipment' => self::checklist(
-                'equipment', 'Equipment issued', self::EQUIPMENT, FilledBy::EMPLOYER,
+                'equipment', 'Equipment issued', self::EQUIPMENT, FilledBy::EMPLOYEE,
             ),
             'work_days' => self::field(
                 'work_days', 'Work days', FieldType::TEXT, FilledBy::EMPLOYER,

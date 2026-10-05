@@ -78,7 +78,7 @@ class TimeClockController extends Controller
         }
 
         $on = $request->query('on');
-        $week = $this->timeClock->weekList($user, is_string($on) ? $on : null);
+        $week = $this->timeClock->weekList($user, is_string($on) ? $on : null, inView: true);
 
         // Corrections people asked for, for whoever may approve them (2026-09-30).
         if ($user->hasPermission('work_hours.manage')) {
@@ -272,7 +272,7 @@ class TimeClockController extends Controller
         $on = $request->query('on');
 
         return response()->json([
-            'data' => $this->timeClock->weekList($request->user(), is_string($on) ? $on : null),
+            'data' => $this->timeClock->weekList($request->user(), is_string($on) ? $on : null, inView: true),
         ]);
     }
 }

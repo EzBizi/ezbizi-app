@@ -43,7 +43,8 @@ class TimeClockStats
 
         [$start, $end] = $this->period($actor, $from, $to, $tz);
 
-        $people = $this->clock->visiblePeople($actor)
+        // The Dashboard tab is a screen: it follows the top-bar view.
+        $people = $this->clock->narrowToView($this->clock->visiblePeople($actor), $actor)
             // One person and their days (`?user=`), for the Dashboard's panel.
             // Somebody outside reach is a 404, as everywhere in Work Hours.
             ->when($userId !== null, fn ($q) => $q->whereKey($userId))

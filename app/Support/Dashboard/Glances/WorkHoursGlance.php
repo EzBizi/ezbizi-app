@@ -20,6 +20,12 @@ use Illuminate\Support\Collection;
  * reader — TimeClock::visiblePeople, so reach and `work_hours.all` answer
  * here the same way they answer there. A box that counted somebody the
  * screen does not show would be a number nobody could reconcile.
+ *
+ * NARROWED BY THE VIEW (2026-10-05). Jose's dashboard on the A1-Group company
+ * "EzBizi", where nobody is placed, read "32 clocked in" beside HR's "Nobody
+ * in this view": this box counted the reader's whole reach and ignored the
+ * top-bar switcher. It now takes the places in view exactly as the HR box
+ * does, through TimeClock::narrowToView, as the Work Hours screen does.
  */
 final class WorkHoursGlance extends DescribedGlance
 {
@@ -40,7 +46,10 @@ final class WorkHoursGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $people = $this->timeClock->visiblePeople($user)->where('is_active', true)->pluck('id');
+            // The same narrowing as the Work Hours screen, so the two agree.
+            $people = $this->timeClock->narrowToView($this->timeClock->visiblePeople($user), $user)
+                ->where('is_active', true)
+                ->pluck('id');
 
             $payload = fn (array $data) => new GlancePayload(
                 key: $this->key(),

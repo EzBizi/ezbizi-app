@@ -526,12 +526,14 @@ class OnboardingForm
                 return null;
             }
 
-            $item = $row['item'];
+            $item = trim($row['item']);
 
-            if (! isset($allowed[$item])) {
+            // One not on the list may be added, as in A1 Tools ("Add a tool
+            // not listed"); the document prints it after the listed ones.
+            if (! isset($allowed[$item]) && ($item === '' || mb_strlen($item) > 190)) {
                 $errors[$at] = sprintf(
-                    "'%s' is not on '%s'. The list is part of the pinned template.",
-                    $item, $field->label,
+                    "An item added to '%s' needs a name of at most 190 characters.",
+                    $field->label,
                 );
 
                 return null;

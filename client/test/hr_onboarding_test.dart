@@ -923,6 +923,45 @@ void main() {
     expect(find.byKey(const Key('onboarding-approve')), findsNothing);
   });
 
+  // Jose, 2026-10-05: tools are the technician's, and "look at how a1tools
+  // did it": tick, a quantity, and one not on the list.
+  testWidgets('the tools checklist is ticks with a quantity', (tester) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployee,
+          'fields': [
+            _field(
+              'tools',
+              'Tools issued',
+              'checklist',
+              filledBy: 'employee',
+              writable: true,
+              options: const ['Tool Bag', 'Hammer'],
+            ),
+          ],
+        },
+        onSave: (body) => saved = body,
+      ),
+    );
+
+    await _tap(tester, find.byKey(const Key('checklist-tools-Hammer')));
+    await _tap(tester, find.byTooltip('One more'));
+    await _tap(tester, find.byKey(const Key('checklist-add-tools')));
+    await tester.enterText(find.byKey(const Key('checklist-add-name')), 'Ladder');
+    await _tap(tester, find.widgetWithText(TextButton, 'Add'));
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    final rows = jsonDecode(saved!['answers']['tools'] as String) as List;
+    expect([for (final r in rows) (r['item'], r['quantity'])], [
+      ('Hammer', '2'),
+      ('Ladder', '1'),
+    ]);
+    expect((rows.first as Map)['received'], isNotEmpty);
+  });
+
   testWidgets('a county the search cannot find is saved as typed', (
     tester,
   ) async {
@@ -2042,6 +2081,7 @@ const _catalogue = {
     {'key': 'number', 'label': 'A figure'},
     {'key': 'date', 'label': 'A day'},
     {'key': 'choice', 'label': 'Pick from a list'},
+    {'key': 'checklist', 'label': 'Items received'},
     {'key': 'signature', 'label': 'A signature'},
   ],
   'filled_by': [

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\TimeClock;
 
+use App\Models\Company;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\TimeClockCorrectionRequest;
@@ -240,5 +241,36 @@ class WorkHoursModuleTest extends TestCase
             ['tone' => 'bad', 'text' => '1 shift is still open past its end.'],
             ['tone' => 'caution', 'text' => '1 correction request is waiting.'],
         ], $glance()['attention']);
+    }
+
+    /**
+     * Jose's A1-Group dashboard on its company "EzBizi", where nobody is
+     * placed, read "32 clocked in" beside HR's "Nobody in this view"
+     * (2026-10-05). The box follows the top-bar view. The control is the
+     * same reader on the whole organization, which counts the worker.
+     */
+    public function test_the_box_counts_only_the_people_in_view(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $worker = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
+        $empty = $this->inTenant($alpha['org'], fn () => Company::query()->create([
+            'organization_id' => $alpha['org']->id, 'name' => 'Nobody Here',
+        ]));
+        $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
+            'organization_id' => $alpha['org']->id, 'user_id' => $worker->id,
+            'clocked_in_at' => now()->subHour(), 'scheduled_end_at' => now()->addHours(7),
+        ]));
+
+        $box = function (?string $view) use ($alpha) {
+            $request = request();
+            $request->setUserResolver(fn () => $alpha['admin']);
+            $view === null ? $request->headers->remove('X-EzBizi-View') : $request->headers->set('X-EzBizi-View', $view);
+
+            return app(WorkHoursGlance::class)
+                ->resolve($alpha['admin'], DashboardPeriod::for($alpha['admin'], 'day'), [])->toArray()['data'];
+        };
+
+        $this->assertSame('1 person is clocked in right now.', $box(null)['sentences'][0], 'whole organization');
+        $this->assertSame(['empty' => true, 'sentence' => 'Nobody in this view.'], $box('company:'.$empty->id));
     }
 }
