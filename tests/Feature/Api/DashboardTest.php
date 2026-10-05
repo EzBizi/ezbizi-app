@@ -914,6 +914,50 @@ class DashboardTest extends TestCase
         $this->assertFalse(collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'broken')['hidden']);
     }
 
+    // ── templates (Jose, 2026-10-05: "recommended layouts … a user can apply") ──
+
+    /**
+     * Templates are built for the reader's reach: a box they cannot open is
+     * never named, and a template left with fewer than two boxes is not
+     * offered. Two keys reachable, so only the template naming both survives.
+     */
+    public function test_templates_follow_the_readers_reach(): void
+    {
+        $limited = $this->userWithPermissions(['hr.view', 'jobs.view']);
+
+        $templates = $this->as($limited)->getJson('/api/v1/dashboard/catalogue')->assertOk()->json('templates');
+
+        $this->assertSame(['owner'], array_column($templates, 'key'));
+        $this->assertSame([
+            ['key' => 'jobs', 'size' => 'large', 'hidden' => false],
+            ['key' => 'hr', 'size' => 'small', 'hidden' => false],
+        ], $templates[0]['glances']);
+    }
+
+    /**
+     * Applying a template is a plain layout save: the named boxes in order
+     * and sized, the rest hidden (so "Add a box" can bring them back), and
+     * nobody's chart choice reset, because a template carries no chart types.
+     */
+    public function test_applying_a_template_sizes_orders_hides_and_keeps_charts(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [['key' => 'jobs', 'presentation' => 'bar']],
+        ])->assertOk();
+
+        $office = collect($this->as($this->alpha['admin'])->getJson('/api/v1/dashboard/catalogue')->json('templates'))
+            ->firstWhere('key', 'office');
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', ['glances' => $office['glances']])->assertOk();
+
+        $glances = collect($this->glancesOf($this->alpha['admin']));
+        $this->assertSame('jobs', $glances->first()['key'], 'the template order');
+        $jobs = $glances->firstWhere('key', 'jobs');
+        $this->assertSame('large', $jobs['size']);
+        $this->assertSame('bar', $jobs['presentation'], 'the chart chosen before the template');
+        $this->assertTrue($glances->firstWhere('key', 'hr')['hidden'], 'not in Office, so hidden');
+        $this->assertFalse($glances->firstWhere('key', 'phone')['hidden']);
+    }
+
     // ── size (Jose, 2026-10-05: "change the widget sizes") ─────────────
 
     public function test_a_box_is_its_glances_default_size_until_somebody_picks_one(): void

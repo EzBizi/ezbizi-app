@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\DashboardTemplates;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlanceRegistry;
 use App\Support\Dashboard\GlancePayload;
@@ -33,14 +34,19 @@ class DashboardController extends Controller
      */
     public function catalogue(Request $request): array
     {
+        $glances = $this->registry->availableTo($request->user());
+
         return [
+            // Recommended layouts, built for this person's reach; applying one
+            // is a PUT of its glances (DashboardTemplates).
+            'templates' => DashboardTemplates::forReach(array_map(fn (Glance $g) => $g->key(), $glances)),
             'glances' => array_map(fn (Glance $g) => [
                 'key' => $g->key(),
                 'label' => $g->label(),
                 'allowed_presentations' => array_values($g->allowedPresentations()),
                 'default_presentation' => $g->defaultPresentation(),
                 'default_size' => $g->defaultSize(),
-            ], $this->registry->availableTo($request->user())),
+            ], $glances),
         ];
     }
 
@@ -166,10 +172,12 @@ class DashboardController extends Controller
             $seen = [];
             $layout = [];
 
-            // An entry WITHOUT size or hidden means "unchanged", not "reset":
-            // every build that predates sizes, and the HR tab's chip, save
-            // {key, presentation} on a reorder, and must not undo a size or a
-            // hide made on a newer build. Only a present value replaces it.
+            // An entry WITHOUT size, hidden or presentation means "unchanged",
+            // not "reset": every build that predates sizes, and the HR tab's
+            // chip, save {key, presentation} on a reorder, and must not undo a
+            // size or a hide made on a newer build; a template carries sizes
+            // and no chart types, and must not reset anybody's charts. Only a
+            // present value replaces the stored one.
             $stored = [];
             foreach (is_array($preferences['dashboard.glances'] ?? null) ? $preferences['dashboard.glances'] : [] as $old) {
                 if (is_array($old) && is_string($old['key'] ?? null)) {
@@ -183,7 +191,7 @@ class DashboardController extends Controller
                     continue;
                 }
                 $seen[$key] = true;
-                foreach (['size', 'hidden'] as $kept) {
+                foreach (['size', 'hidden', 'presentation'] as $kept) {
                     if (! array_key_exists($kept, $entry) && array_key_exists($kept, $stored[$key] ?? [])) {
                         $entry[$kept] = $stored[$key][$kept];
                     }
