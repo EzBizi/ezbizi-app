@@ -352,4 +352,38 @@ class PhoneGlanceTest extends TestCase
             ['key' => 'voicemail', 'label' => 'waiting', 'value' => 1, 'previous' => null],
         ], $this->payload(period: 'day')['data']['figures']);
     }
+
+    /**
+     * What needs somebody, worst first: a phone account that stopped
+     * working, a voicemail left over a day, then newer ones (Dashboard,
+     * 2026-10-05).
+     */
+    public function test_the_rows_that_need_somebody_are_worst_first(): void
+    {
+        $number = $this->line();
+
+        Carbon::setTestNow(Carbon::parse('2026-08-22 10:00:00', 'America/New_York'));
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 10:00:00', 'America/New_York'));
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+        $this->inTenant(fn () => $number->connection->forceFill(['status' => PhoneConnection::STATUS_BROKEN])->save());
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 phone account is not working'],
+            ['tone' => 'bad', 'text' => '1 voicemail waiting over a day'],
+            ['tone' => 'caution', 'text' => '2 new voicemails waiting'],
+        ], $this->payload(period: 'day')['data']['attention']);
+    }
+
+    /** Nothing to act on, no rows at all. */
+    public function test_with_nothing_to_act_on_there_are_no_rows(): void
+    {
+        $number = $this->line();
+        $this->ring($number, PhoneCall::STATUS_COMPLETED);
+
+        $this->assertArrayNotHasKey('attention', $this->payload(period: 'day')['data']);
+    }
 }

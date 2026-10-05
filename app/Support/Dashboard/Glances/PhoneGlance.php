@@ -127,6 +127,11 @@ final class PhoneGlance extends DescribedGlance
             // no earlier self to compare with.
             $previous = $this->inboundIn($period->previous(), $numberIds);
 
+            $attention = $this->attention($numberIds);
+            if ($attention !== []) {
+                $data['attention'] = $attention;
+            }
+
             $data['figures'] = [
                 GlancePayload::figure('answered', 'answered '.$period->phrase(), $answered, $this->answered($previous)),
                 GlancePayload::figure('missed', 'missed', $missed, $this->missed($previous)),
@@ -203,5 +208,40 @@ final class PhoneGlance extends DescribedGlance
             options: [],
             data: $data,
         );
+    }
+
+    /**
+     * What needs somebody, worst first: a phone account that stopped working
+     * (no call reaches its lines), then voicemails left over a day, then the
+     * newer ones. Counts only, at most three (Dashboard, 2026-10-05).
+     *
+     * @param  list<string>  $numberIds
+     * @return list<array{tone: string, text: string}>
+     */
+    private function attention(array $numberIds): array
+    {
+        $broken = \App\Models\PhoneConnection::query()
+            ->whereIn('id', \App\Models\PhoneNumber::query()->whereIn('id', $numberIds)->select('connection_id'))
+            ->where('status', \App\Models\PhoneConnection::STATUS_BROKEN)
+            ->count();
+
+        $waiting = PhoneCall::query()
+            ->whereIn('number_id', $numberIds)
+            ->where('voicemail', true)
+            ->whereNull('dealt_at');
+        $old = (clone $waiting)->where('created_at', '<', now()->subDay())->count();
+        $new = $waiting->where('created_at', '>=', now()->subDay())->count();
+
+        return array_values(array_filter([
+            $broken === 0 ? null : GlancePayload::attention('bad', $broken === 1
+                ? '1 phone account is not working'
+                : $broken.' phone accounts are not working'),
+            $old === 0 ? null : GlancePayload::attention('bad', $old === 1
+                ? '1 voicemail waiting over a day'
+                : $old.' voicemails waiting over a day'),
+            $new === 0 ? null : GlancePayload::attention('caution', $new === 1
+                ? '1 new voicemail waiting'
+                : $new.' new voicemails waiting'),
+        ]));
     }
 }
