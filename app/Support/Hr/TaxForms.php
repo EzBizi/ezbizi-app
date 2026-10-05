@@ -154,4 +154,72 @@ final class TaxForms
 
         return HardenedPdf::render($out.'</div></body></html>', 'letter');
     }
+
+    /**
+     * The same filled, signed form as a picture, from the same boxes: what
+     * the contract's PDF prints as a page of its own (Jose, 2026-10-05: "the
+     * w4-w9 signed pdf does not seem attached at all"). The copy can print a
+     * picture and cannot merge a PDF, so the signed form is kept as both.
+     */
+    public static function renderPng(string $kind, array $values, ?string $signaturePng, string $date): string
+    {
+        $layout = self::LAYOUT[$kind];
+        $page = imagecreatefrompng(resource_path('hr/tax-forms/'.$layout['image']));
+        $img = imagecreatetruecolor(imagesx($page), imagesy($page));
+        imagecopy($img, $page, 0, 0, 0, 0, imagesx($page), imagesy($page));
+        imagedestroy($page);
+
+        $scale = imagesx($img) / 612;              // points to pixels
+        $size = 9 * $scale * 0.75;                  // GD sizes in points at 96 dpi
+        $ink = imagecolorallocate($img, 0, 0, 0);
+        $font = base_path('vendor/dompdf/dompdf/lib/fonts/DejaVuSans.ttf');
+        $bold = base_path('vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf');
+        $write = function (float $xPt, float $topPt, string $text, string $face = '') use ($img, $scale, $size, $ink, $font) {
+            imagettftext($img, $size, 0, (int) round($xPt * $scale), (int) round(($topPt + 8) * $scale), $ink, $face ?: $font, $text);
+        };
+
+        foreach ($layout['text'] as $key => [$x, $y, $w, $h]) {
+            $value = trim((string) ($values[$key] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            if (in_array($key, $layout['comb'] ?? [], true)) {
+                foreach (mb_str_split(preg_replace('/\D/', '', $value) ?? '') as $i => $digit) {
+                    $write($x + $i * self::COMB_CELL + self::COMB_CELL / 2 - 2.5, $y + ($h - 9) / 2, $digit);
+                }
+
+                continue;
+            }
+            $top = $h > 20 ? $y + 2 : $y + ($h - 9) / 2;
+            foreach (explode("\n", $value) as $n => $line) {
+                $write($x + 2, $top + $n * 10, $line);
+            }
+        }
+
+        foreach ($layout['checks'] as $check => [$x, $y]) {
+            [$key, $option] = array_pad(explode(':', $check, 2), 2, null);
+            $on = $option === null ? ! empty($values[$key]) : ($values[$key] ?? null) === $option;
+            if ($on) {
+                $write($x + 1, $y - 1, 'X', $bold);
+            }
+        }
+
+        if ($signaturePng !== null && ($sig = @imagecreatefromstring($signaturePng)) !== false) {
+            [$x, $y, $h] = $layout['signature'];
+            $height = (int) round($h * $scale);
+            $width = (int) round(imagesx($sig) * $height / max(1, imagesy($sig)));
+            imagealphablending($img, true);
+            imagecopyresampled($img, $sig, (int) round($x * $scale), (int) round($y * $scale), 0, 0,
+                $width, $height, imagesx($sig), imagesy($sig));
+            imagedestroy($sig);
+        }
+        [$x, $y] = $layout['date'];
+        $write($x, $y, $date);
+
+        ob_start();
+        imagepng($img, null, 6);
+        imagedestroy($img);
+
+        return (string) ob_get_clean();
+    }
 }

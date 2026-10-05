@@ -279,57 +279,10 @@ ACKNOWLEDGMENT & SIGNATURES
 
 By signing below, both Parties acknowledge that they have read, understood, and agree to all the terms and conditions set forth in this Agreement.
 
-Tools Checklist
+## Tools Checklist
 
-• Tool Bag
-• Tool Box
-• Plastic Crate
-• Extension cord
-• Grinder
-• Circular Saw
-• Impact Drill
-• Drill
-• 2x Drill's Batteries
-• Drill Battery's Charger
-• Drill & Impact Bits
-• Concrete Drill Bit
-• Steel Cutter
-• Wrench
-• 2x Pipe Wrenches
-• Combined Wrench Set
-• Hammer
-• Crimping tool
-• Locking Plier
-• Alligator Plier
-• Tape Measure
-• Flashlight
-• Headlight
-• Lighter
-• Knife
-• Gas Flange Key
-• Caulking Gun
-• Multimeter
-• Gas Leak Detector
-• Hand brush
-• Wire hand brush
-• Trowel
-• Concrete Mixer Rod
-• Bricks Jointer
-• Chisel
+{{tools}}
 
-Equipment Checklist
+## Equipment Checklist
 
-• Vacuum
-• Rods Holder Bag
-• Sweeping Brush
-• Sweeping Rod Handle
-• Big Ladder
-• Small Ladder
-• Drone Set
-• Scope camera
-• Drop Cloth
-• Gloves
-• Helmet
-• Belt
-• Goggles
-• Dust Pan
+{{equipment}}

@@ -870,6 +870,7 @@ class HrContractCoverAndCoreTest extends TestCase
             'document_hash' => $document['content_hash'],
             'affirmation'   => 'Jose Demasi',
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'intent'        => true,
         ])->assertCreated();
     }

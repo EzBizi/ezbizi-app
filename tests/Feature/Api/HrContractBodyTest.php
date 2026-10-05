@@ -1215,6 +1215,7 @@ class HrContractBodyTest extends TestCase
             'field_key'     => 'employer_sign',
             'affirmation'   => 'Alpha Admin',
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertCreated();
     }

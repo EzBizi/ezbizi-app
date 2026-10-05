@@ -191,6 +191,71 @@ class OnboardingCatalogTest extends TestCase
             ->assertSuccessful();
     }
 
+    /**
+     * The tools and equipment lists become tables, as A1 Tools printed them
+     * (Jose, 2026-10-05: "this should be a table"), in the catalog and in an
+     * organization's own contracts that spelled them out as bullets.
+     */
+    public function test_bullet_listed_tools_become_checklist_tables(): void
+    {
+        $keys = collect(OnboardingCatalog::templates())->keyBy('name');
+        $this->assertContains('tools', array_column($keys['Field Technician']['fields'], 'key'));
+        $this->assertStringContainsString('{{tools}}', $keys['Field Technician']['body']);
+
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Field Repair Team (hourly)',
+            'body' => "Pay is good.\n\nTools Checklist\n\n• Tool Bag\n• Hammer\n\nEquipment Checklist\n\n• Vacuum\n\nThe end.",
+            'fields' => [['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
+                'filled_by' => 'employee', 'required' => true]],
+        ])->assertCreated()->json('data.id');
+
+        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Field Repair Team (hourly): lists as tables, as version 2')->assertSuccessful();
+        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $v = Contract::findOrFail($id)->currentVersion;
+            $this->assertSame(2, (int) $v->version);
+            $this->assertStringContainsString("## Tools Checklist\n\n{{tools}}", $v->body);
+            $this->assertStringContainsString("## Equipment Checklist\n\n{{equipment}}", $v->body);
+            $this->assertStringContainsString('The end.', $v->body);
+            $this->assertStringNotContainsString('• Tool Bag', $v->body);
+            $keys = array_column($v->fields, 'key');
+            $this->assertContains('tools', $keys);
+            $this->assertSame('employee_signature', end($keys), 'The signature is no longer last.');
+        });
+    }
+
+    /** One contract's cover, given to every contract that has none (Jose, 2026-10-05). */
+    public function test_a_cover_is_copied_to_the_contracts_without_one(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $make = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => $name, 'body' => 'Agreed.',
+            'fields' => [['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
+                'filled_by' => 'employee', 'required' => true]],
+        ])->assertCreated()->json('data.id');
+        $covered = $make('Call Center Employee');
+        $bare = $make('Field Repair Team');
+        $this->inTenant($alpha['org'], fn () => \Illuminate\Support\Facades\DB::table('contract_versions')
+            ->where('id', Contract::findOrFail($covered)->current_version_id)
+            ->update(['cover_source' => 'logo', 'cover_path' => 'covers/alpha.png']));
+
+        $this->artisan('hr:copy-contract-cover', ['organization' => 'Alpha', 'from' => 'Call Center Employee'])
+            ->expectsOutputToContain('1 contracts given a new version.')->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () use ($bare, $covered) {
+            $v = Contract::findOrFail($bare)->currentVersion;
+            $this->assertSame(2, (int) $v->version);
+            $this->assertSame('covers/alpha.png', $v->cover_path);
+            $this->assertSame('Agreed.', $v->body);
+            $this->assertSame(1, (int) Contract::findOrFail($covered)->currentVersion->version, 'The source was given a new version.');
+        });
+    }
+
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void
     {
         $alpha = $this->provisionTenant('Alpha');

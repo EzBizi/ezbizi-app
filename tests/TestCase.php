@@ -10,6 +10,9 @@ use Tests\Support\DatabaseSafety;
 
 abstract class TestCase extends BaseTestCase
 {
+    /** A 1x1 PNG, the drawn signature every contract signature now needs (2026-10-05). */
+    protected const SIGNATURE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
     protected function setUp(): void
     {
         parent::setUp();

@@ -391,6 +391,7 @@ class HrOnboardingTest extends TestCase
             'field_key'     => 'employer_sign',
             'affirmation'   => 'Alpha Admin',
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertStatus(422)->assertJsonValidationErrors('answers');
 
@@ -601,11 +602,13 @@ class HrOnboardingTest extends TestCase
 
         $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
             'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => 'not a picture',
         ])->assertStatus(422)->assertJsonValidationErrors('drawing');
 
         $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
             'field_key' => 'employer_sign', 'affirmation' => 'Alpha Admin', 'consent' => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $this->documentHash($alpha['admin'], $id), 'drawing' => $png,
         ])->assertCreated();
 
@@ -695,8 +698,9 @@ class HrOnboardingTest extends TestCase
         $this->as($employee)->postJson($url, $body)->assertOk();
 
         $file = $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($this->rawAnswer($alpha, $id, 'tax_form')));
-        $this->assertSame('W-4.pdf', $file->original_name);
-        $this->assertSame('application/pdf', $file->mime);
+        // A picture of the signed page, which the contract's PDF prints.
+        $this->assertSame('W-4.png', $file->original_name);
+        $this->assertSame('image/png', $file->mime);
         $this->assertArrayNotHasKey('tax_form', $this->form($employee, $id)['missing']);
     }
 
@@ -889,6 +893,7 @@ class HrOnboardingTest extends TestCase
             'field_key'     => 'employer_sign',
             'affirmation'   => 'Alpha Admin',
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => DocumentFingerprint::of('a document nobody rendered'),
         ])->assertStatus(422)->assertJsonValidationErrors('document_hash');
 
@@ -906,6 +911,7 @@ class HrOnboardingTest extends TestCase
             'field_key'     => 'employer_sign',
             'affirmation'   => 'Marta Ruiz',
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertStatus(422)->assertJsonValidationErrors('field_key');
 
@@ -1581,6 +1587,7 @@ class HrOnboardingTest extends TestCase
             'field_key'     => $field,
             'affirmation'   => $name,
             'consent'       => true,
+            'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $this->documentHash($actor, $id),
         ])->assertCreated();
     }

@@ -451,15 +451,16 @@ final class PdfRenderer
             $sourceFingerprint, $sourceAlgorithm,
         );
 
-        $spliced = preg_replace_callback(
-            '/<body\b[^>]*>/i',
-            fn (array $match): string => $match[0].$banner,
-            $storedDocument,
-            limit: 1,
-            count: $count,
-        );
+        // At the end, not the start (Jose, 2026-10-02: "the copy of a
+        // document signed electronically thing should be at the end"): the
+        // contract opens on its cover or its title, and the copy's statement
+        // closes it. Every page still carries the footer stamp that says it
+        // is a copy.
+        $banner = '<div style="margin-top:24pt">'.$banner.'</div>';
 
-        return $count === 1 ? (string) $spliced : $banner.$storedDocument;
+        return str_contains($storedDocument, '</body>')
+            ? str_replace('</body>', $banner.'</body>', $storedDocument)
+            : $storedDocument.$banner;
     }
 
     /**
