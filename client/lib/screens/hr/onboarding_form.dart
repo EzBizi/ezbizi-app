@@ -417,6 +417,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     for (final box in _boxes.values) {
       box.dispose();
     }
+    _newItem.dispose();
     for (final parts in _addresses.values) {
       for (final box in parts.values) {
         box.dispose();
@@ -1828,10 +1829,33 @@ class _OnboardingFormState extends State<OnboardingForm> {
               ],
             ),
           ),
-        if (enabled)
+        if (enabled && _addingTo == question.key)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('checklist-add-name'),
+                  controller: _newItem,
+                  autofocus: true,
+                  maxLength: 190,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    isDense: true,
+                    counterText: '',
+                  ),
+                  onSubmitted: (_) => _addChecklistItem(question),
+                ),
+              ),
+              TextButton(
+                onPressed: () => _addChecklistItem(question),
+                child: const Text('Add'),
+              ),
+            ],
+          )
+        else if (enabled)
           TextButton.icon(
             key: Key('checklist-add-${question.key}'),
-            onPressed: () => _addChecklistItem(question),
+            onPressed: () => setState(() => _addingTo = question.key),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Add one not listed'),
           ),
@@ -1842,36 +1866,16 @@ class _OnboardingFormState extends State<OnboardingForm> {
   int _quantityOf(Map<String, String> row) =>
       int.tryParse(row['quantity'] ?? '') ?? 1;
 
-  Future<void> _addChecklistItem(OnboardingQuestion question) async {
-    // A String, not a controller: one disposed here is still read by the
-    // dialog's closing animation.
-    var typed = '';
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Add one not listed'),
-        content: TextField(
-          key: const Key('checklist-add-name'),
-          autofocus: true,
-          maxLength: 190,
-          decoration: const InputDecoration(labelText: 'Name'),
-          onChanged: (value) => typed = value,
-          onSubmitted: (value) => Navigator.of(dialog).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialog).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialog).pop(typed),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    final item = name?.trim() ?? '';
-    if (item.isEmpty || !mounted) return;
+  /// The checklist whose "not listed" name box is open, inline (no
+  /// dialogs: theme_conventions_test).
+  String? _addingTo;
+  final TextEditingController _newItem = TextEditingController();
+
+  void _addChecklistItem(OnboardingQuestion question) {
+    final item = _newItem.text.trim();
+    setState(() => _addingTo = null);
+    _newItem.clear();
+    if (item.isEmpty) return;
     _setChecklistQuantity(question, item, 1);
   }
 
