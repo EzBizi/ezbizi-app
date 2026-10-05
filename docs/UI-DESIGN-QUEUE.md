@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 55 · Marketing · QR Codes (dynamic codes for the vehicles) — **out for decision** (`docs/previews/marketing-qr-codes-layouts.html`)
+### 55 · Marketing · QR Codes (dynamic codes for the vehicles) — **Jose: "Go ahead with ur recommendations" (relayed by Marketing) — 1 and 4** — **BUILT** `277cf4fd` (`docs/previews/marketing-qr-codes-layouts.html`)
 
 From Marketing (`local_067b17d7…`), Jose 2026-10-05: a QR code printed for good on the company vehicles, *"1
 consistent qr code"* whose web address he changes in EzBizi without reprinting. Backend by Marketing: a tab
@@ -2972,6 +2972,10 @@ the card, scans, downloads; delete asked inside the card: "Printed copies will s
 side panel) (recommended); **2** a table with the chosen code docked; **3** a list, a code opened in place. Phone
 **4** (recommended) – **6**. The change copy: "The printed code stays the same; people who scan it go here
 instead."
+
+Built as drawn, with two changes the drawing did not settle: on a phone the card's ⋮ sits beside the name,
+because the downloads leave it no room beside them; and cards side by side are one height, an open Change box
+included. `client/lib/screens/marketing/qr_codes_tab.dart`, `test/marketing_qr_codes_test.dart`.
 
 ### 54 · Memberships · the page a customer joins from — **Jose: "go with ur recommended options as usual" (the Membership program) — 1 and 4** — **BUILT** `5d4d61c6` (`docs/previews/memberships-join-page-layouts.html`)
 
