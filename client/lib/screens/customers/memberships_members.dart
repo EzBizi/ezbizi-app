@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
 import '../../core/money.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -87,6 +88,8 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
 
   List<Membership> get _shown {
     final term = _search.trim().toLowerCase();
+    // A phone is found by its digits whatever way it was typed or stored.
+    final digits = term.replaceAll(RegExp(r'\D'), '');
 
     return [
       for (final row in _rows)
@@ -95,7 +98,12 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
                 row.customerName.toLowerCase().contains(term) ||
                 row.zip.toLowerCase().contains(term) ||
                 row.state.toLowerCase().contains(term) ||
-                row.planName.toLowerCase().contains(term)))
+                row.planName.toLowerCase().contains(term) ||
+                (row.customerEmail?.toLowerCase().contains(term) ?? false) ||
+                (digits.length >= 3 &&
+                    (row.customerPhone ?? '')
+                        .replaceAll(RegExp(r'\D'), '')
+                        .contains(digits))))
           row,
     ];
   }
@@ -274,6 +282,11 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
                             '${[row.state, row.zip].where((v) => v.isNotEmpty).join(' ')}',
                             style: theme.textTheme.bodySmall,
                           ),
+                          if (row.contacts.isNotEmpty)
+                            Text(
+                              row.contacts.join(' · '),
+                              style: theme.textTheme.bodySmall,
+                            ),
                           _Renews(row: row, formats: _formats, prefixed: true),
                         ],
                       ),
@@ -321,11 +334,18 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
       rows: [
         for (final row in rows)
           [
-            Text(
-              row.customerName,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.customerName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                for (final contact in row.contacts)
+                  Text(contact, style: theme.textTheme.bodySmall),
+              ],
             ),
             _EnrollmentTag(row.enrollment),
             Text(row.planLabel, style: theme.textTheme.bodySmall),
@@ -562,6 +582,13 @@ class _MembershipDetailState extends State<MembershipDetail> {
                   ),
                 ),
                 fact('Status', _Status(row: row)),
+                if (row.customerPhone case final phone?)
+                  fact(
+                    'Phone',
+                    SelectableText(formatPhoneNumber(phone), style: strong),
+                  ),
+                if (row.customerEmail case final email?)
+                  fact('Email', SelectableText(email, style: strong)),
                 fact(
                   'Plan',
                   _canEdit && live && widget.plans.length > 1
@@ -1041,6 +1068,8 @@ class Membership {
     required this.id,
     required this.customerId,
     required this.customerName,
+    this.customerPhone,
+    this.customerEmail,
     required this.state,
     required this.zip,
     required this.enrollment,
@@ -1064,6 +1093,18 @@ class Membership {
   final String id;
   final String customerId;
   final String customerName;
+
+  /// How to reach the customer (Jose: "show the phone number as well on
+  /// members, and email if available ofc"). Null when the customer has none,
+  /// and from a server from before they were sent.
+  final String? customerPhone;
+  final String? customerEmail;
+
+  /// Phone then email, whichever there are, the phone as the app writes it.
+  List<String> get contacts => [
+    if (customerPhone != null) formatPhoneNumber(customerPhone),
+    ?customerEmail,
+  ];
   final String state;
   final String zip;
   final String enrollment;
@@ -1121,10 +1162,15 @@ class Membership {
 
   static int? _int(Object? value) => value is int ? value : null;
 
+  static String? _text(Object? value) =>
+      value is String && value.trim().isNotEmpty ? value.trim() : null;
+
   factory Membership.fromJson(Map<String, dynamic> row) => Membership(
     id: '${row['id']}',
     customerId: '${row['customer_id']}',
     customerName: '${row['customer_name'] ?? ''}',
+    customerPhone: _text(row['customer_phone']),
+    customerEmail: _text(row['customer_email']),
     state: '${row['state'] ?? ''}',
     zip: '${row['zip'] ?? ''}',
     enrollment: '${row['enrollment'] ?? 'new'}',

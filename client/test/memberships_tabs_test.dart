@@ -291,6 +291,57 @@ void main() {
     expect(find.textContaining('Sent '), findsOneWidget);
   });
 
+  testWidgets("a member's phone and email are on the list, the email only "
+      'when there is one', (tester) async {
+    await _pump(
+      tester,
+      (api, session) => MembershipsMembers(api: api, session: session),
+    );
+
+    final morgan = find.byKey(const ValueKey('member:m-1'));
+    final riley = find.byKey(const ValueKey('member:m-2'));
+
+    // Jose: "show the phone number as well on members, and email if
+    // available ofc". The app's own phone form where the number is E.164,
+    // and as stored where it is not.
+    expect(
+      find.descendant(of: morgan, matching: find.text('+1 (239) 555-0142')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: morgan, matching: find.text('morgan@example.com')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: riley, matching: find.text('(555) 201-3344')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: riley, matching: find.textContaining('@')),
+      findsNothing,
+    );
+
+    // A phone is found by its digits, however it was written.
+    await tester.enterText(find.byKey(const Key('members-search')), '201-3344');
+    await tester.pumpAndSettle();
+    expect(riley, findsOneWidget);
+    expect(morgan, findsNothing);
+
+    await tester.enterText(find.byKey(const Key('members-search')), '');
+    await tester.pumpAndSettle();
+    await tester.tap(morgan);
+    await tester.pumpAndSettle();
+    expect(find.text('Phone'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to members'));
+    await tester.pumpAndSettle();
+    await tester.tap(riley);
+    await tester.pumpAndSettle();
+    expect(find.text('Phone'), findsOneWidget);
+    expect(find.text('Email'), findsNothing);
+  });
+
   group('Dashboard', () {
     testWidgets('the figures are counted from the members, money only with '
         'financials', (tester) async {
@@ -471,10 +522,14 @@ class _Server {
     int? remindedIn,
     int? visitIn,
     String? job,
+    String? phone,
+    String? email,
   }) => {
     'id': id,
     'customer_id': customerId,
     'customer_name': customer,
+    'customer_phone': phone,
+    'customer_email': email,
     'state': 'FL',
     'zip': zip,
     'enrollment': enrollment,
@@ -505,6 +560,8 @@ class _Server {
       remindedIn: -2,
       visitIn: 30,
       job: '1234',
+      phone: '+12395550142',
+      email: 'morgan@example.com',
     ),
     _row(
       'm-2',
@@ -517,6 +574,7 @@ class _Server {
       due: 5400,
       paid: 16200,
       remindedIn: -20,
+      phone: '(555) 201-3344',
     ),
     _row(
       'm-3',
