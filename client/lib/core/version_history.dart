@@ -19,7 +19,7 @@ class VersionHistory {
       items: [
         'Onboarding: the employer can sign before the new hire has accepted the invitation. The employer\'s signature and the final approval are separate steps.',
         'HR: the downloaded contract PDF now ends with an \'Employee record\' section: bank details, SSN, work hours and everything else on file that the contract wording doesn\'t state. Imported A1 Tools contracts get the record and any uploaded PDFs (such as a W-4) added after the original.',
-        'Leads: read and unread are shared by everyone. Opening a lead or Mark all read marks it for all, and a new message makes it unread again. Stars stay personal.',
+        'Leads: read and unread are now shared. Once anyone opens a lead, or uses Mark all read, it shows as read for everyone; a new message makes it unread again. Stars stay personal.',
         'Web Management: each website has a Branch setting that decides where its chats, forms and reviews land in Leads.',
         'Scheduling: a job booked under a branch whose service area shares another branch\'s availability is placed by its zip again, so Nationwide\'s Boston North bookings count against A1 - Chimney MA\'s Boston North.',
         'Experimental call report: spam calls are no longer counted; Reached nobody is now Missed calls, with New/Existing filters; cards follow Jose\'s order (Calls, Missed calls, Existing client, New client, Jobs booked, Conv. rate, Not booked); Not booked lists unbooked new-client calls with Convert to booked and its history; dispatchers can be tagged New or Existing; Day/Week/Month periods. Weeks and months include every call, not just the first 1,000.',
