@@ -877,9 +877,9 @@ class DashboardTest extends TestCase
         $this->assertFalse($glances['newsletter']['hidden']);
         $this->assertSame('Soon.', $glances['newsletter']['data']['sentence']);
 
-        // Shown again by saving without the flag.
+        // Shown again by saying so; leaving the key out keeps it hidden.
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'broken'], ['key' => 'newsletter']],
+            'glances' => [['key' => 'broken', 'hidden' => false], ['key' => 'newsletter']],
         ])->assertOk();
         $this->assertFalse(collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'broken')['hidden']);
     }
@@ -899,6 +899,41 @@ class DashboardTest extends TestCase
         // Two different defaults, so a hard-coded size cannot pass.
         $this->assertSame('small', $glances['newsletter']['size']);
         $this->assertSame('medium', $glances['broken']['size']);
+    }
+
+    /**
+     * Builds that predate sizes (and the HR tab's chip) save {key,
+     * presentation} on a reorder. That must not undo a size or a hide made on
+     * a newer build: an absent key is "unchanged".
+     */
+    public function test_a_save_without_size_or_hidden_keeps_the_stored_ones(): void
+    {
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [
+                ['key' => 'jobs', 'presentation' => 'pie', 'size' => 'large'],
+                ['key' => 'hr', 'hidden' => true],
+            ],
+        ])->assertOk();
+
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [
+                ['key' => 'hr', 'presentation' => 'bar'],
+                ['key' => 'jobs', 'presentation' => 'bar'],
+            ],
+        ])->assertOk();
+
+        $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])->keyBy('key');
+        $this->assertSame('large', $stored['jobs']['size']);
+        $this->assertSame('bar', $stored['jobs']['presentation'], 'the change that WAS sent still lands');
+        $this->assertTrue($stored['hr']['hidden']);
+
+        // And a present value still replaces: shown again, sized down.
+        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
+            'glances' => [['key' => 'hr', 'hidden' => false], ['key' => 'jobs', 'size' => 'small']],
+        ])->assertOk();
+        $stored = collect($this->preferencesOf($this->alpha['admin'])['dashboard.glances'])->keyBy('key');
+        $this->assertArrayNotHasKey('hidden', $stored['hr']);
+        $this->assertSame('small', $stored['jobs']['size']);
     }
 
     public function test_a_chosen_size_is_stored_and_returned_and_an_unknown_one_falls_back(): void
