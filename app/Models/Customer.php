@@ -270,4 +270,20 @@ class Customer extends Model implements HoldsPersonalData
     {
         return $this->servedByFranchiseIds()->count() > 1;
     }
+
+    /**
+     * `{{ review_link }}` and `{{ membership_join_url }}` in an automation's
+     * message (Memberships, 2026-10-05): the reviews page that knows who this
+     * customer is, and the page that signs them up. Null when the
+     * organization has no site with a reviews page.
+     */
+    public function getReviewLinkAttribute(): ?string
+    {
+        return \App\Support\Memberships\CustomerLinks::reviewLink($this);
+    }
+
+    public function getMembershipJoinUrlAttribute(): string
+    {
+        return \App\Support\Memberships\CustomerLinks::joinUrl($this);
+    }
 }

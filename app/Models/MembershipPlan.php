@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+
+/** A plan a customer can join: its name, price, and whether billed yearly or monthly. */
+#[Fillable(['name', 'price_minor', 'currency', 'billing', 'is_active'])]
+class MembershipPlan extends Model implements StatesRetention
+{
+    use BelongsToTenant;
+    use HasUuids;
+
+    public const BILLINGS = ['yearly', 'monthly'];
+
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'A plan the organization offers: a name and a price, nothing about any person. '
+            .'Removing the organization takes it.'
+        );
+    }
+
+    protected function casts(): array
+    {
+        return ['price_minor' => 'integer', 'is_active' => 'boolean'];
+    }
+}

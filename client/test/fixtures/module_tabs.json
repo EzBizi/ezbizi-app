@@ -153,6 +153,15 @@
                 "Accounts"
             ]
         },
+        "memberships": {
+            "label": "Memberships",
+            "parent": "customers",
+            "tabs": [
+                "Dashboard",
+                "Members",
+                "Settings"
+            ]
+        },
         "monitoring": {
             "label": "Monitoring",
             "parent": null,
@@ -389,6 +398,13 @@
         "marketing.edit",
         "marketing.posts.view",
         "marketing.view",
+        "memberships.create",
+        "memberships.dashboard.view",
+        "memberships.delete",
+        "memberships.edit",
+        "memberships.members.view",
+        "memberships.settings.view",
+        "memberships.view",
         "monitoring.cameras.manage",
         "monitoring.cameras.view",
         "monitoring.control",

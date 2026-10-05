@@ -2961,6 +2961,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 53 · Dashboard · templates a person can apply — **out for decision** (`docs/previews/dashboard-templates-layouts.html`)
+
+Jose, 2026-10-05, to the Dashboard module: *"also make some recommended layouts, like templates a user can
+apply"*. Server on main (`90ea5d42`): `GET /dashboard/catalogue` → `templates` [{key, label, description,
+glances: [{key, size, hidden}]}], five built for the reader's reach (Whole business, Office and dispatch, Field
+operations, Sales and marketing, People); applying is a PUT of `glances` as sent (charts kept), the standard
+layout is a PUT of `[]`. Desktop **1** a Templates button in Customize opening a side panel (name, what it is for,
+a miniature drawn from its sizes, Use this layout), applied at once with an Undo bar instead of a confirm
+(recommended); **2** template chips under the Customize bar, same Undo; **3** five cards first in Customize, asked
+inside the card. Phone **4** (recommended) – **6** the same three.
+
 ### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT, held off main** (`5eb65079`, reverted `f403b70a`; lands with `session/memberships`) (`docs/previews/customers-memberships-layouts.html`)
 
 From the Membership Program session (`local_9b8c5aa9…`), backend on `session/memberships` @ `19240797`, spec

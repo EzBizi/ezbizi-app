@@ -208,6 +208,9 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  */
 Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
 
+// A month before a membership year ends (Customers › Memberships).
+Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');
+
 /*
  * Scheduled weekly patterns become the area's pattern on the day they start
  * (Eve, 2026-09-29). Hourly, so a date that turns at midnight in any
