@@ -152,6 +152,24 @@ class TrainingGlanceTest extends TestCase
         ], $this->resolveFor($monitor)['figures']);
     }
 
+    /** Somebody due to retake needs somebody; nobody due needs nobody. */
+    public function test_people_due_to_retake_are_the_attention_row_and_only_when_there_are_some(): void
+    {
+        $tenant = $this->provisionTenant('Glance-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+        $test = $this->aPublishedTest($tenant, 'Ladders');
+
+        $this->assertArrayNotHasKey('attention', $this->resolveFor($monitor));
+
+        $this->aLapsedPass($tenant, $learner, $test);
+
+        $this->assertSame(
+            [['tone' => 'bad', 'text' => '1 person is due to retake a test.']],
+            $this->resolveFor($monitor)['attention'],
+        );
+    }
+
     public function test_no_tests_in_reach_reads_empty(): void
     {
         $tenant = $this->provisionTenant('Glance-'.Str::random(8));

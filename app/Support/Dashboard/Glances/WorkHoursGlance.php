@@ -2,6 +2,7 @@
 
 namespace App\Support\Dashboard\Glances;
 
+use App\Models\TimeClockCorrectionRequest;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
@@ -9,6 +10,7 @@ use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\TimeClock;
+use Illuminate\Support\Collection;
 
 /**
  * Work Hours box: who is on the clock right now, and the hours clocked in
@@ -62,6 +64,31 @@ final class WorkHoursGlance extends DescribedGlance
 
             $hours = $this->hoursIn($people, $period);
 
+            /*
+             * What needs somebody (Dashboard, 2026-10-05). A shift still open
+             * five minutes past its end means the minute sweep did not close
+             * it — the 2026-09-23 defect — so it is `bad`. Waiting correction
+             * requests only for a reader who can approve them.
+             */
+            $attention = [];
+            $stuck = TimeClockShift::query()->open()->whereIn('user_id', $people)
+                ->where('scheduled_end_at', '<', now()->subMinutes(5))->count();
+            if ($stuck > 0) {
+                $attention[] = GlancePayload::attention('bad', $stuck === 1
+                    ? '1 shift is still open past its end.'
+                    : "{$stuck} shifts are still open past their end.");
+            }
+            if ($user->hasPermission('work_hours.manage')) {
+                $waiting = TimeClockCorrectionRequest::query()
+                    ->where('status', TimeClockCorrectionRequest::PENDING)
+                    ->whereIn('user_id', $people)->count();
+                if ($waiting > 0) {
+                    $attention[] = GlancePayload::attention('caution', $waiting === 1
+                        ? '1 correction request is waiting.'
+                        : "{$waiting} correction requests are waiting.");
+                }
+            }
+
             return $payload([
                 'empty' => false,
                 'slices' => [
@@ -80,6 +107,7 @@ final class WorkHoursGlance extends DescribedGlance
                     GlancePayload::figure('on_the_clock', 'clocked in', $in),
                     GlancePayload::figure('hours', 'hours clocked '.$period->phrase(), $hours, $this->hoursIn($people, $period->previous())),
                 ],
+                ...($attention === [] ? [] : ['attention' => $attention]),
             ]);
         });
     }
@@ -87,7 +115,7 @@ final class WorkHoursGlance extends DescribedGlance
     /**
      * Whole hours clocked inside a window by these people.
      *
-     * @param  \Illuminate\Support\Collection<int, string>  $people
+     * @param  Collection<int, string>  $people
      */
     private function hoursIn($people, DashboardPeriod $window): int
     {

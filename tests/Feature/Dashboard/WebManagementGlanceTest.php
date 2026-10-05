@@ -186,6 +186,22 @@ class WebManagementGlanceTest extends TestCase
         ], $data['figures']);
     }
 
+    /** Dashboard, 2026-10-05: the rows that need somebody, and none when nothing does. */
+    public function test_attention_names_the_quiet_and_the_waiting(): void
+    {
+        $this->site('a-1chimney.com', connected: true);
+        $this->assertArrayNotHasKey('attention', $this->glance($this->alpha['admin']));
+
+        $quiet = $this->site('ny.a-1chimney.com', connected: true);
+        $this->inTenant(fn () => $quiet->forceFill(['went_quiet_at' => now()])->save());
+        $this->site('nj.a-1chimney.com', connected: false);
+
+        $this->assertSame([
+            ['tone' => 'bad', 'text' => '1 website stopped reading EzBizi.'],
+            ['tone' => 'caution', 'text' => '1 website is waiting for its plugin.'],
+        ], $this->glance($this->alpha['admin'])['attention']);
+    }
+
     public function test_one_website_is_singular(): void
     {
         $this->site('a-1chimney.com', connected: false);
