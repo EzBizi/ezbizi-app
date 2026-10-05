@@ -739,8 +739,12 @@ class JobsController extends Controller
                 : [],
             // The choices for the area, here rather than from Scheduling's
             // endpoint, which is gated by a permission a job editor may lack.
+            // The job's own area always, even another franchise's: one
+            // re-homed under it (Boston North to MA, 2026-10-05) otherwise drew
+            // as "Not placed" and invited a person to move the job out of it.
             'allowed_service_areas' => ServiceArea::query()
-                ->where('franchise_id', $job->franchise_id)->orderBy('name')
+                ->where(fn ($q) => $q->where('franchise_id', $job->franchise_id)->orWhere('id', $job->service_area_id))
+                ->orderBy('name')
                 ->get(['id', 'name'])->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name])->all(),
             // Workiz's own money for the job, read live from the mirror, which
             // is where A-1's invoices live (Jose, decision 2). Null for a job

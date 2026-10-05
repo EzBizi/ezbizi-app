@@ -145,6 +145,25 @@ class JobServiceAreaTest extends TestCase
 
     // ── The job API: shown, chosen by a person, filtered on ─────────
 
+    /**
+     * An area re-homed under a job keeps being the job's choice: Boston North
+     * went from Nationwide to MA (2026-10-05) with Nationwide's jobs still in
+     * it. Without its own area among the choices, the panel drew the job as
+     * "Not placed" and offered to move it into one of its franchise's areas.
+     */
+    public function test_a_job_in_another_franchises_area_still_lists_it(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();
+        $this->area($alpha, $ct, 'Bridgeport', []);
+        $rehomed = $this->area($alpha, $ny, 'Boston North', ['01801']);
+        $job = $this->aJob($alpha, $ct, $rehomed->id);
+
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/{$job}")
+            ->assertOk()
+            ->assertJsonPath('data.service_area', ['id' => $rehomed->id, 'name' => 'Boston North'])
+            ->assertJsonPath('data.allowed_service_areas.*.name', ['Boston North', 'Bridgeport']);
+    }
+
     public function test_a_job_shows_its_area_and_its_franchises_choices(): void
     {
         [$alpha, $ct, $ny] = $this->world();
