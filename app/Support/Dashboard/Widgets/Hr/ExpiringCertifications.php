@@ -112,6 +112,8 @@ class ExpiringCertifications implements Widget
         return [
             'rows'  => array_slice($rows, 0, 12),
             'total' => count($rows),
+            // Already past, of the total: the rest are still ahead.
+            'lapsed' => count(array_filter($rows, fn (array $r) => $r['expires_on'] < now()->toDateString())),
             'note'  => $note,
             // The window this answer was computed over, so a sentence naming it
             // cannot drift from the query it describes. `days` is an option, so
