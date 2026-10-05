@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
-use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
 use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\TimeClock;
 use Illuminate\Support\Collection;
@@ -26,12 +25,10 @@ use Illuminate\Support\Collection;
  * "EzBizi", where nobody is placed, read "32 clocked in" beside HR's "Nobody
  * in this view": this box counted the reader's whole reach and ignored the
  * top-bar switcher. It now takes the places in view exactly as the HR box
- * does (ScopesToPlaces), inside the same reach as the screen.
+ * does, through TimeClock::narrowToView, as the Work Hours screen does.
  */
 final class WorkHoursGlance extends DescribedGlance
 {
-    use ScopesToPlaces;
-
     protected const KEY = 'work_hours';
 
     protected const LABEL = 'Work Hours';
@@ -49,16 +46,9 @@ final class WorkHoursGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $places = $this->placesInView($user);
-            $people = $this->timeClock->visiblePeople($user)
+            // The same narrowing as the Work Hours screen, so the two agree.
+            $people = $this->timeClock->narrowToView($this->timeClock->visiblePeople($user), $user)
                 ->where('is_active', true)
-                ->where(function ($inView) use ($places) {
-                    $inView->whereHas('assignments', fn ($a) => $this->constrainToPlaces($a, $places));
-                    // Nobody placed anywhere counts only at the whole organization.
-                    if ($places['organization'] !== null) {
-                        $inView->orWhereDoesntHave('assignments');
-                    }
-                })
                 ->pluck('id');
 
             $payload = fn (array $data) => new GlancePayload(

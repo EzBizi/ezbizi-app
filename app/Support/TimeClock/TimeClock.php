@@ -12,6 +12,7 @@ use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
@@ -25,6 +26,8 @@ use Illuminate\Validation\ValidationException;
 
 final class TimeClock
 {
+    use ScopesToPlaces;
+
     /** Out and back in in LESS than this continues the same shift. */
     public const MERGE_MINUTES = 2;
 
@@ -462,6 +465,27 @@ final class TimeClock
         return User::query()->where(fn (Builder $q) => $this->visibleTo($q, $actor));
     }
 
+    /**
+     * Narrow a people query to the top-bar view (2026-10-05), as HR's screen
+     * and every dashboard box do: on A1-Group's empty company "EzBizi" the
+     * screen listed all of A1-Group. For SCREENS only. A saved report and its
+     * scheduled send keep their whole reach: an automation has no view, and a
+     * sender's last-picked company must not change what the email covers.
+     * Reach itself (assertReaches, corrections) is not narrowed either.
+     */
+    public function narrowToView(Builder $users, User $actor): Builder
+    {
+        $places = $this->placesInView($actor);
+
+        return $users->where(function (Builder $inView) use ($places) {
+            $inView->whereHas('assignments', fn (Builder $a) => $this->constrainToPlaces($a, $places));
+            // Nobody placed anywhere counts only at the whole organization.
+            if ($places['organization'] !== null) {
+                $inView->orWhereDoesntHave('assignments');
+            }
+        });
+    }
+
     /** The zone Work Hours shows `$actor` times in — and reads corrections back in. */
     public function viewTimezone(User $actor): string
     {
@@ -853,7 +877,7 @@ final class TimeClock
      *     people: list<array<string, mixed>>
      * }
      */
-    public function weekList(User $actor, ?string $on): array
+    public function weekList(User $actor, ?string $on, bool $inView = false): array
     {
         $view = ViewScope::forUser($actor);
         $tz = (string) $this->settings->get('timezone', $view->settingsScope());
@@ -878,6 +902,7 @@ final class TimeClock
 
         $people = User::query()
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->when($inView, fn (Builder $q) => $this->narrowToView($q, $actor))
             ->orderBy('name')
             // The role, for the list's role filter (Jose, 2026-09-30).
             ->with('role:id,name')
