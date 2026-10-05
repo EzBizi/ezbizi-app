@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
@@ -316,18 +317,14 @@ class SyncWorkizJobs extends Command
      * going to make, beside the copies in the new account. The mirror row goes,
      * because those readers read this table directly. Its EzBizi job is
      * soft-deleted only when it is still exactly what the projection wrote and
-     * nothing in EzBizi names it -- a priced line, an estimate, a payment, an
-     * event, a person's edit (Customers, 2026-10-05: money must never be left
-     * hanging off a deleted job). Otherwise it stays, and the audit row says why.
+     * nothing in EzBizi names it (named()). Otherwise it stays, and the audit
+     * row says why.
      *
      * @param  list<WorkizJob>  $rows
      */
     private function retire(array $rows, AuditLogger $audit): void
     {
-        $named = MergeWorkizTwins::namedElsewhere(
-            array_values(array_filter(array_map(fn (WorkizJob $row) => $row->job_id, $rows))),
-            ['workiz_jobs.job_id'],
-        );
+        $named = self::named(array_values(array_filter(array_map(fn (WorkizJob $row) => $row->job_id, $rows))));
 
         foreach ($rows as $row) {
             DB::transaction(function () use ($row, $audit, $named) {
@@ -342,9 +339,7 @@ class SyncWorkizJobs extends Command
                     default => 'deleted',
                 };
 
-                if ($verdict === 'deleted') {
-                    $job->delete();
-                }
+                $released = $verdict === 'deleted' ? self::release($job) : [];
 
                 $audit->log('workiz.job_gone', $job, metadata: [
                     'remote_id' => $row->remote_id,
@@ -352,11 +347,53 @@ class SyncWorkizJobs extends Command
                     'status' => $row->status,
                     'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
                     'ezbizi_job' => $verdict,
+                    'leads_released' => $released,
                 ]);
 
                 $row->delete();
             });
         }
+    }
+
+    /**
+     * Which of these jobs something in EzBizi names, so that a Workiz deletion
+     * keeps them: a priced line, an estimate, a payment, a lead somebody booked
+     * as the job, an edit somebody made (the API audits every one) -- Customers,
+     * 2026-10-05: money must never be left hanging off a deleted job.
+     *
+     * Not, the same day: a lead the matcher linked by phone (`job_matched_by`),
+     * which is found rather than made; an automation event, the outbox of what
+     * Workiz's own status changes fired; or this command's audit row. On those
+     * alone 45 of the 61 jobs A-1 moved from Nationwide to Massachusetts stayed
+     * in EzBizi beside their Massachusetts copies.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, true>
+     */
+    public static function named(array $ids): array
+    {
+        $named = MergeWorkizTwins::namedElsewhere($ids, ['workiz_jobs.job_id', 'leads.job_id', 'automation_events.subject_id', 'audit_events.target_id']);
+
+        $made = DB::table('leads')->whereIn('job_id', $ids)->where(fn ($q) => $q->whereNull('job_matched_by')->orWhere('job_matched_by', '<>', 'phone'))->pluck('job_id');
+        $edited = DB::table('audit_events')->whereIn('target_id', $ids)->where('action', '<>', 'workiz.job_gone')->pluck('target_id');
+
+        return $named + array_fill_keys($made->merge($edited)->all(), true);
+    }
+
+    /**
+     * Soft-delete a job Workiz deleted, and let go of the leads the matcher
+     * linked to it, so it finds the job each became now (MatchLeadsToJobs only
+     * looks at a lead with no job). Returns their ids.
+     *
+     * @return list<string>
+     */
+    public static function release(Job $job): array
+    {
+        $leads = Lead::query()->where('job_id', $job->getKey())->where('job_matched_by', 'phone')->pluck('id')->all();
+        Lead::query()->whereKey($leads)->update(['job_id' => null, 'job_matched_by' => null]);
+        $job->delete();
+
+        return $leads;
     }
 
     /**
