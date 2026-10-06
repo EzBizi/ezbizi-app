@@ -25,6 +25,7 @@ class VersionHistory {
         'Performance report: three dispatchers whose names differ between RingCentral and Workiz are now matched.',
         'Inspections: a finished inspection\'s report is linked on its Workiz job.',
         'Workiz: Massachusetts bookings can be credited to who booked them.',
+        'Your account: make API keys so an AI like Claude, or a script, can work in EzBizi as you, read only or able to make changes. A new key is shown once with a copy button and the Claude Code setup line, and any key can be revoked.',
       ],
     ),
     VersionRelease(
