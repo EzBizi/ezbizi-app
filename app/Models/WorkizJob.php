@@ -121,10 +121,22 @@ class WorkizJob extends Model implements StatesRetention
      */
     private static function keepWhatV2CannotSay(SocialConnection $connection, array $attributes): array
     {
-        $held = static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->first(['payload']);
+        $held = static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->first(['payload', 'created_by']);
 
         if ($held === null) {
             return $attributes;
+        }
+
+        // Who booked the job: v1 said (CreatedBy), v2 never does -- `createdBy`
+        // is only a field v2 accepts on a write. Reports credits each booking
+        // to a dispatcher by it, and the 2026-10-05 refresh blanked every row
+        // before this kept it (FillWorkizCreators reads it back from v1).
+        if (! array_key_exists('CreatedBy', $attributes['payload']) && array_key_exists('CreatedBy', (array) $held->payload)) {
+            $attributes['payload']['CreatedBy'] = $held->payload['CreatedBy'];
+        }
+
+        if ($attributes['created_by'] === null) {
+            unset($attributes['created_by']);
         }
 
         // Only a single read carries a job's files; a list read has no
