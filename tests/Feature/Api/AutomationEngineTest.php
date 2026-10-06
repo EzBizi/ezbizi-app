@@ -2175,6 +2175,14 @@ class AutomationEngineTest extends TestCase
      */
     public function test_a_follow_up_job_is_booked_and_a_self_feeding_rule_stops(): void
     {
+        // PINNED to the evening hour where the UTC date is a day ahead of the
+        // company's: 02:00 UTC on 6 Oct is still 5 Oct in New York. The app
+        // counts from the COMPANY's day, which is right (a job finished on a
+        // Tuesday evening is followed up 30 days after Tuesday); expecting the
+        // UTC date made this red every night from 00:00 to 04:00 UTC and
+        // blocked 0.0.0364 at the gate.
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-06 02:00:00', 'UTC'));
+
         $this->automation('job.created', null, [
             ['type' => 'job.create', 'title' => 'Follow-up: {{title}}', 'in_days' => '30'],
         ], $this->org['admin']->id);
@@ -2194,8 +2202,9 @@ class AutomationEngineTest extends TestCase
         // franchise's wall time on read, which needs the tenant and is about
         // display. What the rule stored is the thing being asserted.
         $this->assertStringStartsWith(
-            now()->addDays(30)->toDateString(),
+            '2026-11-04',
             (string) $followUp->getRawOriginal('scheduled_for'),
+            '30 days after 5 October in the company zone, not after the UTC 6th',
         );
 
         // THE BOUND. Without `causedBy` this rule books a job for every job it
