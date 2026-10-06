@@ -2983,7 +2983,7 @@ member picker reads `people: [{id, name, has_phone}]` (active users of this busi
 1daadbf0, not GET /users. Built: module_tabs_registry_test reds a drawn tab the registry lacks, so Meta registered
 `whatsapp_groups` at 3f460e6e; the tab needs `ai_assistance.whatsapp_groups.view` and `ai_assistance.manage`.
 
-### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-revamp-layouts.html`)
+### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `98f9a8b6` (`docs/previews/reports-performance-revamp-layouts.html`)
 
 Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
 things and the UI is not very good for it anymore."* Today one scroll holds the dates, seven figures, three panels that
@@ -2994,6 +2994,10 @@ side by side, each "See all" into Calls), People (the table alone), Calls (every
 they apply) (recommended); **2** the figures down the left as the way in; **3** one page tidied into three cards. Phone
 **4** (recommended) the same tabs; **5** the figures as the menu; **6** one page. All: Workiz accounts move to a Sources
 side panel and a problem with them is one amber line; the figures are one size.
+
+Built: on a phone the tabs drop their counts and Sources sits at the foot of the Overview, so the dates and the three
+tabs each keep a whole row (the date bar overflowed with Sources beside it). New client is a way into Calls too, since
+the Calls tab has a New chip. Calls over more than one day carry the day.
 
 ### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/customers-workiz-money-notes-layouts.html`)
 
