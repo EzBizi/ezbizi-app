@@ -188,13 +188,10 @@ final class SameDayReport
                 ->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get();
 
             foreach ($paid as $r) {
-                // A payment taken by someone Workiz does not list as team (an
-                // office user, a removed tech) is still money in: one row for
-                // all of them, not dropped.
-                $known = isset($names[$r->user_remote_id]) || isset($out['techs'][$r->user_remote_id]);
-                $id = $known ? (string) $r->user_remote_id : 'unlisted';
-                $out['deposits'][$id] ??= ['name' => $known ? trim((string) ($names[$r->user_remote_id] ?? '')) : 'Not on the Workiz team list', 'amount' => 0.0];
-                $out['deposits'][$id]['amount'] += (float) $r->amount;
+                $out['deposits'][(string) $r->user_remote_id] = [
+                    'name' => PeriodReport::collector($names[$r->user_remote_id] ?? null, (string) $r->user_remote_id),
+                    'amount' => (float) $r->amount,
+                ];
             }
         }
 

@@ -32,7 +32,7 @@ class PeriodReportTest extends TestCase
             $this->job($f, ['job_source' => 'GMB', 'status' => 'Canceled', 'booked_at' => '2026-09-01 09:00:00',
                 'last_status_update' => '2026-09-25 10:00:00', 'payload' => ['Team' => [['id' => 'USR-ann', 'Name' => 'Ann']]]]);
 
-            // Two people Workiz does not list collect money: one row between them.
+            // Two people Workiz's API cannot name collect money: each shown by id.
             $this->payment($f, 'USR-x', 100, '2026-09-26 12:00:00');
             $this->payment($f, 'USR-y', 50, '2026-09-27 12:00:00');
             $this->payment($f, 'USR-ann', 400, '2026-09-24 12:00:00');
@@ -49,7 +49,8 @@ class PeriodReportTest extends TestCase
         $this->assertStringContainsString($this->row('LS Ads', '2', '1', '1', '0', '0.0%', '$400.00', '$400.00'), $html);
         $this->assertStringContainsString($this->row('GMB', '0', '1', '100.0%', '$0.00', '—'), $html);
         $this->assertStringContainsString($this->row('Ann', '1', '1', '50.0%', '$400.00', '$400.00', '$400.00'), $html);
-        $this->assertStringContainsString($this->row('Not on the Workiz team list', '0', '0', '—', '$0.00', '—', '$150.00'), $html);
+        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-x)", '0', '0', '—', '$0.00', '—', '$100.00'), $html);
+        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-y)", '0', '0', '—', '$0.00', '—', '$50.00'), $html);
         $this->assertStringContainsString($this->row('Income', '$1,000.00', '100.0%'), $html);
         $this->assertStringContainsString($this->row('$1,000.00', '$250.00', '$750.00', '75.0%'), $html);
 
