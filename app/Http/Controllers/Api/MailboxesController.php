@@ -8,6 +8,7 @@ use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Access\InboxAccess;
+use App\Support\Automations\MailboxAlerts;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\GoogleWorkspace;
@@ -79,6 +80,7 @@ class MailboxesController extends Controller
         private readonly AuditLogger $audit,
         private readonly GoogleWorkspace $workspace,
         private readonly InboxAccess $inboxes,
+        private readonly MailboxAlerts $alerts,
     ) {}
 
     /**
@@ -754,6 +756,72 @@ class MailboxesController extends Controller
 
         return response()->json(['data' => $this->peoplePayload($mailbox)]);
     }
+
+    // ── "notify about new emails" (2026-10-06) ───────────────────
+
+    /*
+     * Jose: "if possible build also a link on email settings, so it can be
+     * changed from there as well like syncing with the automation".
+     *
+     * The automation rule is the ONE source of truth. These two endpoints
+     * read it and edit it through App\Support\Automations\MailboxAlerts,
+     * which writes a new version through the builder's own writer -- so a
+     * switch flipped here and an edit in Automations are the same edit and
+     * cannot drift. Nothing about the alert is stored on the mailbox.
+     */
+
+    /**
+     * GET /api/v1/email/mailboxes/new-mail-alerts
+     *
+     * Which addresses the new-email notification covers, and whether this
+     * screen may change it. `may_change` is about the VIEWER (it edits a rule,
+     * so it takes `automations.edit`); `editable` is about the RULE (somebody
+     * reshaped it in Automations and this screen will not guess).
+     */
+    public function newMailAlerts(Request $request): JsonResponse
+    {
+        return response()->json(['data' => [
+            ...$this->alerts->state(),
+            'may_change' => $request->user()->hasPermission(self::ALERTS_PERMISSION),
+        ]]);
+    }
+
+    /** PUT /api/v1/email/mailboxes/{mailbox}/new-mail-alert  { on: bool } */
+    public function setNewMailAlert(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $user = $request->user();
+
+        $refusal = $this->access->manageRefusal($user, $mailbox, 'change who is notified about this inbox');
+
+        if ($refusal !== null) {
+            return response()->json(['message' => $refusal], 403);
+        }
+
+        abort_if(
+            ! $user->hasPermission(self::ALERTS_PERMISSION),
+            Response::HTTP_FORBIDDEN,
+            Refusal::permission('change an automation')->message(),
+        );
+
+        $input = $request->validate(['on' => ['required', 'boolean']]);
+
+        try {
+            $this->alerts->set($mailbox->address, (bool) $input['on'], $user);
+        } catch (\RuntimeException $e) {
+            // MailboxAlerts speaks in sentences for a person: the rule was
+            // reshaped in Automations, there are two of them, no new-lead rule
+            // to copy who is told from.
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => [
+            ...$this->alerts->state(),
+            'may_change' => true,
+        ]]);
+    }
+
+    /** Editing the alert edits an automation; this is the key AutomationPolicy checks. */
+    private const ALERTS_PERMISSION = 'automations.edit';
 
     /**
      * Choosing who reads an inbox is managing it: `email.edit` and reach over
