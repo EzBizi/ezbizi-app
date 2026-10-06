@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 62 · Your account · API keys — **waiting for Jose** (sent 2026-10-06; 10-minute rule) (`docs/previews/account-api-keys-layouts.html`)
+### 62 · Your account · API keys — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — built, parked until `session/ai-api` is on main (`docs/previews/account-api-keys-layouts.html`)
 
 From MCP / API (`local_c0e813e0…`), for Jose 2026-10-06: *"build the MCP and API so AIs can manage operations
 natively"*. Backend on `session/ai-api`, not on main yet: `GET /me/api-keys` → {api_keys [{id, name, access
@@ -2977,6 +2977,11 @@ Done, revoke confirmed in place (recommended); **2** the form in a side panel, t
 "Connect an AI" card in three steps. Phone **4** (recommended) an API keys row under Signed in opening the same card;
 **5** a screen per step; **6** the three steps. All: Read only is the default; the key never sits in a layer a stray
 click can close.
+
+Build notes: `ApiKeysCard` (client/lib/widgets/api_keys_card.dart) under "Where you are signed in"; on a phone an
+**API keys · N** row in Signed in. GET and POST answer at the top level (`api_keys`; `{id, name, access, key}`), not
+under `data`. The setup line uses the API this app talks to (`API_BASE`, else the page's origin). Parked outside the
+tree: ClientCallsRealRoutesTest reds every session's PHP gate while `/me/api-keys` is not a route on main.
 
 ### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
