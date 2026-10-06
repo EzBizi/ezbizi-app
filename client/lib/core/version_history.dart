@@ -25,6 +25,7 @@ class VersionHistory {
         'Email: adding an address from Workspace now offers the branch subdomain addresses too, such as office@nj.a-1chimney.com.',
         'Leads: another call on a Google Local Services call lead no longer raises a "customer replied" notification.',
         'Notifications from a rule can carry a second line under the headline, and rules can use the new lead headline, details and reply preview wording.',
+        'Every website form and live chat is protected by a CAPTCHA that visitors never see; the per-site switch is gone.',
       ],
     ),
     VersionRelease(
