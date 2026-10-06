@@ -786,6 +786,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('ai', 'AI'),
                     new TabDefinition('library', 'Library'),
+                    // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
+                    new TabDefinition('whatsapp_groups', 'WhatsApp groups'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['assistant_entry', 'whatsapp_group'],

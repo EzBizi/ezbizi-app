@@ -16,6 +16,7 @@
             "tabs": [
                 "AI",
                 "Library",
+                "WhatsApp groups",
                 "Settings"
             ]
         },
@@ -297,6 +298,7 @@
         "ai_assistance.manage",
         "ai_assistance.settings.view",
         "ai_assistance.view",
+        "ai_assistance.whatsapp_groups.view",
         "audit.view",
         "automations.build.view",
         "automations.create",
