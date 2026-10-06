@@ -87,9 +87,7 @@ final class GoogleWorkspace
                     .'delegation) using the client ID shown on Email settings, then try again.';
         }
 
-        $host = strtolower((string) substr(strrchr($mailbox->address, '@') ?: '', 1));
-
-        if ($host !== $connection->domain) {
+        if (! $this->onWorkspace($mailbox->address, $connection->domain)) {
             return $mailbox->address.' is not on the connected Workspace ('.$connection->domain
                 .'), so EzBizi will not open it this way.';
         }
@@ -331,8 +329,14 @@ final class GoogleWorkspace
         $page   = null;
 
         do {
+            // `customer`, not `domain`. `domain=a-1chimney.com` returns only the
+            // users whose PRIMARY address is on exactly that domain, so every
+            // user on a branch subdomain -- office@nj.a-1chimney.com -- was
+            // never returned at all. Measured against the real Workspace on
+            // 2026-10-06: the old query found 1 subdomain address, this one 39
+            // across 35 subdomains. `onWorkspace` below keeps the boundary.
             $query = [
-                'domain'     => $connection->domain,
+                'customer'   => 'my_customer',
                 'maxResults' => 100,
                 'orderBy'    => 'email',
                 'query'      => 'isSuspended=false',
@@ -367,7 +371,7 @@ final class GoogleWorkspace
 
                 $name = (string) (data_get($user, 'name.fullName') ?: $primary);
 
-                if (! $this->isGoogleTestAlias($primary)) {
+                if (! $this->isGoogleTestAlias($primary) && $this->onWorkspace($primary, $connection->domain)) {
                     $listed[] = ['address' => $primary, 'name' => $name, 'primary' => true];
                 }
 
@@ -378,7 +382,7 @@ final class GoogleWorkspace
 
                     $address = strtolower($alias);
 
-                    if ($this->isGoogleTestAlias($address)) {
+                    if ($this->isGoogleTestAlias($address) || ! $this->onWorkspace($address, $connection->domain)) {
                         continue;
                     }
 
@@ -400,6 +404,27 @@ final class GoogleWorkspace
         }
 
         return array_values($unique);
+    }
+
+    /**
+     * Is this address on the connected domain or one of its subdomains?
+     *
+     * A-1 Chimney's Workspace holds a-1chimney.com and a subdomain per branch
+     * (nj., atl., chi., ... 35 of them, measured 2026-10-06). Those are the
+     * same business and the same delegation, so they belong.
+     *
+     * The dot is the boundary: `evil-a-1chimney.com` is not a subdomain of
+     * `a-1chimney.com`, and an unrelated secondary domain a Workspace might
+     * hold is not admitted -- asking by `customer` returns every domain in the
+     * account, and this is what stops that becoming a wider grant than the
+     * domain somebody connected.
+     */
+    private function onWorkspace(string $address, string $domain): bool
+    {
+        $host = strtolower((string) substr(strrchr($address, '@') ?: '', 1));
+        $domain = strtolower($domain);
+
+        return $host !== '' && ($host === $domain || str_ends_with($host, '.'.$domain));
     }
 
     /**
