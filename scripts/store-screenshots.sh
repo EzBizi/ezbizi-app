@@ -87,6 +87,9 @@ if [ "${1:-}" = "--remote" ]; then
     # this side, which writes store-screenshots/$SHOT_DIR/ under the project.
     OUT="$HOME/ezbizi-build/store-screenshots/$SET"
     xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already booted is fine
+    # A fresh install every run. "Keep me signed in" survives on the
+    # simulator, and the next run opened signed in: no form, no frames.
+    xcrun simctl uninstall "$DEVICE" com.ezbizi.app 2>/dev/null || true
     export SHOT_DIR="$SET"
   else
     # The debug app is sandboxed, so the test writes into its container.
