@@ -25,7 +25,7 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * Marketing > QR Codes: printed once, pointed anywhere afterwards.
  *
  * Reading is the tab (`marketing.qr_codes.view`, on the route group); creating,
- * re-pointing and deleting are `marketing.edit`, the same key that publishes
+ * re-pointing and (de)activating are `marketing.edit`, the same key that publishes
  * a post. Scope follows newsletters exactly — filed where the view stands,
  * visible downward, never to a sibling company.
  */
@@ -84,17 +84,36 @@ class QrCodesController extends Controller
         return response()->json(['data' => $this->present($qr)]);
     }
 
-    public function destroy(Request $request, string $qrCode): JsonResponse
+    /*
+     * There is no delete (Jose, 2026-10-06): a printed code deleted by accident
+     * cannot be printed back. Deactivating stops the redirect and keeps the
+     * code and its destination, so reactivating restores exactly what it did.
+     */
+    public function deactivate(Request $request, string $qrCode): JsonResponse
     {
-        $user = $this->mayEdit($request, 'delete a QR code');
+        return $this->setActive($request, $qrCode, active: false);
+    }
+
+    public function reactivate(Request $request, string $qrCode): JsonResponse
+    {
+        return $this->setActive($request, $qrCode, active: true);
+    }
+
+    private function setActive(Request $request, string $qrCode, bool $active): JsonResponse
+    {
+        $user = $this->mayEdit($request, $active ? 'reactivate a QR code' : 'deactivate a QR code');
         $qr = $this->findWritable($user, $qrCode);
 
-        $this->audit->log('qr_code.deleted', $qr, [
-            'name' => $qr->name, 'code' => $qr->code, 'destination_url' => $qr->destination_url,
-        ], actor: $user);
-        $qr->delete();
+        // Asking twice is not a second event.
+        if (($qr->deactivated_at === null) !== $active) {
+            $qr->forceFill(['deactivated_at' => $active ? null : now()])->save();
 
-        return response()->json(['data' => ['id' => $qrCode]]);
+            $this->audit->log($active ? 'qr_code.reactivated' : 'qr_code.deactivated', $qr, [
+                'name' => $qr->name, 'code' => $qr->code, 'destination_url' => $qr->destination_url,
+            ], actor: $user);
+        }
+
+        return response()->json(['data' => $this->present($qr)]);
     }
 
     /**
@@ -170,6 +189,8 @@ class QrCodesController extends Controller
             'destination_url' => $q->destination_url,
             'scans' => $q->scans,
             'last_scanned_at' => $q->last_scanned_at?->toIso8601String(),
+            'active' => $q->deactivated_at === null,
+            'deactivated_at' => $q->deactivated_at?->toIso8601String(),
             'scope_type' => $q->scope_type,
             'scope_id' => $q->scope_id,
             'created_at' => $q->created_at?->toIso8601String(),

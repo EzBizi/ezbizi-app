@@ -124,20 +124,27 @@ void main() {
     );
   });
 
-  testWidgets('Delete is asked inside the card, says what it breaks, and Keep '
-      'keeps it', (tester) async {
+  // Jose, 2026-10-06: "i dont want anyone deleting qr codes that we printed by
+  // accident so instead of deleting them add deactivation instead, so they can
+  // be reactivated".
+  testWidgets('Deactivate is asked inside the card, says what a scan will '
+      'show, and Keep keeps it', (tester) async {
     final server = _Server();
     await _pump(tester, server: server);
 
     await tester.tap(find.byKey(const ValueKey('qr-more:q-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('qr-delete:q-1')));
+    expect(find.text('Delete'), findsNothing, reason: 'nothing deletes a code');
+    await tester.tap(find.byKey(const ValueKey('qr-deactivate:q-1')));
     await tester.pumpAndSettle();
-    final ask = find.byKey(const ValueKey('qr-delete-ask:q-1'));
+    final ask = find.byKey(const ValueKey('qr-deactivate-ask:q-1'));
     expect(
       find.descendant(
         of: ask,
-        matching: find.text('Delete it? Printed copies will stop working.'),
+        matching: find.text(
+          'Deactivate it? Anyone who scans a printed copy sees “This QR code '
+          'is paused.” until you reactivate it.',
+        ),
       ),
       findsOneWidget,
     );
@@ -145,18 +152,48 @@ void main() {
     await tester.tap(find.descendant(of: ask, matching: find.text('Keep')));
     await tester.pumpAndSettle();
     expect(ask, findsNothing);
-    expect(server.deleted, isEmpty);
+    expect(server.switched, isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('qr-more:q-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('qr-delete:q-1')));
+    await tester.tap(find.byKey(const ValueKey('qr-deactivate:q-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('qr-delete-yes:q-1')));
+    await tester.tap(find.byKey(const ValueKey('qr-deactivate-yes:q-1')));
     await tester.pumpAndSettle();
 
-    expect(server.deleted, ['q-1']);
-    expect(find.byKey(const ValueKey('qr:q-1')), findsNothing);
+    expect(server.switched, ['q-1/deactivate']);
+    // Paused, not gone: labelled, still downloadable, and one tap from back.
+    expect(find.byKey(const ValueKey('qr-paused:q-1')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('qr-paused-line:q-1')),
+        matching: find.textContaining('“This QR code is paused.”'),
+        matchRoot: true,
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('qr-svg:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-png:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-reactivate:q-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-more:q-1')), findsNothing);
     expect(find.byKey(const ValueKey('qr:q-2')), findsOneWidget);
+  });
+
+  testWidgets('Reactivate brings a paused code back as it was', (tester) async {
+    final server = _Server(paused: const {'q-2'});
+    await _pump(tester, server: server);
+
+    expect(find.byKey(const ValueKey('qr-paused:q-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-paused:q-1')), findsNothing);
+    // Where it goes can still be changed while it is paused.
+    expect(find.byKey(const ValueKey('qr-change:q-2')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('qr-reactivate:q-2')));
+    await tester.pumpAndSettle();
+
+    expect(server.switched, ['q-2/reactivate']);
+    expect(find.byKey(const ValueKey('qr-paused:q-2')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-more:q-2')), findsOneWidget);
   });
 
   testWidgets('New QR code is made in a side panel, and a refusal lands on '
@@ -215,7 +252,11 @@ void main() {
 
   testWidgets('without marketing.edit the codes and downloads stay, the '
       'changes go', (tester) async {
-    await _pump(tester, permissions: const ['marketing.qr_codes.view']);
+    await _pump(
+      tester,
+      server: _Server(paused: const {'q-2'}),
+      permissions: const ['marketing.qr_codes.view'],
+    );
 
     expect(find.byKey(const ValueKey('qr:q-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('qr-png:q-1')), findsOneWidget);
@@ -223,6 +264,10 @@ void main() {
     expect(find.byKey(const ValueKey('qr-change:q-1')), findsNothing);
     expect(find.byKey(const ValueKey('qr-more:q-1')), findsNothing);
     expect(find.byKey(const Key('qr-new')), findsNothing);
+    // A paused code says so, but only an editor can bring it back.
+    expect(find.byKey(const ValueKey('qr-paused:q-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('qr-reactivate:q-2')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-png:q-2')), findsOneWidget);
     expect(
       find.text(
         'You can see the codes and download them, but not change them.',
@@ -332,7 +377,7 @@ Future<List<int>> _reference(
 }
 
 class _Server {
-  _Server({bool empty = false})
+  _Server({bool empty = false, Set<String> paused = const {}})
     : rows = empty
           ? []
           : [
@@ -350,12 +395,19 @@ class _Server {
                 0,
                 null,
               ),
-            ];
+            ] {
+    for (final row in rows) {
+      if (paused.contains(row['id'])) {
+        row['active'] = false;
+        row['deactivated_at'] = '2026-10-06T14:00:00+00:00';
+      }
+    }
+  }
 
   final List<Map<String, Object?>> rows;
   final List<Map<String, dynamic>> puts = [];
   final List<Map<String, dynamic>> posts = [];
-  final List<String> deleted = [];
+  final List<String> switched = [];
   final List<String> images = [];
   Map<String, Object?> me = const {};
 
@@ -381,6 +433,8 @@ class _Server {
       'last_scanned_at': last == null
           ? null
           : '${last.toIso8601String().substring(0, 19)}+00:00',
+      'active': true,
+      'deactivated_at': null,
     };
   }
 
@@ -413,12 +467,16 @@ class _Server {
       row['destination_url'] = to;
       return _json({'data': row});
     }
-    if (one != null && request.method == 'DELETE') {
-      deleted.add(one.group(1)!);
-      rows.removeWhere((r) => r['id'] == one.group(1));
-      return _json({
-        'data': {'id': one.group(1)},
-      });
+    final pause = RegExp(
+      r'/marketing/qr-codes/([^/]+)/(deactivate|reactivate)$',
+    ).firstMatch(path);
+    if (pause != null && request.method == 'POST') {
+      switched.add('${pause.group(1)}/${pause.group(2)}');
+      final row = rows.firstWhere((r) => r['id'] == pause.group(1));
+      final on = pause.group(2) == 'reactivate';
+      row['active'] = on;
+      row['deactivated_at'] = on ? null : '2026-10-06T14:00:00+00:00';
+      return _json({'data': row});
     }
 
     if (path.endsWith('/marketing/qr-codes') && request.method == 'POST') {

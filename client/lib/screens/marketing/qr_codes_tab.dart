@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 
 /// Marketing › QR Codes (UI queue 55; Jose, relayed by Marketing: "Go ahead
 /// with ur recommendations" — desktop 1, phone 4).
@@ -19,10 +20,12 @@ import '../../widgets/side_panel.dart';
 /// `url`, the address every printed copy carries, and never the destination.
 ///
 /// A card per code: the code, where it goes with Change on the card, its
-/// scans, the SVG (vehicle wraps) and PNG downloads, and Delete asked inside
-/// the card, because a deleted code breaks every printed copy. Changing,
-/// creating and deleting need `marketing.edit`; without it the codes, where
-/// they go and the downloads are still here.
+/// scans, and the SVG (vehicle wraps) and PNG downloads. A code is never
+/// deleted (Jose, 2026-10-06: "i dont want anyone deleting qr codes that we
+/// printed by accident"): it is deactivated, asked inside the card, which
+/// pauses every printed copy, and Reactivate brings it back as it was.
+/// Changing, creating, deactivating and reactivating need `marketing.edit`;
+/// without it the codes, where they go and the downloads are still here.
 class QrCodesTab extends StatefulWidget {
   const QrCodesTab({super.key, required this.api, required this.session});
 
@@ -39,9 +42,9 @@ class _QrCodesTabState extends State<QrCodesTab> {
   List<QrCodeRow> _codes = const [];
 
   /// The code whose address is being changed, and the one asking to be
-  /// deleted. One at a time: a second card opening closes the first.
+  /// deactivated. One at a time: a second card opening closes the first.
   String? _editing;
-  String? _deleting;
+  String? _pausing;
   bool _saving = false;
   String? _fieldError;
   final _destination = TextEditingController();
@@ -83,7 +86,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
 
   void _startChange(QrCodeRow code) => setState(() {
     _editing = code.id;
-    _deleting = null;
+    _pausing = null;
     _fieldError = null;
     _destination.text = code.destinationUrl;
   });
@@ -116,14 +119,24 @@ class _QrCodesTabState extends State<QrCodesTab> {
     await _load();
   }
 
-  Future<void> _delete(QrCodeRow code) async {
+  /// Pauses a code, or brings it back to where it went before.
+  Future<void> _setActive(QrCodeRow code, {required bool active}) async {
     setState(() => _saving = true);
-    final response = await widget.api.delete('/marketing/qr-codes/${code.id}');
+    // Each path whole, so the route guard can read it.
+    final response = active
+        ? await widget.api.post(
+            '/marketing/qr-codes/${code.id}/reactivate',
+            const {},
+          )
+        : await widget.api.post(
+            '/marketing/qr-codes/${code.id}/deactivate',
+            const {},
+          );
     if (!mounted) return;
 
     setState(() {
       _saving = false;
-      _deleting = null;
+      _pausing = null;
     });
     if (!response.ok) {
       ScaffoldMessenger.of(
@@ -279,24 +292,25 @@ class _QrCodesTabState extends State<QrCodesTab> {
 
   Widget _card(ThemeData theme, QrCodeRow code, bool narrow) {
     final editing = _editing == code.id;
-    final deleting = _deleting == code.id;
-    final caution = ToneColours.of(context, Tone.bad);
+    final pausing = _pausing == code.id;
+    final paused = !code.active;
+    final caution = ToneColours.of(context, Tone.caution);
 
-    // Delete is in a menu, a step away (option 1): it breaks every printed
-    // copy, so it is not a button beside the downloads.
-    final more = _canEdit
+    // Deactivate is in a menu, a step away (option 1): it pauses every
+    // printed copy, so it is not a button beside the downloads.
+    final more = _canEdit && !paused
         ? PopupMenuButton<String>(
             key: ValueKey('qr-more:${code.id}'),
             tooltip: 'More for “${code.name}”',
             onSelected: (_) => setState(() {
-              _deleting = code.id;
+              _pausing = code.id;
               _editing = null;
             }),
             itemBuilder: (context) => [
               PopupMenuItem<String>(
-                key: ValueKey('qr-delete:${code.id}'),
-                value: 'delete',
-                child: const Text('Delete'),
+                key: ValueKey('qr-deactivate:${code.id}'),
+                value: 'deactivate',
+                child: const Text('Deactivate'),
               ),
             ],
           )
@@ -311,26 +325,30 @@ class _QrCodesTabState extends State<QrCodesTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // The permanent address, never the destination: this is the
-            // image that is printed, so it is the image shown.
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: EzBiziTheme.paper,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: EzBiziTheme.edge(context)),
-              ),
-              // A fixed square: QrImageView sizes itself in a LayoutBuilder,
-              // which cannot answer the row's IntrinsicHeight.
-              child: SizedBox.square(
-                dimension: narrow ? 84 : 96,
-                child: QrImageView(
-                  key: ValueKey('qr-image:${code.id}'),
-                  data: code.url,
-                  version: QrVersions.auto,
-                  errorCorrectionLevel: QrErrorCorrectLevel.H,
-                  size: narrow ? 84 : 96,
-                  padding: EdgeInsets.zero,
-                  backgroundColor: EzBiziTheme.paper,
+            // image that is printed, so it is the image shown. Faded while
+            // paused, as the printed copies are.
+            Opacity(
+              opacity: paused ? 0.35 : 1,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: EzBiziTheme.paper,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: EzBiziTheme.edge(context)),
+                ),
+                // A fixed square: QrImageView sizes itself in a LayoutBuilder,
+                // which cannot answer the row's IntrinsicHeight.
+                child: SizedBox.square(
+                  dimension: narrow ? 84 : 96,
+                  child: QrImageView(
+                    key: ValueKey('qr-image:${code.id}'),
+                    data: code.url,
+                    version: QrVersions.auto,
+                    errorCorrectionLevel: QrErrorCorrectLevel.H,
+                    size: narrow ? 84 : 96,
+                    padding: EdgeInsets.zero,
+                    backgroundColor: EzBiziTheme.paper,
+                  ),
                 ),
               ),
             ),
@@ -346,9 +364,15 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           code.name,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
+                            color: paused ? theme.disabledColor : null,
                           ),
                         ),
                       ),
+                      if (paused)
+                        StatusPill(
+                          'Deactivated',
+                          key: ValueKey('qr-paused:${code.id}'),
+                        ),
                       // Beside the name on a phone, where the downloads
                       // leave it no room.
                       if (more != null && narrow) more,
@@ -384,10 +408,23 @@ class _QrCodesTabState extends State<QrCodesTab> {
                     code.scansLine(_formats),
                     style: theme.textTheme.bodySmall,
                   ),
+                  // What a scan does now, in Marketing's words for the page a
+                  // paused code shows.
+                  if (paused)
+                    Text(
+                      [
+                        if (code.deactivatedAt case final at?)
+                          'Paused since ${_formats.formatDate(at.toLocal())}.',
+                        'Scanning it shows “This QR code is paused.” Scans '
+                            'still count.',
+                      ].join(' '),
+                      key: ValueKey('qr-paused-line:${code.id}'),
+                      style: theme.textTheme.bodySmall,
+                    ),
                   const SizedBox(height: 8),
-                  if (deleting)
+                  if (pausing)
                     Container(
-                      key: ValueKey('qr-delete-ask:${code.id}'),
+                      key: ValueKey('qr-deactivate-ask:${code.id}'),
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: caution.fill,
@@ -400,22 +437,22 @@ class _QrCodesTabState extends State<QrCodesTab> {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            'Delete it? Printed copies will stop working.',
+                            'Deactivate it? Anyone who scans a printed copy '
+                            'sees “This QR code is paused.” until you '
+                            'reactivate it.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: caution.ink,
                             ),
                           ),
                           FilledButton(
-                            key: ValueKey('qr-delete-yes:${code.id}'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: theme.colorScheme.error,
-                              foregroundColor: theme.colorScheme.onError,
-                            ),
-                            onPressed: _saving ? null : () => _delete(code),
-                            child: const Text('Delete'),
+                            key: ValueKey('qr-deactivate-yes:${code.id}'),
+                            onPressed: _saving
+                                ? null
+                                : () => _setActive(code, active: false),
+                            child: const Text('Deactivate'),
                           ),
                           TextButton(
-                            onPressed: () => setState(() => _deleting = null),
+                            onPressed: () => setState(() => _pausing = null),
                             child: const Text('Keep'),
                           ),
                         ],
@@ -439,6 +476,14 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           icon: const Icon(Icons.download, size: 16),
                           label: const Text('PNG'),
                         ),
+                        if (paused && _canEdit)
+                          FilledButton.tonal(
+                            key: ValueKey('qr-reactivate:${code.id}'),
+                            onPressed: _saving
+                                ? null
+                                : () => _setActive(code, active: true),
+                            child: const Text('Reactivate'),
+                          ),
                         if (more != null && !narrow) more,
                       ],
                     ),
@@ -626,6 +671,8 @@ class QrCodeRow {
     required this.destinationUrl,
     required this.scans,
     this.lastScannedAt,
+    this.active = true,
+    this.deactivatedAt,
   });
 
   final String id;
@@ -638,6 +685,11 @@ class QrCodeRow {
   final String destinationUrl;
   final int scans;
   final DateTime? lastScannedAt;
+
+  /// False while paused: a scan shows "This QR code is paused." until it is
+  /// reactivated.
+  final bool active;
+  final DateTime? deactivatedAt;
 
   /// The address without its scheme, as people say it.
   String get destinationLabel => destinationUrl
@@ -677,6 +729,11 @@ class QrCodeRow {
           scans: row['scans'] is int ? row['scans'] as int : 0,
           lastScannedAt: row['last_scanned_at'] is String
               ? DateTime.tryParse(row['last_scanned_at'] as String)
+              : null,
+          // Only an explicit false pauses a code.
+          active: row['active'] != false,
+          deactivatedAt: row['deactivated_at'] is String
+              ? DateTime.tryParse(row['deactivated_at'] as String)
               : null,
         ),
     ];

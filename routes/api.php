@@ -1890,7 +1890,9 @@ Route::prefix('v1')
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);
             Route::post('marketing/qr-codes', [QrCodesController::class, 'store']);
             Route::put('marketing/qr-codes/{qrCode}', [QrCodesController::class, 'update']);
-            Route::delete('marketing/qr-codes/{qrCode}', [QrCodesController::class, 'destroy']);
+            // No delete (Jose, 2026-10-06): printed codes are deactivated.
+            Route::post('marketing/qr-codes/{qrCode}/deactivate', [QrCodesController::class, 'deactivate']);
+            Route::post('marketing/qr-codes/{qrCode}/reactivate', [QrCodesController::class, 'reactivate']);
             Route::get('marketing/qr-codes/{qrCode}/image', [QrCodesController::class, 'image']);
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);

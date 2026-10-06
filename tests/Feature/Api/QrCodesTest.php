@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
 use App\Models\QrCode;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -62,6 +63,50 @@ class QrCodesTest extends TestCase
 
         $this->signedInAs($editor)->getJson('/api/v1/marketing/qr-codes')
             ->assertJsonPath('data.0.scans', 2);
+    }
+
+    /**
+     * Deactivated, never deleted (Jose, 2026-10-06). The printed code stays
+     * valid: paused while off, and back to the SAME destination when on.
+     */
+    public function test_a_deactivated_code_pauses_and_reactivating_restores_its_destination(): void
+    {
+        $t = $this->provisionTenant('India');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com/reviews',
+        ])->json('data');
+
+        $this->signedInAs($editor)->postJson("/api/v1/marketing/qr-codes/{$qr['id']}/deactivate")
+            ->assertOk()->assertJsonPath('data.active', false)->assertJsonPath('data.code', $qr['code']);
+
+        $this->get('/q/'.$qr['code'])->assertNotFound()->assertSee('paused');
+
+        $this->signedInAs($editor)->postJson("/api/v1/marketing/qr-codes/{$qr['id']}/reactivate")
+            ->assertOk()->assertJsonPath('data.active', true);
+
+        $this->get('/q/'.$qr['code'])->assertRedirect('https://a-1chimney.com/reviews');
+
+        $actions = $this->inTenant($t['org'], fn () => AuditEvent::query()
+            ->where('action', 'like', 'qr_code.%activated')->pluck('action')->all());
+        $this->assertEqualsCanonicalizing(['qr_code.deactivated', 'qr_code.reactivated'], $actions);
+    }
+
+    public function test_there_is_no_delete_and_the_tab_alone_cannot_deactivate(): void
+    {
+        $t = $this->provisionTenant('Juliet');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.qr_codes.view']);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->json('data');
+
+        $this->signedInAs($editor)->deleteJson('/api/v1/marketing/qr-codes/'.$qr['id'])->assertStatus(405);
+
+        $this->signedInAs($reader)->postJson("/api/v1/marketing/qr-codes/{$qr['id']}/deactivate")
+            ->assertForbidden()->assertJsonPath('message', fn (string $m) => str_contains($m, 'deactivate a QR code'));
+
+        $this->get('/q/'.$qr['code'])->assertRedirect('https://a-1chimney.com');
     }
 
     public function test_an_unknown_code_is_a_404_and_counts_nothing(): void
