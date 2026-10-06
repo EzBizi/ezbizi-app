@@ -9,6 +9,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import 'qr_stats.dart';
 
 /// Marketing › QR Codes (UI queue 55; Jose, relayed by Marketing: "Go ahead
 /// with ur recommendations" — desktop 1, phone 4).
@@ -166,6 +167,21 @@ class _QrCodesTabState extends State<QrCodesTab> {
         .replaceAll(RegExp(r'^-+|-+$'), '');
     Files.download('${slug.isEmpty ? 'qr-code' : slug}.$format', bytes);
   }
+
+  /// One code's numbers over 30 or 90 days (UI queue 63).
+  Future<void> _openStats(QrCodeRow code) => showSidePanel<void>(
+    context,
+    builder: (context) => SidePanel(
+      title: '${code.name} · stats',
+      child: QrStatsPanel(
+        api: widget.api,
+        codeId: code.id,
+        allTimeScans: code.scans,
+        deactivatedAt: code.active ? null : code.deactivatedAt,
+        formats: _formats,
+      ),
+    ),
+  );
 
   Future<void> _create() async {
     final made = await showSidePanel<bool>(
@@ -405,9 +421,20 @@ class _QrCodesTabState extends State<QrCodesTab> {
                     ),
                   const SizedBox(height: 4),
                   Text(
-                    code.scansLine(_formats),
+                    code.monthLine(_formats) ?? code.scansLine(_formats),
+                    key: ValueKey('qr-scans:${code.id}'),
                     style: theme.textTheme.bodySmall,
                   ),
+                  // The last 30 days at a glance; Stats has the rest.
+                  if (code.daily30d case final days? when days.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: QrDayStrip(
+                        key: ValueKey('qr-strip:${code.id}'),
+                        days: days,
+                        pausedFrom: code.pausedIndex(days.length),
+                      ),
+                    ),
                   // What a scan does now, in Marketing's words for the page a
                   // paused code shows.
                   if (paused)
@@ -475,6 +502,12 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           onPressed: () => _download(code, 'png'),
                           icon: const Icon(Icons.download, size: 16),
                           label: const Text('PNG'),
+                        ),
+                        OutlinedButton.icon(
+                          key: ValueKey('qr-stats:${code.id}'),
+                          onPressed: () => _openStats(code),
+                          icon: const Icon(Icons.insights_outlined, size: 16),
+                          label: const Text('Stats'),
                         ),
                         if (paused && _canEdit)
                           FilledButton.tonal(
@@ -673,6 +706,9 @@ class QrCodeRow {
     this.lastScannedAt,
     this.active = true,
     this.deactivatedAt,
+    this.scans30d,
+    this.scanners30d,
+    this.daily30d,
   });
 
   final String id;
@@ -690,6 +726,39 @@ class QrCodeRow {
   /// reactivated.
   final bool active;
   final DateTime? deactivatedAt;
+
+  /// The last 30 days, when the server sends them: scans, daily scanners
+  /// (one phone or browser a day, the days added up), and scans per day,
+  /// oldest first, ending today. Null is "not sent", never zero.
+  final int? scans30d;
+  final int? scanners30d;
+  final List<int>? daily30d;
+
+  /// "128 scans · 96 daily scanners in 30 days · last 3 hours ago", or null
+  /// when the server sent no 30-day figures.
+  String? monthLine(DisplayFormats formats) {
+    final scans = scans30d;
+    if (scans == null) return null;
+    final scanners = scanners30d ?? 0;
+    final last = scansLine(formats).split(' · ').skip(1).join(' · ');
+    return [
+      '${scans == 1 ? '1 scan' : '$scans scans'} · '
+          '$scanners daily ${scanners == 1 ? 'scanner' : 'scanners'} in 30 days',
+      if (last.isNotEmpty) last,
+    ].join(' · ');
+  }
+
+  /// Where the paused stretch starts in [count] days ending today, or null
+  /// while the code is active (or was paused after the last of them).
+  int? pausedIndex(int count, [DateTime? today]) {
+    final at = deactivatedAt;
+    if (active || at == null) return null;
+    final day = DateUtils.dateOnly(at.toLocal());
+    final now = DateUtils.dateOnly(today ?? DateTime.now());
+    final index = count - 1 - now.difference(day).inDays;
+    if (index >= count) return null;
+    return index < 0 ? 0 : index;
+  }
 
   /// The address without its scheme, as people say it.
   String get destinationLabel => destinationUrl
@@ -734,6 +803,14 @@ class QrCodeRow {
           active: row['active'] != false,
           deactivatedAt: row['deactivated_at'] is String
               ? DateTime.tryParse(row['deactivated_at'] as String)
+              : null,
+          scans30d: (row['scans_30d'] as num?)?.toInt(),
+          scanners30d: (row['people_30d'] as num?)?.toInt(),
+          daily30d: row['daily_30d'] is List
+              ? [
+                  for (final n in row['daily_30d'] as List)
+                    (n as num?)?.toInt() ?? 0,
+                ]
               : null,
         ),
     ];

@@ -327,6 +327,125 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsNothing);
     expect(find.byType(QrCodesTab), findsNothing);
   });
+
+  // ── UI queue 63: stats (Jose: "how many people used it") ─────────
+
+  testWidgets('a card shows its last 30 days: scans, daily scanners and a '
+      'strip of days', (tester) async {
+    await _pump(tester, server: _Server(month: true));
+
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('qr-scans:q-1'))).data,
+      '128 scans · 96 daily scanners in 30 days · last 3 hours ago',
+    );
+    final strip = find.byKey(const ValueKey('qr-strip:q-1'));
+    expect(
+      find.descendant(of: strip, matching: find.byType(Container)),
+      findsNWidgets(30),
+    );
+    // A scanner is a phone a day, never a person (Marketing, 2026-10-06).
+    expect(find.textContaining('people'), findsNothing);
+  });
+
+  testWidgets('without 30-day figures the card keeps its all-time line', (
+    tester,
+  ) async {
+    await _pump(tester, server: _Server());
+
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('qr-scans:q-1'))).data,
+      '41 scans · last 3 hours ago',
+    );
+    expect(find.byKey(const ValueKey('qr-strip:q-1')), findsNothing);
+  });
+
+  testWidgets('Stats shows a code\'s 30 days, and 90 on asking', (
+    tester,
+  ) async {
+    final server = _Server(month: true);
+    await _pump(tester, server: server);
+
+    await tester.tap(find.byKey(const ValueKey('qr-stats:q-1')));
+    await tester.pumpAndSettle();
+    expect(server.stats, ['q-1?days=30']);
+
+    String figure(String key) => tester
+        .widgetList<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Text),
+          ),
+        )
+        .first
+        .data!;
+    expect(figure('qr-stats-scans'), '128');
+    expect(figure('qr-stats-scanners'), '96');
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('qr-stats-busiest')),
+        matching: find.text('Busiest day · 11'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('qr-stats-meaning')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('qr-stats-all-time'))).data,
+      'All time: 41 scans.',
+    );
+    // Every day drawn, zeros included.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('qr-stats-chart')),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey &&
+              '${(w.key as ValueKey).value}'.startsWith('qr-bar:'),
+        ),
+      ),
+      findsNWidgets(30),
+    );
+
+    await tester.tap(find.text('90 days'));
+    await tester.pumpAndSettle();
+    expect(server.stats, ['q-1?days=30', 'q-1?days=90']);
+  });
+
+  test('a paused stretch starts on the day the code was paused', () {
+    final today = DateTime(2026, 10, 6, 15);
+    final row = QrCodeRow(
+      id: 'q',
+      name: 'Yard sign',
+      url: 'https://ezbizi.example/q/1',
+      destinationUrl: 'https://everdoors.example',
+      scans: 0,
+      active: false,
+      deactivatedAt: DateTime(2026, 10, 4, 9),
+    );
+    expect(row.pausedIndex(30, today), 27);
+
+    // Paused before the window: every day of it is paused.
+    final older = QrCodeRow(
+      id: 'q',
+      name: 'Yard sign',
+      url: 'https://ezbizi.example/q/1',
+      destinationUrl: 'https://everdoors.example',
+      scans: 0,
+      active: false,
+      deactivatedAt: DateTime(2026, 8, 1),
+    );
+    expect(older.pausedIndex(30, today), 0);
+
+    // Active again: nothing is shaded.
+    final back = QrCodeRow(
+      id: 'q',
+      name: 'Yard sign',
+      url: 'https://ezbizi.example/q/1',
+      destinationUrl: 'https://everdoors.example',
+      scans: 0,
+      deactivatedAt: DateTime(2026, 10, 4, 9),
+    );
+    expect(back.pausedIndex(30, today), isNull);
+  });
 }
 
 String _url(String id) => 'https://ezbizi.test/q/$id-7KQ2';
@@ -377,25 +496,28 @@ Future<List<int>> _reference(
 }
 
 class _Server {
-  _Server({bool empty = false, Set<String> paused = const {}})
-    : rows = empty
-          ? []
-          : [
-              _row(
-                'q-1',
-                'Van 1, side door',
-                'https://everdoors.example/spring',
-                41,
-                3,
-              ),
-              _row(
-                'q-2',
-                'Yard sign',
-                'https://everdoors.example/fall',
-                0,
-                null,
-              ),
-            ] {
+  _Server({
+    bool empty = false,
+    Set<String> paused = const {},
+    this.month = false,
+  }) : rows = empty
+           ? []
+           : [
+               _row(
+                 'q-1',
+                 'Van 1, side door',
+                 'https://everdoors.example/spring',
+                 41,
+                 3,
+               ),
+               _row(
+                 'q-2',
+                 'Yard sign',
+                 'https://everdoors.example/fall',
+                 0,
+                 null,
+               ),
+             ] {
     for (final row in rows) {
       if (paused.contains(row['id'])) {
         row['active'] = false;
@@ -408,6 +530,10 @@ class _Server {
   final List<Map<String, dynamic>> puts = [];
   final List<Map<String, dynamic>> posts = [];
   final List<String> switched = [];
+  final List<String> stats = [];
+
+  /// Whether the server sends each code's last 30 days.
+  final bool month;
   final List<String> images = [];
   Map<String, Object?> me = const {};
 
@@ -467,6 +593,30 @@ class _Server {
       row['destination_url'] = to;
       return _json({'data': row});
     }
+    final stat = RegExp(r'/marketing/qr-codes/([^/]+)/stats$').firstMatch(path);
+    if (stat != null && request.method == 'GET') {
+      final days = int.parse(request.url.queryParameters['days'] ?? '30');
+      stats.add('${stat.group(1)}?days=$days');
+      final to = DateTime(2026, 10, 6);
+      return _json({
+        'data': {
+          'from': _ymd(to.subtract(Duration(days: days - 1))),
+          'to': _ymd(to),
+          'timezone': 'America/New_York',
+          'days': [
+            for (var i = 0; i < days; i++)
+              {
+                'date': _ymd(to.subtract(Duration(days: days - 1 - i))),
+                'scans': i == 20 ? 11 : (i % 7 == 3 ? 0 : 4),
+                'people': i == 20 ? 8 : (i % 7 == 3 ? 0 : 3),
+              },
+          ],
+          'scans': 128,
+          'people': 96,
+        },
+      });
+    }
+
     final pause = RegExp(
       r'/marketing/qr-codes/([^/]+)/(deactivate|reactivate)$',
     ).firstMatch(path);
@@ -494,7 +644,22 @@ class _Server {
       rows.add(row);
       return _json({'data': row}, 201);
     }
-    if (path.endsWith('/marketing/qr-codes')) return _json({'data': rows});
+    if (path.endsWith('/marketing/qr-codes')) {
+      return _json({
+        'data': [
+          for (final row in rows)
+            if (month && row['id'] == 'q-1')
+              {
+                ...row,
+                'scans_30d': 128,
+                'people_30d': 96,
+                'daily_30d': [for (var i = 0; i < 30; i++) i % 7 == 3 ? 0 : 4],
+              }
+            else
+              row,
+        ],
+      });
+    }
 
     return _json({'data': const []});
   }
@@ -566,3 +731,6 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: {'content-type': 'application/json'},
 );
+
+String _ymd(DateTime d) =>
+    '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
