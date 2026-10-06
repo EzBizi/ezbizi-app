@@ -171,6 +171,22 @@ final class ReportDocument
                 : '<div class="v photos">'.$shown.'</div>';
         }
 
+        // A choice prints the option's words, as a finding does — "2" is a key,
+        // "Level 2 — includes the exterior and flue" is the answer. A value no
+        // option carries any more prints as stored rather than vanishing.
+        if ($type === FieldType::CHOICE && $value !== null) {
+            $words = [];
+            foreach ((is_array($field['options'] ?? null) ? $field['options'] : []) as $option) {
+                if (($option = OptionSet::normalise($option)) !== null) {
+                    $words[$option['value']] = $option['label'];
+                }
+            }
+            $value = array_map(
+                static fn ($v) => is_scalar($v) ? ($words[(string) $v] ?? (string) $v) : '',
+                is_array($value) ? $value : [$value],
+            );
+        }
+
         if (is_array($value)) {
             $value = implode(', ', array_map(fn ($v) => (string) $v, $value));
         }

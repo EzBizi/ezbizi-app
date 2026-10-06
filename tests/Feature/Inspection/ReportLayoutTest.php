@@ -171,6 +171,33 @@ class ReportLayoutTest extends TestCase
         $this->assertStringNotContainsString('class="finding', $html);
     }
 
+    /**
+     * A choice printed as a plain line says the option's WORDS, not its key.
+     *
+     * The A1 port's "Level" is the case: the value is "2", and the customer is
+     * owed "Level 2 — includes the exterior and flue". Findings already did
+     * this; plain lines printed the key. A value no option carries any more
+     * (renamed since the report was filed) still prints as it was stored.
+     */
+    public function test_a_plain_choice_line_prints_the_option_words(): void
+    {
+        $html = $this->render([[
+            'fields' => [
+                ['key' => 'level', 'label' => 'Level', 'type' => 'choice', 'print' => 'text',
+                    'options' => [
+                        ['value' => '1', 'label' => 'Level 1 — visual only'],
+                        ['value' => '2', 'label' => 'Level 2 — includes the exterior and flue'],
+                    ]],
+                ['key' => 'extras', 'label' => 'Extras', 'type' => 'choice', 'print' => 'text',
+                    'options' => [['value' => 'cap', 'label' => 'Rain cap']]],
+            ],
+        ]], ['level' => '2', 'extras' => ['cap', 'gone']]);
+
+        $this->assertStringContainsString('Level 2 — includes the exterior and flue', $html);
+        $this->assertStringNotContainsString('<div class="v">2</div>', $html);
+        $this->assertStringContainsString('Rain cap, gone', $html);
+    }
+
     /** @param list<array<string, mixed>> $screens */
     private function render(array $screens, array $answers): string
     {
