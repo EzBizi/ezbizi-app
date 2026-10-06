@@ -93,7 +93,10 @@ TXT;
         }
         $kept = array_values(array_filter($subsections, fn ($s) => ! preg_match(self::REPLACED, $s['title'])));
 
-        $out = [...$intro, self::PAY_BLOCK];
+        // The heredoc is in this file's line endings, which a Windows checkout
+        // makes CRLF; bodies are compared with LF, so a second run would never
+        // match (MCP / API, 2026-10-07).
+        $out = [...$intro, str_replace("\r\n", "\n", self::PAY_BLOCK)];
         foreach ($kept as $i => $s) {
             $out[] = '('.chr(ord('b') + $i).') '.$s['title'];
             array_push($out, ...$s['paragraphs']);
