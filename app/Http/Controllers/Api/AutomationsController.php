@@ -156,6 +156,8 @@ class AutomationsController extends Controller
          * "Email a report" and the two would be one rename apart.
          */
         'inspection_report.email',
+        // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
+        'inspection_report.workiz',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
          * `App\Support\Training\AssignmentWriter` a person's own POST
@@ -2025,6 +2027,7 @@ class AutomationsController extends Controller
             $type('time_clock.clock_in', 'Clock them in', true, []),
             $type('time_clock.clock_out', 'Clock them out', true, []),
             $type('inspection_report.email', 'Email the report to the customer', true, []),
+            $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
 
             /*
              * ONE PICKER FOR A GUIDE OR A TEST, stored as `guide:<id>` or

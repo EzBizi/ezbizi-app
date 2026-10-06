@@ -14,6 +14,8 @@ use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
+use App\Models\WorkizJob;
+use App\Support\Workiz\WorkizJobWriter;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Support\Reports\SendSavedReport;
@@ -425,6 +427,7 @@ class ActionRunner
 
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
             'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
+            'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -606,6 +609,44 @@ class ActionRunner
      * record, resolved when the rule fires, which is the only address the
      * subject of the document has consented to be at.
      */
+    /**
+     * The finished report, as a link on its Workiz job (Jose via Inspection,
+     * 2026-10-06: "inspection reports should also go up in workiz when done
+     * via the app"). No Workiz API, v1 or v2, takes a file, so the link is
+     * what goes up: one line at the end of the job's description, where staff
+     * look, through a link that opens without an EzBizi sign-in
+     * (InspectionReport::shareUrl). Written once per report, so a retried run
+     * adds nothing. An inspection on a client alone, or on a job Workiz does
+     * not have, is left alone.
+     */
+    private function putInspectionReportOnWorkiz(?Model $subject): array
+    {
+        $type = 'inspection_report.workiz';
+
+        if (! $subject instanceof InspectionReport) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This action only works on a submitted inspection, so nothing was sent to Workiz.'];
+        }
+
+        $mirror = $subject->job_id === null ? null : WorkizJob::query()->where('job_id', $subject->job_id)->first();
+
+        if ($mirror === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This inspection is not on a Workiz job, so there was nothing to put it on.'];
+        }
+
+        $link = $subject->shareUrl();
+        $result = app(WorkizJobWriter::class)->appendLine(
+            $mirror,
+            'Inspection report '.($subject->submitted_at ?? now())->format('m/d/Y').': '.$link,
+            $link,
+        );
+
+        return match (true) {
+            $result['refused'] !== null => ['type' => $type, 'ok' => false, 'detail' => 'Workiz did not take it: '.$result['refused']],
+            ! $result['written'] => ['type' => $type, 'ok' => true, 'detail' => 'The report was already on the Workiz job.'],
+            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job.'],
+        };
+    }
+
     private function emailInspectionReport(array $action, ?Model $subject, ?Automation $automation): array
     {
         $type = 'inspection_report.email';
