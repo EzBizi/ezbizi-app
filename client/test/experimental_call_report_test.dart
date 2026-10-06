@@ -227,6 +227,31 @@ void main() {
     expect(posted, ['/api/v1/reports/experimental/calls/c1/convert']);
   });
 
+  testWidgets('Not booked counts reasons per AI, and shows both on a call', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
+    await tester.pumpAndSettle();
+
+    // Claude's reading first: Kitchen tap is a price call.
+    expect(find.text('Price 1'), findsOneWidget);
+    expect(find.text('Availability 0'), findsOneWidget);
+    expect(find.text('Claude: Price · Grok: Availability'), findsOneWidget);
+
+    // Grok read the same call differently.
+    await tester.tap(find.text('Grok'));
+    await tester.pumpAndSettle();
+    expect(find.text('Price 0'), findsOneWidget);
+    expect(find.text('Availability 1'), findsOneWidget);
+
+    // A count narrows the list to its calls.
+    await tester.tap(find.byKey(const ValueKey('label-price')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+  });
+
   testWidgets('choosing a week asks the server for a week', (tester) async {
     final asked = <Map<String, String>>[];
     await _pump(tester, width: 1400, asked: asked);
@@ -423,6 +448,7 @@ const _report = {
       'rang': ['Ada'],
       'outcome': 'answered',
       'transcript': 'How much is a sweep?',
+      'labels': {'claude': 'price', 'grok': 'availability'},
       'booked': false,
     },
     {

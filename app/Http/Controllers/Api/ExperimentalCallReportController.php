@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportLabel;
 use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
@@ -257,12 +258,21 @@ class ExperimentalCallReportController extends Controller
      */
     private function withTranscripts(array $day): array
     {
-        $words = CallReportTranscript::query()
-            ->whereIn('call_id', array_column($day['calls'] ?? [], 'id'))
-            ->pluck('transcript', 'call_id');
+        $ids = array_column($day['calls'] ?? [], 'id');
+
+        $words = CallReportTranscript::query()->whereIn('call_id', $ids)->pluck('transcript', 'call_id');
+
+        // Each provider's label for the call, side by side for comparing.
+        $labels = [];
+        foreach (CallReportLabel::query()->whereIn('call_id', $ids)->get(['call_id', 'provider', 'label']) as $row) {
+            $labels[$row->call_id][$row->provider] = $row->label;
+        }
 
         $day['calls'] = array_map(
-            fn (array $call) => $call + ['transcript' => $words[$call['id']] ?? null],
+            fn (array $call) => $call + [
+                'transcript' => $words[$call['id']] ?? null,
+                'labels' => (object) ($labels[$call['id']] ?? []),
+            ],
             $day['calls'] ?? [],
         );
 
