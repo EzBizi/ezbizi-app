@@ -2,6 +2,10 @@
 
 namespace App\Support\Workiz;
 
+use App\Models\SocialConnection;
+use App\Models\WorkizRecord;
+use Illuminate\Support\Facades\DB;
+
 /**
  * The Workiz v2 record types EzBizi mirrors into `workiz_records`, and how
  * each one is read and filed. Measured against the v2 spec and live accounts
@@ -117,6 +121,54 @@ final class WorkizRecords
             }),
             'payload' => array_diff_key($record, array_flip(self::UNCOPIED)),
         ];
+    }
+
+    /**
+     * Upsert these records of one type for a branch, then point the branch's
+     * records at the EzBizi job their Workiz job became, where it has one.
+     * Run inside the branch's tenant.
+     *
+     * @param  array<int, array<string, mixed>>  $records
+     */
+    public static function land(SocialConnection $connection, string $type, array $records): int
+    {
+        $now = now();
+        $rows = [];
+
+        foreach ($records as $record) {
+            $row = self::row($type, $record);
+
+            if ($row['remote_id'] === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'id' => (new WorkizRecord)->newUniqueId(),
+                'organization_id' => $connection->organization_id,
+                'franchise_id' => $connection->scope_id,
+                'connection_id' => $connection->getKey(),
+                'synced_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+                'payload' => json_encode($row['payload']),
+            ] + $row;
+        }
+
+        if ($rows !== []) {
+            DB::table('workiz_records')->upsert($rows, ['franchise_id', 'type', 'remote_id'], [
+                'connection_id', 'job_remote_id', 'user_remote_id', 'starts_at', 'ends_at', 'amount', 'amount_due',
+                'status', 'remote_updated_at', 'payload', 'synced_at', 'updated_at',
+            ]);
+        }
+
+        DB::table('workiz_records as r')
+            ->join('workiz_jobs as j', fn ($join) => $join->on('j.franchise_id', '=', 'r.franchise_id')->on('j.v2_id', '=', 'r.job_remote_id'))
+            ->where('r.franchise_id', $connection->scope_id)
+            ->whereNull('r.job_id')
+            ->whereNotNull('j.job_id')
+            ->update(['r.job_id' => DB::raw('`j`.`job_id`')]);
+
+        return count($rows);
     }
 
     /** The cursor a type's next read starts from: the newest it holds, less two days of overlap. */

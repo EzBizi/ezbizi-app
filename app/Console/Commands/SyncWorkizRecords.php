@@ -10,7 +10,6 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -106,8 +105,6 @@ class SyncWorkizRecords extends Command
             $read = WorkizV2::send($connection, 'GET', WorkizRecords::path($type), WorkizRecords::query($type, $since, $page), 60);
 
             if ($read['refused'] !== null) {
-                $this->link($connection->scope_id);
-
                 return ['landed' => $landed, 'failed' => $read['refused'], 'status' => $read['status']];
             }
 
@@ -117,7 +114,7 @@ class SyncWorkizRecords extends Command
             $older = $type === 'timesheet'
                 ? array_filter($rows, fn ($r) => (string) ($r['startDate'] ?? '') < $since)
                 : [];
-            $landed += $this->land($connection, $type, array_diff_key($rows, $older));
+            $landed += WorkizRecords::land($connection, $type, array_diff_key($rows, $older));
 
             if ($older !== [] || ! ($read['data']['hasMore'] ?? false)) {
                 break;
@@ -126,56 +123,6 @@ class SyncWorkizRecords extends Command
             sleep(max(0, (int) $this->option('pause')));
         }
 
-        $this->link($connection->scope_id);
-
         return ['landed' => $landed, 'failed' => null, 'status' => 200];
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $records
-     */
-    private function land(SocialConnection $connection, string $type, array $records): int
-    {
-        $now = now();
-        $rows = [];
-
-        foreach ($records as $record) {
-            $row = WorkizRecords::row($type, $record);
-
-            if ($row['remote_id'] === '') {
-                continue;
-            }
-
-            $rows[] = [
-                'id' => (new WorkizRecord)->newUniqueId(),
-                'organization_id' => $connection->organization_id,
-                'franchise_id' => $connection->scope_id,
-                'connection_id' => $connection->getKey(),
-                'synced_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-                'payload' => json_encode($row['payload']),
-            ] + $row;
-        }
-
-        if ($rows !== []) {
-            DB::table('workiz_records')->upsert($rows, ['franchise_id', 'type', 'remote_id'], [
-                'connection_id', 'job_remote_id', 'user_remote_id', 'starts_at', 'ends_at', 'amount', 'amount_due',
-                'status', 'remote_updated_at', 'payload', 'synced_at', 'updated_at',
-            ]);
-        }
-
-        return count($rows);
-    }
-
-    /** Point records at the EzBizi job their Workiz job became, once it has one. */
-    private function link(string $franchiseId): void
-    {
-        DB::table('workiz_records as r')
-            ->join('workiz_jobs as j', fn ($join) => $join->on('j.franchise_id', '=', 'r.franchise_id')->on('j.v2_id', '=', 'r.job_remote_id'))
-            ->where('r.franchise_id', $franchiseId)
-            ->whereNull('r.job_id')
-            ->whereNotNull('j.job_id')
-            ->update(['r.job_id' => DB::raw('`j`.`job_id`')]);
     }
 }

@@ -179,6 +179,7 @@ use App\Http\Controllers\Api\Web\ListsController as WebListsController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -457,6 +458,17 @@ Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.thumbtack.webhook');
+
+/*
+| Workiz saying a job, lead, invoice or estimate changed: a "post webhook"
+| rule in a branch's Workiz Automation Center. A nudge, not a delivery -- the
+| record is read back from Workiz with the branch's own key. See
+| WorkizWebhookController.
+*/
+Route::post('v1/social/workiz/webhook/{connection}', WorkizWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->whereUuid('connection')
+    ->name('social.workiz.webhook');
 
 /*
  * Unsubscribe — PUBLIC and unauthenticated, and it has to be.
