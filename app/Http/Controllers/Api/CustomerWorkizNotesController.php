@@ -42,15 +42,23 @@ class CustomerWorkizNotesController extends Controller
                 default => null,
             };
 
-            if ($error === null) {
-                $read = WorkizV2::send($connection, 'GET', '/clients/'.rawurlencode($client->v2_id).'/notes', ['page' => 1, 'pageSize' => 100], 10);
-                $error = $read['refused'];
-                $answer['notes'] = collect($read['data']['data'] ?? [])->filter(fn ($note) => is_array($note))
-                    ->map(fn (array $note) => ['text' => (string) ($note['note'] ?? ''), 'created_at' => $note['createdAt'] ?? null, 'author' => $note['techName'] ?? null])
-                    ->sortByDesc('created_at')->values()->all();
+            if ($error !== null) {
+                return $answer + ['error' => $error];
             }
 
-            return $error === null ? $answer : $answer + ['error' => $error];
+            $read = WorkizV2::send($connection, 'GET', '/clients/'.rawurlencode($client->v2_id).'/notes', ['page' => 1, 'pageSize' => 100], 10);
+
+            // Only Workiz's own refusal or silence can change on a second try;
+            // the reasons above cannot (UI/UX, 2026-10-06).
+            if ($read['refused'] !== null) {
+                return $answer + ['error' => $read['refused'], 'retry' => true];
+            }
+
+            $answer['notes'] = collect($read['data']['data'] ?? [])->filter(fn ($note) => is_array($note))
+                ->map(fn (array $note) => ['text' => (string) ($note['note'] ?? ''), 'created_at' => $note['createdAt'] ?? null, 'author' => $note['techName'] ?? null])
+                ->sortByDesc('created_at')->values()->all();
+
+            return $answer;
         })->values()]);
     }
 }

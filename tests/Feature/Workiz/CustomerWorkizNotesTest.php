@@ -87,8 +87,10 @@ class CustomerWorkizNotesTest extends TestCase
         $rows = collect($this->signedInAs($this->tenant['admin'])->getJson('/api/v1/customers/'.$this->customer->id.'/workiz-notes')
             ->assertOk()->json('data'))->keyBy('client_id');
 
-        $this->assertSame('Too Many Requests', $rows[3909]['error']);
+        // Only Workiz's own refusal is worth trying again.
+        $this->assertSame(['Too Many Requests', true], [$rows[3909]['error'], $rows[3909]['retry'] ?? null]);
         $this->assertSame('Not matched to Workiz yet.', $rows[4100]['error']);
+        $this->assertArrayNotHasKey('retry', $rows[4100]);
         Http::assertSentCount(1);
     }
 
