@@ -111,6 +111,28 @@ void main() {
       expect(layout.columns, greaterThan(2));
     });
 
+    test('a screen is called by its name, the key the Builder and the server '
+        'write', () {
+      // `name` is what the Builder's Add screen, the A1 port and the run view
+      // all use. The chart read `title`, which nothing writes, so every real
+      // screen was drawn as "Screen 1" to "Screen 4".
+      final graph = inspectionFlow({
+        'name': 'Chimney',
+        'screens': [
+          {
+            'name': 'Client and site',
+            'fields': [
+              {'key': 'a', 'label': 'A'},
+            ],
+          },
+          {'fields': <Map<String, dynamic>>[]},
+        ],
+      })!;
+
+      expect(graph.node('screen-0')!.title, 'Client and site');
+      expect(graph.node('screen-1')!.title, 'Screen 2');
+    });
+
     test('an inspection with no screens has no flow to draw', () {
       expect(inspectionFlow(null), isNull);
       expect(inspectionFlow({'name': 'Empty', 'screens': []}), isNull);

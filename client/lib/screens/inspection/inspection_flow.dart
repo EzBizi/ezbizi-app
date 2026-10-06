@@ -120,13 +120,15 @@ CallFlowGraph? inspectionFlow(Map<String, dynamic>? definition) {
     final reach = conditionReach(condition, askedOn, i);
     final optional = condition is Map && condition.isNotEmpty;
 
+    // `name` is what the Builder, the A1 port and the run view write; `title`
+    // is read only as the report does, for a definition stored some other way.
+    final name = '${screen['name'] ?? screen['title'] ?? ''}'.trim();
+
     nodes.add(
       FlowNode(
         id: id,
         kind: 'screen',
-        title: '${screen['title'] ?? ''}'.isEmpty
-            ? 'Screen ${i + 1}'
-            : '${screen['title']}',
+        title: name.isEmpty ? 'Screen ${i + 1}' : name,
         detail: _screenDetail(screen, fields, condition, labels, reach),
         state: reach == ConditionReach.never
             ? 'dead'
