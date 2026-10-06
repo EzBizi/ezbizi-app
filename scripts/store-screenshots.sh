@@ -188,4 +188,12 @@ if [ -n "$DEVICE" ]; then
 else
   scp -q "$MAC:Library/Containers/com.ezbizi.app/Data/store-screenshots/macos/*.png" "$DIST/"
 fi
+# Different screens never make byte-identical PNGs. Identical ones mean the
+# capture saw one stale surface (a system prompt over the app gave ten blank
+# frames and a passing test).
+DUPES=$(md5sum "$DIST"/[0-9]*.png | awk '{print $1}' | sort | uniq -d | wc -l | tr -d ' ')
+if [ "$DUPES" -gt 0 ]; then
+  echo "✗ identical frames in $DIST - the capture did not see the app; look at them" >&2
+  exit 6
+fi
 echo "✓ $(ls "$DIST"/*.png | wc -l | tr -d ' ') screenshot(s) → $DIST"
