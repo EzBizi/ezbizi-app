@@ -827,9 +827,16 @@ class DashboardTest extends TestCase
      */
     public function test_every_figure_and_attention_row_keeps_the_contract(): void
     {
-        $this->job($this->alpha['franchise'], ['scheduled_for' => now()]);
-        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDay()]);
-        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->subDay()]);
+        // Evening in the franchise's zone and already tomorrow in UTC: the
+        // window this failed in at the gate every night, 00:00-04:00 UTC.
+        // scheduled_for is a franchise WALL time (FranchiseWallTime), so the
+        // fixtures are wall times there; seeding now() in UTC put "today" on
+        // tomorrow's date and yesterday's jobs on today's.
+        $this->travelTo(Carbon::parse('2026-10-06 01:30:00', 'UTC'));
+        $wall = now($this->alpha['franchise']->timezone ?: 'UTC');
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $wall->copy()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $wall->copy()->subDay()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $wall->copy()->subDay()]);
 
         $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
 
@@ -863,8 +870,11 @@ class DashboardTest extends TestCase
      */
     public function test_notes_are_the_sentences_that_are_not_figures(): void
     {
-        $this->job($this->alpha['franchise'], ['scheduled_for' => now()]);
-        $this->job($this->alpha['franchise'], ['scheduled_for' => now()->addDays(2)]);
+        // Same evening window and wall-time fixtures as the contract test.
+        $this->travelTo(Carbon::parse('2026-10-06 01:30:00', 'UTC'));
+        $wall = now($this->alpha['franchise']->timezone ?: 'UTC');
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $wall->copy()]);
+        $this->job($this->alpha['franchise'], ['scheduled_for' => $wall->copy()->addDays(2)]);
 
         $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
 
