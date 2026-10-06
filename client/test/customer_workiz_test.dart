@@ -128,12 +128,11 @@ void main() {
     expect(
       find.descendant(
         of: line,
-        matching: find.text(
-          'Workiz did not answer for Harbor Massachusetts: Timed out.',
-        ),
+        matching: find.text('Workiz did not answer: Timed out.'),
       ),
       findsOneWidget,
     );
+    expect(find.text('HARBOR MASSACHUSETTS'), findsOneWidget);
     // The branch that did answer still shows its notes.
     expect(find.text('Prefers morning appointments.'), findsOneWidget);
 
@@ -143,6 +142,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.notesAsked, 2);
   });
+
+  // Customers, 2026-10-06: until the client-id sweep runs, most customers
+  // read "Not matched to Workiz yet." — a fact, not a failure.
+  testWidgets(
+    'a branch not matched yet says so plainly, with nothing to retry',
+    (tester) async {
+      await _pump(tester, _Server());
+      await tester.tap(find.text('Notes from Workiz'));
+      await tester.pumpAndSettle();
+
+      final line = find.byKey(const ValueKey('workiz-notes-error-WC-3'));
+      expect(
+        find.descendant(
+          of: line,
+          matching: find.text('Not matched to Workiz yet.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: line, matching: find.text('Try again')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('a customer with no Workiz client has no Notes tab', (
     tester,
@@ -209,6 +232,13 @@ class _Server {
             'franchise': {'id': 'fr-2', 'name': 'Harbor Massachusetts'},
             'notes': <dynamic>[],
             'error': 'Timed out.',
+            'retry': true,
+          },
+          {
+            'client_id': 'WC-3',
+            'franchise': {'id': 'fr-3', 'name': 'Harbor Connecticut'},
+            'notes': <dynamic>[],
+            'error': 'Not matched to Workiz yet.',
           },
         ],
       });

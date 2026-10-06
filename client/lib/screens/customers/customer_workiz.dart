@@ -281,8 +281,6 @@ class _WorkizNotesState extends State<WorkizNotes> {
       );
     }
 
-    final bad = ToneColours.of(context, Tone.bad);
-
     return Column(
       key: const Key('workiz-notes'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -291,28 +289,7 @@ class _WorkizNotesState extends State<WorkizNotes> {
           if (i > 0) const SizedBox(height: 14),
           _branch(context, _clients[i], first: i == 0),
           if ('${_clients[i]['error'] ?? ''}'.isNotEmpty)
-            Container(
-              key: ValueKey('workiz-notes-error-${_clients[i]['client_id']}'),
-              margin: const EdgeInsets.only(top: 6),
-              padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
-              decoration: BoxDecoration(
-                color: bad.fill,
-                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Workiz did not answer for ${_branchName(_clients[i])}: ${_clients[i]['error']}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: bad.ink,
-                      ),
-                    ),
-                  ),
-                  TextButton(onPressed: _load, child: const Text('Try again')),
-                ],
-              ),
-            )
+            _notesError(context, _clients[i])
           else if (((_clients[i]['notes'] as List?) ?? const []).isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -323,6 +300,47 @@ class _WorkizNotesState extends State<WorkizNotes> {
               if (note is Map) _note(context, Map<String, dynamic>.from(note)),
         ],
       ],
+    );
+  }
+
+  /// Why a branch shows no notes, under its name. Workiz failing to answer
+  /// is a red line with Try again; the rest — no connection, not on its v2
+  /// key, not matched yet — is the server's sentence, plain, since trying
+  /// again changes nothing (Customers, 2026-10-06). The server says which:
+  /// `retry`.
+  Widget _notesError(BuildContext context, Map<String, dynamic> client) {
+    final theme = Theme.of(context);
+    final key = ValueKey('workiz-notes-error-${client['client_id']}');
+    final said = '${client['error']}';
+
+    if (client['retry'] != true) {
+      return Padding(
+        key: key,
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(said, style: theme.textTheme.bodySmall),
+      );
+    }
+
+    final bad = ToneColours.of(context, Tone.bad);
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: bad.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Workiz did not answer: $said',
+              style: theme.textTheme.bodySmall?.copyWith(color: bad.ink),
+            ),
+          ),
+          TextButton(onPressed: _load, child: const Text('Try again')),
+        ],
+      ),
     );
   }
 
