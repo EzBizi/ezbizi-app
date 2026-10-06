@@ -59,7 +59,8 @@ class ReportsModuleTest extends TestCase
             $this->module()->tabs,
         );
 
-        $this->assertSame(['Reports', 'Builder', 'Experimental'], $labels);
+        // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental")
+        $this->assertSame(['Reports', 'Report Builder', 'Performance'], $labels);
     }
 
     /**

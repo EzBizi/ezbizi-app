@@ -214,8 +214,8 @@
             "parent": null,
             "tabs": [
                 "Reports",
-                "Builder",
-                "Experimental"
+                "Report Builder",
+                "Performance"
             ]
         },
         "reviews": {
