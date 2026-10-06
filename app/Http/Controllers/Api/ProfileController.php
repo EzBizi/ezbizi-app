@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\ApiKey;
 use App\Support\Auth\SessionContext;
 use App\Support\Files\FileStore;
 use App\Support\Scoping\ViewScope;
@@ -278,6 +279,8 @@ class ProfileController extends Controller
 
         $revoked = $user->tokens()
             ->when($current !== null, fn ($q) => $q->whereKeyNot($current->getKey()))
+            // API keys are not sessions; they are revoked from their own list.
+            ->where('name', 'not like', ApiKey::PREFIX.'%')
             ->delete();
 
         $this->audit->log('user.sessions_revoked', $user, metadata: ['revoked' => $revoked]);
@@ -293,6 +296,7 @@ class ProfileController extends Controller
 
         return [
             'sessions' => $user->tokens()
+                ->where('name', 'not like', ApiKey::PREFIX.'%')
                 ->orderByDesc('last_used_at')
                 ->get()
                 ->map(fn ($token) => [

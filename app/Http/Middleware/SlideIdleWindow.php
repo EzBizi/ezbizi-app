@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Organization;
+use App\Support\Auth\ApiKey;
 use App\Support\Auth\SessionLifetime;
 use Closure;
 use DateTimeInterface;
@@ -88,7 +89,9 @@ class SlideIdleWindow
      */
     private function isSlidable(mixed $token): bool
     {
+        // An API key has no inactivity window; it lives until revoked.
         return $token instanceof PersonalAccessToken
+            && ! ApiKey::is($token)
             && $token->exists
             && $token->created_at instanceof DateTimeInterface;
     }
