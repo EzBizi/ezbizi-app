@@ -718,6 +718,59 @@ class HrOnboardingTest extends TestCase
         $this->assertArrayNotHasKey('tax_form', $this->form($employee, $id)['missing']);
     }
 
+    /**
+     * The direct deposit form and the I-9 are filled from the answers and
+     * signed in the app; the employer completes the I-9's Section 2 on the
+     * signed page (Jose, 2026-10-06: "so it's all filled on ezbizi").
+     */
+    public function test_the_direct_deposit_form_and_the_i9_are_signed_in_the_app(): void
+    {
+        $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'tax_id_type', 'label' => 'Tax ID', 'type' => 'choice', 'options' => ['SSN', 'EIN'], 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'bank_routing_number', 'label' => 'Routing', 'type' => 'text', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'direct_deposit_form', 'label' => 'Direct deposit', 'type' => 'file', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'i9_form', 'label' => 'I-9', 'type' => 'file', 'filled_by' => 'employee', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $url = "/api/v1/hr/onboardings/{$id}/tax-form";
+        $field = fn (string $key) => $this->fieldIn($this->form($employee, $id), $key);
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => [
+            'tax_id_type' => 'SSN', 'bank_routing_number' => '021000021',
+        ]])->assertOk();
+        $this->assertSame('direct_deposit', $field('direct_deposit_form')['tax_form_kind']);
+        $this->assertSame('i9', $field('i9_form')['tax_form_kind']);
+
+        // Each asks its one question before it can be signed.
+        $this->as($employee)->postJson($url, ['kind' => 'direct_deposit', 'values' => [], 'drawing' => $png])
+            ->assertStatus(422)->assertJsonValidationErrors('values.account_type');
+        $this->as($employee)->postJson($url, ['kind' => 'direct_deposit', 'values' => ['account_type' => 'checking'], 'drawing' => $png])->assertOk();
+        $this->as($employee)->postJson($url, ['kind' => 'i9', 'values' => [], 'drawing' => $png])
+            ->assertStatus(422)->assertJsonValidationErrors('values.status');
+        $this->as($employee)->postJson($url, ['kind' => 'i9', 'values' => ['status' => 'citizen', 'ssn' => '123456789'], 'drawing' => $png])->assertOk();
+
+        $name = fn (string $key) => $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($this->rawAnswer($alpha, $id, $key))->original_name);
+        $this->assertSame('Direct deposit authorization.png', $name('direct_deposit_form'));
+        $this->assertSame('I-9.png', $name('i9_form'));
+        $this->assertFalse($this->form($alpha['admin'], $id)['i9']['section2']);
+        $this->assertTrue($this->form($alpha['admin'], $id)['i9']['mine']);
+
+        // Section 2 is the employer's, with a document from List A or B and C.
+        $section2 = "/api/v1/hr/onboardings/{$id}/i9-section2";
+        $this->as($employee)->postJson($section2, ['values' => ['a_title' => 'Passport'], 'drawing' => $png])->assertForbidden();
+        $this->as($alpha['admin'])->postJson($section2, ['values' => ['b_title' => 'Driver licence'], 'drawing' => $png])
+            ->assertStatus(422)->assertJsonValidationErrors('values');
+        $this->as($alpha['admin'])->post($section2.'?preview=1', ['values' => []])
+            ->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->as($alpha['admin'])->postJson($section2, ['values' => ['a_title' => 'U.S. Passport', 'title' => 'Manager'], 'drawing' => $png])
+            ->assertOk()->assertJsonPath('data.i9.section2', true);
+        $this->assertSame(\App\Services\Hr\OnboardingDocuments::I9_COMPLETE, $name('i9_form'));
+
+        // A contractor (W-9) has no I-9 to sign.
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['tax_id_type' => 'EIN']])->assertOk();
+        $this->assertNull($field('i9_form')['tax_form_kind']);
+    }
+
     /** Finished onboardings are their own archive (a Suggestion Jose said to build, 2026-10-01). */
     public function test_finished_onboardings_list_apart_from_those_in_progress(): void
     {

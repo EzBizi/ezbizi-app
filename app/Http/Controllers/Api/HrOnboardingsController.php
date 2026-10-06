@@ -737,13 +737,6 @@ class HrOnboardingsController extends Controller
 
         $actor = $request->user();
         $parties = $this->partiesFor($actor, $onboarding);
-        $field = collect($onboarding->fields())->firstWhere('key', 'tax_form');
-
-        abort_if($field === null, Response::HTTP_NOT_FOUND, 'This contract does not ask for a tax form.');
-        if ($onboarding->isFrozen() || ! in_array(FilledBy::EMPLOYEE, $parties, true) || $onboarding->user === null) {
-            throw ValidationException::withMessages(['tax_form' =>
-                'Only the new hire fills in and signs their own tax form, before the paperwork is signed.']);
-        }
 
         $input = $request->validate([
             'kind' => ['required', Rule::in(TaxForms::KINDS)],
@@ -751,6 +744,15 @@ class HrOnboardingsController extends Controller
             'values.*' => ['nullable'],
             'drawing' => ['nullable', 'string', 'max:600000'],
         ]);
+        $answerKey = TaxForms::ANSWER_KEYS[$input['kind']];
+        $field = collect($onboarding->fields())->firstWhere('key', $answerKey);
+
+        abort_if($field === null, Response::HTTP_NOT_FOUND, 'This contract does not ask for that form.');
+        if ($onboarding->isFrozen() || ! in_array(FilledBy::EMPLOYEE, $parties, true) || $onboarding->user === null) {
+            throw ValidationException::withMessages([$answerKey =>
+                'Only the new hire fills in and signs their own forms, before the paperwork is signed.']);
+        }
+
         $preview = $request->boolean('preview');
         $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
         if (! $preview && $drawing === null) {
@@ -769,7 +771,11 @@ class HrOnboardingsController extends Controller
         $zone = (string) ($this->tenantTimezone($onboarding) ?: config('app.timezone'));
         $hired = $answer('date_of_hire');
 
-        $values = $input['kind'] === TaxForms::W4
+        $values = match ($input['kind']) {
+            TaxForms::DIRECT_DEPOSIT => $this->directDepositValues($onboarding, $answer, $given),
+            TaxForms::I9 => $this->i9Values($onboarding, $answer, $given, $ssn),
+            default => null,
+        } ?? ($input['kind'] === TaxForms::W4
             ? [
                 'first_name' => trim($user->first_name.' '.mb_substr((string) $user->middle_name, 0, 1)),
                 'last_name' => (string) $user->last_name,
@@ -801,7 +807,16 @@ class HrOnboardingsController extends Controller
                 'city_state_zip' => $cityLine,
                 'requester' => $employer,
                 'account_numbers' => $given('account_numbers'),
-            ] + $this->taxIdBoxes($given('ein') !== '' ? $given('ein') : $answer('ein'), $ssn);
+            ] + $this->taxIdBoxes($given('ein') !== '' ? $given('ein') : $answer('ein'), $ssn));
+
+        if (! $preview && $input['kind'] === TaxForms::I9 && ($values['status'] ?? '') === '') {
+            throw ValidationException::withMessages(['values.status' =>
+                'Choose which of the four statements is true of you, then sign.']);
+        }
+        if (! $preview && $input['kind'] === TaxForms::DIRECT_DEPOSIT && ($values['account_type'] ?? '') === '') {
+            throw ValidationException::withMessages(['values.account_type' =>
+                'Choose checking or savings, then sign.']);
+        }
 
         $date = now($zone)->format('m/d/Y');
 
@@ -816,15 +831,144 @@ class HrOnboardingsController extends Controller
             ]);
         }
 
-        $label = $input['kind'] === TaxForms::W4 ? 'W-4' : 'W-9';
+        $label = TaxForms::LABELS[$input['kind']];
         // Kept as the picture of the signed page, A1 Tools' way, so the
         // contract's PDF prints it with the other documents (Jose,
         // 2026-10-05: "the w4-w9 signed pdf does not seem attached at all").
         $png = TaxForms::renderPng($input['kind'], $values, $drawing, $date);
-        DB::transaction(function () use ($onboarding, $actor, $parties, $png, $label, $input) {
+        DB::transaction(function () use ($onboarding, $actor, $parties, $png, $label, $input, $answerKey) {
             $file = $this->documents->storeFile($onboarding, $actor, $png, "{$label}.png", 'image/png');
-            $this->form->save($onboarding, $actor, $parties, ['tax_form' => $file->getKey()]);
+            $this->form->save($onboarding, $actor, $parties, [$answerKey => $file->getKey()]);
             $this->audit->log('onboarding.tax_form_signed', $onboarding, metadata: ['form' => $input['kind']]);
+        });
+
+        return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
+    }
+
+    /**
+     * The direct deposit form, from the bank answers (Jose, 2026-10-06: "all
+     * filled on ezbizi"). The account type and the amount are asked on it.
+     */
+    private function directDepositValues(Onboarding $onboarding, \Closure $answer, \Closure $given): array
+    {
+        $type = strtolower($given('account_type'));
+
+        return [
+            'account_type' => in_array($type, ['checking', 'savings'], true) ? $type : '',
+            'routing' => $answer('bank_routing_number'),
+            'account' => $answer('bank_account_number'),
+            'amount' => $given('amount') !== '' ? $given('amount') : '100%',
+            'bank_info' => implode("\n", array_filter([
+                $answer('bank_name') === '' ? null : 'Bank: '.$answer('bank_name'),
+                $answer('bank_account_name') === '' ? null : 'Account holder: '.$answer('bank_account_name'),
+            ])),
+            'company' => $onboarding->employer()['name'],
+            'employee_id' => '',
+            'print_name' => (string) $onboarding->user?->name,
+        ];
+    }
+
+    /** Section 1 of the I-9, from the profile and the answers; the status is asked on it. */
+    private function i9Values(Onboarding $onboarding, \Closure $answer, \Closure $given, string $ssn): array
+    {
+        $user = $onboarding->user;
+        $parts = $user->addressParts();
+        $digits = preg_replace('/\D/', '', $ssn) ?? '';
+        $status = $given('status');
+
+        return [
+            'last_name' => (string) $user->last_name,
+            'first_name' => (string) $user->first_name,
+            'middle_initial' => mb_substr((string) $user->middle_name, 0, 1),
+            'other_last_names' => $given('other_last_names') !== '' ? $given('other_last_names') : 'N/A',
+            'address' => (string) $parts['address_line1'],
+            'apt' => (string) $parts['address_line2'],
+            'city' => (string) $parts['city'],
+            'state' => (string) $parts['state'],
+            'zip' => (string) $parts['postal_code'],
+            'date_of_birth' => $user->date_of_birth?->format('m/d/Y') ?? '',
+            'ssn' => strlen($digits) === 9 ? substr($digits, 0, 3).'-'.substr($digits, 3, 2).'-'.substr($digits, 5) : $ssn,
+            'email' => (string) $user->email,
+            'phone' => (string) $user->phone,
+            'status' => in_array($status, ['citizen', 'noncitizen_national', 'permanent_resident', 'authorized_alien'], true) ? $status : '',
+            'lpr_number' => $status === 'permanent_resident' ? $given('lpr_number') : '',
+            'work_until' => $status === 'authorized_alien' ? $given('work_until') : '',
+            'uscis_number' => $status === 'authorized_alien' ? $given('uscis_number') : '',
+            'i94_number' => $status === 'authorized_alien' ? $given('i94_number') : '',
+            'passport' => $status === 'authorized_alien' ? $given('passport') : '',
+        ];
+    }
+
+    /**
+     * POST /api/v1/hr/onboardings/{onboarding}/i9-section2 — the employer's
+     * half of the I-9: the documents examined, the first day, a signature.
+     * Drawn onto the page the new hire signed, which it then replaces (Jose,
+     * 2026-10-06). `?preview=1` draws it and keeps nothing.
+     */
+    public function i9Section2(Request $request, Onboarding $onboarding): JsonResponse|HttpResponse
+    {
+        $this->authorize('cancel', $onboarding); // the employer's side, hr.create
+        $actor = $request->user();
+
+        $input = $request->validate([
+            'values' => ['present', 'array'],
+            'values.*' => ['nullable'],
+            'drawing' => ['nullable', 'string', 'max:600000'],
+        ]);
+        $preview = $request->boolean('preview');
+        $drawing = OnboardingDocuments::drawingBytes($input['drawing'] ?? null);
+        if (! $preview && $drawing === null) {
+            throw ValidationException::withMessages(['drawing' => 'Draw your signature to sign Section 2.']);
+        }
+
+        $answer = $onboarding->answers()->where('field_key', 'i9_form')->first();
+        $file = $answer?->value === null ? null : \App\Models\Attachment::query()->find($answer->value);
+        $page = $file === null ? null : $this->documents->fileBytes($file);
+        if ($page === null) {
+            throw ValidationException::withMessages(['i9_form' =>
+                'The new hire has not signed Section 1 of their I-9 yet.']);
+        }
+
+        $given = fn (string $key) => is_scalar($input['values'][$key] ?? null) ? mb_substr(trim((string) $input['values'][$key]), 0, 160) : '';
+        $hired = trim((string) ($onboarding->answers()->where('field_key', 'date_of_hire')->first()?->value ?? ''));
+        $employer = $onboarding->employer();
+        $values = [
+            'first_day' => $given('first_day') !== '' ? $given('first_day')
+                : ($hired === '' ? '' : \Illuminate\Support\Carbon::parse($hired)->format('m/d/Y')),
+            'representative' => trim(implode(', ', array_filter([(string) $actor->last_name, (string) $actor->first_name, $given('title')]))),
+            'business_name' => $employer['name'],
+            'business_address' => $employer['address'],
+        ];
+        foreach (['a', 'b', 'c'] as $list) {
+            foreach (['title', 'authority', 'number', 'expires'] as $part) {
+                $values["{$list}_{$part}"] = $given("{$list}_{$part}");
+            }
+        }
+        $values['additional'] = $given('additional');
+
+        if (! $preview && $values['a_title'] === '' && ($values['b_title'] === '' || $values['c_title'] === '')) {
+            throw ValidationException::withMessages(['values' =>
+                'Enter the document from List A, or one from List B and one from List C.']);
+        }
+
+        $date = now((string) ($this->tenantTimezone($onboarding) ?: config('app.timezone')))->format('m/d/Y');
+        if ($preview) {
+            return response(TaxForms::render(TaxForms::I9_SECTION_2, $values, $drawing, $date, $page), Response::HTTP_OK, [
+                'Content-Type' => PdfRenderer::MIME,
+                'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, 'i-9.pdf'),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
+
+        $png = TaxForms::renderPng(TaxForms::I9_SECTION_2, $values, $drawing, $date, $page);
+        DB::transaction(function () use ($onboarding, $actor, $png, $answer) {
+            $stored = $this->documents->storeFile($onboarding, $actor, $png, OnboardingDocuments::I9_COMPLETE, 'image/png');
+            // The employee's question, completed by the employer: written
+            // here rather than through the form, which (rightly) refuses the
+            // employer an employee's answer and anything once signed.
+            $answer->forceFill(['value' => $stored->getKey()])->save();
+            $this->audit->log('onboarding.i9_section2_signed', $onboarding);
         });
 
         return response()->json(['data' => $this->detail($onboarding->fresh(), $actor)]);
@@ -1824,6 +1968,13 @@ class HrOnboardingsController extends Controller
 
         return $this->summarise($onboarding) + [
             'parties'    => $parties,
+            // The I-9: whether Section 2 is done, and whether this person
+            // may do it (the employer's side).
+            'i9' => ($i9 = $onboarding->answers()->where('field_key', 'i9_form')->first()?->value) === null ? null : [
+                'section2' => \App\Models\Attachment::query()->whereKey($i9)
+                    ->where('original_name', OnboardingDocuments::I9_COMPLETE)->exists(),
+                'mine' => Gate::forUser($actor)->allows('cancel', $onboarding),
+            ],
             // Whose final approval it waits for, and whether this person may
             // give it (Jose, 2026-10-05).
             'approval' => $onboarding->status !== Onboarding::AWAITING_APPROVAL ? null : [
