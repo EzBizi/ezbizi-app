@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0368',
+      date: '6 Oct 2026',
+      items: [
+        'Workiz: EzBizi now copies each branch\'s Workiz invoices, payments, estimates, time off, calendar events, timesheets and price book, and the custom fields and files on every job.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0367',
       date: '6 Oct 2026',
       items: [
