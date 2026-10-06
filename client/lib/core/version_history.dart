@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0369',
+      date: '6 Oct 2026',
+      items: [
+        'Onboarding: the new hire fills in and signs the direct deposit form and the I-9 in the app, pre-filled from their answers. The employer completes I-9 Section 2. Both print in the contract PDF.',
+        'The I-9 is the current USCIS edition (01/20/25). The W-4 was already the 2026 form.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0368',
       date: '6 Oct 2026',
       items: [
