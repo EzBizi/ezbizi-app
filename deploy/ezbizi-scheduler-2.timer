@@ -1,0 +1,19 @@
+# Starts schedule:run on every third minute, beginning at minute 2; with its
+# two siblings every minute is evaluated even when a run takes over a minute.
+# See ezbizi-scheduler@.service for why there are three.
+#
+# Persistent=false: a missed minute is skipped rather than caught up. Catching
+# up would fire a minute's worth of automation deliveries at once after a reboot,
+# and everything scheduled here is idempotent-by-sweep anyway.
+
+[Unit]
+Description=Run EzBizi scheduled tasks, slot 2 (minutes 2, 5, 8, ...)
+
+[Timer]
+OnCalendar=*:2/3
+AccuracySec=1s
+Persistent=false
+Unit=ezbizi-scheduler@2.service
+
+[Install]
+WantedBy=timers.target

@@ -12,13 +12,26 @@
 # Points at the CURRENT symlink, not a release directory, so a deploy swaps the
 # code underneath it without touching this unit.
 #
+# A TEMPLATE, started by three timers (ezbizi-scheduler-0/1/2.timer) on
+# staggered minutes, so up to three runs can overlap. One oneshot unit on one
+# every-minute timer could not: systemd does not start a unit that is still
+# running, and schedule:run evaluates only the minute it STARTS in. With runs
+# of 75-100 s (sync-leads, sync-workiz, project-workiz, measured 2026-10-06),
+# 15-32 minutes of every hour were never evaluated, and whatever was pinned to
+# them (hourly sync-workiz-team, daily expire-data, warn-overbooking) silently
+# did not run. Each instance now has three minutes. Every per-minute command
+# in routes/console.php carries withoutOverlapping, so overlapping runs skip
+# what is still running rather than doubling it.
+# ponytail: three slots; a run past 180 s skips again. Add a fourth timer
+# (OnCalendar=*:N/4 on each) if runs grow that long.
+#
 # Install:
-#   sudo cp deploy/ezbizi-scheduler.* /etc/systemd/system/
+#   sudo cp deploy/ezbizi-scheduler@.service deploy/ezbizi-scheduler-[012].timer /etc/systemd/system/
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now ezbizi-scheduler.timer
+#   sudo systemctl enable --now ezbizi-scheduler-0.timer ezbizi-scheduler-1.timer ezbizi-scheduler-2.timer
 
 [Unit]
-Description=EzBizi scheduled tasks
+Description=EzBizi scheduled tasks (slot %i)
 After=network.target mysql.service
 
 [Service]
