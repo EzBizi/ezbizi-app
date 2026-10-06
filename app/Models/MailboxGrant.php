@@ -92,20 +92,28 @@ class MailboxGrant extends Model implements StatesRetention
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::withParent(
-            'One row for each role an organization has given access to a shared inbox. It '
-            .'says who may open which mailbox rather than keeping a history of anything: it '
-            .'is removed when the access is taken away, when the mailbox is disconnected, and '
-            .'when the role is deleted. It holds no information about any person — a role is '
-            .'not somebody\'s name — and no message. Who granted or revoked access, and when, '
-            .'is in the audit log, which does expire.'
+            'One row for each role, or each person, an organization has given access to a '
+            .'shared inbox. It says who may open which mailbox rather than keeping a history '
+            .'of anything: it is removed when the access is taken away, when the mailbox is '
+            .'disconnected, and when the role or the person is deleted. A person row holds '
+            .'which account was given the inbox and nothing else about them, and no row holds '
+            .'any message. Who granted or revoked access, and when, is in the audit log, which '
+            .'does expire.'
         );
     }
 
-    protected $fillable = ['organization_id', 'mailbox_id', 'role_id'];
+    /** Exactly one of `role_id` and `user_id` is set on any row. */
+    protected $fillable = ['organization_id', 'mailbox_id', 'role_id', 'user_id'];
 
     public function mailbox(): BelongsTo
     {
         return $this->belongsTo(Mailbox::class);
+    }
+
+    /** Set on a person grant (2026-10-06); null on a role grant. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function role(): BelongsTo

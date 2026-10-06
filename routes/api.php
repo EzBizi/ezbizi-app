@@ -178,6 +178,7 @@ use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
 use App\Http\Controllers\Api\Web\ListsController as WebListsController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
+use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
@@ -1570,6 +1571,13 @@ Route::prefix('v1')
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);
+        // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
+        Route::middleware('permission:ai_assistance.manage')->group(function () {
+            Route::apiResource('ai-assistance/whatsapp-groups', WhatsAppGroupsController::class)
+                ->except('show')
+                ->parameters(['whatsapp-groups' => 'group']);
+            Route::post('ai-assistance/whatsapp-groups/{group}/publish', [WhatsAppGroupsController::class, 'publish']);
+        });
 
         Route::middleware('permission:work_hours.manage')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
@@ -2304,6 +2312,12 @@ Route::prefix('v1')
 
             Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
             Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
+
+            // Who can open an inbox, person by person (2026-10-06). Role grants
+            // stay with the roles editor; see MailboxesController::people.
+            Route::get('email/mailboxes/{mailbox}/people', [MailboxesController::class, 'people']);
+            Route::post('email/mailboxes/{mailbox}/people', [MailboxesController::class, 'givePerson']);
+            Route::delete('email/mailboxes/{mailbox}/people/{user}', [MailboxesController::class, 'takeFromPerson']);
             Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
         });
 

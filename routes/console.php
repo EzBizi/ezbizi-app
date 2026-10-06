@@ -346,6 +346,13 @@ Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlappin
 // lapses stops showing ads and nobody is told.
 Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('America/New_York')->withoutOverlapping(30);
 
+// The nightly Same-Day Reports on WhatsApp (docs/REPLACING-RODRIGO-BOT.md),
+// after Workiz's evening sync; the second run catches a branch that failed.
+Schedule::command('ezbizi:whatsapp-same-day-reports')->dailyAt('21:05')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:whatsapp-same-day-reports')->dailyAt('21:35')->timezone('America/New_York')->withoutOverlapping(30);
+// Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).
+Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
+
 // Which job each lead became, by the customer's phone - Workiz jobs arrive
 // every minute; a quarter-hour is soon enough for a revenue figure.
 Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutOverlapping(30);

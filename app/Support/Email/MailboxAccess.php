@@ -208,9 +208,9 @@ final class MailboxAccess
         if (! $this->isGranted($user, $mailbox)) {
             return sprintf(
                 'You cannot %s. %s is a shared inbox, and access to each one is given out '
-                .'separately — your role has not been given this one. Somebody who can edit '
-                .'roles can add it, alongside the other inboxes this organization has '
-                .'connected.',
+                .'separately — it has not been given to your role, or to you. Somebody who can '
+                .'edit roles can add it to your role, or somebody who manages Email can add you '
+                .'to it in Email, Settings.',
                 $act,
                 $mailbox->address,
             );
@@ -258,14 +258,37 @@ final class MailboxAccess
             return true;
         }
 
-        if ($user->role_id === null) {
-            return false;
-        }
-
-        return MailboxGrant::query()
+        return $this->grantsOf($user)
             ->where('mailbox_id', $mailbox->getKey())
-            ->where('role_id', $user->role_id)
             ->exists();
+    }
+
+    /**
+     * Every grant that applies to this person: their ROLE's, or THEIR OWN.
+     *
+     * Jose, 2026-10-06: "assign emails to specific people, instead of just
+     * roles". A person grant answers the same question a role grant does --
+     * may this account open this inbox -- so it is read in the same place,
+     * and the three checks here (isGranted, granted, constrainToGranted) all
+     * go through this one query and cannot drift apart.
+     *
+     * It is only the GRANT half. The Email permission still comes from the
+     * person's role, and reach still applies (readRefusal checks both first),
+     * so giving somebody an inbox never lets them past either of those.
+     *
+     * A person with no role still matches their own grants here; they are
+     * stopped by the permission check, not by this query pretending they hold
+     * nothing.
+     */
+    private function grantsOf(User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        return MailboxGrant::query()->where(function ($query) use ($user) {
+            $query->where('user_id', $user->getKey());
+
+            if ($user->role_id !== null) {
+                $query->orWhere('role_id', $user->role_id);
+            }
+        });
     }
 
     /**
@@ -336,14 +359,8 @@ final class MailboxAccess
             return Mailbox::query()->orderBy('address')->get();
         }
 
-        if ($user->role_id === null) {
-            return collect();
-        }
-
         return Mailbox::query()
-            ->whereIn('id', MailboxGrant::query()
-                ->where('role_id', $user->role_id)
-                ->select('mailbox_id'))
+            ->whereIn('id', $this->grantsOf($user)->select('mailbox_id'))
             ->orderBy('address')
             ->get();
     }
@@ -366,18 +383,10 @@ final class MailboxAccess
             return;     // holds every inbox, and owns no rows — see isGranted
         }
 
-        if ($user->role_id === null) {
-            // Compiles to a predicate that matches nothing, rather than being
-            // dropped: somebody with no role must match no mailbox, and a
-            // silently absent WHERE is how that becomes "all of them".
-            $query->whereRaw('1 = 0');
-
-            return;
-        }
-
-        $query->whereIn('id', MailboxGrant::query()
-            ->where('role_id', $user->role_id)
-            ->select('mailbox_id'));
+        // Always a real predicate, never dropped: somebody with no grants must
+        // match no mailbox, and a silently absent WHERE is how that becomes
+        // "all of them". grantsOf always constrains on at least user_id.
+        $query->whereIn('id', $this->grantsOf($user)->select('mailbox_id'));
     }
 
     /**

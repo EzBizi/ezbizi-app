@@ -8,6 +8,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';
+import 'inbox_people.dart';
 import 'mailbox_panels.dart';
 import 'mailbox_settings.dart';
 import 'open_external.dart';
@@ -395,6 +396,15 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
               onConnect: () => _connect(mailbox),
               onDisconnect: () => _disconnect(mailbox),
               onMarkReadAtSource: (on) => _setMarkReadAtSource(mailbox, on),
+              // Only for somebody who may manage this inbox: choosing who reads
+              // it is managing it, and the server refuses anybody else.
+              people: mailbox.mayManage
+                  ? InboxPeople(
+                      key: ValueKey('people-${mailbox.id}'),
+                      api: widget.api,
+                      mailboxId: mailbox.id,
+                    )
+                  : null,
             ),
       ],
     );
@@ -682,6 +692,7 @@ class _MailboxCard extends StatelessWidget {
     required this.onConnect,
     required this.onDisconnect,
     this.onMarkReadAtSource,
+    this.people,
   });
 
   final MailboxConnection mailbox;
@@ -694,6 +705,10 @@ class _MailboxCard extends StatelessWidget {
 
   /// Null on the cards that are not a real mailbox row (the Workspace ones).
   final void Function(bool on)? onMarkReadAtSource;
+
+  /// Who can open this inbox, person by person; null when this viewer may not
+  /// choose. See inbox_people.dart.
+  final Widget? people;
 
   @override
   Widget build(BuildContext context) {
@@ -784,6 +799,10 @@ class _MailboxCard extends StatelessWidget {
                   style: theme.textTheme.bodySmall,
                 ),
               ),
+            ],
+            if (people != null) ...[
+              const SizedBox(height: 14),
+              people!,
             ],
             if (reached != null) ...[
               const SizedBox(height: 10),

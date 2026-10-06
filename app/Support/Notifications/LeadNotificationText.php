@@ -5,12 +5,16 @@ namespace App\Support\Notifications;
 /**
  * The words a lead notification uses — one table, for every source.
  *
- * Jose's spec, 2026-10-06, "Source Names for notification - automations":
+ * Jose's spec, 2026-10-06, "Source Names for notification - automations",
+ * as amended the next day — he wrote each title "You got a new ...", then:
+ * "for all these, let's get rid of the You got a, so it's only New "Local
+ * Services Call" lead, etc". The reply title followed suit on the deploy
+ * desk's recommendation, told to him so he could object.
  *
- *     You got a new "Local Services Call" lead
+ *     New "Local Services Call" lead
  *     (319) 210-2005 - 1:10 min - A1 Chimney - Toms River
  *
- *     You got a new reply on "Local Services Text"
+ *     New reply on "Local Services Text"
  *     <the reply, up to 55 characters>
  *
  * ── Why one table here, not a label per module ───────────────────
@@ -91,7 +95,7 @@ final class LeadNotificationText
     }
 
     /**
-     * The title of a new lead: `You got a new "Local Services Call" lead`.
+     * The title of a new lead: `New "Local Services Call" lead`.
      *
      * The noun is not always "lead", and that is Jose's wording, not a slip:
      * Thumbtack is a "text lead" and Live Chat is a "request".
@@ -104,11 +108,11 @@ final class LeadNotificationText
             default => 'lead',
         };
 
-        return sprintf('You got a new "%s" %s', self::label($source, $leadType), $noun);
+        return sprintf('New "%s" %s', self::label($source, $leadType), $noun);
     }
 
     /**
-     * The title of a reply: `You got a new reply on "Local Services Text"`.
+     * The title of a reply: `New reply on "Local Services Text"`.
      *
      * Null for a Local Services CALL. Jose: "Get rid of a reply on LS Call
      * notification" — there is nothing to reply to on a call, and on
@@ -122,7 +126,7 @@ final class LeadNotificationText
             return null;
         }
 
-        return sprintf('You got a new reply on "%s"', self::label($source, $leadType));
+        return sprintf('New reply on "%s"', self::label($source, $leadType));
     }
 
     /**
@@ -131,9 +135,9 @@ final class LeadNotificationText
     public static function whatsappHeadline(string $kind): string
     {
         return match ($kind) {
-            self::WHATSAPP_LEAD => 'You got a new "WhatsApp" lead',
-            self::WHATSAPP_HIRING => 'You got a new "WhatsApp" hiring request',
-            default => 'You got a new "WhatsApp" message (Unknown)',
+            self::WHATSAPP_LEAD => 'New "WhatsApp" lead',
+            self::WHATSAPP_HIRING => 'New "WhatsApp" hiring request',
+            default => 'New "WhatsApp" message (Unknown)',
         };
     }
 

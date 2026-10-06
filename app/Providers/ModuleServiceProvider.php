@@ -788,7 +788,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('library', 'Library'),
                     new TabDefinition('settings', 'Settings'),
                 ],
-                auditActionPrefixes: ['assistant_entry'],
+                auditActionPrefixes: ['assistant_entry', 'whatsapp_group'],
                 automationExemptBecause: 'The Library is reference material an administrator '
                     .'writes, like a training guide: editing an answer is not something that happened '
                     .'to the business, and a rule firing on it would act on a reworded sentence. The '
