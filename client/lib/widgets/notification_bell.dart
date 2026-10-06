@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/client_platform.dart';
 import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
+import '../core/session.dart';
 import '../core/timestamps.dart';
 import 'side_panel.dart';
 import 'tag.dart';
@@ -42,9 +43,20 @@ class NotificationBell extends StatefulWidget {
     this.onOpenModule,
     this.iconOf,
     this.formats,
+    this.session,
   });
 
   final ApiClient api;
+
+  /// Where this person's own "alert me" switch is read and saved.
+  ///
+  /// Jose, 2026-10-05: "an option turn notifications on or off (individually
+  /// for each user, something they can inside the notification button
+  /// sidebar)". Read live from the session each time it matters, never copied
+  /// into this widget, so the panel's switch and the pop-ups below cannot
+  /// disagree. Null — a test or a shell with no session — hides the switch and
+  /// leaves alerts on.
+  final Session? session;
 
   /// Where to send somebody who taps a notification.
   ///
@@ -237,6 +249,10 @@ class _NotificationBellState extends State<NotificationBell>
   Future<void> _announce(List<Map<String, dynamic>> arrivals) async {
     if (arrivals.isEmpty) return;
 
+    // Muted by this person in the panel: they still collect in the bell, they
+    // just do not pop up. The server stops their pushes and emails the same way.
+    if (widget.session?.me?.notificationAlerts == false) return;
+
     /*
      * NOT WHEN THIS DEVICE IS ALREADY BEING PUSHED TO.
      *
@@ -413,7 +429,32 @@ class _NotificationBellState extends State<NotificationBell>
               child: const Text('Close'),
             ),
           ],
-          child: _items.isEmpty
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Each person's own on/off, where they are already looking at
+              // what it governs. Off mutes pop-ups, pushes and emails; this
+              // list keeps filling either way, which the subtitle says so
+              // nobody turns it off expecting the list to stop too.
+              if (widget.session case final session?) ...[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: session.me?.notificationAlerts ?? true,
+                  title: const Text('Alert me'),
+                  subtitle: const Text(
+                    'Pop-ups, phone and email. Notifications still collect here.',
+                  ),
+                  onChanged: (on) async {
+                    final saving = session.setPreference('notifications.alerts', on);
+                    repaint(() {});
+                    await saving;
+                    if (context.mounted) repaint(() {});
+                  },
+                ),
+                const Divider(height: 1),
+              ],
+              _items.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 48),
                   child: Center(child: Text(_error ?? 'Nothing yet.')),
@@ -551,6 +592,8 @@ class _NotificationBellState extends State<NotificationBell>
                     );
                   },
                 ),
+            ],
+          ),
         ),
       ),
     );

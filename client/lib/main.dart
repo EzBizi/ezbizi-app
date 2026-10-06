@@ -1381,6 +1381,8 @@ class _HomeShellState extends State<HomeShell> {
                 // Each notification wears its module's sidebar glyph.
                 iconOf: (key) => moduleScreens[key]?.icon,
                 formats: widget.session.me?.display,
+                // Each person's own "Alert me" switch, in the panel.
+                session: widget.session,
               ),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is

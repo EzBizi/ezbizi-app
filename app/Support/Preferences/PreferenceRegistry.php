@@ -102,6 +102,28 @@ class PreferenceRegistry
             ],
 
             /*
+             * One person's own "stop interrupting me", set from the bell panel.
+             * Jose, 2026-10-05: "an option turn notifications on or off
+             * (individually for each user, something they can inside the
+             * notification button sidebar)".
+             *
+             * Off silences the ALERTS — the pop-up on a computer, the push to
+             * a phone, the email — and deliberately not the bell itself: the
+             * switch lives inside the bell's panel, so a person who turns it
+             * off is looking at the very list that keeps filling, and can
+             * catch up there when they choose. Nothing is lost by muting.
+             * NotificationDispatcher reads it per recipient; the client reads
+             * it for its own pop-ups.
+             */
+            'notifications.alerts' => [
+                'label' => 'Notification alerts',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Off stops pop-ups, phone pushes and emails for you. '
+                    .'Notifications still collect in the bell.',
+            ],
+
+            /*
              * How wide the expanded sidebar is, in logical pixels.
              *
              * A number rather than small/medium/large: it is set by dragging the

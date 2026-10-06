@@ -827,6 +827,12 @@ class Me {
 
   bool get navigationCollapsed => preferences['navigation.collapsed'] == true;
 
+  /// This person's own switch in the bell panel: pop-ups, phone pushes and
+  /// emails, never the bell list itself. Anything but an explicit false is on,
+  /// so everybody who has never touched it keeps their alerts — the same
+  /// reading NotificationDispatcher uses on the server.
+  bool get notificationAlerts => preferences['notifications.alerts'] != false;
+
   /// How wide the expanded sidebar is. Clamped on read as well as on write:
   /// a stored value from an older build, or one the server has since tightened
   /// the bounds on, must not be able to render an unusable shell.
