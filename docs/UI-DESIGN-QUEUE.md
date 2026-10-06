@@ -2965,6 +2965,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 62 · Your account · API keys — **waiting for Jose** (sent 2026-10-06; 10-minute rule) (`docs/previews/account-api-keys-layouts.html`)
+
+From MCP / API (`local_c0e813e0…`), for Jose 2026-10-06: *"build the MCP and API so AIs can manage operations
+natively"*. Backend on `session/ai-api`, not on main yet: `GET /me/api-keys` → {api_keys [{id, name, access
+read|write, last_used_at, created_at}]}; `POST {name ≤ 60, access}` → 201 {id, name, access, key}, the key shown once;
+`DELETE /me/api-keys/{id}` → 204. Keys leave "Where you are signed in". MCP: `POST /api/v1/mcp`, Claude Code setup
+`claude mcp add --transport http ezbizi <base>/mcp --header "Authorization: Bearer <key>"`. Desktop **1** a card under
+the sign-ins: list, New API key as a short form in the card, the key and setup line in an amber box with Copy until
+Done, revoke confirmed in place (recommended); **2** the form in a side panel, the key waiting on the page; **3** a
+"Connect an AI" card in three steps. Phone **4** (recommended) an API keys row under Signed in opening the same card;
+**5** a screen per step; **6** the three steps. All: Read only is the default; the key never sits in a layer a stray
+click can close.
+
 ### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
 From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
