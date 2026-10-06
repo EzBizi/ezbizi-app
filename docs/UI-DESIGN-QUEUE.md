@@ -2961,6 +2961,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 59 · Customers · Workiz's money and notes on a customer — **out for decision** (`docs/previews/customers-workiz-money-notes-layouts.html`)
+
+From Customers (`local_90d427a5…`), approved as a feature by Jose 2026-10-06. Money: `GET /customers/{id}?today=Y-m-d`
+→ `data.money`, null without Jobs Financials (draw nothing), else one entry per currency {invoiced, due, past_due
+(null without `today`), paid, invoices, open_estimates, open_estimates_minor}, mirroring Workiz's client header (Past
+due / Due / Total revenue); scoped to the reader's branches; empty list = nothing in Workiz. Notes: `GET
+/customers/{id}/workiz-notes` (Workiz session building it), live, per Workiz client {client_id, franchise, notes
+[{text, created_at, author}], error?}. Desktop **1** the job panel's shape: Customer / Money (past due named in red on
+the tab) / Notes from Workiz (fetched when opened, grouped by branch, a failing branch on its own line with Try again)
+(recommended); **2** one panel: money first, Workiz notes folded under the customer's own notes; **3** a red line only
+when past due, notes behind a button. Phone **4** (recommended) the tabs; **5** one page; **6** the red line.
+
 ### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — **BUILT** `20c0b4bf` (`docs/previews/jobs-workiz-extras-layouts.html`)
 
 From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
