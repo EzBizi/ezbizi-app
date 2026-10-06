@@ -1301,7 +1301,7 @@ class WatchedInbox implements MailboxReader
         return new MessagePage([]);
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
         $summary = null;
 

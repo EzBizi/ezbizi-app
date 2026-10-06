@@ -615,6 +615,122 @@ class GoogleWorkspaceTest extends TestCase
         });
     }
 
+    /** A connected Workspace inbox, and the requests made to Google kept for counting. */
+    private function workspaceInboxForSpeed(array $t): Mailbox
+    {
+        return $this->inTenant($t['org'], function () use ($t) {
+            $mailbox = Mailbox::create([
+                'organization_id' => $t['org']->id,
+                'scope_type'      => 'organization',
+                'scope_id'        => $t['org']->id,
+                'address'         => self::INFO,
+                'display_name'    => 'Info',
+                'provider'        => MailboxProvider::GmailWorkspace->value,
+            ]);
+            $mailbox->markConnectedWithoutSecret();
+            $mailbox->save();
+
+            return $mailbox;
+        });
+    }
+
+    private function tokenMints(): int
+    {
+        return Http::recorded(fn ($request) => $request->url() === 'https://oauth2.googleapis.com/token')->count();
+    }
+
+    /**
+     * ONE token for many reads.
+     *
+     * Measured on production 2026-10-06: 84 token requests for 42 opens, at
+     * ~150 ms each -- every Gmail call minted a fresh Workspace token, and an
+     * open makes two calls.
+     */
+    public function test_a_workspace_token_is_reused_across_reads(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.mail', 'expires_in' => 3599]),
+            'gmail.googleapis.com/*' => Http::response(['threads' => [], 'resultSizeEstimate' => 0]),
+        ]);
+
+        $mailbox = $this->workspaceInboxForSpeed($t);
+        $reader = fn () => app(MailboxReaders::class)->for($mailbox);
+
+        $this->inTenant($t['org'], function () use ($reader, $mailbox) {
+            $reader()->list($mailbox);
+            $reader()->list($mailbox);
+            $reader()->list($mailbox);
+        });
+
+        $this->assertSame(1, $this->tokenMints());
+    }
+
+    /**
+     * A token Gmail refuses is dropped and a fresh one minted, once.
+     *
+     * The other half of caching: without it a revoked delegation would keep
+     * failing for most of an hour, because the 401 retry was handed the same
+     * cached token.
+     */
+    public function test_a_refused_workspace_token_is_replaced_not_reused(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+
+        $gmailCalls = 0;
+        Http::fake(function ($request) use (&$gmailCalls) {
+            if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
+                return Http::response(['access_token' => 'ya29.mail', 'expires_in' => 3599]);
+            }
+
+            // The first Gmail call refuses the token; every later one accepts.
+            return ++$gmailCalls === 1
+                ? Http::response(['error' => ['code' => 401]], 401)
+                : Http::response(['threads' => [], 'resultSizeEstimate' => 0]);
+        });
+
+        $mailbox = $this->workspaceInboxForSpeed($t);
+
+        $this->inTenant($t['org'], fn () => app(MailboxReaders::class)->for($mailbox)->list($mailbox));
+
+        $this->assertSame(2, $this->tokenMints(), 'The refused token was reused instead of replaced.');
+    }
+
+    /**
+     * The health probe still asks Google every time.
+     *
+     * That is why the cache sits on the mail path and not inside
+     * `impersonate()`: a cached token would let "can EzBizi still open these
+     * mailboxes?" say yes for most of an hour after an administrator revoked
+     * the delegation.
+     */
+    public function test_the_delegation_probe_is_never_answered_from_the_cache(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'ya29.mail', 'expires_in' => 3599]),
+            'gmail.googleapis.com/*' => Http::response(['threads' => [], 'resultSizeEstimate' => 0]),
+        ]);
+
+        $mailbox = $this->workspaceInboxForSpeed($t);
+        $this->inTenant($t['org'], fn () => app(MailboxReaders::class)->for($mailbox)->list($mailbox));
+        $this->assertSame(1, $this->tokenMints());
+
+        $probe = new \ReflectionMethod(GoogleWorkspace::class, 'canImpersonate');
+        $probe->setAccessible(true);
+        $probe->invoke(app(GoogleWorkspace::class), self::INFO, [GoogleOAuth::SCOPE_READ]);
+
+        $this->assertSame(2, $this->tokenMints(), 'The probe was answered from the cache.');
+    }
+
     public function test_a_company_workspace_is_hidden_from_a_sibling_company(): void
     {
         $this->withServiceAccount();
