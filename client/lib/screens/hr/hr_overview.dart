@@ -505,8 +505,8 @@ class _HrOverviewState extends State<HrOverview> {
 
     // A share of the room above the month's name, so a taller font takes
     // it from the bars rather than overflowing the card.
-    Widget bar(int n, Color ink) => SizedBox(
-      width: 8,
+    Widget bar(int n, Color ink, double width) => SizedBox(
+      width: width,
       child: FractionallySizedBox(
         heightFactor: n == 0 ? 0.02 : n / top,
         alignment: Alignment.bottomCenter,
@@ -531,33 +531,51 @@ class _HrOverviewState extends State<HrOverview> {
           children: [
             for (final m in months)
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          bar(_int(m['joined']), joinedInk),
-                          const SizedBox(width: 2),
-                          bar(_int(m['left']), leftInk),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      () {
-                        final month = int.tryParse(
-                          '${m['month'] ?? ''}'.split('-').last,
-                        );
-                        return month == null || month < 1 || month > 12
-                            ? ''
-                            : names[month - 1];
-                      }(),
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ],
+                // Sized from the column it gets: on a narrow card (an iPad's
+                // split view, Apple 2026-10-07) the bars thin out, the month
+                // goes to one letter, and the label has a fixed slot, so no
+                // column can overflow by a fraction of a pixel.
+                child: LayoutBuilder(
+                  builder: (context, column) {
+                    final width = column.maxWidth;
+                    final barWidth = ((width - 2) / 2).clamp(1.0, 8.0);
+                    final month = int.tryParse(
+                      '${m['month'] ?? ''}'.split('-').last,
+                    );
+                    final name = month == null || month < 1 || month > 12
+                        ? ''
+                        : names[month - 1];
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              bar(_int(m['joined']), joinedInk, barWidth),
+                              const SizedBox(width: 2),
+                              bar(_int(m['left']), leftInk, barWidth),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 16,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              width < 26 && name.isNotEmpty
+                                  ? name.substring(0, 1)
+                                  : name,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
           ],
