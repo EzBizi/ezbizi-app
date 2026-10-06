@@ -477,7 +477,7 @@ final class ImapMailboxReader implements MailboxReader
     /**
      * One message, opened — body already through {@see BodySanitiser}.
      */
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
         $uid = $this->uidFrom($messageId, $mailbox);
 

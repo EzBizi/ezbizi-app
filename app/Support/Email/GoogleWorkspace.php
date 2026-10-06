@@ -9,8 +9,11 @@ use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\Scoping\ViewScope;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -120,6 +123,24 @@ final class GoogleWorkspace
     {
         $this->assertCanOpen($mailbox);
 
+        // Reused until near expiry. This minted a fresh token on EVERY Gmail
+        // call, and opening one message makes two -- measured on production
+        // 2026-10-06: 84 token requests for 42 opens, ~150 ms each, so roughly
+        // a third of the server's time on every open was spent asking Google
+        // for a token it had handed out a second earlier.
+        //
+        // Cached HERE, on the mail path, and deliberately NOT inside
+        // `impersonate()`: `canImpersonate()` is the health probe that asks
+        // whether delegation still works, and a cached token would let it say
+        // yes for most of an hour after an administrator revoked it. A token
+        // Gmail rejects is dropped by `forgetGmailAccessToken`, which the
+        // reader calls on a 401 before retrying.
+        $key = $this->tokenCacheKey($mailbox, $canModify);
+
+        if (($cached = $this->cachedToken($key)) !== null) {
+            return $cached;
+        }
+
         try {
             $scopes = [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND];
 
@@ -127,10 +148,51 @@ final class GoogleWorkspace
                 $scopes[] = GoogleOAuth::SCOPE_MODIFY;
             }
 
-            return $this->impersonate($mailbox->address, $scopes);
+            [$token, $expiresIn] = $this->mint($mailbox->address, $scopes);
         } catch (GoogleWorkspaceRefused $e) {
             throw CannotReadMailbox::credentialRejected($mailbox, $e->getMessage());
         }
+
+        // Three quarters of the stated life, and nothing at all when Google
+        // states none -- the same rule as the per-inbox Google sign-in cache
+        // (GmailMailboxReader::cacheAccessToken), for the same reasons.
+        $seconds = is_numeric($expiresIn) ? (int) floor(((int) $expiresIn) * 0.75) : 0;
+
+        if ($seconds >= 30) {
+            Cache::put($key, Crypt::encryptString($token), $seconds);
+        }
+
+        return $token;
+    }
+
+    /** Drop this inbox's cached tokens, because Gmail has just refused one. */
+    public function forgetGmailAccessToken(Mailbox $mailbox): void
+    {
+        Cache::forget($this->tokenCacheKey($mailbox, false));
+        Cache::forget($this->tokenCacheKey($mailbox, true));
+    }
+
+    private function tokenCacheKey(Mailbox $mailbox, bool $canModify): string
+    {
+        return 'email.workspace.access-token.'.$mailbox->getKey().($canModify ? '.modify' : '.read');
+    }
+
+    /** Null for anything not exactly right, including an entry from an old APP_KEY. */
+    private function cachedToken(string $key): ?string
+    {
+        $stored = Cache::get($key);
+
+        if (! is_string($stored) || $stored === '') {
+            return null;
+        }
+
+        try {
+            $token = Crypt::decryptString($stored);
+        } catch (DecryptException) {
+            return null;
+        }
+
+        return $token === '' ? null : $token;
     }
 
     public function connectionAt(string $organizationId, string $scopeType, string $scopeId): ?GoogleWorkspaceConnection
@@ -801,6 +863,17 @@ final class GoogleWorkspace
      */
     public function impersonate(string $subject, array $scopes): string
     {
+        return $this->mint($subject, $scopes)[0];
+    }
+
+    /**
+     * A fresh token and the lifetime Google gave it. Never cached here.
+     *
+     * @param  string[]  $scopes
+     * @return array{0: string, 1: mixed}
+     */
+    private function mint(string $subject, array $scopes): array
+    {
         $email = $this->serviceAccountEmail();
         $key   = $this->privateKey();
 
@@ -837,7 +910,7 @@ final class GoogleWorkspace
             throw GoogleWorkspaceRefused::impersonationFailed($subject);
         }
 
-        return (string) $response->json('access_token');
+        return [(string) $response->json('access_token'), $response->json('expires_in')];
     }
 
     private function serviceAccountEmail(): ?string

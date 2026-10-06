@@ -163,6 +163,12 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
 
 /*
+ * Who booked each new job, which only v1 says (Reports, 2026-10-06): a few
+ * v1 calls a branch every five minutes, for the jobs booked since.
+ */
+Schedule::command('ezbizi:workiz-fill-creators')->everyFiveMinutes()->withoutOverlapping(10);
+
+/*
  * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
  * as well, as well as leads". It was hourly, to spare the Workiz quota the job
  * sweep shares. Measured by the Workiz session since 0.0.0268: one 429 in

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
+use App\Support\Jobs\WorkizExtras;
 use App\Support\Jobs\WorkizMoney;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
@@ -750,6 +751,9 @@ class JobsController extends Controller
             // is where A-1's invoices live (Jose, decision 2). Null for a job
             // Workiz does not have. Financials only.
             ...($money ? ['money' => WorkizMoney::for($job)] : []),
+            // The rest of what Workiz v2 has on the job (WorkizExtras): fields and
+            // files for anybody here, its invoices and payments with Financials.
+            'workiz' => WorkizExtras::for($job, $money),
             // The lines ARE the money breakdown: Financials only.
             ...($money ? ['lines' => $job->lines->map(fn (JobLine $line) => [
                 'id'               => $line->id,

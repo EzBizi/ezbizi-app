@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Social;
 
+use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
@@ -137,6 +138,9 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertSame(Lead::SOURCE_FACEBOOK, $lead->source);
         $this->assertSame(self::SENDER, $lead->remote_id);
         $this->assertSame('MESSAGE', $lead->lead_type); // "Meta Text" in its notification
+        // So a "new lead" rule hears of it, as it does of every other source.
+        $this->assertSame(1, AutomationEvent::query()->withoutGlobalScopes()
+            ->where('event_key', 'lead.received')->where('subject_id', $lead->id)->count());
 
         $said = LeadConversation::query()->withoutGlobalScopes()->firstOrFail();
         $this->assertSame('Do you clean chimneys in Hallandale?', $said->text);

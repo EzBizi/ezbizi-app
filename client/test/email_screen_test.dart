@@ -961,6 +961,19 @@ void main() {
     expect(find.textContaining('has been given to your role'), findsOneWidget);
   });
 
+  /// Opening sends the row's thread back, so the server fetches the
+  /// conversation once rather than the message and then the conversation
+  /// containing it again (~165 ms an open, measured 2026-10-06).
+  testWidgets('opening a message sends its conversation along', (tester) async {
+    final opened = <Uri>[];
+
+    await _pump(tester, _handler(onOpen: opened.add));
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(opened, isNotEmpty);
+    expect(opened.last.queryParameters['thread'], 'thread-of-m-1');
+  });
+
   /// A conversation the server really sent, opened on the screen.
   ///
   /// Jose, 2026-09-17: a lot of emails show blank on desktop, and "content
@@ -1066,6 +1079,9 @@ MockClientHandler _handler({
   /// built below. For the one test that opens a message the server really
   /// sent -- see `test/fixtures/real_thread_message.json`.
   Map<String, Object?>? detail,
+
+  /// Every message-detail request, as the screen made it.
+  void Function(Uri url)? onOpen,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1171,6 +1187,8 @@ MockClientHandler _handler({
 
     // .../mailboxes/{mailbox}/messages/{message}
     if (parts.length > 2 && parts[parts.length - 2] == 'messages') {
+      onOpen?.call(request.url);
+
       return _json({
         'data': detail ?? _detail(parts[parts.length - 3], parts.last),
       });
@@ -1244,6 +1262,7 @@ const Map<String, List<Map<String, Object?>>> _messages = {
   'mb-1': [
     {
       'id': 'm-1',
+      'thread_id': 'thread-of-m-1',
       'from': {'name': 'Ana Reis', 'address': 'ana@example.com'},
       'subject': 'Chimney sweep quote',
       'preview': 'Could somebody look at the flue this week?',

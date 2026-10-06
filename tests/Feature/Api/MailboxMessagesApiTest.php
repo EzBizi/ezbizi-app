@@ -69,6 +69,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page      = null;
         FakeMailboxReader::$detail    = null;
         FakeMailboxReader::$markedAtSource  = [];
+        FakeMailboxReader::$openedThread = null;
         FakeMailboxReader::$unmarkedAtSource = [];
         FakeMailboxReader::$canMarkAtSource = true;
         FakeMailboxReader::$sourceRefuses   = false;
@@ -1332,6 +1333,31 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame([], FakeMailboxReader::$markedAtSource);
     }
 
+    /**
+     * The list row's thread reaches the reader -- the wire the one-fetch open
+     * depends on. A controller that dropped the query parameter would leave
+     * GmailOpenInOneFetchTest green and every real open at two fetches.
+     */
+    public function test_opening_passes_the_rows_thread_to_the_reader(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1?thread=t-9")
+            ->assertOk();
+
+        $this->assertSame('t-9', FakeMailboxReader::$openedThread);
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk();
+
+        $this->assertNull(FakeMailboxReader::$openedThread, 'No hint must reach the reader as no hint.');
+    }
+
     // ══ 4b. STARTING A CONVERSATION ══════════════════════════════
 
     public function test_a_composed_message_reaches_the_provider_whole(): void
@@ -1896,8 +1922,13 @@ class FakeMailboxReader implements MailboxReader
         return self::$page ?? new MessagePage([]);
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    /** The thread hint the controller passed on the last open. */
+    public static ?string $openedThread = null;
+
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
+        self::$openedThread = $threadId;
+
         return self::$detail ?? new MessageDetail(
             summary: new MessageSummary(
                 id: $messageId, threadId: null, subject: 'Quote for a sweep',

@@ -65,9 +65,15 @@ interface MailboxReader
      * types are arranged so that it has no alternative: MessageDetail has no
      * field that could carry markup.
      *
+     * `$threadId` is a HINT, from the list row the person clicked. A provider
+     * that groups conversations may use it to fetch the conversation once
+     * instead of fetching the message just to learn which conversation it is
+     * in; one that does not group ignores it. It is never trusted: a message
+     * not found in the named thread is opened the slow way.
+     *
      * @throws CannotReadMailbox
      */
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail;
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail;
 
     /**
      * Send a reply AS THE MAILBOX.

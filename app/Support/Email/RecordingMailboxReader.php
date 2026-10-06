@@ -90,9 +90,9 @@ final class RecordingMailboxReader implements MailboxReader
         return $this->recording($mailbox, fn () => $this->inner->search($mailbox, $query, $cursor, $limit, $label));
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
-        return $this->recording($mailbox, fn () => $this->inner->open($mailbox, $messageId));
+        return $this->recording($mailbox, fn () => $this->inner->open($mailbox, $messageId, $threadId));
     }
 
     public function reply(Mailbox $mailbox, string $messageId, string $body): void

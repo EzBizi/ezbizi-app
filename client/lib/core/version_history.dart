@@ -14,6 +14,39 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0374',
+      date: '6 Oct 2026',
+      items: [
+        'WhatsApp: a new contact is asked "I need a service" or "I want to work with you". A service tap becomes a WhatsApp lead in Leads, which you can answer from Leads within 24 hours. A job tap notifies whoever can add people in HR. Until they tap, the Leads team is told a new WhatsApp message arrived.',
+        'Facebook and Instagram lead-ad forms arrive in Leads as Meta Form leads.',
+        'Messenger and Instagram messages now start "new lead" automations, which they never did before.',
+        'Workiz: who booked each job is back on the bookings report. Workiz\'s new connection stopped telling us, so EzBizi reads it from the old one.',
+        'Email: a rule on new emails can show the sender\'s name, the subject and a preview of up to 178 characters. The preview is read only when an active rule uses it.',
+        'AI Assistance settings: turn the new-contact question off or on.',
+        'A job now opens in tabs: Job, Money and Photos & files. Job shows Workiz\'s own details (System type, Time frames and so on) under the status, read only.',
+        'Money, for people who can see financials: the money card, then the invoice and each payment by date with who collected it, then Workiz\'s estimates with their status and the time on site.',
+        'Photos & files: the job\'s photos in a grid that opens large. Inspection reports open in a new tab.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0373',
+      date: '6 Oct 2026',
+      items: [
+        'Performance report: ready to label each call\'s reason with Claude and Grok side by side (switched off until the privacy page and keys are in place).',
+        'A new inspection fills in the client\'s contact details and address, and the job\'s date.',
+        'Email: opening an email no longer waits on four slow steps. Pictures now load together, the Google sign-in is reused instead of renewed on every call, one Gmail fetch replaces two, and marking it read in Gmail happens after the email shows.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0372',
+      date: '6 Oct 2026',
+      items: [
+        'Reports › Performance shows its dates in words on one button, such as "This week · Mon, Oct 5 – today", instead of Day, Week and Month.',
+        'Reports › Performance: click the dates for quick choices showing the dates each one means, a calendar where one click picks a day and two pick a range, or From and To typed in. The arrows step back and forward by the same length, and on a phone the picker opens as its own page.',
+        'Leads: a Workiz lead booked through Reserve with Google is announced as a Workiz Online lead.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0371',
       date: '6 Oct 2026',
       items: [
