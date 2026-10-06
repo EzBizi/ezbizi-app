@@ -186,6 +186,35 @@ class MailboxWatchTest extends TestCase
         $automation->forceFill(['active_version_id' => $version->id])->save();
     }
 
+    /** A rule whose notify step writes `$message` -- the way a template asks for a field. */
+    private function ruleWriting(Organization $org, string $createdBy, string $message, bool $active = true): void
+    {
+        $automation = Automation::create([
+            'organization_id' => $org->id,
+            'name'            => 'New mail',
+            'trigger_key'     => 'email.received',
+            'is_active'       => $active,
+            'created_by'      => $createdBy,
+        ]);
+
+        $version = AutomationVersion::create([
+            'organization_id' => $org->id,
+            'automation_id'   => $automation->id,
+            'version'         => 1,
+            'conditions'      => ['all' => []],
+            'actions'         => [['type' => 'notify', 'message' => $message, 'details' => '{{description}}']],
+            'created_by'      => $createdBy,
+        ]);
+
+        $automation->forceFill(['active_version_id' => $version->id])->save();
+    }
+
+    private function latestArrival(Organization $org): AutomationEvent
+    {
+        return $this->inTenant($org,
+            fn () => AutomationEvent::where('event_key', 'email.received')->latest('occurred_at')->firstOrFail());
+    }
+
     private function sweep(): void
     {
         $this->artisan('ezbizi:watch-mailboxes')->assertSuccessful();
@@ -1125,6 +1154,94 @@ class MailboxWatchTest extends TestCase
         $this->assertStringContainsString('every few minutes', $trigger->description);
         $this->assertStringContainsString('raises nothing for the mail already in it', $trigger->description);
     }
+    // ── {{description}}: Jose, 2026-10-06 ──────────────────────────
+
+    /**
+     * "Email notification: From Name / Subject / Description up to 178
+     * characters." A rule that writes {{description}} gets the body as plain
+     * text, clipped to 178 with the ellipsis counted, and NOTHING past it.
+     */
+    public function test_a_rule_writing_description_gets_178_characters_of_the_body(): void
+    {
+        $t = $this->watchedTenant();
+        $this->inTenant($t['org'], fn () => $this->ruleWriting($t['org'], $t['admin']->id, '{{from_name}}: {{subject}}'));
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+
+        WatchedInbox::arrive('Ana Reis', 'ana@example.com', 'Quote request', body: 'Hello, I would like a quote for sweeping two chimneys at my house on Elm Street. Hello, I would like a quote for sweeping two chimneys at my house on Elm Street. Hello, I would like a quote for sweeping two chimneys at my house on Elm Street. Hello, I would like a quote for sweeping two chimneys at my house on Elm Street. '.'TAILMARKER');
+
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $description = $this->latestArrival($t['org'])->payload['description'];
+
+        // UP TO 178, as Jose put it: the shared clip trims a space it would
+        // otherwise end on before adding the ellipsis, so 177 is as right as
+        // 178. At least 170 proves it was not cut short somewhere else.
+        $this->assertLessThanOrEqual(178, mb_strlen($description));
+        $this->assertGreaterThanOrEqual(170, mb_strlen($description));
+        $this->assertStringStartsWith('Hello, I would like a quote', $description);
+        $this->assertStringEndsWith('…', $description);
+        $this->assertStringNotContainsString(
+            'TAILMARKER',
+            json_encode($this->latestArrival($t['org'])->getAttributes()),
+            'More than the 178 characters reached the stored event.',
+        );
+    }
+
+    /**
+     * THE CONTROL, and the privacy property: with no rule writing it, no body is
+     * opened at all and the field is present but empty.
+     */
+    public function test_no_rule_writing_description_reads_no_body(): void
+    {
+        $t = $this->watchedTenant();
+        // A rule exists, but its step never asks for the preview.
+        $this->inTenant($t['org'], fn () => $this->ruleWriting($t['org'], $t['admin']->id, 'New mail from {{from_name}}'));
+        $this->inTenant($t['org'], fn () => AutomationVersion::query()->update([
+            'actions' => [['type' => 'notify', 'message' => 'New mail from {{from_name}}']],
+        ]));
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+        WatchedInbox::arrive('Ana Reis', 'ana@example.com', 'Quote request', body: 'A private message.');
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $this->assertSame(0, WatchedInbox::$opened, 'A body was opened that no rule asked for.');
+        $this->assertSame('', $this->latestArrival($t['org'])->payload['description']);
+    }
+
+    /** A rule that is switched off is not asking. */
+    public function test_a_switched_off_rule_writing_description_reads_no_body(): void
+    {
+        $t = $this->watchedTenant();
+        $this->inTenant($t['org'], fn () => $this->ruleWriting($t['org'], $t['admin']->id, '{{description}}', active: false));
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+        WatchedInbox::arrive('Ana Reis', 'ana@example.com', 'Quote request', body: 'A private message.');
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $this->assertSame(0, WatchedInbox::$opened);
+        $this->assertSame('', $this->latestArrival($t['org'])->payload['description']);
+    }
+
+    /** "{{from_name}}: {{subject}}" never reads ": Quote request". */
+    public function test_from_name_falls_back_to_the_address(): void
+    {
+        $t = $this->watchedTenant();
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+        WatchedInbox::arrive('', 'ana@example.com', 'Quote request');
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $this->assertSame('ana@example.com', $this->latestArrival($t['org'])->payload['from_name']);
+    }
 }
 
 /**
@@ -1170,8 +1287,12 @@ class WatchedInbox implements MailboxReader
 
     private static int $nextId = 1;
 
+    /** How many message bodies were opened. */
+    public static int $opened = 0;
+
     public static function reset(): void
     {
+        self::$opened       = 0;
         self::$mailboxes    = [];
         self::$calls        = [];
         self::$failWith     = null;
@@ -1303,6 +1424,7 @@ class WatchedInbox implements MailboxReader
 
     public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
+        self::$opened++;
         $summary = null;
 
         foreach ($this->contents($mailbox) as $row) {
