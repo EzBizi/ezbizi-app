@@ -768,18 +768,19 @@ class _MailboxCard extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 value: mailbox.markReadAtSource,
                 onChanged: onMarkReadAtSource,
-                title: const Text('Also mark mail read in the mail service'),
+                title: const Text('Keep read and unread in step with the mail service'),
                 // The whole decision, in the words of the thing that goes
-                // wrong. Somebody turning this on for a shared inbox should
-                // read what it costs before the first customer is missed, not
-                // after.
+                // wrong. On by default since 2026-10-06 (Jose: "Sync email
+                // read/unread with gmail"), so the cost is said while it is ON:
+                // on a shared inbox one person reading marks it read for
+                // everyone looking at the mail service directly.
                 subtitle: Text(
                   mailbox.markReadAtSource
-                      ? 'Opening a message here marks it read in the mail service too, for '
-                            'everyone. Best for an inbox one person reads.'
-                      : 'Opening a message here marks it read only in EzBizi, so a colleague '
-                            'looking at the mail service still sees it as unread. Turn this on '
-                            'for an inbox only you read.',
+                      ? 'Reading a message here, or marking it unread, does the same in the '
+                            'mail service, for everyone. On a shared inbox, one person reading '
+                            'it marks it read for the others too.'
+                      : 'Read and unread change only in EzBizi, so anyone looking at the mail '
+                            'service directly still sees the old state.',
                   style: theme.textTheme.bodySmall,
                 ),
               ),

@@ -371,6 +371,15 @@ final class MicrosoftMailboxReader implements MailboxReader
         );
     }
 
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'EzBizi cannot mark mail as unread in Outlook, for the same reason it cannot mark '
+            .'it read: that needs a wider permission than this inbox was connected with. The '
+            .'message is still marked as unread in EzBizi.',
+        );
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $message = [

@@ -1184,6 +1184,11 @@ class ScriptedMailboxReader implements MailboxReader
         $this->answerOrFail();
     }
 
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        $this->answerOrFail();
+    }
+
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         $this->answerOrFail();
