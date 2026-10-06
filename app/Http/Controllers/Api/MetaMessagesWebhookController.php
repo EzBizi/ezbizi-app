@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Organization;
+use App\Models\SocialConnection;
+use App\Support\Social\MetaLeadForms;
 use App\Support\Social\MetaMessages;
 use App\Support\Social\WhatsAppCloud;
 use App\Support\Tenancy\TenantContext;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,7 +40,10 @@ use Throwable;
  */
 class MetaMessagesWebhookController extends Controller
 {
-    public function __construct(private readonly MetaMessages $messages) {}
+    public function __construct(
+        private readonly MetaMessages $messages,
+        private readonly MetaLeadForms $forms,
+    ) {}
 
     /**
      * GET - the subscription handshake.
@@ -103,39 +109,59 @@ class MetaMessagesWebhookController extends Controller
              * currently handling.
              */
             foreach ((array) ($entry['messaging'] ?? []) as $event) {
-                $businessId = (string) ($event['recipient']['id'] ?? '');
-                $connection = $this->messages->connectionFor($object, $businessId);
+                $connection = $this->messages->connectionFor($object, (string) ($event['recipient']['id'] ?? ''));
 
-                if ($connection === null) {
+                $handled += $this->within($tenant, $connection, $object,
+                    fn () => $this->messages->absorb($event, $connection, $source) ? 1 : 0);
+            }
+
+            // A lead-ad form, submitted (MetaLeadForms). Only a Page delivers these.
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
+                if ($object !== 'page' || ($change['field'] ?? null) !== 'leadgen') {
                     continue;
                 }
 
-                $organization = Organization::query()
-                    ->withoutGlobalScopes()
-                    ->find($connection->organization_id);
+                $value = (array) ($change['value'] ?? []);
+                $connection = $this->messages->connectionFor($object, (string) ($value['page_id'] ?? ''));
 
-                if ($organization === null) {
-                    continue;
-                }
-
-                try {
-                    $handled += $tenant->run(
-                        $organization,
-                        fn () => $this->messages->absorb($event, $connection, $source) ? 1 : 0,
-                    );
-                } catch (Throwable $e) {
-                    // Logged and swallowed. One malformed event must not cost
-                    // the others in the same delivery, and a 500 makes Meta
-                    // retry the whole batch including the parts that worked.
-                    Log::warning('A Meta message could not be absorbed.', [
-                        'object' => $object,
-                        'connection' => $connection->getKey(),
-                        'reason' => $e->getMessage(),
-                    ]);
-                }
+                $handled += $this->within($tenant, $connection, $object,
+                    fn () => $this->forms->absorb($value, $connection) ? 1 : 0);
             }
         }
 
         return response()->json(['data' => ['handled' => $handled]], Status::HTTP_OK);
+    }
+
+    /**
+     * Run one event as the connection's organization; 0 when it is not ours.
+     */
+    private function within(TenantContext $tenant, ?SocialConnection $connection, string $object, Closure $work): int
+    {
+        if ($connection === null) {
+            return 0;
+        }
+
+        $organization = Organization::query()
+            ->withoutGlobalScopes()
+            ->find($connection->organization_id);
+
+        if ($organization === null) {
+            return 0;
+        }
+
+        try {
+            return $tenant->run($organization, $work);
+        } catch (Throwable $e) {
+            // Logged and swallowed. One malformed event must not cost
+            // the others in the same delivery, and a 500 makes Meta
+            // retry the whole batch including the parts that worked.
+            Log::warning('A Meta message could not be absorbed.', [
+                'object' => $object,
+                'connection' => $connection->getKey(),
+                'reason' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
     }
 }

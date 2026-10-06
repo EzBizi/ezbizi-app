@@ -14,11 +14,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0374',
+      date: '6 Oct 2026',
+      items: [
+        'WhatsApp: a new contact is asked "I need a service" or "I want to work with you". A service tap becomes a WhatsApp lead in Leads, which you can answer from Leads within 24 hours. A job tap notifies whoever can add people in HR. Until they tap, the Leads team is told a new WhatsApp message arrived.',
+        'Facebook and Instagram lead-ad forms arrive in Leads as Meta Form leads.',
+        'Messenger and Instagram messages now start "new lead" automations, which they never did before.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0373',
       date: '6 Oct 2026',
       items: [
         'Performance report: ready to label each call\'s reason with Claude and Grok side by side (switched off until the privacy page and keys are in place).',
         'A new inspection fills in the client\'s contact details and address, and the job\'s date.',
+        'Email: opening an email no longer waits on four slow steps. Pictures now load together, the Google sign-in is reused instead of renewed on every call, one Gmail fetch replaces two, and marking it read in Gmail happens after the email shows.',
       ],
     ),
     VersionRelease(

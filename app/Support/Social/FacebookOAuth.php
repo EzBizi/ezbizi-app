@@ -32,6 +32,8 @@ final class FacebookOAuth implements SocialOAuth
         'business_management',
         'instagram_basic',
         'instagram_manage_comments',
+        // Lead-ad form answers into Leads as "Meta Form" (MetaLeadForms).
+        'leads_retrieval',
     ];
 
     private const TIMEOUT = 10;
