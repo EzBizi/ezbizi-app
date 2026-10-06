@@ -73,14 +73,17 @@ class ExperimentalCallReportController extends Controller
      * Which is why it is named rather than simply absent. "Not connected" reads
      * as a task; "no API subscription" retires the question.
      *
+     * ── EMPTY SINCE 2026-10-06 ──────────────────────────────────
+     *
+     * Massachusetts got its own Workiz account on the v2 API and is synced
+     * like the others (63 jobs on 2026-10-05). The list stays, empty, because
+     * the next account without API access is the case it exists for - and a
+     * screen still saying "Massachusetts is never included" while counting
+     * its jobs is the stale claim this caught.
+     *
      * @var list<array{name: string, reason: string}>
      */
-    public const UNREACHABLE = [
-        [
-            'name' => 'Massachusetts',
-            'reason' => 'Workiz API access is not paid for on that account, so it has no token and never will under the current subscription.',
-        ],
-    ];
+    public const UNREACHABLE = [];
 
     /**
      * GET /api/v1/reports/experimental/calls/{recording}/recording
@@ -181,26 +184,13 @@ class ExperimentalCallReportController extends Controller
         $accounts = $workiz->accounts($request->user());
         $failed = [];
 
+        $syncedAt = null;
+
         if ($workiz->configured($request->user())) {
-            try {
-                $result = $workiz->all(
-                    $request->user(),
-                    1000,
-                    $start->subDays(self::LOOKBACK_DAYS)->toDateString(),
-                );
-                $jobs = $result['jobs'];
-                $failed = $result['failed'];
-            } catch (RuntimeException $e) {
-                // Every account refused. The calls are still worth showing, and
-                // the jobs column being blank must not read as "nobody booked
-                // anything" — `workiz_failed` is what the screen says instead.
-                // array_column, because accounts() carries {id, name} maps
-                // since the disconnect chips needed the id - and array_fill_keys
-                // with array keys is a TypeError, not a wrong answer. This arm
-                // only runs when EVERY account refuses, which is why nothing
-                // caught it: the one test here refuses a single account.
-                $failed = array_fill_keys(array_column($accounts, 'name'), $e->getMessage());
-            }
+            // The synced copy, not Workiz live - see WorkizJobs::stored().
+            $stored = $workiz->stored($request->user(), $start->subDays(self::LOOKBACK_DAYS)->toDateString());
+            $jobs = $stored['jobs'];
+            $syncedAt = $stored['synced_at'];
         }
 
         return response()->json([
@@ -218,6 +208,10 @@ class ExperimentalCallReportController extends Controller
             // it and spend an afternoon learning what Jose answered in nine
             // words. See UNREACHABLE.
             'workiz_unreachable' => self::UNREACHABLE,
+
+            // When the synced copy last heard from Workiz, so a stale copy
+            // shows rather than reading as a quiet day.
+            'workiz_synced_at' => $syncedAt,
 
             'period' => $period,
 
