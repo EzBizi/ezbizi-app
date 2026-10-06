@@ -2974,6 +2974,11 @@ highlights up top (chips, four photos, money with payments) and "See all from Wo
 (recommended) the same tabs; **5** folding sections; **6** highlights, then a page of the rest. All: Workiz records
 marked read only; no Financials, no Money anything.
 
+Build notes, measured by Jobs on a real attachment: st.sendajob.com serves photos and PDFs with no auth and no referrer
+block, but with no CORS headers, so on web use `Image.network(url, webHtmlElementStrategy: WebHtmlElementStrategy.prefer)`
+(an `<img>`, which needs none). Photos are full size (one was 1.19 MB) with no thumbnail variant: set
+`cacheWidth`/`cacheHeight` and build the grid lazily. PDFs open in a new tab.
+
 ### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `8da551c1` (`docs/previews/reports-performance-dates-layouts.html`)
 
 From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /
