@@ -126,7 +126,7 @@ void main() {
 
     // One switch, not two: the second inbox cannot do it and is not offered it.
     expect(find.byType(SwitchListTile), findsOneWidget);
-    expect(find.text('Also mark mail read in the mail service'), findsOneWidget);
+    expect(find.text('Keep read and unread in step with the mail service'), findsOneWidget);
 
     // The control: BOTH inboxes are on screen, so the missing switch is
     // "not offered for that one" rather than "the card failed to draw".
@@ -152,7 +152,29 @@ void main() {
     await _openSettings(tester);
 
     expect(
-      find.textContaining('a colleague looking at the mail service still sees it as unread'),
+      find.textContaining('anyone looking at the mail service directly still sees the old state'),
+      findsOneWidget,
+    );
+
+  });
+
+  // And ON, which is the default now -- so the shared-inbox cost is said in
+  // the position people will actually see it. The test above was named for
+  // both positions and only ever checked one; this is the other. Its own test
+  // rather than a second pump: the screen keeps its State across pumpWidget
+  // and would never refetch the ON row.
+  testWidgets('switched on, it says what a shared inbox costs', (tester) async {
+    await _pump(tester, _handler(mailboxes: [
+      _row(
+        id: 'mb-1',
+        address: 'info@a-1chimney.com',
+        extra: const {'can_mark_read_at_source': true, 'mark_read_at_source': true},
+      ),
+    ]));
+    await _openSettings(tester);
+
+    expect(
+      find.textContaining('one person reading it marks it read for the others too'),
       findsOneWidget,
     );
   });

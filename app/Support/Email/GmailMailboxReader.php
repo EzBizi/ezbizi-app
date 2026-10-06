@@ -802,6 +802,31 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /**
+     * Unread is the MESSAGE, not the thread.
+     *
+     * Reading marks the whole conversation, for the reason above. Unread is
+     * the opposite case: Gmail's own "Mark as unread" flags the message, and a
+     * conversation shows unread if ANY message in it is -- so one message is
+     * enough to make the thread bold again, without falsely claiming nobody
+     * has read the earlier replies. One call, no metadata lookup.
+     */
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        try {
+            $this->postModify(
+                $mailbox,
+                self::API.'/messages/'.rawurlencode($messageId).'/modify',
+                ['addLabelIds' => ['UNREAD']],
+            );
+        } catch (CannotReadMailbox) {
+            throw new CannotChangeMail(
+                'Google would not mark that message as unread. Nothing else has changed, and '
+                .'it is still marked as unread in EzBizi.',
+            );
+        }
+    }
+
+    /**
      * A new message — the same endpoint as a reply, without the thread.
      *
      * No `threadId`, so Gmail files it as a new conversation rather than under

@@ -78,6 +78,13 @@ final class WorkspaceMailboxReader implements MailboxReader
         $this->gmail->markReadAtSource($mailbox, $messageId);
     }
 
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        $this->gmail->markUnreadAtSource($mailbox, $messageId);
+    }
+
     public function availableFolders(Mailbox $mailbox): array
     {
         $this->workspace->assertCanOpen($mailbox);

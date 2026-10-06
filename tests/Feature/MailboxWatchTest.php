@@ -1337,6 +1337,8 @@ class WatchedInbox implements MailboxReader
 
     public function markReadAtSource(Mailbox $mailbox, string $messageId): void {}
 
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void {}
+
     public function trash(Mailbox $mailbox, string $messageId): void {}
 
     public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture
