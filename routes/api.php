@@ -1894,6 +1894,7 @@ Route::prefix('v1')
             Route::post('marketing/qr-codes/{qrCode}/deactivate', [QrCodesController::class, 'deactivate']);
             Route::post('marketing/qr-codes/{qrCode}/reactivate', [QrCodesController::class, 'reactivate']);
             Route::get('marketing/qr-codes/{qrCode}/image', [QrCodesController::class, 'image']);
+            Route::get('marketing/qr-codes/{qrCode}/stats', [QrCodesController::class, 'stats']);
         });
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);

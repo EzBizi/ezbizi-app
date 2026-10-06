@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\QrCode;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -107,6 +108,89 @@ class QrCodesTest extends TestCase
             ->assertForbidden()->assertJsonPath('message', fn (string $m) => str_contains($m, 'deactivate a QR code'));
 
         $this->get('/q/'.$qr['code'])->assertRedirect('https://a-1chimney.com');
+    }
+
+    private function scanFrom(string $code, string $ip, string $agent): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => $ip])
+            ->withHeader('User-Agent', $agent)
+            ->get('/q/'.$code)
+            ->assertStatus(302);
+    }
+
+    /**
+     * Stats (Jose, 2026-10-06): scans per day, and daily scanners — the same
+     * phone twice in a day is one scanner, a second phone is another.
+     */
+    public function test_stats_count_scans_and_daily_scanners(): void
+    {
+        $t = $this->provisionTenant('Kilo');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->json('data');
+
+        $this->scanFrom($qr['code'], '203.0.113.7', 'PhoneA');
+        $this->scanFrom($qr['code'], '203.0.113.7', 'PhoneA');
+        $this->scanFrom($qr['code'], '198.51.100.9', 'PhoneB');
+
+        $stats = $this->signedInAs($editor)->getJson("/api/v1/marketing/qr-codes/{$qr['id']}/stats")
+            ->assertOk()->json('data');
+
+        $this->assertCount(30, $stats['days']);
+        $this->assertSame(['scans' => 3, 'people' => 2], array_intersect_key(end($stats['days']), ['scans' => 1, 'people' => 1]));
+        $this->assertSame(3, $stats['scans']);
+        $this->assertSame(2, $stats['people']);
+
+        $card = $this->signedInAs($editor)->getJson('/api/v1/marketing/qr-codes')->json('data.0');
+        $this->assertSame([3, 2], [$card['scans_30d'], $card['people_30d']]);
+        $this->assertCount(30, $card['daily_30d']);
+        $this->assertSame(3, end($card['daily_30d']));
+
+        // No raw address is kept anywhere in the row.
+        $rows = DB::table('qr_code_scans')->get();
+        $this->assertCount(3, $rows);
+        foreach ($rows as $row) {
+            $this->assertStringNotContainsString('203.0.113.7', json_encode($row));
+        }
+    }
+
+    public function test_a_scanner_is_not_recognisable_the_next_day(): void
+    {
+        $t = $this->provisionTenant('Lima');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->json('data');
+
+        $this->scanFrom($qr['code'], '203.0.113.7', 'PhoneA');
+        $this->travel(1)->days();
+        $this->scanFrom($qr['code'], '203.0.113.7', 'PhoneA');
+
+        $visitors = DB::table('qr_code_scans')->orderBy('id')->pluck('visitor')->all();
+        $this->assertCount(2, $visitors);
+        $this->assertNotSame($visitors[0], $visitors[1]);
+    }
+
+    public function test_ninety_days_reaches_what_thirty_does_not(): void
+    {
+        $t = $this->provisionTenant('Mike');
+        $editor = $this->userWithRole($t, 'Marketer', self::EDITOR);
+        $qr = $this->signedInAs($editor)->postJson('/api/v1/marketing/qr-codes', [
+            'name' => 'Vans', 'destination_url' => 'https://a-1chimney.com',
+        ])->json('data');
+
+        DB::table('qr_code_scans')->insert([
+            'organization_id' => $t['org']->id, 'qr_code_id' => $qr['id'],
+            'scanned_at' => now()->subDays(40), 'visitor' => str_repeat('a', 64),
+        ]);
+
+        $url = "/api/v1/marketing/qr-codes/{$qr['id']}/stats";
+        $this->signedInAs($editor)->getJson($url)->assertJsonPath('data.scans', 0);
+        $this->signedInAs($editor)->getJson($url.'?days=90')
+            ->assertJsonCount(90, 'data.days')
+            ->assertJsonPath('data.scans', 1)
+            ->assertJsonPath('data.people', 1);
     }
 
     public function test_an_unknown_code_is_a_404_and_counts_nothing(): void

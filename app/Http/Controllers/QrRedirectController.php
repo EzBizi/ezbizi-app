@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\QrCode;
+use App\Models\QrCodeScan;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 
@@ -22,9 +24,9 @@ use Illuminate\Support\Facades\DB;
  */
 class QrRedirectController
 {
-    public function __invoke(string $code): RedirectResponse|Response
+    public function __invoke(Request $request, string $code): RedirectResponse|Response
     {
-        $row = DB::table('qr_codes')->where('code', QrCode::normalise($code))->first(['id', 'destination_url', 'deactivated_at']);
+        $row = DB::table('qr_codes')->where('code', QrCode::normalise($code))->first(['id', 'organization_id', 'destination_url', 'deactivated_at']);
 
         if ($row === null) {
             return response('This QR code is not in use.', 404, ['Content-Type' => 'text/plain; charset=utf-8']);
@@ -33,6 +35,13 @@ class QrRedirectController
         DB::table('qr_codes')->where('id', $row->id)->update([
             'scans' => DB::raw('scans + 1'),
             'last_scanned_at' => now(),
+        ]);
+
+        DB::table('qr_code_scans')->insert([
+            'organization_id' => $row->organization_id,
+            'qr_code_id' => $row->id,
+            'scanned_at' => now(),
+            'visitor' => QrCodeScan::visitorFor($request->ip(), $request->userAgent()),
         ]);
 
         // Counted while paused too: people still scanning a deactivated van

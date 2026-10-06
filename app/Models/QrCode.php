@@ -43,8 +43,8 @@ class QrCode extends Model implements StatesRetention
     {
         return RetentionPolicy::forever(
             'A QR code the organization printed: its name, the address it currently sends '
-            .'people to and how many times it has been scanned. It holds nothing about the '
-            .'people who scan it — no address, device or location. Printed codes are '
+            .'people to and how many times it has been scanned. Each scan is logged with its '
+            .'time in qr_code_scans, which keeps no address, device or location. Printed codes are '
             .'deactivated rather than deleted, so it is kept for as long as the organization is.'
         );
     }

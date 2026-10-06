@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\QrCode;
+use App\Models\QrCodeScan;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -10,6 +11,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
+use App\Support\Time\ViewTimezone;
 use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Renderer\GDLibRenderer;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
@@ -19,6 +21,8 @@ use BaconQrCode\Writer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
@@ -35,11 +39,93 @@ class QrCodesController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $rows = NewsletterAccess::visible(QrCode::query(), $request->user())
+        $user = $request->user();
+        $rows = NewsletterAccess::visible(QrCode::query(), $user)
             ->orderBy('name')
             ->get();
 
-        return response()->json(['data' => $rows->map(fn (QrCode $q) => $this->present($q))->all()]);
+        // The card's mini chart: the last 30 days, in the viewer's timezone.
+        $tz = ViewTimezone::forUser($user);
+        $from = $this->firstDay($tz, 30);
+        $scans = $this->scansSince($rows->modelKeys(), $from)->groupBy('qr_code_id');
+
+        return response()->json(['data' => $rows->map(function (QrCode $q) use ($scans, $tz, $from) {
+            $days = $this->days($scans->get($q->id, collect()), $tz, $from, 30);
+
+            return $this->present($q) + [
+                'scans_30d' => array_sum(array_column($days, 'scans')),
+                'people_30d' => array_sum(array_column($days, 'people')),
+                'daily_30d' => array_column($days, 'scans'),
+            ];
+        })->all()]);
+    }
+
+    /**
+     * GET /marketing/qr-codes/{id}/stats?days=30|90 — every day, zeros included.
+     *
+     * `people` is distinct scanners per DAY, and the period figure is those
+     * days added up: the same phone on two days counts twice. That is the
+     * privacy design, not a shortcut — the daily salt is thrown away, so the
+     * same phone cannot be recognised across days. Clients say "daily
+     * scanners", never "people".
+     */
+    public function stats(Request $request, string $qrCode): JsonResponse
+    {
+        $user = $request->user();
+        $qr = $this->findInView($user, $qrCode);
+        $count = (int) $request->query('days', '30') === 90 ? 90 : 30;
+
+        $tz = ViewTimezone::forUser($user);
+        $from = $this->firstDay($tz, $count);
+        $days = $this->days($this->scansSince([$qr->id], $from), $tz, $from, $count);
+
+        return response()->json(['data' => [
+            'from' => $days[0]['date'],
+            'to' => $days[$count - 1]['date'],
+            'timezone' => $tz,
+            'days' => $days,
+            'scans' => array_sum(array_column($days, 'scans')),
+            'people' => array_sum(array_column($days, 'people')),
+        ]]);
+    }
+
+    /** Local midnight $count - 1 days before today. */
+    private function firstDay(string $tz, int $count): Carbon
+    {
+        return now($tz)->startOfDay()->subDays($count - 1);
+    }
+
+    /**
+     * ponytail: bucketed in PHP. Fine for vehicle codes; aggregate in SQL if a
+     * code ever sees tens of thousands of scans a quarter.
+     *
+     * @param  string[]  $ids
+     */
+    private function scansSince(array $ids, Carbon $from): Collection
+    {
+        return $ids === [] ? collect() : QrCodeScan::query()
+            ->whereIn('qr_code_id', $ids)
+            ->where('scanned_at', '>=', $from->copy()->utc())
+            ->get(['qr_code_id', 'scanned_at', 'visitor']);
+    }
+
+    /** @return list<array{date: string, scans: int, people: int}> */
+    private function days(Collection $scans, string $tz, Carbon $from, int $count): array
+    {
+        $byDay = $scans->groupBy(fn (QrCodeScan $s) => $s->scanned_at->copy()->setTimezone($tz)->toDateString());
+
+        $days = [];
+        for ($i = 0; $i < $count; $i++) {
+            $date = $from->copy()->addDays($i)->toDateString();
+            $those = $byDay->get($date, collect());
+            $days[] = [
+                'date' => $date,
+                'scans' => $those->count(),
+                'people' => $those->pluck('visitor')->filter()->unique()->count(),
+            ];
+        }
+
+        return $days;
     }
 
     public function store(Request $request): JsonResponse
