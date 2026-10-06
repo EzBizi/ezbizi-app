@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0378',
+      date: '6 Oct 2026',
+      items: [
+        'Mac: brings everything listed under 0.0.0377, which reached the web, Windows, Android and iPhone first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0377',
       date: '6 Oct 2026',
       items: [
