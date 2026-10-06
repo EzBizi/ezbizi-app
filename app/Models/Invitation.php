@@ -207,7 +207,7 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
         'organization_id', 'email', 'first_name', 'last_name',
         'role_id', 'invited_by_user_id',
         'assigned_organization_id', 'assigned_company_id', 'assigned_franchise_id',
-        'sent_at', 'expires_at', 'opened_at', 'accepted_at', 'revoked_at',
+        'sent_at', 'held_at', 'expires_at', 'opened_at', 'accepted_at', 'revoked_at',
         'accepted_user_id',
     ];
 
@@ -224,6 +224,7 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
     {
         return [
             'sent_at'     => 'datetime',
+            'held_at'     => 'datetime',
             'expires_at'  => 'datetime',
             'opened_at'   => 'datetime',
             'accepted_at' => 'datetime',
@@ -396,7 +397,14 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
 
     public function hasExpired(): bool
     {
-        return $this->expires_at->isPast();
+        // Held, it has not been sent, so its week has not started.
+        return $this->held_at === null && $this->expires_at->isPast();
+    }
+
+    /** Waiting for the employer's signature before it is emailed. */
+    public function isHeld(): bool
+    {
+        return $this->held_at !== null;
     }
 
     /**
