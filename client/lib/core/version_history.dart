@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0367',
+      date: '6 Oct 2026',
+      items: [
+        'Monitoring Files: opening a computer now shows its drives instead of "This could not be read".',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0366',
       date: '6 Oct 2026',
       items: [
