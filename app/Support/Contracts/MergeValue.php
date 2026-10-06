@@ -54,6 +54,9 @@ final class MergeValue
      */
     public const NOT_APPLICABLE = 'N/A';
 
+    /** An employer's term not settled yet, printed as these words (Jose, 2026-10-06). */
+    public const TO_BE_DETERMINED = 'To be determined';
+
     public function isBlank(): bool
     {
         return $this->value === null || $this->value === '';

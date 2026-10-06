@@ -1285,4 +1285,40 @@ class HrContractBodyTest extends TestCase
 
         return $query['token'];
     }
+
+    /**
+     * Pay terms each turn off on their own, the lines go and the rest stays;
+     * "To be determined" prints as words without its "$" or "%" (Jose,
+     * 2026-10-06).
+     */
+    public function test_pay_terms_turn_off_line_by_line_and_can_be_to_be_determined(): void
+    {
+        $body = "{{#pay_basis.hourly}}Basis: {{comp_method}}.\n\n"
+            ."Hourly Rate: \${{hourly_rate}} per hour.\n\n"
+            ."Commission Rate: {{commission_pct}}% on sales.{{/pay_basis.hourly}}\n\n"
+            ."{{#pay_basis.salary}}Salary: \${{salary_amount}}.{{/pay_basis.salary}}";
+        $v = fn (array $values) => array_map(fn ($x) => new MergeValue('x', $x), $values);
+
+        $html = MergeTags::render($body, $v([
+            'pay_basis' => 'Hourly', 'comp_method' => MergeValue::NOT_APPLICABLE,
+            'hourly_rate' => '20', 'commission_pct' => '10', 'salary_amount' => '',
+        ]));
+        $this->assertStringNotContainsString('Basis:', $html, 'The voided line stayed.');
+        $this->assertStringContainsString('Commission Rate: 10%', $html, 'Turning one term off took its neighbour.');
+
+        // Pay basis itself off: what was answered under it still prints.
+        $html = MergeTags::render($body, $v([
+            'pay_basis' => MergeValue::NOT_APPLICABLE, 'comp_method' => 'Hourly',
+            'hourly_rate' => '20', 'commission_pct' => '', 'salary_amount' => '',
+        ]));
+        $this->assertStringContainsString('Hourly Rate: $20 per hour.', $html);
+        $this->assertStringNotContainsString('Salary:', $html);
+
+        $html = MergeTags::render($body, $v([
+            'pay_basis' => 'Hourly', 'comp_method' => 'Hourly',
+            'hourly_rate' => MergeValue::TO_BE_DETERMINED, 'commission_pct' => MergeValue::TO_BE_DETERMINED, 'salary_amount' => '',
+        ]));
+        $this->assertStringContainsString('Hourly Rate: To be determined per hour.', $html);
+        $this->assertStringContainsString('Commission Rate: To be determined on sales.', $html);
+    }
 }

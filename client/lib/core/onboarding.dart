@@ -548,6 +548,18 @@ class OnboardingQuestion {
 /// The answer that voids a term: the server drops every paragraph naming it.
 const notApplicable = 'N/A';
 
+/// An employer's term not settled yet (`MergeValue::TO_BE_DETERMINED`).
+const toBeDetermined = 'To be determined';
+
+/// Compensation methods offered as quick picks; the box still takes any words.
+const compensationMethods = [
+  'Hourly',
+  'Hourly plus commission',
+  'Commission only',
+  'Salary',
+  'Salary plus commission',
+];
+
 /// Sent among the answers, but not a question: the company address typed on
 /// the form (`Onboarding::EMPLOYER_ADDRESS`).
 const employerAddressKey = 'employer_address';

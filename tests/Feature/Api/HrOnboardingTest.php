@@ -539,6 +539,18 @@ class HrOnboardingTest extends TestCase
      * related terms voided together, the typed answer marked in the contract,
      * and the PDF it will print as.
      */
+    /** An employer's amount may be "To be determined" (Jose, 2026-10-06), and it counts as answered. */
+    public function test_an_employer_term_can_be_to_be_determined(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario();
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => 'To be determined'],
+        ])->assertOk();
+        $this->assertSame('To be determined', $this->rawAnswer($alpha, $id, 'wage'));
+        $this->assertArrayNotHasKey('wage', $this->form($alpha['admin'], $id)['missing']);
+    }
+
     public function test_address_parts_void_groups_highlights_and_the_draft_pdf(): void
     {
         [$alpha, $employee, $id] = $this->scenario([
@@ -566,10 +578,12 @@ class HrOnboardingTest extends TestCase
             ->firstWhere('key', 'address');
         $this->assertSame('Stamford', $address['parts']['city'] ?? null);
 
-        // The raise terms stand or fall together; a lone term is its own group.
+        // Every pay term is its own group now.
         $form = $this->form($alpha['admin'], $id);
-        $this->assertSame('raise', $this->fieldIn($form, 'raise_amount')['void_group']);
-        $this->assertSame('raise', $this->fieldIn($form, 'raise_period')['void_group']);
+        // Each pay term on its own (Jose, 2026-10-06: "she should be able to
+        // turn off things individually").
+        $this->assertSame('raise_amount', $this->fieldIn($form, 'raise_amount')['void_group']);
+        $this->assertSame('raise_period', $this->fieldIn($form, 'raise_period')['void_group']);
         $this->assertSame('job_title', $this->fieldIn($form, 'job_title')['void_group']);
 
         // The answer being typed is marked in the live contract, and only there.

@@ -197,11 +197,13 @@ class OnboardingForm
         };
     }
 
-    /** Catalog terms that stand or fall together when one is marked "doesn't apply". */
+    /**
+     * Questions that stand or fall together when one is marked "doesn't
+     * apply". The employer's pay terms each go on their own (Jose, 2026-10-06:
+     * "she should be able to turn off things individually"); the employee's
+     * documents still go as a set.
+     */
     public const VOID_GROUPS = [
-        'raise_amount' => 'raise', 'raise_period' => 'raise',
-        'comp_method' => 'commission', 'commission_pct' => 'commission', 'commission_stages' => 'commission',
-        'salary_amount' => 'salary', 'salary_period' => 'salary', 'daily_deduction' => 'salary',
         // The employee's side, voided by the employer.
         'tax_id_type' => 'tax_id', 'ssn' => 'tax_id', 'ein' => 'tax_id', 'ein_company_name' => 'tax_id',
         'bank_name' => 'bank', 'bank_account_name' => 'bank', 'bank_account_number' => 'bank', 'bank_routing_number' => 'bank',
@@ -459,7 +461,8 @@ class OnboardingForm
         // "Doesn't apply" on an employer's term (A1 Tools' N/A, 2026-10-01):
         // kept as written whatever the type, and MergeTags leaves the term's
         // paragraphs out of the contract.
-        if ($value === MergeValue::NOT_APPLICABLE && $field->filledBy !== FilledBy::EMPLOYEE
+        if (in_array($value, [MergeValue::NOT_APPLICABLE, MergeValue::TO_BE_DETERMINED], true)
+            && $field->filledBy !== FilledBy::EMPLOYEE
             && in_array($field->type, [FieldType::TEXT, FieldType::NUMBER, FieldType::DATE, FieldType::CHOICE], true)) {
             return $value;
         }

@@ -465,9 +465,19 @@ class _OnboardingFormState extends State<OnboardingForm> {
   };
 
   /// One answer changed: queue it for Save and redraw the contract beside it.
+  ///
+  /// The saved value again is no change: a date box re-reports its value when
+  /// it loses focus, and that left "1 answer not saved" behind every save,
+  /// blocking Sign until the form was opened again (Jose, 2026-10-06).
   void _answer(String key, String value) {
+    final form = _form;
+    final question = form == null ? null : _question(form, key);
     setState(() {
-      _pending[key] = value;
+      if (question != null && !question.masked && value == question.value) {
+        _pending.remove(key);
+      } else {
+        _pending[key] = value;
+      }
       _changed.add(key);
     });
     _previewTimer?.cancel();
@@ -637,19 +647,54 @@ class _OnboardingFormState extends State<OnboardingForm> {
               key: keyed,
               tooltip: tip,
               visualDensity: VisualDensity.compact,
-              onPressed: enabled ? () => _setVoided(question, to) : null,
+              onPressed: enabled
+                  ? () => _answerOf(question.key).trim() == toBeDetermined
+                        ? _setTbd(question, false)
+                        : _setVoided(question, to)
+                  : null,
               icon: child,
             );
     }
 
+    // "To be determined": the term stays and prints as those words (Jose,
+    // 2026-10-06). Only the employer's own terms, while they may write them.
+    final tbd = _answerOf(question.key).trim() == toBeDetermined;
+    final mayTbd =
+        question.writable && question.field.filledBy != filledByEmployee;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        button(!voided, Icons.check, 'This applies', 'apply', false),
+        if (mayTbd) ...[
+          tbd
+              ? FilledButton.tonal(
+                  key: Key('tbd:${question.key}'),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: enabled ? () => _setTbd(question, false) : null,
+                  child: const Text('TBD'),
+                )
+              : OutlinedButton(
+                  key: Key('tbd:${question.key}'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: enabled ? () => _setTbd(question, true) : null,
+                  child: const Text('TBD'),
+                ),
+          const SizedBox(width: 4),
+        ],
+        button(!voided && !tbd, Icons.check, 'This applies', 'apply', false),
         const SizedBox(width: 4),
         button(voided, Icons.close, "Doesn't apply", 'void', true),
       ],
     );
+  }
+
+  void _setTbd(OnboardingQuestion question, bool on) {
+    _box(question).text = on ? toBeDetermined : '';
+    _answer(question.key, on ? toBeDetermined : '');
   }
 
   TextEditingController _box(OnboardingQuestion question) => _boxes.putIfAbsent(
@@ -1636,6 +1681,14 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final field = question.field;
     final enabled = question.writable && !_saving;
 
+    if (question.voidable && _answerOf(question.key).trim() == toBeDetermined) {
+      return InputDecorator(
+        key: answerKey(field.key),
+        decoration: const InputDecoration(border: OutlineInputBorder()),
+        child: Text(toBeDetermined, style: theme.textTheme.bodyMedium),
+      );
+    }
+
     // Only claimed when there IS a vocabulary to check against. Without one
     // this end cannot tell an unrecognised kind of question from an ordinary
     // one, and captioning every text box with a warning would be asserting an
@@ -1643,6 +1696,33 @@ class _OnboardingFormState extends State<OnboardingForm> {
     switch (field.key) {
       case 'state':
         return _statePicker(question, enabled: enabled);
+      // Eve was unsure what it means (Jose, 2026-10-06): the usual answers
+      // to tap, and the box still takes any words.
+      case 'comp_method':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _text(question, enabled: enabled),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final method in compensationMethods)
+                  ActionChip(
+                    key: Key('comp-method-$method'),
+                    label: Text(method),
+                    onPressed: enabled
+                        ? () {
+                            _box(question).text = method;
+                            _answer(question.key, method);
+                          }
+                        : null,
+                  ),
+              ],
+            ),
+          ],
+        );
       case 'county':
         final state = stateName(_answerOf('state'));
         return _CountySearch(
@@ -1716,6 +1796,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     return switch (field.type) {
       'checklist' => _checklist(question, enabled: enabled),
+      'choice' when field.options.length <= 4 => Wrap(
+        key: answerKey(field.key),
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final option in field.options)
+            ChoiceChip(
+              label: Text(option),
+              selected: _chosen(question) == option,
+              onSelected: enabled
+                  ? (on) => _answer(question.key, on ? option : '')
+                  : null,
+            ),
+        ],
+      ),
       'choice' => SearchPickerField<String>(
                     key: answerKey(field.key),
                     value: _chosen(question),
@@ -1936,6 +2031,11 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final when = question.field.shownWhen;
     if (when == null) return true;
     final raw = _pending[when.key] ?? _valueOf(form, when.key);
+    // The choice does not apply or is undecided: what hangs on it stays in
+    // sight, each to answer or turn off on its own (Jose, 2026-10-06).
+    if (raw.trim() == notApplicable || raw.trim() == toBeDetermined) {
+      return true;
+    }
     return optionSlug(raw) == when.option;
   }
 
