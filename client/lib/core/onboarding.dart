@@ -202,10 +202,17 @@ class Onboarding {
     this.approvalBy,
     this.approvalMine = false,
     this.downloadable = false,
+    this.i9Section2Done = false,
+    this.i9Section2Mine = false,
   });
 
   /// There is a signed PDF to download, its own or an imported one.
   final bool downloadable;
+
+  /// The I-9's employer half (Section 2) is signed; and whether this person
+  /// may sign it.
+  final bool i9Section2Done;
+  final bool i9Section2Mine;
 
   /// Signed by both sides and waiting for the sender's final approval (Jose,
   /// 2026-10-05): [approvalBy] is who sent it, [approvalMine] whether this
@@ -384,6 +391,8 @@ class Onboarding {
       approvalBy: approval?['by'] as String?,
       approvalMine: approval?['mine'] == true,
       downloadable: json['downloadable'] == true,
+      i9Section2Done: (json['i9'] as Map?)?['section2'] == true,
+      i9Section2Mine: (json['i9'] as Map?)?['mine'] == true,
     );
   }
 }

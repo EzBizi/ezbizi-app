@@ -1024,6 +1024,47 @@ void main() {
     });
   });
 
+  // Jose, 2026-10-06: the I-9 is signed in the app, and Section 2 is the
+  // employer's, on the page the new hire signed.
+  testWidgets('a signed I-9 offers the employer Section 2', (tester) async {
+    Map<String, Object?> i9(bool done) => {
+      ..._asEmployer,
+      'i9': {'section2': done, 'mine': true},
+      'fields': [
+        {
+          ..._field('i9_form', 'Form I-9, signed', 'file',
+              filledBy: 'employee', writable: false, value: 'att-9'),
+          'tax_form_kind': 'i9',
+        },
+      ],
+    };
+
+    await _pumpForm(tester, _handler(form: i9(false)));
+    expect(find.byKey(const Key('i9-section2-open')), findsOneWidget);
+    expect(find.textContaining('Section 2 is the employer'), findsOneWidget);
+  });
+
+  testWidgets('an I-9 with both sections signed says so', (tester) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployer,
+          'i9': {'section2': true, 'mine': true},
+          'fields': [
+            {
+              ..._field('i9_form', 'Form I-9, signed', 'file',
+                  filledBy: 'employee', writable: false, value: 'att-9'),
+              'tax_form_kind': 'i9',
+            },
+          ],
+        },
+      ),
+    );
+    expect(find.byKey(const Key('i9-section2-open')), findsNothing);
+    expect(find.text('Signed I-9 attached, both sections.'), findsOneWidget);
+  });
+
   testWidgets('a county the search cannot find is saved as typed', (
     tester,
   ) async {

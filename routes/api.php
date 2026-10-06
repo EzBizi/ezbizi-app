@@ -1762,6 +1762,7 @@ Route::prefix('v1')
         Route::post('hr/onboardings/{onboarding}/approve', [HrOnboardingsController::class, 'approve']);
         Route::post('hr/onboardings/{onboarding}/preview', [HrOnboardingsController::class, 'preview']);
         Route::post('hr/onboardings/{onboarding}/tax-form', [HrOnboardingsController::class, 'taxForm']);
+        Route::post('hr/onboardings/{onboarding}/i9-section2', [HrOnboardingsController::class, 'i9Section2']);
         Route::post('hr/onboardings/{onboarding}/amendments', [HrOnboardingsController::class, 'amend']);
         // The rendered document and its fingerprint — a preview before anything
         // is signed, the stored bytes afterwards. The FILE is downloaded through

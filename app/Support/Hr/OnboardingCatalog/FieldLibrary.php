@@ -166,6 +166,10 @@ final class FieldLibrary
             $secret(self::field('bank_account_number', 'Bank account number', FieldType::TEXT, $mine)),
             $secret(self::field('bank_routing_number', 'Bank routing number', FieldType::TEXT, $mine)),
             $secret(self::field('tax_form', 'W-4 (employee) or W-9 (contractor), signed', FieldType::FILE, $mine)),
+            // Filled from the bank and identity answers and signed in the app
+            // (Jose, 2026-10-06: "so it's all filled on ezbizi").
+            $secret(self::field('direct_deposit_form', 'Direct deposit authorization, signed', FieldType::FILE, $mine)),
+            $secret(self::field('i9_form', 'Form I-9, signed', FieldType::FILE, $mine)),
             $secret(self::field('drivers_license_front', 'Driver licence (front)', FieldType::FILE, $mine)),
             $secret(self::field('drivers_license_back', 'Driver licence (back)', FieldType::FILE, $mine)),
             self::field('uniform_photo', 'Photo in uniform', FieldType::FILE, $mine),

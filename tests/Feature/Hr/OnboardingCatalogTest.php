@@ -150,7 +150,7 @@ class OnboardingCatalogTest extends TestCase
         });
 
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Accounting (hourly): adds 11, drops address as version 3')
+            ->expectsOutputToContain('Accounting (hourly): adds 13, drops address as version 3')
             ->assertSuccessful();
 
         $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();

@@ -27,6 +27,23 @@ const _classifications = {
   'other': 'Other',
 };
 
+/// I-9 Section 1 (edition 01/20/25): the attestation, in USCIS's order.
+const _i9Statuses = {
+  'citizen': 'A citizen of the United States',
+  'noncitizen_national': 'A noncitizen national of the United States',
+  'permanent_resident': 'A lawful permanent resident',
+  'authorized_alien': 'A noncitizen authorized to work',
+};
+
+/// Each form's name as the panel says it.
+const formLabels = {
+  'w4': 'W-4',
+  'w9': 'W-9',
+  'direct_deposit': 'direct deposit authorization',
+  'i9': 'I-9',
+  'i9_section2': 'I-9, Section 2',
+};
+
 /// The W-4 or W-9 filled in and signed in the app, as A1 Tools had it (HR
 /// ee9095f5; Jose, 2026-10-01: "it should be signed within the app as well,
 /// check how a1tools did it"). The form's own questions, then the official
@@ -47,7 +64,9 @@ class TaxFormPanel extends StatefulWidget {
   final ApiClient api;
   final String onboardingId;
 
-  /// `w4` or `w9`, as the server decided it.
+  /// `w4` or `w9`, as the server decided it; `direct_deposit` or `i9` for
+  /// the new hire's other forms; `i9_section2` for the employer's half of
+  /// the I-9 (Jose, 2026-10-06: "so it's all filled on ezbizi").
   final String kind;
 
   /// Already answered on the form: the server prints the stored number, so
@@ -67,6 +86,8 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
   final _boxes = <String, TextEditingController>{};
 
   String? _status;
+  String? _accountType;
+  String? _i9Status;
   String _classification = 'individual';
   bool _multipleJobs = false;
   bool _exempt = false;
@@ -80,8 +101,10 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
   String? _error;
 
   bool get _w4 => widget.kind == 'w4';
-  String get _label => _w4 ? 'W-4' : 'W-9';
-  String get _path => '/hr/onboardings/${widget.onboardingId}/tax-form';
+  String get _label => formLabels[widget.kind] ?? widget.kind;
+  String get _path => widget.kind == 'i9_section2'
+      ? '/hr/onboardings/${widget.onboardingId}/i9-section2'
+      : '/hr/onboardings/${widget.onboardingId}/tax-form';
 
   TextEditingController _box(String key) =>
       _boxes.putIfAbsent(key, TextEditingController.new);
@@ -109,6 +132,30 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
   /// the sum of the two lines above it, as the form says.
   Map<String, dynamic> get _values {
     String text(String key) => _boxes[key]?.text.trim() ?? '';
+    switch (widget.kind) {
+      case 'direct_deposit':
+        return {'account_type': _accountType, 'amount': text('amount')};
+      case 'i9':
+        return {
+          'status': _i9Status,
+          'other_last_names': text('other_last_names'),
+          'lpr_number': text('lpr_number'),
+          'work_until': text('work_until'),
+          'uscis_number': text('uscis_number'),
+          'i94_number': text('i94_number'),
+          'passport': text('passport'),
+          if (!widget.ssnOnFile) 'ssn': text('ssn'),
+        };
+      case 'i9_section2':
+        return {
+          for (final list in ['a', 'b', 'c'])
+            for (final part in ['title', 'authority', 'number', 'expires'])
+              '${list}_$part': text('${list}_$part'),
+          'title': text('title'),
+          'first_day': text('first_day'),
+          'additional': text('additional'),
+        };
+    }
     if (_w4) {
       double? amount(String key) =>
           double.tryParse(text(key).replaceAll(',', ''));
@@ -165,7 +212,32 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
     });
   }
 
-  bool get _ready => !_signing && _signature.ready && (!_w4 || _status != null);
+  bool get _ready =>
+      !_signing &&
+      _signature.ready &&
+      switch (widget.kind) {
+        'w4' => _status != null,
+        'direct_deposit' => _accountType != null,
+        'i9' => _i9Status != null,
+        'i9_section2' =>
+          (_boxes['a_title']?.text.trim() ?? '').isNotEmpty ||
+              ((_boxes['b_title']?.text.trim() ?? '').isNotEmpty &&
+                  (_boxes['c_title']?.text.trim() ?? '').isNotEmpty),
+        _ => true,
+      };
+
+  String get _waitingFor => switch (widget.kind) {
+    'w4' when _status == null => 'Choose your filing status, then sign.',
+    'direct_deposit' when _accountType == null =>
+      'Choose checking or savings, then sign.',
+    'i9' when _i9Status == null =>
+      'Choose the statement that is true of you, then sign.',
+    'i9_section2' when !_signature.ready =>
+      'Enter the documents you examined and draw your signature.',
+    'i9_section2' =>
+      'Enter the List A document, or one from List B and one from List C.',
+    _ => 'Draw your signature to sign.',
+  };
 
   Future<void> _sign() async {
     final drawing = await _signature.dataUrl();
@@ -195,8 +267,13 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
     final theme = Theme.of(context);
 
     return SidePanel(
-      title: 'Your $_label',
-      subtitle: 'The IRS form, filled in from your answers',
+      title: widget.kind == 'i9_section2' ? _label : 'Your $_label',
+      subtitle: switch (widget.kind) {
+        'direct_deposit' => 'The form, filled in from your bank answers',
+        'i9' => 'The USCIS form, filled in from your answers',
+        'i9_section2' => 'The documents you examined, and your signature',
+        _ => 'The IRS form, filled in from your answers',
+      },
       width: 600,
       actions: [
         FilledButton(
@@ -208,7 +285,13 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ..._w4 ? _w4Questions(theme) : _w9Questions(theme),
+          ...switch (widget.kind) {
+            'w4' => _w4Questions(theme),
+            'direct_deposit' => _depositQuestions(theme),
+            'i9' => _i9Questions(theme),
+            'i9_section2' => _section2Questions(theme),
+            _ => _w9Questions(theme),
+          },
           const SizedBox(height: 18),
           Text('The form', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -232,12 +315,7 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
           ],
           if (!_ready && !_signing) ...[
             const SizedBox(height: 8),
-            Text(
-              _w4 && _status == null
-                  ? 'Choose your filing status, then sign.'
-                  : 'Draw your signature to sign.',
-              style: theme.textTheme.bodySmall,
-            ),
+            Text(_waitingFor, style: theme.textTheme.bodySmall),
           ],
         ],
       ),
@@ -425,4 +503,133 @@ class _TaxFormPanelState extends State<TaxFormPanel> {
       ],
     ),
   ];
+
+  Widget _choices(
+    ThemeData theme,
+    String title,
+    Map<String, String> options,
+    String? value,
+    ValueChanged<String> pick,
+    String keyPrefix,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(title, style: theme.textTheme.titleSmall),
+      RadioGroup<String>(
+        groupValue: value,
+        onChanged: (picked) {
+          if (_signing || picked == null) return;
+          pick(picked);
+          _changed();
+        },
+        child: Column(
+          children: [
+            for (final MapEntry(key: option, value: label) in options.entries)
+              RadioListTile<String>(
+                key: Key('$keyPrefix-$option'),
+                value: option,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(label),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  List<Widget> _depositQuestions(ThemeData theme) => [
+    Text(
+      'Your bank name, routing and account numbers come from your answers.',
+      style: theme.textTheme.bodySmall,
+    ),
+    const SizedBox(height: 10),
+    _choices(
+      theme,
+      'Account type',
+      const {'checking': 'Checking', 'savings': 'Savings'},
+      _accountType,
+      (v) => _accountType = v,
+      'tax-form-account',
+    ),
+    _field(
+      'amount',
+      'Amount to deposit to this account',
+      hint: '100% if you leave it empty',
+    ),
+  ];
+
+  List<Widget> _i9Questions(ThemeData theme) => [
+    Text(
+      'Your name, address, date of birth, Social Security number, email '
+      'and phone come from your answers.',
+      style: theme.textTheme.bodySmall,
+    ),
+    const SizedBox(height: 10),
+    if (!widget.ssnOnFile)
+      _field('ssn', 'Social Security number', hint: '123-45-6789'),
+    _field(
+      'other_last_names',
+      'Other last names used (if any)',
+      hint: 'N/A if none',
+    ),
+    _choices(
+      theme,
+      'I attest that I am',
+      _i9Statuses,
+      _i9Status,
+      (v) => _i9Status = v,
+      'tax-form-i9',
+    ),
+    if (_i9Status == 'permanent_resident')
+      _field('lpr_number', 'USCIS number or A-Number'),
+    if (_i9Status == 'authorized_alien') ...[
+      _field('work_until', 'Authorized to work until (mm/dd/yyyy, if any)'),
+      Text(
+        'And one of these:',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 6),
+      _field('uscis_number', 'USCIS A-Number'),
+      _field('i94_number', 'Form I-94 admission number'),
+      _field('passport', 'Foreign passport number and country of issuance'),
+    ],
+  ];
+
+  List<Widget> _section2Questions(ThemeData theme) {
+    List<Widget> document(String list, String title) => [
+      Text(title, style: theme.textTheme.titleSmall),
+      const SizedBox(height: 6),
+      _field('${list}_title', 'Document title'),
+      _field('${list}_authority', 'Issuing authority'),
+      _field('${list}_number', 'Document number (if any)'),
+      _field('${list}_expires', 'Expiration date (mm/dd/yyyy, if any)'),
+    ];
+    return [
+      Text(
+        'Examine the original documents, then enter one from List A, or one '
+        'from List B and one from List C. The business name and address '
+        'come from the contract.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 10),
+      ...document('a', 'List A (identity and work authorization)'),
+      ExpansionTile(
+        key: const Key('tax-form-lists-bc'),
+        tilePadding: EdgeInsets.zero,
+        title: Text('Or List B and List C', style: theme.textTheme.titleSmall),
+        children: [
+          ...document('b', 'List B (identity)'),
+          ...document('c', 'List C (work authorization)'),
+        ],
+      ),
+      _field('title', 'Your title', hint: 'e.g. Office Manager'),
+      _field(
+        'first_day',
+        "Employee's first day of employment (mm/dd/yyyy)",
+        hint: 'From the contract if you leave it empty',
+      ),
+      _field('additional', 'Additional information (optional)'),
+    ];
+  }
 }

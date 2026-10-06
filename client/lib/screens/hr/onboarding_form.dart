@@ -1752,7 +1752,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
         );
       case 'work_hours':
         return _schedule(context, question, enabled: enabled);
-      case 'tax_form' when question.signsTaxFormHere:
+      case 'tax_form' || 'direct_deposit_form' || 'i9_form'
+          when question.signsTaxFormHere:
         return _taxForm(context, question);
       case 'salary_period' || 'raise_period':
         final current = _chosen(question);
@@ -2380,7 +2381,17 @@ class _OnboardingFormState extends State<OnboardingForm> {
   Widget _taxForm(BuildContext context, OnboardingQuestion question) {
     final theme = Theme.of(context);
     final kind = question.taxFormKind;
-    final label = kind == 'w9' ? 'W-9' : 'W-4';
+    final label = switch (question.key) {
+      'direct_deposit_form' => 'direct deposit form',
+      'i9_form' => 'I-9',
+      _ => kind == 'w9' ? 'W-9' : 'W-4',
+    };
+    final form = _form!;
+    final section2Open =
+        question.key == 'i9_form' &&
+        question.answered &&
+        !form.i9Section2Done &&
+        form.i9Section2Mine;
     final voided = _voided(question);
     final signed = !voided && question.answered;
     final file = _revealed[question.key] ?? (question.masked ? null : question.value);
@@ -2393,14 +2404,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
       children: [
         if (question.writable && kind != null && !voided)
           FilledButton.icon(
-            key: const Key('tax-form-open'),
+            key: Key(question.key == 'tax_form' ? 'tax-form-open' : 'tax-form-open-${question.key}'),
             onPressed: _saving ? null : () => _openTaxForm(question, kind),
             icon: const Icon(Icons.draw_outlined, size: 18),
             label: Text(signed ? 'Fill in again' : 'Fill in and sign your $label'),
           ),
+        if (!voided && section2Open)
+          FilledButton.icon(
+            key: const Key('i9-section2-open'),
+            onPressed: _saving ? null : () => _openTaxForm(question, 'i9_section2'),
+            icon: const Icon(Icons.fact_check_outlined, size: 18),
+            label: const Text('Complete Section 2'),
+          ),
         if (signed && file != null && file.isNotEmpty)
           OutlinedButton(
-            key: const Key('tax-form-view'),
+            key: Key(question.key == 'tax_form' ? 'tax-form-view' : 'tax-form-view-${question.key}'),
             onPressed: () => _viewTaxForm(file, label),
             child: const Text('View'),
           ),
@@ -2408,9 +2426,15 @@ class _OnboardingFormState extends State<OnboardingForm> {
           voided
               ? "Doesn't apply."
               : signed
-              ? 'Signed $label attached.'
+              ? (question.key == 'i9_form'
+                    ? (form.i9Section2Done
+                          ? 'Signed I-9 attached, both sections.'
+                          : 'Section 1 signed. Section 2 is the employer’s.')
+                    : 'Signed $label attached.')
               : kind == null
-              ? 'Answer your tax ID question first.'
+              ? (question.key == 'i9_form'
+                    ? 'A contractor has no I-9.'
+                    : 'Answer your tax ID question first.')
               : 'Not signed yet.',
           style: theme.textTheme.bodySmall,
         ),

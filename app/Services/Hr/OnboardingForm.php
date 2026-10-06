@@ -817,11 +817,18 @@ class OnboardingForm
             $current[$key] = $answer->value;
         }
 
+        $contractor = null;
         foreach ($onboarding->fields() as $field) {
             if (! $field->required || $field->type === FieldType::SIGNATURE) {
                 continue;
             }
             if (! $field->isShownGiven($current)) {
+                continue;
+            }
+            // A contractor (W-9) has no I-9 to sign.
+            if ($field->key === 'i9_form' && ($contractor ??= $this->taxFormKind(
+                $onboarding, $answered,
+            ) === \App\Support\Hr\TaxForms::W9)) {
                 continue;
             }
             if (! $answered->has($field->key)) {
@@ -923,7 +930,14 @@ class OnboardingForm
                 'void_group' => $voidable ? (self::VOID_GROUPS[$field->key] ?? $field->key) : null,
                 // Which form the in-app tax form is (TaxForms), decided here
                 // so the client does not keep a second copy of the rule.
-                ...($field->key === 'tax_form' ? ['tax_form_kind' => $this->taxFormKind($onboarding, $byKey)] : []),
+                ...(match ($field->key) {
+                    'tax_form' => ['tax_form_kind' => $this->taxFormKind($onboarding, $byKey)],
+                    'direct_deposit_form' => ['tax_form_kind' => \App\Support\Hr\TaxForms::DIRECT_DEPOSIT],
+                    // A contractor (W-9) has no I-9.
+                    'i9_form' => ['tax_form_kind' => $this->taxFormKind($onboarding, $byKey) === \App\Support\Hr\TaxForms::W9
+                        ? null : \App\Support\Hr\TaxForms::I9],
+                    default => [],
+                }),
                 'writable' => $field->type !== FieldType::SIGNATURE
                     && ! $field->retired
                     && ! $onboarding->isFrozen()

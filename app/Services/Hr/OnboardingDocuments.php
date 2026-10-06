@@ -235,6 +235,15 @@ class OnboardingDocuments
             : null;
     }
 
+    /** The file name of an I-9 with both sections signed. */
+    public const I9_COMPLETE = 'I-9 (Sections 1 and 2).png';
+
+    /** A stored file's bytes, or null when it has gone. */
+    public function fileBytes(Attachment $file): ?string
+    {
+        return $this->files->contents($file->path, $file->disk);
+    }
+
     /** The question an import files its signed contract PDF under. */
     public const IMPORTED_CONTRACT = 'signed_contract';
 
