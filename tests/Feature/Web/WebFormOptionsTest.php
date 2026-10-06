@@ -37,6 +37,21 @@ class WebFormOptionsTest extends TestCase
         $this->postJson('/api/v1/web/form', $this->enquiry($site) + ['captcha' => $solved])->assertStatus(422);
     }
 
+    /** Jose, 2026-10-06: "Activate captcha on all websites" — every form and chat start, no switch. */
+    public function test_with_captcha_everywhere_a_form_and_a_chat_need_the_answer(): void
+    {
+        config(['ezbizi.web_form_captcha' => true]);
+        [$site] = $this->siteWithForm();
+
+        $this->postJson('/api/v1/web/form', $this->enquiry($site))->assertStatus(422);
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi'])->assertStatus(422);
+
+        $this->postJson('/api/v1/web/form', $this->enquiry($site)
+            + ['captcha' => $this->solve($this->getJson('/api/v1/web/form/challenge')->json())])->assertCreated();
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi',
+            'captcha' => $this->solve($this->getJson('/api/v1/web/form/challenge')->json())])->assertCreated();
+    }
+
     public function test_a_forged_challenge_is_refused(): void
     {
         [$site] = $this->siteWithForm(['captcha' => true]);

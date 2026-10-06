@@ -14,6 +14,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0370',
+      date: '6 Oct 2026',
+      items: [
+        '"Keep me signed in" now starts ticked on the sign-in screen, so you stay signed in after closing the app. Untick it on a shared computer.',
+        'Notifications: an Alert me switch in the bell lets each person turn their own pop-ups, phone alerts and notification emails off. Notifications still collect in the bell.',
+        'Reports: Experimental is now called Performance, and Builder is Report Builder.',
+        'The Performance report loads much faster: Workiz jobs come from EzBizi\'s synced copy instead of being fetched live each time.',
+        'Inspection reports: a plain choice now prints the option\'s words instead of its stored key.',
+        'Email: adding an address from Workspace now offers the branch subdomain addresses too, such as office@nj.a-1chimney.com.',
+        'Leads: another call on a Google Local Services call lead no longer raises a "customer replied" notification.',
+        'Notifications from a rule can carry a second line under the headline, and rules can use the new lead headline, details and reply preview wording.',
+        'Every website form and live chat is protected by a CAPTCHA that visitors never see; the per-site switch is gone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0369',
       date: '6 Oct 2026',
       items: [

@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\Mailbox;
 use App\Support\Email\GoogleOAuth;
+use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\RecordingMailboxReader;
@@ -400,6 +401,120 @@ class GoogleWorkspaceTest extends TestCase
             ->json('data.*.address');
 
         $this->assertSame([self::INFO, 'jobs@a-1chimney.com'], $addresses);
+    }
+
+    /**
+     * A Workspace answers `domain=` and `customer=` differently, the way Google does.
+     *
+     * `domain=a-1chimney.com` returns only users whose PRIMARY address is on
+     * exactly that domain; `customer=my_customer` returns every user in the
+     * account. Measured on the real A-1 Workspace on 2026-10-06: 1 subdomain
+     * address by domain, 39 across 35 subdomains by customer.
+     *
+     * Every other fake in this file answers any query identically, which is
+     * why none of them could tell the two queries apart -- a test of this fix
+     * against one of those would pass against the broken code too.
+     */
+    private function fakeWorkspaceWithSubdomains(): void
+    {
+        $user = fn (string $primary, string $name) => [
+            'primaryEmail'   => $primary,
+            'name'           => ['fullName' => $name],
+            'isMailboxSetup' => true,
+        ];
+
+        Http::fake(function ($request) use ($user) {
+            if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
+                return Http::response(['access_token' => 'ya29.directory']);
+            }
+
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            $onPrimaryDomain = [$user(self::INFO, 'Info')];
+
+            if (($query['customer'] ?? null) !== 'my_customer') {
+                return Http::response(['users' => $onPrimaryDomain]);
+            }
+
+            return Http::response(['users' => [
+                ...$onPrimaryDomain,
+                $user('office@nj.a-1chimney.com', 'NJ Office'),
+                $user('office@atl.a-1chimney.com', 'Atlanta Office'),
+                // Held by the same account but NOT this domain or a subdomain.
+                $user('hello@premiergarage.com', 'Premier Garage'),
+                // The dot is the boundary: not a subdomain.
+                $user('office@evil-a-1chimney.com', 'Lookalike'),
+            ]]);
+        });
+    }
+
+    /**
+     * Jose, via Bar: "Subdomain emails not showing on workspace add email like
+     * office@nj.a-1chimney.com".
+     */
+    public function test_the_directory_offers_branch_subdomain_addresses(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $addresses = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace/directory')
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertContains('office@nj.a-1chimney.com', $addresses);
+        $this->assertContains('office@atl.a-1chimney.com', $addresses);
+        $this->assertContains(self::INFO, $addresses);
+    }
+
+    /**
+     * Asking by customer returns every domain in the account. Only the
+     * connected domain and its subdomains may come back out.
+     */
+    public function test_the_directory_admits_no_other_domain_the_account_holds(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $addresses = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/email/workspace/directory')
+            ->assertOk()
+            ->json('data.*.address');
+
+        $this->assertNotContains('hello@premiergarage.com', $addresses);
+        $this->assertNotContains('office@evil-a-1chimney.com', $addresses);
+    }
+
+    /**
+     * Listed is not enough: the subdomain address must also be OPENABLE, which
+     * is a second host check in `unavailableBecause`. Fixing only the directory
+     * would offer an address that then refuses to connect.
+     */
+    public function test_a_subdomain_address_can_be_picked_and_opened(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $row = $this->signedInAs($t['admin'])->postJson('/api/v1/email/mailboxes', [
+            'scope_type'   => 'organization',
+            'scope_id'     => $t['org']->id,
+            'address'      => 'office@nj.a-1chimney.com',
+            'display_name' => 'NJ Office',
+            'provider'     => MailboxProvider::GmailWorkspace->value,
+        ])->assertCreated()->json('data');
+
+        $this->assertSame('connected', $row['status']);
+
+        $refusal = $this->inTenant($t['org'], fn () => app(GoogleWorkspace::class)
+            ->unavailableBecause(Mailbox::query()->firstOrFail()));
+
+        $this->assertNull($refusal, 'A branch subdomain address was listed and then refused to open.');
     }
 
     public function test_picking_a_listed_address_connects_it_without_a_mailbox_secret(): void

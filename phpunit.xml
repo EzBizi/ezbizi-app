@@ -33,5 +33,6 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="EZBIZI_SIGNUP_ENABLED" value="true"/>
+        <env name="EZBIZI_WEB_FORM_CAPTCHA" value="false"/>
     </php>
 </phpunit>

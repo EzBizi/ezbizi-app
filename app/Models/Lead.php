@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Leads\LeadOfficeHours;
+use App\Support\Notifications\LeadNotificationText;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -582,7 +583,52 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public static function automationMessageFields(): array
     {
-        return ['company_name', 'office_note', 'office_opens', 'photos_email', 'source_name', 'thank_you'];
+        return [
+            'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens', 'photos_email',
+            'reply_headline', 'reply_preview', 'source_name', 'thank_you',
+        ];
+    }
+
+    /*
+     * Notification words (Jose, 2026-10-06, "Source Names for notification").
+     * The sentences belong to LeadNotificationText; these only hand it facts.
+     */
+    public function getLeadHeadlineAttribute(): string
+    {
+        return LeadNotificationText::headline((string) $this->source, $this->lead_type);
+    }
+
+    /** "(319) 210-2005 - 1:10 min - A1 Chimney - Toms River"; the duration is the first call's. */
+    public function getLeadDetailsAttribute(): string
+    {
+        $firstCall = $this->conversations()
+            ->where('channel', LeadConversation::CHANNEL_PHONE_CALL)
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->value('duration_ms');
+
+        return LeadNotificationText::details(
+            $this->phone,
+            $firstCall === null ? null : (int) $firstCall,
+            $this->company_name,
+            $this->franchise?->name,
+        );
+    }
+
+    /** Empty for a Local Services call: there is nothing to reply to. */
+    public function getReplyHeadlineAttribute(): string
+    {
+        return LeadNotificationText::replyHeadline((string) $this->source, $this->lead_type) ?? '';
+    }
+
+    public function getReplyPreviewAttribute(): string
+    {
+        $text = $this->conversations()
+            ->reorder()
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->orderByDesc('occurred_at')
+            ->value('text');
+
+        return LeadNotificationText::clip($text, LeadNotificationText::REPLY_PREVIEW_MAX);
     }
 
     /**

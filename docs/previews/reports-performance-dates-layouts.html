@@ -1,0 +1,410 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reports · choosing the dates</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every figure and person is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Today is Tuesday, October 6, 2026 in every drawing; weeks run
+   Monday to Sunday, as the server counts them. Every figure is invented. */
+.hdr{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+.rb{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid #93aab3;border-radius:var(--r);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0}
+.rb .ic{color:var(--pri)} .rb b{font-weight:800} .rb .dt{color:var(--neu);font-weight:600} .rb .cv{color:var(--pri);font-size:10px;margin-left:2px}
+.rb.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.arr{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--pri);font-weight:800;font-size:15px;flex:0 0 auto}
+.arr.off{color:#b5c0c6}
+.panel{background:var(--paper);border:1px solid var(--edge);border-radius:var(--r);display:flex;flex:0 0 auto;min-width:0;overflow:hidden;box-shadow:0 4px 14px rgba(6,8,8,.06)}
+.pres{width:300px;flex:0 0 auto;border-right:1px solid var(--line);padding:6px 0;display:flex;flex-direction:column}
+.pre{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:12.5px;white-space:nowrap;min-width:0}
+.pre b{font-weight:700;flex:0 0 auto}
+.pre span{margin-left:auto;color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pre.on{background:var(--pric)} .pre.on b,.pre.on span{color:var(--prid)}
+.pre.sep{border-top:1px solid var(--line2);margin-top:4px;padding-top:9px}
+.cals{flex:1;min-width:0;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.ft{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ft .lbl2{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.box3{display:inline-flex;align-items:center;gap:4px;border:1px solid #b9c7cd;border-radius:var(--r);height:30px;padding:0 8px;font-size:12px;font-weight:600;background:var(--paper);font-variant-numeric:tabular-nums}
+.box3 i{font-style:normal;color:var(--muted);font-weight:400}
+.box3 .ci{color:var(--pri);margin-left:4px}
+.two{display:flex;gap:18px;min-width:0}
+.mo{flex:1;min-width:0}
+.mt{font-size:12px;font-weight:800;text-align:center;margin-bottom:6px}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));row-gap:2px}
+.grid b{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;padding-bottom:3px}
+.d{height:26px;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;position:relative}
+.d.out{visibility:hidden}
+.d.in{background:var(--pric);color:var(--prid)}
+.d.s{border-radius:13px 0 0 13px;background:var(--pri);color:#fff}
+.d.e{border-radius:0 13px 13px 0;background:var(--pri);color:#fff}
+.d.s.e{border-radius:13px}
+.d.t::after{content:"";position:absolute;inset:2px 4px;border:1.5px solid var(--pri);border-radius:11px}
+.d.f{color:#b5c0c6}
+.mo.sm .d{height:30px;font-size:12.5px}
+.pf{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:10px;margin-top:auto}
+.pf .sum{font-size:12px;color:var(--neu)} .pf .sum b{color:var(--ink)}
+.rep{display:flex;flex-direction:column;gap:10px;opacity:.55;flex:0 0 auto}
+.sent{font-size:12px;color:var(--neu)} .sent b{color:var(--ink)}
+.chipsr{display:flex;gap:6px;flex-wrap:wrap}
+.lim{font-size:11px;color:var(--muted)}
+.side{width:380px;flex:0 0 auto;border-left:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;min-height:0}
+.side .sh3{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.side .sh3 b{font-size:15px}
+.side .sb{flex:1;min-height:0;overflow:hidden;padding:8px 0;display:flex;flex-direction:column;gap:6px}
+.side .sf{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.scrim{position:absolute;inset:0;background:rgba(6,8,8,.18)}
+.rel{position:relative;display:flex;flex:1;min-height:0}
+.phn .rb{height:40px;width:100%;justify-content:flex-start}
+.phn .pre{padding:10px 12px;font-size:13px}
+.phn .pre span{font-size:12px}
+.stick{margin-top:auto;padding:10px 12px;border-top:1px solid var(--line);background:var(--paper);display:flex;gap:8px}
+.stick .btn{flex:1;height:38px}
+.pk{background:var(--paper);border-radius:14px 14px 0 0;margin-top:auto;padding:12px 0 6px;box-shadow:0 -6px 18px rgba(6,8,8,.12)}
+</style>
+
+<div class="wrap">
+<h1>Reports · Performance · choosing the dates</h1>
+<p class="sub">Jose, 2026-10-06, through Reports: <i>"Custom date picker on former experimental / From date to date / Or specific date / Week is confussing what week is it ? Etc i should see the range / Maybe dropdown like google".</i> What is there today: Day, Week and Month buttons, arrows, and a label that reads <code>2026-09-28 – 2026-10-04</code>, so you have to work out for yourself which week that is.</p>
+<p class="need"><b>Data:</b> the server already takes any dates, on Reports' branch: a period around a day (weeks run Monday to Sunday), or <code>from</code>–<code>to</code>. One date is from = to, and it allows up to 92 days; past that it answers with a sentence. Every option shows the dates in words ("Mon, Sep 28 – Sun, Oct 4"), never <code>2026-09-28</code>. The arrows step by whatever length is chosen: a week back, a month back, or ten days back for a ten-day range.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>One button that says the dates, opening a Google-style picker under it <span class="rec">Recommended</span></h2>
+<p class="cap">The dates are always on the button in words: <b>"This week · Mon, Oct 5 – today"</b>. Clicking it opens the picker <b>under it, in the page</b>, the way the calendar on a date field opens. On the left are the quick choices, each with the dates it means beside it, so "what week is it?" is answered before you click. On the right are two months: click one day for a single date, or two days for a range. Above them, From and To can be typed. The footer counts the days, and Apply runs the report. <span class="why">Why: this is the Google picker Jose described (quick choices, calendar, from–to), and the dates are visible both before and after choosing.</span></p>
+<div class="win" style="height:640px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="dash">
+   <div class="hdr"><span class="arr">‹</span><span class="rb on"><span class="ic">▦</span><b>This week</b><span class="dt">Mon, Oct 5 – today, Tue, Oct 6</span><span class="cv">▲</span></span><span class="arr off">›</span><span class="sp"></span><span class="ib">↻</span></div>
+   <div class="panel">
+    <div class="pres">
+     <div class="pre"><b>Today</b><span>Tue, Oct 6</span></div>
+     <div class="pre"><b>Yesterday</b><span>Mon, Oct 5</span></div>
+     <div class="pre on"><b>This week</b><span>Mon, Oct 5 – today</span></div>
+     <div class="pre"><b>Last week</b><span>Mon, Sep 28 – Sun, Oct 4</span></div>
+     <div class="pre"><b>Last 7 days</b><span>Wed, Sep 30 – today</span></div>
+     <div class="pre"><b>This month</b><span>Oct 1 – today</span></div>
+     <div class="pre"><b>Last month</b><span>Sep 1 – Sep 30</span></div>
+     <div class="pre"><b>Last 30 days</b><span>Sep 7 – today</span></div>
+     <div class="pre sep"><b>Custom</b><span>pick on the calendar</span></div>
+    </div>
+    <div class="cals">
+     <div class="ft"><span class="lbl2">From</span><span class="box3">10 <i>/</i> 05 <i>/</i> 2026<span class="ci">▦</span></span><span class="lbl2">To</span><span class="box3">10 <i>/</i> 06 <i>/</i> 2026<span class="ci">▦</span></span><span class="sp"></span><span class="lim">Click one day for one date, two for a range</span></div>
+     <div class="two"><div class="mo"><div class="mt">September 2026</div><div class="grid"><b>Mo</b><b>Tu</b><b>We</b><b>Th</b><b>Fr</b><b>Sa</b><b>Su</b><i class="d out"></i><i class="d">1</i><i class="d">2</i><i class="d">3</i><i class="d">4</i><i class="d">5</i><i class="d">6</i><i class="d">7</i><i class="d">8</i><i class="d">9</i><i class="d">10</i><i class="d">11</i><i class="d">12</i><i class="d">13</i><i class="d">14</i><i class="d">15</i><i class="d">16</i><i class="d">17</i><i class="d">18</i><i class="d">19</i><i class="d">20</i><i class="d">21</i><i class="d">22</i><i class="d">23</i><i class="d">24</i><i class="d">25</i><i class="d">26</i><i class="d">27</i><i class="d">28</i><i class="d">29</i><i class="d">30</i><i class="d out"></i><i class="d out"></i><i class="d out"></i><i class="d out"></i></div></div><div class="mo"><div class="mt">October 2026</div><div class="grid"><b>Mo</b><b>Tu</b><b>We</b><b>Th</b><b>Fr</b><b>Sa</b><b>Su</b><i class="d out"></i><i class="d out"></i><i class="d out"></i><i class="d">1</i><i class="d">2</i><i class="d">3</i><i class="d">4</i><i class="d in s">5</i><i class="d in e t">6</i><i class="d f">7</i><i class="d f">8</i><i class="d f">9</i><i class="d f">10</i><i class="d f">11</i><i class="d f">12</i><i class="d f">13</i><i class="d f">14</i><i class="d f">15</i><i class="d f">16</i><i class="d f">17</i><i class="d f">18</i><i class="d f">19</i><i class="d f">20</i><i class="d f">21</i><i class="d f">22</i><i class="d f">23</i><i class="d f">24</i><i class="d f">25</i><i class="d f">26</i><i class="d f">27</i><i class="d f">28</i><i class="d f">29</i><i class="d f">30</i><i class="d f">31</i><i class="d out"></i></div></div></div>
+     <div class="pf"><span class="sum"><b>2 days</b> · Mon, Oct 5 – Tue, Oct 6, 2026</span><span class="sp"></span><span class="btn">Cancel</span><span class="btn f">Apply</span></div>
+    </div>
+   </div>
+   <div class="rep"><div class="tiles t7"><div class="tile"><span class="k">Calls</span><span class="v">31</span></div><div class="tile"><span class="k">Missed calls</span><span class="v">3</span></div><div class="tile"><span class="k">Existing client</span><span class="v">17</span></div><div class="tile"><span class="k">New client</span><span class="v">11</span></div><div class="tile"><span class="k">Jobs booked</span><span class="v">8</span></div><div class="tile"><span class="k">Conv. rate</span><span class="v">73%</span></div><div class="tile"><span class="k">Not booked</span><span class="v">3</span></div></div></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>Quick choices as chips, the dates spelled out under them, From–To for anything else</h2>
+<p class="cap">The quick choices are a row of chips, and under them a sentence always says what is showing: <b>"Showing Mon, Sep 28 – Sun, Oct 4 (last week, Monday to Sunday)"</b>. <b>Custom</b> opens From and To fields in the row, the same date boxes used across the app, each with its own calendar, plus <b>Just one day</b>. <span class="why">Why: the simplest, with everything in sight. The cost is no range calendar: a range is two dates typed or picked one at a time.</span></p>
+<div class="win" style="height:420px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="dash">
+   <div class="hdr"><div class="chipsr"><span class="chip">Today</span><span class="chip">Yesterday</span><span class="chip">This week</span><span class="chip on">Last week</span><span class="chip">This month</span><span class="chip">Last month</span><span class="chip">Last 30 days</span><span class="chip">Custom</span></div><span class="sp"></span><span class="ib">↻</span></div>
+   <div class="hdr"><span class="arr">‹</span><span class="sent">Showing <b>Mon, Sep 28 – Sun, Oct 4, 2026</b> · last week, Monday to Sunday · 7 days</span><span class="arr">›</span></div>
+   <div class="hdr" style="margin-top:6px"><span class="tiny b">Custom, when chosen:</span><span class="lbl">From</span><span class="box3">09 <i>/</i> 14 <i>/</i> 2026<span class="ci">▦</span></span><span class="lbl">To</span><span class="box3">09 <i>/</i> 25 <i>/</i> 2026<span class="ci">▦</span></span><span class="chip">Just one day</span><span class="btn f">Show</span><span class="lim">Up to 92 days</span></div>
+   <div class="rep"><div class="tiles t7"><div class="tile"><span class="k">Calls</span><span class="v">128</span></div><div class="tile"><span class="k">Missed calls</span><span class="v">9</span></div><div class="tile"><span class="k">Existing client</span><span class="v">61</span></div><div class="tile"><span class="k">New client</span><span class="v">41</span></div><div class="tile"><span class="k">Jobs booked</span><span class="v">27</span></div><div class="tile"><span class="k">Conv. rate</span><span class="v">66%</span></div><div class="tile"><span class="k">Not booked</span><span class="v">14</span></div></div></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>The same picker, in a side panel</h2>
+<p class="cap">The button reads the same as in 1. Clicking it opens the house side panel from the right instead: the quick choices with their dates, one month you can page through, From and To, and Apply at the foot. <span class="why">Why: the report never moves while you choose. The cost is that it covers the right of the report and shows one month instead of two.</span></p>
+<div class="win" style="height:620px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="rel">
+   <div class="dash" style="flex:1">
+    <div class="hdr"><span class="arr">‹</span><span class="rb on"><span class="ic">▦</span><b>Custom</b><span class="dt">Mon, Sep 14 – Fri, Sep 25</span><span class="cv">▾</span></span><span class="arr">›</span></div>
+    <div class="rep"><div class="tiles t3"><div class="tile"><span class="k">Calls</span><span class="v">212</span></div><div class="tile"><span class="k">Missed calls</span><span class="v">18</span></div><div class="tile"><span class="k">Jobs booked</span><span class="v">44</span></div></div></div>
+   </div>
+   <div class="scrim"></div>
+   <div class="side" style="position:relative">
+    <div class="sh3"><b>Dates</b><span class="sp"></span><span class="ib">×</span></div>
+    <div class="sb">
+     <div class="pre"><b>Today</b><span>Tue, Oct 6</span></div>
+     <div class="pre"><b>This week</b><span>Mon, Oct 5 – today</span></div>
+     <div class="pre"><b>Last week</b><span>Mon, Sep 28 – Sun, Oct 4</span></div>
+     <div class="pre"><b>This month</b><span>Oct 1 – today</span></div>
+     <div class="pre"><b>Last month</b><span>Sep 1 – Sep 30</span></div>
+     <div class="pre on"><b>Custom</b><span>Sep 14 – Sep 25 · 12 days</span></div>
+     <div style="padding:6px 16px"><div class="mo sm"><div class="mt">September 2026</div><div class="grid"><b>Mo</b><b>Tu</b><b>We</b><b>Th</b><b>Fr</b><b>Sa</b><b>Su</b><i class="d out"></i><i class="d">1</i><i class="d">2</i><i class="d">3</i><i class="d">4</i><i class="d">5</i><i class="d">6</i><i class="d">7</i><i class="d">8</i><i class="d">9</i><i class="d">10</i><i class="d">11</i><i class="d">12</i><i class="d">13</i><i class="d in s">14</i><i class="d in">15</i><i class="d in">16</i><i class="d in">17</i><i class="d in">18</i><i class="d in">19</i><i class="d in">20</i><i class="d in">21</i><i class="d in">22</i><i class="d in">23</i><i class="d in">24</i><i class="d in e">25</i><i class="d">26</i><i class="d">27</i><i class="d">28</i><i class="d">29</i><i class="d">30</i><i class="d out"></i><i class="d out"></i><i class="d out"></i><i class="d out"></i></div></div></div>
+    </div>
+    <div class="sf"><span class="btn">Cancel</span><span class="btn f">Apply</span></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · The button, then a page of dates <span class="rec">Recommended</span></p>
+ <div class="phn"><div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Dates</span></div>
+  <div class="pb" style="padding:0;gap:0">
+   <div class="pre"><b>Today</b><span>Tue, Oct 6</span></div>
+   <div class="pre"><b>Yesterday</b><span>Mon, Oct 5</span></div>
+   <div class="pre on"><b>This week</b><span>Mon, Oct 5 – today</span></div>
+   <div class="pre"><b>Last week</b><span>Sep 28 – Oct 4</span></div>
+   <div class="pre"><b>This month</b><span>Oct 1 – today</span></div>
+   <div class="pre"><b>Last month</b><span>Sep 1 – 30</span></div>
+   <div class="pre sep"><b>Custom</b><span>on the calendar</span></div>
+   <div style="padding:6px 12px"><div class="mo sm"><div class="mt">October 2026</div><div class="grid"><b>Mo</b><b>Tu</b><b>We</b><b>Th</b><b>Fr</b><b>Sa</b><b>Su</b><i class="d out"></i><i class="d out"></i><i class="d out"></i><i class="d">1</i><i class="d">2</i><i class="d">3</i><i class="d">4</i><i class="d in s">5</i><i class="d in e t">6</i><i class="d f">7</i><i class="d f">8</i><i class="d f">9</i><i class="d f">10</i><i class="d f">11</i><i class="d f">12</i><i class="d f">13</i><i class="d f">14</i><i class="d f">15</i><i class="d f">16</i><i class="d f">17</i><i class="d f">18</i><i class="d f">19</i><i class="d f">20</i><i class="d f">21</i><i class="d f">22</i><i class="d f">23</i><i class="d f">24</i><i class="d f">25</i><i class="d f">26</i><i class="d f">27</i><i class="d f">28</i><i class="d f">29</i><i class="d f">30</i><i class="d f">31</i><i class="d out"></i></div></div></div>
+  </div>
+  <div class="stick"><span class="btn">Cancel</span><span class="btn f">Show 2 days</span></div>
+ </div></div>
+ <div><p class="pl">5 · Chips that scroll, and the dates in words</p>
+ <div class="phn"><div class="st"></div>
+  <div class="ab"><span class="t">Reports</span></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab on">Performance</span></div>
+  <div class="pb">
+   <div class="hs"><span class="chip">Today</span><span class="chip on">Last week</span><span class="chip">This month</span><span class="chip">Last month</span><span class="chip">Custom</span></div>
+   <div class="hdr"><span class="arr">‹</span><span class="sent" style="flex:1;text-align:center"><b>Mon, Sep 28 – Sun, Oct 4</b><br>last week · 7 days</span><span class="arr">›</span></div>
+   <div class="tiles t2"><div class="tile"><span class="k">Calls</span><span class="v">128</span></div><div class="tile"><span class="k">Missed calls</span><span class="v">9</span></div><div class="tile"><span class="k">Jobs booked</span><span class="v">27</span></div><div class="tile"><span class="k">Conv. rate</span><span class="v">66%</span></div></div>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · A list to pick from, From–To when Custom</p>
+ <div class="phn"><div class="st"></div>
+  <div class="ab"><span class="t">Reports</span></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab on">Performance</span></div>
+  <div class="pb">
+   <span class="rb"><span class="ic">▦</span><b>Custom</b><span class="dt">Sep 14 – Sep 25</span><span class="cv" style="margin-left:auto">▾</span></span>
+   <div class="hdr"><span class="lbl">From</span><span class="box3">09 <i>/</i> 14 <i>/</i> 2026</span></div>
+   <div class="hdr"><span class="lbl">To&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="box3">09 <i>/</i> 25 <i>/</i> 2026</span></div>
+   <span class="lim">12 days. Up to 92.</span>
+   <div class="tiles t2"><div class="tile"><span class="k">Calls</span><span class="v">212</span></div><div class="tile"><span class="k">Missed calls</span><span class="v">18</span></div></div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:14px">On a phone the dates matter more, because there is room for less. <b>4</b> keeps 1's button at the top of the report. Tapping it opens a page of quick choices with their dates and a month to pick from, and the button at the foot says what it will show ("Show 2 days"). <b>5</b> is 2's chips, scrolling sideways, with the dates in a sentence under them. <b>6</b> is a list to pick a quick choice from, with From and To boxes appearing under it for Custom.</p>
+</div>

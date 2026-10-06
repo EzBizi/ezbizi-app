@@ -367,7 +367,8 @@ function ezbizi_form_shortcode($atts) {
 var f=document.getElementById(" . wp_json_encode($id) . ");
 if(!f)return;
 var note=f.querySelector('.ezbizi-form-note');
-var api=" . wp_json_encode(ezbizi_api_base()) . ",captcha=" . (! empty($config['captcha']) ? 'true' : 'false') . ";
+// Always on since 2026-10-06 (Jose: \"Activate captcha on all websites\"); the switch is gone.
+var api=" . wp_json_encode(ezbizi_api_base()) . ",captcha=true;
 function answer(n){var out=[];Array.prototype.forEach.call(f.querySelectorAll('[name]'),function(i){
   if(i.name!==n||i.disabled)return;if((i.type==='checkbox'||i.type==='radio')&&!i.checked)return;if(i.value)out.push(i.value);});return out.join(', ');}
 function sync(){Array.prototype.forEach.call(f.querySelectorAll('[data-if-field]'),function(w){
@@ -375,15 +376,7 @@ function sync(){Array.prototype.forEach.call(f.querySelectorAll('[data-if-field]
   var on=want===''?a!=='':a.split(', ').indexOf(want)>=0;w.style.display=on?'':'none';
   Array.prototype.forEach.call(w.querySelectorAll('input,textarea,select'),function(i){i.disabled=!on;});});}
 f.addEventListener('change',sync);f.addEventListener('input',sync);sync();
-function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
-function solve(){return fetch(api+'/api/v1/web/form/challenge').then(function(r){return r.json();}).then(function(c){
-  var enc=new TextEncoder(),n=0;
-  function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
-    return Promise.all(batch.map(function(x){return crypto.subtle.digest('SHA-256',enc.encode(c.salt+x)).then(function(h){return hex(h)===c.challenge?x:-1;});}))
-    .then(function(rs){var hit=rs.filter(function(x){return x>=0;});
-      if(hit.length)return JSON.stringify({salt:c.salt,number:hit[0],challenge:c.challenge,signature:c.signature});
-      n+=500;if(n>c.max)throw new Error('captcha');return step();});}
-  return step();});}
+" . ezbizi_solver_js() . "
 f.addEventListener('submit',function(e){
   e.preventDefault();
   var bot=f.querySelector('.ezbizi-antibot-box');
@@ -409,7 +402,7 @@ f.addEventListener('submit',function(e){
   if(!v.name&&(first||last))v.name=(first+' '+last).trim();
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
   var c=f.querySelector('.ezbizi-consent-box');if(c&&c.checked){v.marketing_consent=true;v.marketing_consent_text=c.parentNode.textContent.trim();}
-  (captcha?solve():Promise.resolve(null)).then(function(sol){
+  (captcha?ezSolve(api).catch(function(){return null;}):Promise.resolve(null)).then(function(sol){
     if(sol)v.captcha=sol;
     var h={'Accept':'application/json'},body;
     // A file goes as a multipart form; everything else as it always has.
@@ -667,6 +660,7 @@ var q=function(s){return root.querySelector(s);};
 var panel=q('.ezbizi-chat-panel'),log=q('.ezbizi-chat-log'),pre=q('.ezbizi-chat-pre'),err=q('.ezbizi-chat-error');
 var form=q('.ezbizi-chat-form'),box=q('.ezbizi-chat-text'),photo=q('.ezbizi-chat-attach input'),opener=q('.ezbizi-chat-open');
 var faces=q('.ezbizi-chat-faces'),whoEl=q('.ezbizi-chat-who'),subEl=q('.ezbizi-chat-sub-text');
+" . ezbizi_solver_js() . "
 var store=window.sessionStorage,chat=null,token=null,timer=null,last='',typedAt=0;
 try{chat=store.getItem('ezbizi_chat');token=store.getItem('ezbizi_chat_token');}catch(e){}
 function started(){pre.hidden=true;log.hidden=false;form.hidden=false;}
@@ -735,7 +729,9 @@ pre.addEventListener('submit',function(e){
   err.hidden=true;
   var body={key:key,message:text,name:pre.name.value.trim(),phone:pre.phone.value.trim(),email:pre.email.value.trim(),zip:pre.zip.value.trim(),page_url:location.href};
   var c=pre.querySelector('.ezbizi-consent-box');if(c&&c.checked){body.marketing_consent=true;body.marketing_consent_text=c.parentNode.textContent.trim();}
-  fetch(api+'/api/v1/web/chat',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)})
+  // The same robot check as the forms; unsolvable here, it sends anyway and the server answers.
+  ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)body.captcha=sol;
+  return fetch(api+'/api/v1/web/chat',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});})
     .then(function(r){return r.ok?r.json():null;})
     .then(function(d){
       if(!keep(d)){err.textContent=failed;err.hidden=false;return;}
@@ -782,6 +778,26 @@ function ezbizi_chat_initials($name) {
     }
 
     return $out !== '' ? $out : '?';
+}
+
+/**
+ * The robot check's browser half, for every EzBizi form on the page: the form,
+ * the chat's start and the review faces' sad form. A proof of work EzBizi
+ * signs and checks (FormChallenge): about a second of the visitor's browser,
+ * nothing to click, and no Google or Cloudflare script on the page.
+ *
+ * Returns JS defining `ezSolve(api)`, a Promise of the solved answer.
+ */
+function ezbizi_solver_js() {
+    return "function ezHex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
+function ezSolve(api){return fetch(api+'/api/v1/web/form/challenge').then(function(r){return r.json();}).then(function(c){
+  var enc=new TextEncoder(),n=0;
+  function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
+    return Promise.all(batch.map(function(x){return crypto.subtle.digest('SHA-256',enc.encode(c.salt+x)).then(function(h){return ezHex(h)===c.challenge?x:-1;});}))
+    .then(function(rs){var hit=rs.filter(function(x){return x>=0;});
+      if(hit.length)return JSON.stringify({salt:c.salt,number:hit[0],challenge:c.challenge,signature:c.signature});
+      n+=500;if(n>c.max)throw new Error('captcha');return step();});}
+  return step();});}";
 }
 
 /** The launcher's icon, inline so the widget never waits on an icon font. */

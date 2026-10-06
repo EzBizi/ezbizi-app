@@ -1865,6 +1865,9 @@ class AutomationsController extends Controller
             // that reason; do not split them.
             $type('notify', 'Send a notification', false, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
+                // The optional second line under the message, in the bell, the
+                // desktop pop-up and the phone push alike.
+                $parameter('details', 'Second line (optional)', 'text', false, variables: true),
 
                 // NO EMAIL SWITCH. Jose, 2026-09-28: "the toggle should not
                 // exist at all, there is an automation for sending an email, so
