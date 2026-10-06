@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../core/ui_strings.dart';
+import '../widgets/api_keys_card.dart';
 import '../widgets/delete_account_card.dart';
 import '../widgets/appearance_card.dart';
 import '../widgets/async_body.dart';
@@ -41,6 +42,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _error;
   List<Map<String, dynamic>> _sessions = [];
 
+  /// How many API keys there are, for the phone's row; null when the count
+  /// could not be read, which shows no value rather than a wrong one.
+  int? _keyCount;
+
   /// The same body IdentityCard loads, held here as well.
   ///
   /// Only the phone layout needs it: its whole argument is that each row shows
@@ -72,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final response = await widget.api.get('/me/sessions');
     final profile = await widget.api.get('/me/profile');
+    final keys = await widget.api.get('/me/api-keys');
 
     if (!mounted) return;
 
@@ -86,6 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // field without its value, which is the layout one notch worse rather
       // than a screen that will not open.
       _profile = profile.ok ? profile.body : _profile;
+      _keyCount = keys.ok ? (keys.body['api_keys'] as List?)?.length : null;
     });
   }
 
@@ -186,6 +193,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _scheduleCard(),
       const SizedBox(height: 12),
       _sessionsCard(),
+      const SizedBox(height: 12),
+      // Under the sign-ins (UI queue 62): a key is another way in as you.
+      _apiKeysCard(),
       const SizedBox(height: 16),
       DeleteAccountCard(api: widget.api, session: widget.session),
     ];
@@ -350,6 +360,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             '${_sessions.length}',
             () => _open(context, 'Where you are signed in', _sessionsCard()),
           ),
+          _row(
+            context,
+            Icons.key_outlined,
+            'API keys',
+            _keyCount == null ? null : '$_keyCount',
+            () => _open(context, 'API keys', _apiKeysCard()),
+          ),
         ]),
 
         Padding(
@@ -359,6 +376,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
+
+  /// A fresh one per screen, like the identity card: it keeps the key it
+  /// just made in its own state.
+  ApiKeysCard _apiKeysCard() => ApiKeysCard(
+    api: widget.api,
+    formats: widget.session.me?.display ?? DisplayFormats.fallback,
+  );
 
   /// A fresh one per screen: the form owns its own controllers, so two of
   /// them must never be the same instance.

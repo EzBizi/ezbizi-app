@@ -93,6 +93,45 @@ void main() {
       findsNothing,
     );
   });
+  testWidgets('on a phone the API keys row says how many there are', (
+    tester,
+  ) async {
+    await _pump(tester, size: const Size(390, 780));
+    // The last group; the list builds only what is on the screen.
+    await tester.scrollUntilVisible(
+      find.widgetWithText(ListTile, 'API keys'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'API keys'),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  // The same pair for API keys (UI queue 62). Its own test: it sits below the
+  // fold at both widths, and scrolling to it would move the list the controls
+  // above are checked in.
+  testWidgets('API keys can be reached at both widths', (tester) async {
+    for (final size in const [Size(1280, 900), Size(390, 780)]) {
+      await _pump(tester, size: size);
+      await tester.scrollUntilVisible(
+        find.textContaining('API keys', findRichText: true).first,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.textContaining('API keys', findRichText: true),
+        findsWidgets,
+        reason: 'no way to reach API keys at ${size.width}px',
+      );
+    }
+  });
+
   /// Every control on this screen has to exist at BOTH widths.
   ///
   /// "Text me my codes" was added to the phone layout alone and was missing
@@ -149,6 +188,19 @@ Future<void> _pump(WidgetTester tester, {required Size size}) async {
               'current': true,
               'ip': '10.0.0.1',
               'last_used_at': null,
+            },
+          ],
+        });
+      }
+      if (path.endsWith('/me/api-keys')) {
+        return _json({
+          'api_keys': [
+            {
+              'id': 3,
+              'name': 'Weekly numbers script',
+              'access': 'read',
+              'last_used_at': null,
+              'created_at': '2026-10-02T15:00:00Z',
             },
           ],
         });
