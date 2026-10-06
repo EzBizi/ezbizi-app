@@ -225,6 +225,77 @@ final class WorkizJobWriter
         }
     }
 
+    /**
+     * Add one line to the end of a Workiz job's description, once: when the
+     * description already holds `$marker` nothing is written, so a retried rule
+     * cannot add it twice. First caller: a finished inspection's report link
+     * (Jose via Inspection, 2026-10-06) -- no Workiz API, v1 or v2, takes a
+     * file, so the link is what goes up.
+     *
+     * v2 only: v1 has no description write. A v2 description is plain text,
+     * newlines and no markup (measured on 40 DMV jobs, 2026-10-06), and a
+     * write replaces the whole of it, so it is read and written under a lock.
+     *
+     * @return array{job: ?WorkizJob, refused: ?string, written: bool}
+     */
+    public function appendLine(WorkizJob $job, string $line, string $marker): array
+    {
+        $connection = $this->connection($job->franchise_id);
+        $id = $job->payload['v2']['id'] ?? null;
+
+        $refused = match (true) {
+            $connection === null => 'This branch has no Workiz connection.',
+            ! WorkizV2::uses($connection) => 'This branch is not on its Workiz v2 key.',
+            ! is_string($id) || $id === '' => 'EzBizi has not read this job through Workiz v2 yet; try again after the next sync.',
+            default => null,
+        };
+
+        if ($refused !== null) {
+            return ['job' => null, 'refused' => $refused, 'written' => false];
+        }
+
+        $lock = Cache::lock('workiz-description:'.$id, 30);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return ['job' => null, 'refused' => self::BUSY, 'written' => false];
+        }
+
+        try {
+            $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+
+            if ($read['refused'] !== null) {
+                return ['job' => null, 'refused' => $read['refused'], 'written' => false];
+            }
+
+            $current = $read['data']['data'] ?? $read['data'];
+            $current = rtrim((string) ((is_array($current) && array_is_list($current) ? ($current[0] ?? []) : $current)['description'] ?? ''));
+
+            if (str_contains($current, $marker)) {
+                return ['job' => $job, 'refused' => null, 'written' => false];
+            }
+
+            $sent = WorkizV2::send($connection, 'PUT', '/jobs/'.rawurlencode($id), ['description' => $current === '' ? $line : $current."\n".$line]);
+
+            if ($sent['refused'] !== null) {
+                return ['job' => null, 'refused' => $sent['refused'], 'written' => false];
+            }
+
+            // Not the line itself: it can carry a link that opens without signing in.
+            $this->audit->log('workiz.job_description_added', $job, metadata: ['characters' => mb_strlen($line)]);
+
+            // An update answers with the whole job (writeV2).
+            if (is_array($sent['data'])) {
+                WorkizJob::land($connection, WorkizV2::job($sent['data']));
+            }
+
+            return ['job' => $job->fresh(), 'refused' => null, 'written' => true];
+        } finally {
+            $lock->release();
+        }
+    }
+
     private function connection(string $franchiseId): ?SocialConnection
     {
         return SocialConnection::query()

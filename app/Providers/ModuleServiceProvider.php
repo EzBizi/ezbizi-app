@@ -1455,6 +1455,22 @@ class ModuleServiceProvider extends ServiceProvider
                          */
                         executionType: 'inspection_report.email',
                     ),
+                    /*
+                     * Workiz's (Jose via Inspection, 2026-10-06): "inspection
+                     * reports should also go up in workiz when done via the
+                     * app". ActionRunner::putInspectionReportOnWorkiz. No
+                     * Workiz API takes a file, so a link goes up instead.
+                     * Subject-bound, like the email above.
+                     */
+                    new ActionDefinition(
+                        key: 'inspection.report.workiz',
+                        label: 'Put the report on its Workiz job',
+                        description: 'Adds one line to the end of the Workiz job\'s description: the date '
+                            .'and a link to the report that opens without signing in. Workiz takes no '
+                            .'files through its API, so the link is what goes up. Written once per '
+                            .'report; an inspection with no Workiz job is left alone.',
+                        executionType: 'inspection_report.workiz',
+                    ),
                 ],
             ),
 
