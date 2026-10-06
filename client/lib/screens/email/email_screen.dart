@@ -616,6 +616,8 @@ class _EmailScreenState extends State<EmailScreen> {
 
     final response = await widget.api.get(
       '/email/mailboxes/${mailbox.id}/messages/$id',
+      // The conversation, so the server opens it in one fetch rather than two.
+      header.threadId.isEmpty ? null : {'thread': header.threadId},
     );
 
     if (!mounted || request != _messageRequest) return;

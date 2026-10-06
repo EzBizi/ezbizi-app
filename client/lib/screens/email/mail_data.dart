@@ -269,9 +269,16 @@ class MessageHeader {
     this.mailboxId = '',
     this.mailboxAddress = '',
     this.authenticated,
+    this.threadId = '',
   });
 
   final String id;
+
+  /// The conversation this row is, as the server listed it. Sent back when
+  /// the message is opened so Gmail can fetch the conversation once instead
+  /// of fetching the message just to learn which conversation it is in.
+  /// Empty where the provider does not group.
+  final String threadId;
   final String fromName;
   final String fromAddress;
   final String subject;
@@ -320,6 +327,7 @@ class MessageHeader {
     mailboxId: mailboxId,
     mailboxAddress: mailboxAddress,
     authenticated: authenticated,
+    threadId: threadId,
   );
 
   factory MessageHeader.fromJson(
@@ -342,6 +350,7 @@ class MessageHeader {
       messageCount: json['message_count'] is int
           ? json['message_count'] as int
           : int.tryParse('${json['message_count'] ?? 1}') ?? 1,
+      threadId: '${json['thread_id'] ?? ''}',
       mailboxId: mailbox?.id ?? '${json['mailbox_id'] ?? ''}',
       mailboxAddress: mailbox?.address ??
           json['mailbox_address'] as String? ??

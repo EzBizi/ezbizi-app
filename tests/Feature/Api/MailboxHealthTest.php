@@ -1150,7 +1150,7 @@ class ScriptedMailboxReader implements MailboxReader
         return new MessagePage([$this->summary()]);
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
         $this->answerOrFail();
 

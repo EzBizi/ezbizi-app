@@ -329,8 +329,30 @@ final class GmailMailboxReader implements MailboxReader
         );
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+        /**
+     * ONE fetch when the list said which conversation this is.
+     *
+     * This always fetched the message in full, read its thread id off it, and
+     * then fetched the whole thread in full -- which contains that same
+     * message again. Measured on production 2026-10-06: every open was those
+     * two sequential full fetches, ~165 ms each. The list row already carries
+     * the thread id, so the client sends it back and the thread alone does.
+     *
+     * The hint is checked, not trusted: if the message is not in the thread
+     * it names (stale list, moved message, anybody's hand-typed URL), this
+     * opens it the old way. The token is this mailbox's, so a thread id can
+     * only ever name a conversation in an inbox the caller may already read.
+     */
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
+        if (is_string($threadId) && $threadId !== '') {
+            $opened = $this->fromThread($mailbox, $messageId, $this->fullThread($mailbox, $threadId));
+
+            if ($opened !== null) {
+                return $opened;
+            }
+        }
+
         $detail = $this->mapper->detail(
             $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), ['format' => 'full'])
         );
@@ -341,25 +363,43 @@ final class GmailMailboxReader implements MailboxReader
             return $detail;
         }
 
-        $thread = $this->get(
-            $mailbox,
-            self::API.'/threads/'.rawurlencode($threadId),
-            ['format' => 'full'],
-        );
+        return $this->fromThread($mailbox, $messageId, $this->fullThread($mailbox, $threadId)) ?? $detail;
+    }
 
+    /** @return array<string, mixed> */
+    private function fullThread(Mailbox $mailbox, string $threadId): array
+    {
+        return $this->get($mailbox, self::API.'/threads/'.rawurlencode($threadId), ['format' => 'full']);
+    }
+
+    /**
+     * The message and its conversation, or null when it is not in this thread.
+     *
+     * @param  array<string, mixed>  $thread
+     */
+    private function fromThread(Mailbox $mailbox, string $messageId, array $thread): ?MessageDetail
+    {
         $parts = [];
+        $detail = null;
 
         foreach ((array) ($thread['messages'] ?? []) as $row) {
-            if (is_array($row)) {
-                $parts[] = $this->mapper->detail($row);
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $part = $this->mapper->detail($row);
+            $parts[] = $part;
+
+            if ((string) ($row['id'] ?? '') === $messageId) {
+                $detail = $part;
             }
         }
 
-        if (count($parts) <= 1) {
-            return $detail;
+        if ($detail === null) {
+            return null;
         }
 
-        return $detail->withThread($parts);
+        return count($parts) <= 1 ? $detail : $detail->withThread($parts);
     }
 
     /**
@@ -1064,6 +1104,14 @@ final class GmailMailboxReader implements MailboxReader
     private function forgetAccessToken(Mailbox $mailbox): void
     {
         Cache::forget($this->cacheKey($mailbox));
+
+        // A Workspace inbox's token lives in GoogleWorkspace's cache, not this
+        // one. Without this the retry below a 401 would be handed the same
+        // rejected token, and a revoked delegation would keep failing until
+        // the entry aged out.
+        if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {
+            $this->workspace->forgetGmailAccessToken($mailbox);
+        }
     }
 
     /**

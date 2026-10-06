@@ -52,11 +52,11 @@ final class WorkspaceMailboxReader implements MailboxReader
         return $this->gmail->search($mailbox, $query, $cursor, $limit, $label);
     }
 
-    public function open(Mailbox $mailbox, string $messageId): MessageDetail
+    public function open(Mailbox $mailbox, string $messageId, ?string $threadId = null): MessageDetail
     {
         $this->workspace->assertCanOpen($mailbox);
 
-        return $this->gmail->open($mailbox, $messageId);
+        return $this->gmail->open($mailbox, $messageId, $threadId);
     }
 
     public function reply(Mailbox $mailbox, string $messageId, string $body): void

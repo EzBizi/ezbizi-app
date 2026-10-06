@@ -158,7 +158,12 @@ class MailboxMessagesController extends Controller
         $this->assertMayRead($user, $mailbox, 'open this inbox');
 
         try {
-            $detail = $this->readers->for($mailbox)->open($mailbox, $message);
+            // The list row's conversation, so Gmail can open it in one fetch.
+            // A hint only -- the reader checks it.
+            $thread = $request->query('thread');
+            $thread = is_string($thread) && $thread !== '' && strlen($thread) <= 256 ? $thread : null;
+
+            $detail = $this->readers->for($mailbox)->open($mailbox, $message, $thread);
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
         }
@@ -211,7 +216,13 @@ class MailboxMessagesController extends Controller
          * the thread, which is what makes a Gmail conversation stop showing as
          * unread and matches the loop above marking every part seen locally.
          */
-        $this->alsoMarkAtSource($mailbox, $detail->summary->id);
+        // AFTER the response, on opening only. Marking read at Gmail is two more
+        // round trips (~330 ms measured), and its outcome is not part of what
+        // opening returns -- so making the person wait for it bought nothing.
+        // The explicit buttons keep doing it in-request, because they DO
+        // report `at_source` back.
+        $openedId = $detail->summary->id;
+        defer(fn () => $this->alsoMarkAtSource($mailbox, $openedId));
 
         $seen = $this->readState->seenBy($mailbox, [$detail->summary->id], $user);
 
