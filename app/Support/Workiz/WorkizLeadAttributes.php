@@ -3,6 +3,7 @@
 namespace App\Support\Workiz;
 
 use App\Models\Lead;
+use App\Support\Notifications\LeadNotificationText;
 
 /**
  * One Workiz lead payload, reduced to the `leads` row the Leads module asked
@@ -52,6 +53,15 @@ final class WorkizLeadAttributes
 
             'email' => self::text($payload['Email'] ?? null),
             'category' => self::text($payload['JobType'] ?? null),
+
+            // How the notification names it (LeadNotificationText). Workiz
+            // records no intake channel, only the marketing source, and the one
+            // source booked online by its nature is Reserve with Google (Jose,
+            // 2026-10-06: "Reserve with Google = Online"). Every other lead is
+            // plain "Workiz".
+            'lead_type' => strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) ($payload['JobSource'] ?? ''))) === 'reservewithgoogle'
+                ? LeadNotificationText::WORKIZ_ONLINE
+                : null,
             'summary' => self::text($payload['LeadNotes'] ?? null),
 
             // Workiz's state, verbatim and joined, never mapped.
