@@ -17,16 +17,16 @@ class LeadNotificationTextTest extends TestCase
     public static function leadTitles(): array
     {
         return [
-            'LS call' => ['local_services', 'PHONE_CALL', 'You got a new "Local Services Call" lead'],
-            'LS text' => ['local_services', 'MESSAGE', 'You got a new "Local Services Text" lead'],
-            'LS booking' => ['local_services', 'BOOKING', 'You got a new "Local Services Online Booking" lead'],
-            'Thumbtack' => ['thumbtack', null, 'You got a new "Thumbtack" text lead'],
-            'Live Chat' => ['website_chat', null, 'You got a new "Live Chat" request'],
-            'Website Form' => ['website_form', null, 'You got a new "Website Form" lead'],
-            'Meta text' => ['facebook', 'MESSAGE', 'You got a new "Meta Text" lead'],
-            'Meta form' => ['instagram', 'FORM', 'You got a new "Meta Form" lead'],
-            'Workiz online' => ['workiz', 'ONLINE', 'You got a new "Workiz Online" lead'],
-            'Workiz text' => ['workiz', 'TEXT', 'You got a new "Workiz Text" lead'],
+            'LS call' => ['local_services', 'PHONE_CALL', 'New "Local Services Call" lead'],
+            'LS text' => ['local_services', 'MESSAGE', 'New "Local Services Text" lead'],
+            'LS booking' => ['local_services', 'BOOKING', 'New "Local Services Online Booking" lead'],
+            'Thumbtack' => ['thumbtack', null, 'New "Thumbtack" text lead'],
+            'Live Chat' => ['website_chat', null, 'New "Live Chat" request'],
+            'Website Form' => ['website_form', null, 'New "Website Form" lead'],
+            'Meta text' => ['facebook', 'MESSAGE', 'New "Meta Text" lead'],
+            'Meta form' => ['instagram', 'FORM', 'New "Meta Form" lead'],
+            'Workiz online' => ['workiz', 'ONLINE', 'New "Workiz Online" lead'],
+            'Workiz text' => ['workiz', 'TEXT', 'New "Workiz Text" lead'],
         ];
     }
 
@@ -38,9 +38,9 @@ class LeadNotificationTextTest extends TestCase
 
     public function test_the_three_whatsapp_sentences(): void
     {
-        $this->assertSame('You got a new "WhatsApp" message (Unknown)', T::whatsappHeadline(T::WHATSAPP_UNKNOWN));
-        $this->assertSame('You got a new "WhatsApp" lead', T::whatsappHeadline(T::WHATSAPP_LEAD));
-        $this->assertSame('You got a new "WhatsApp" hiring request', T::whatsappHeadline(T::WHATSAPP_HIRING));
+        $this->assertSame('New "WhatsApp" message (Unknown)', T::whatsappHeadline(T::WHATSAPP_UNKNOWN));
+        $this->assertSame('New "WhatsApp" lead', T::whatsappHeadline(T::WHATSAPP_LEAD));
+        $this->assertSame('New "WhatsApp" hiring request', T::whatsappHeadline(T::WHATSAPP_HIRING));
     }
 
     public function test_his_example_details_line(): void
@@ -59,7 +59,7 @@ class LeadNotificationTextTest extends TestCase
 
     public function test_a_reply_reads_as_jose_wrote_it(): void
     {
-        $this->assertSame('You got a new reply on "Local Services Text"', T::replyHeadline('local_services', 'MESSAGE'));
+        $this->assertSame('New reply on "Local Services Text"', T::replyHeadline('local_services', 'MESSAGE'));
     }
 
     public function test_a_local_services_call_has_no_reply_notification(): void
@@ -83,7 +83,7 @@ class LeadNotificationTextTest extends TestCase
     {
         // Meta and Workiz do not record lead_type yet; until they do, the
         // second word is missing — never a wrong one.
-        $this->assertSame('You got a new "Meta" lead', T::headline('facebook', null));
-        $this->assertSame('You got a new "Workiz" lead', T::headline('workiz', null));
+        $this->assertSame('New "Meta" lead', T::headline('facebook', null));
+        $this->assertSame('New "Workiz" lead', T::headline('workiz', null));
     }
 }

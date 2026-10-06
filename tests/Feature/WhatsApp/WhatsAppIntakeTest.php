@@ -74,7 +74,7 @@ class WhatsAppIntakeTest extends TestCase
         $rows = collect($this->sent[0]['interactive']['action']['sections'][0]['rows'])->pluck('title', 'id')->all();
         $this->assertSame([WhatsAppIntake::LEAD => 'I need a service', WhatsAppIntake::HIRING => 'I want to work with you'], $rows);
 
-        $this->assertSame(['You got a new "WhatsApp" message (Unknown)'], $this->titlesFor($leads->id));
+        $this->assertSame(['New "WhatsApp" message (Unknown)'], $this->titlesFor($leads->id));
         $this->assertSame([], $this->titlesFor($hr->id));
         $this->assertSame(0, Lead::query()->withoutGlobalScopes()->count());
 
@@ -113,8 +113,8 @@ class WhatsAppIntakeTest extends TestCase
         $this->inbound(['type' => 'text', 'text' => ['body' => 'Hi, are you hiring techs?']], 'wamid.IN1');
         $this->inbound($this->tap(WhatsAppIntake::HIRING, 'I want to work with you'), 'wamid.IN2');
 
-        $this->assertSame(['You got a new "WhatsApp" hiring request'], $this->titlesFor($hr->id));
-        $this->assertNotContains('You got a new "WhatsApp" hiring request', $this->titlesFor($leads->id));
+        $this->assertSame(['New "WhatsApp" hiring request'], $this->titlesFor($hr->id));
+        $this->assertNotContains('New "WhatsApp" hiring request', $this->titlesFor($leads->id));
         $this->assertSame(0, Lead::query()->withoutGlobalScopes()->count());
     }
 

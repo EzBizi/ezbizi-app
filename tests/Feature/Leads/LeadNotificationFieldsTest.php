@@ -80,7 +80,7 @@ class LeadNotificationFieldsTest extends TestCase
         $this->said($call, LeadConversation::CHANNEL_PHONE_CALL, ['duration_ms' => 70000]);
         $call = $call->fresh();
 
-        $this->assertSame('You got a new "Local Services Call" lead', $call->lead_headline);
+        $this->assertSame('New "Local Services Call" lead', $call->lead_headline);
         $this->assertSame('(319) 210-2005 - 1:10 min - '.$this->t['company']->name, $call->lead_details);
         $this->assertSame('', $call->reply_headline);
 
@@ -88,7 +88,7 @@ class LeadNotificationFieldsTest extends TestCase
         $this->said($text, LeadConversation::CHANNEL_MESSAGE, ['text' => str_repeat('word ', 20)]);
         $text = $text->fresh();
 
-        $this->assertSame('You got a new reply on "Local Services Text"', $text->reply_headline);
+        $this->assertSame('New reply on "Local Services Text"', $text->reply_headline);
         $this->assertSame(55, mb_strlen($text->reply_preview));
         $this->assertSame('(319) 210-2005 - '.$this->t['company']->name, $text->lead_details, 'a text has no duration');
     }
