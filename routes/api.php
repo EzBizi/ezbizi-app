@@ -2309,6 +2309,7 @@ Route::prefix('v1')
          */
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
+            Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
 
             Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
             Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);

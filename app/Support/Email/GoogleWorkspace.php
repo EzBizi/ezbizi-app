@@ -515,9 +515,24 @@ final class GoogleWorkspace
             throw GoogleWorkspaceRefused::notConnected();
         }
 
-        $addresses = array_column($this->directoryFor($connection), 'address');
+        $this->attachFrom($mailbox, array_column($this->directoryFor($connection), 'address'));
+    }
 
-        if (! in_array($mailbox->address, $addresses, true)) {
+    /**
+     * The same as attach(), against a directory already fetched.
+     *
+     * For adding several addresses at once (2026-10-06): the directory is one
+     * paged call per Workspace, and fetching it again for every address added
+     * would make thirty branch inboxes thirty directory reads. One rule for
+     * both paths -- listed means connectable -- so they cannot disagree.
+     *
+     * @param  list<string>  $directoryAddresses
+     *
+     * @throws GoogleWorkspaceRefused
+     */
+    public function attachFrom(Mailbox $mailbox, array $directoryAddresses): void
+    {
+        if (! in_array($mailbox->address, $directoryAddresses, true)) {
             throw GoogleWorkspaceRefused::notOnDirectory($mailbox->address);
         }
 

@@ -112,7 +112,18 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
 
   List<_DirectoryEntry> _directory = const [];
   bool _loadingDirectory = false;
-  String? _pickedAddress;
+
+  /// The addresses ticked in the directory. Several at once since 2026-10-06
+  /// (Jose: "add ability to add emails by bulk as well, when selecting
+  /// workspace"); one is the old single add, unchanged.
+  final Set<String> _picked = <String>{};
+
+  /// The one picked address, when exactly one is -- the single-add path.
+  String? get _pickedAddress => _picked.length == 1 ? _picked.first : null;
+
+  /// Some of a batch went in and the panel stayed open to report the rest, so
+  /// closing it must still tell the list to reload.
+  bool _addedSome = false;
 
   @override
   void initState() {
@@ -127,14 +138,14 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
   Future<void> _loadDirectoryIfNeeded() async {
     if (!_fromDirectory) {
       _directory = const [];
-      _pickedAddress = null;
+      _picked.clear();
       return;
     }
 
     setState(() {
       _loadingDirectory = true;
       _error = null;
-      _pickedAddress = null;
+      _picked.clear();
       _directorySearch.clear();
     });
 
@@ -183,6 +194,11 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
 
     if (provider == null || !(_form.currentState?.validate() ?? false)) return;
 
+    if (_fromDirectory && _picked.length > 1) {
+      await _saveBatch();
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -215,6 +231,78 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     }
 
     Navigator.of(context).pop(true);
+  }
+
+  /// The name an address is given when it arrives in a batch: its directory
+  /// name, or the part before the @ where the directory only has an address.
+  String _nameFor(String address) {
+    final entry = _directory.where((e) => e.address == address).firstOrNull;
+    final name = entry?.name.trim() ?? '';
+
+    return name.isEmpty || name.contains('@') ? address.split('@').first : name;
+  }
+
+  /// Several directory addresses in one request. What could not be added is
+  /// reported in the server's words and LEFT TICKED, so it can be looked at
+  /// rather than lost; what was added is unticked.
+  Future<void> _saveBatch() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    final me = widget.session.me!;
+
+    final response = await widget.api.post('/email/mailboxes/workspace-batch', {
+      'scope_type': me.scope.type,
+      'scope_id': me.scope.id ?? me.organization.id,
+      'addresses': [
+        for (final address in _picked)
+          {'address': address, 'display_name': _nameFor(address)},
+      ],
+    });
+
+    if (!mounted) return;
+
+    final data = response.data;
+    final added = [
+      for (final row
+          in (data is Map ? data['added'] as List? : null) ?? const [])
+        if (row is Map) '${row['address']}',
+    ];
+    final skipped = [
+      for (final row
+          in (data is Map ? data['skipped'] as List? : null) ?? const [])
+        if (row is Map) '${row['address']} — ${row['reason']}',
+    ];
+
+    if (response.ok && skipped.isEmpty) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    setState(() {
+      _saving = false;
+      _addedSome = _addedSome || added.isNotEmpty;
+      _picked.removeAll(added);
+      _error = skipped.isEmpty
+          ? response.reason
+          : [
+              if (added.isNotEmpty) 'Added ${added.length}.',
+              'Not added: ${skipped.join('; ')}',
+            ].join(' ');
+    });
+  }
+
+  void _toggle(_DirectoryEntry entry) {
+    setState(() {
+      if (!_picked.remove(entry.address)) _picked.add(entry.address);
+
+      // One address picked: the single add, with its name offered as before.
+      if (_picked.length == 1 && _displayName.text.trim().isEmpty) {
+        _displayName.text = _nameFor(_picked.first);
+      }
+    });
   }
 
   Widget _directoryField() {
@@ -255,40 +343,68 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
           decoration: InputDecoration(
             labelText: 'Search the directory',
             hintText: 'info@',
-            helperText: _pickedAddress == null
+            helperText: _picked.isEmpty
                 ? 'Type part of an address. Only addresses on the connected '
-                      'Workspace can be opened this way. Pick a shared inbox — '
-                      'do not pick a person\'s own mailbox.'
-                : '$_pickedAddress is selected.',
+                      'Workspace can be opened this way. Pick shared inboxes — '
+                      'do not pick a person\'s own mailbox. Tick as many as you need.'
+                : _picked.length == 1
+                ? '${_picked.first} is selected. Search again to add more.'
+                : '${_picked.length} addresses selected. Search again to add more.',
             helperMaxLines: 3,
-            suffixIcon: _pickedAddress == null
+            suffixIcon: _directorySearch.text.isEmpty
                 ? const Icon(Icons.search)
                 : IconButton(
-                    tooltip: 'Search again',
+                    tooltip: 'Clear the search',
                     icon: const Icon(Icons.clear),
                     onPressed: _saving
                         ? null
-                        : () => setState(() {
-                            _pickedAddress = null;
-                            _directorySearch.clear();
-                          }),
+                        : () => setState(_directorySearch.clear),
                   ),
           ),
-          onChanged: (_) => setState(() {
-            if (_pickedAddress != null) {
-              _pickedAddress = null;
-            }
-          }),
-          validator: (_) => (_pickedAddress == null || _pickedAddress!.isEmpty)
-              ? 'Pick a shared address from the directory.'
+          // Typing never clears what is ticked: searching for "office@",
+          // ticking, then searching "info@" is the whole point.
+          onChanged: (_) => setState(() {}),
+          validator: (_) => _picked.isEmpty
+              ? 'Pick at least one shared address from the directory.'
               : null,
         ),
-        if (_pickedAddress == null && query.isNotEmpty && matches.isEmpty) ...[
+        if (_picked.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final address in _picked)
+                InputChip(
+                  label: Text(address),
+                  onDeleted: _saving
+                      ? null
+                      : () => setState(() => _picked.remove(address)),
+                  deleteButtonTooltipMessage: 'Untick $address',
+                ),
+            ],
+          ),
+        ],
+        if (query.isNotEmpty && matches.isEmpty) ...[
           const SizedBox(height: 8),
           const _Note('No address in the directory matches that.'),
         ],
-        if (_pickedAddress == null && matches.isNotEmpty) ...[
-          const SizedBox(height: 8),
+        if (matches.length > 1) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _saving
+                  ? null
+                  : () => setState(
+                      () => _picked.addAll(matches.map((e) => e.address)),
+                    ),
+              child: Text('Select all ${matches.length} shown'),
+            ),
+          ),
+        ],
+        if (matches.isNotEmpty) ...[
+          const SizedBox(height: 4),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 240),
             child: ListView.builder(
@@ -300,21 +416,13 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                     ? entry.address
                     : '${entry.address} · ${entry.name}';
 
-                return ListTile(
+                return CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _picked.contains(entry.address),
                   title: Text(label, overflow: TextOverflow.ellipsis),
-                  onTap: _saving
-                      ? null
-                      : () => setState(() {
-                          _pickedAddress = entry.address;
-                          _directorySearch.text = entry.address;
-                          if (_displayName.text.trim().isEmpty) {
-                            _displayName.text = entry.name.contains('@')
-                                ? entry.address.split('@').first
-                                : entry.name;
-                          }
-                        }),
+                  onChanged: _saving ? null : (_) => _toggle(entry),
                 );
               },
             ),
@@ -337,18 +445,26 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
           'before adding it if that is not right.',
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).maybePop(),
-          child: const Text('Cancel'),
+          onPressed: _saving
+              ? null
+              : () => Navigator.of(context).pop(_addedSome),
+          child: Text(_addedSome ? 'Done' : 'Cancel'),
         ),
         FilledButton(
           onPressed:
               _saving ||
                   provider == null ||
                   _loadingDirectory ||
-                  (_fromDirectory && _pickedAddress == null)
+                  (_fromDirectory && _picked.isEmpty)
               ? null
               : _save,
-          child: Text(_saving ? 'Adding…' : 'Add the address'),
+          child: Text(
+            _saving
+                ? 'Adding…'
+                : _fromDirectory && _picked.length > 1
+                ? 'Add ${_picked.length} addresses'
+                : 'Add the address',
+          ),
         ),
       ],
       child: Form(
@@ -380,19 +496,25 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                     : null,
               ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: _displayName,
-              decoration: const InputDecoration(
-                labelText: 'What to call it',
-                hintText: 'Info',
-                helperText: 'The name people see beside the address.',
-                helperMaxLines: 2,
+            if (_fromDirectory && _picked.length > 1)
+              const _Note(
+                'Each address is named after its directory entry. Any of them '
+                'can be renamed afterwards.',
+              )
+            else
+              TextFormField(
+                controller: _displayName,
+                decoration: const InputDecoration(
+                  labelText: 'What to call it',
+                  hintText: 'Info',
+                  helperText: 'The name people see beside the address.',
+                  helperMaxLines: 2,
+                ),
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? 'Give it a name, so it can be told apart from the other '
+                          'inboxes on the list.'
+                    : null,
               ),
-              validator: (value) => (value ?? '').trim().isEmpty
-                  ? 'Give it a name, so it can be told apart from the other '
-                        'inboxes on the list.'
-                  : null,
-            ),
             const SizedBox(height: 16),
             if (widget.providers.isEmpty)
               const ErrorNote(

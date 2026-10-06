@@ -326,6 +326,124 @@ class MailboxesController extends Controller
     }
 
     /**
+     * POST /api/v1/email/mailboxes/workspace-batch — several Workspace addresses at once.
+     *
+     * Jose, 2026-10-06: "add ability to add emails by bulk as well, when
+     * selecting workspace". A Workspace address needs no password, so adding
+     * one is picking it; picking thirty branch inboxes one at a time is
+     * thirty trips through the same panel.
+     *
+     * Same authority as store() -- `email.create` and reach over where they
+     * will belong -- asked ONCE for the batch, because every address lands in
+     * the same place. The directory is fetched once too, and each address is
+     * judged against it by the same rule a single add uses
+     * (GoogleWorkspace::attachFrom).
+     *
+     * Partial success is reported, not hidden: each address is added or
+     * skipped on its own with the reason, so one already-connected address
+     * does not throw away the other twenty-nine.
+     */
+    public function storeWorkspaceBatch(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_if(
+            ! $user->hasPermission('email.create'),
+            Response::HTTP_FORBIDDEN,
+            Refusal::permission('add a shared inbox')->message(),
+        );
+
+        $input = $request->validate([
+            'scope_type'               => ['required', 'in:organization,company,franchise'],
+            'scope_id'                 => ['required', 'uuid'],
+            'addresses'                => ['required', 'array', 'min:1', 'max:50'],
+            'addresses.*.address'      => ['required', 'email:rfc', 'max:255'],
+            'addresses.*.display_name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $scope = $this->resolveScope($input['scope_type'], $input['scope_id']);
+
+        $this->assertReaches($user, $scope, $input['scope_type'], 'add a shared inbox here');
+
+        $organizationId = $this->organizationIdOf($scope);
+
+        // A mailbox that is not saved, only to ask which Workspace covers this
+        // place -- the same question attach() asks of a real one.
+        $probe = new Mailbox([
+            'organization_id' => $organizationId,
+            'scope_type'      => $input['scope_type'],
+            'scope_id'        => $scope->getKey(),
+        ]);
+
+        $connection = $this->workspace->connectionForMailbox($probe);
+
+        try {
+            if ($connection === null) {
+                throw GoogleWorkspaceRefused::notConnected();
+            }
+
+            $directory = array_column($this->workspace->directoryFor($connection), 'address');
+        } catch (GoogleWorkspaceRefused $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status);
+        }
+
+        $existing = Mailbox::query()
+            ->where('organization_id', $organizationId)
+            ->pluck('address')
+            ->map(fn ($a) => strtolower((string) $a))
+            ->all();
+
+        $added = [];
+        $skipped = [];
+
+        foreach ($input['addresses'] as $one) {
+            $address = strtolower($one['address']);
+
+            if (in_array($address, $existing, true)) {
+                $skipped[] = ['address' => $address, 'reason' => 'It has already been added.'];
+
+                continue;
+            }
+
+            try {
+                $mailbox = DB::transaction(function () use ($one, $address, $input, $scope, $organizationId, $directory) {
+                    $mailbox = Mailbox::create([
+                        'organization_id' => $organizationId,
+                        'scope_type'      => $input['scope_type'],
+                        'scope_id'        => $scope->getKey(),
+                        'address'         => $address,
+                        'display_name'    => $one['display_name'],
+                        'provider'        => MailboxProvider::GmailWorkspace->value,
+                        'mail_server'     => null,
+                    ]);
+
+                    $this->workspace->attachFrom($mailbox, $directory);
+
+                    $this->audit->log('mailbox.added', $mailbox, [
+                        'address'  => $mailbox->address,
+                        'provider' => $mailbox->provider,
+                        'scope'    => $input['scope_type'],
+                    ]);
+
+                    return $mailbox;
+                });
+            } catch (GoogleWorkspaceRefused $e) {
+                $skipped[] = ['address' => $address, 'reason' => $e->getMessage()];
+
+                continue;
+            }
+
+            $existing[] = $address;   // the same address twice in one batch is added once
+            $added[] = $this->row($mailbox, $user);
+        }
+
+        return response()->json(
+            ['data' => ['added' => $added, 'skipped' => $skipped]],
+            $added === [] ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_CREATED,
+        );
+    }
+
+    /**
      * PATCH /api/v1/email/mailboxes/{mailbox} — rename it, or correct the server details.
      *
      * The ADDRESS is not editable. Changing it would silently repoint every
