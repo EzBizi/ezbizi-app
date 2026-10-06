@@ -48,6 +48,10 @@ live in `docs/previews/`. Jose answers by number.
 
 ## Settled rules
 
+**No answer in 10 minutes means the recommendation.** Jose, 2026-10-06: *"from now on just always go with ur
+recommendation if i dont answer in 10 mins."* Send the gallery; if he has not picked within 10 minutes, say so in the
+entry ("no answer in 10 min — the recommendation, per Jose's standing rule") and build the recommended options.
+
 **The danger is not the error. It is that the artefact looks finished.**
 
 Training's, 2026-09-09, drawing three of that day's findings into one shape. Each is a
