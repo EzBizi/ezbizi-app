@@ -106,6 +106,26 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Calls whose transcript is unfolded.
   final Set<String> _openTranscripts = {};
 
+  /// Whose AI labels the counts show, and the label the list is narrowed to
+  /// (Jose, 2026-10-06: both Claude and Grok, to compare).
+  String _labeller = 'claude';
+  String? _labelFilter;
+
+  static const _existingLabels = {
+    'complaint': 'Complaint',
+    'reschedule': 'Reschedule',
+    'eta': 'ETA',
+    'billing': 'Billing',
+    'other': 'Other',
+  };
+
+  static const _notBookedLabels = {
+    'price': 'Price',
+    'availability': 'Availability',
+    'other': 'Other',
+    'booked': 'Booked (per AI)',
+  };
+
   static const _newQueue = 'A1 - New Client';
   static const _existingQueue = 'A1 - Existing Client';
 
@@ -591,14 +611,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     List<Map<String, dynamic>> calls,
   ) {
     final theme = Theme.of(context);
-    final mine = calls.where((c) => c['queue'] == _existingQueue).toList();
+    final all = calls.where((c) => c['queue'] == _existingQueue).toList();
+    final mine = _byLabel(all);
 
     return _panelBox(context, [
-      Text(
-        'Reasons (Complaint, Reschedule, ETA, Billing, Other) appear here once '
-        'calls are transcribed.',
-        style: theme.textTheme.bodySmall,
-      ),
+      _labelCounts(context, all, _existingLabels),
       const SizedBox(height: 8),
       if (mine.isEmpty)
         Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
@@ -608,6 +625,86 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _transcript(context, call),
         ],
     ]);
+  }
+
+  /// The calls narrowed to the chosen label, from the chosen AI.
+  List<Map<String, dynamic>> _byLabel(List<Map<String, dynamic>> calls) =>
+      _labelFilter == null
+      ? calls
+      : calls.where((c) => _labelOf(c, _labeller) == _labelFilter).toList();
+
+  String? _labelOf(Map<String, dynamic> call, String provider) =>
+      (call['labels'] as Map?)?[provider] as String?;
+
+  /// How many calls each AI put under each reason - "show only numbers" -
+  /// with Claude and Grok switchable so the two can be compared on the same
+  /// calls. Tapping a count narrows the list to those calls.
+  Widget _labelCounts(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+    Map<String, String> labels,
+  ) {
+    final theme = Theme.of(context);
+    final labelled = calls.where((c) => _labelOf(c, _labeller) != null).length;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SegmentedButton<String>(
+          key: const ValueKey('labeller'),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 'claude', label: Text('Claude')),
+            ButtonSegment(value: 'grok', label: Text('Grok')),
+          ],
+          selected: {_labeller},
+          onSelectionChanged: (picked) => setState(() {
+            _labeller = picked.first;
+            _labelFilter = null;
+          }),
+        ),
+        for (final entry in labels.entries)
+          FilterChip(
+            key: ValueKey('label-${entry.key}'),
+            label: Text(
+              '${entry.value} '
+              '${calls.where((c) => _labelOf(c, _labeller) == entry.key).length}',
+            ),
+            selected: _labelFilter == entry.key,
+            onSelected: (on) =>
+                setState(() => _labelFilter = on ? entry.key : null),
+          ),
+        Text(
+          labelled == calls.length
+              ? 'All ${calls.length} read by AI.'
+              : '${calls.length - labelled} of ${calls.length} not read by AI yet.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  /// Both AIs' answer for one call, side by side.
+  Widget _labelLine(BuildContext context, Map<String, dynamic> call) {
+    final claude = _labelOf(call, 'claude');
+    final grok = _labelOf(call, 'grok');
+    if (claude == null && grok == null) return const SizedBox.shrink();
+
+    String name(String? label) => label == null
+        ? '—'
+        : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        'Claude: ${name(claude)} · Grok: ${name(grok)}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
   }
 
   /// A call's words, folded until asked for: whole calls in a list would bury
@@ -637,6 +734,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _labelLine(context, call),
           TextButton(
             key: ValueKey('transcript-$id'),
             onPressed: () => setState(
@@ -675,15 +773,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final history = ((conversions as List?) ?? const [])
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
+    final unbooked = open;
+    final shown = _byLabel(unbooked);
 
     return _panelBox(context, [
-      if (open.isEmpty)
+      _labelCounts(context, unbooked, _notBookedLabels),
+      const SizedBox(height: 8),
+      if (shown.isEmpty)
         Text(
           'Every new-client call was booked.',
           style: theme.textTheme.bodyMedium,
         )
       else
-        for (final call in open)
+        for (final call in shown)
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
