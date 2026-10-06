@@ -276,10 +276,20 @@ class HrInvitationsController extends Controller
                 } catch (CannotActOnInvitation $e) {
                     throw ValidationException::withMessages(['contract_id' => $e->getMessage()]);
                 }
+                // With paperwork, it is emailed once the employer has signed
+                // it (Jose, 2026-10-06: "make it so the onboarding gets sent
+                // only after the employer signs").
+                $invitation->forceFill(['held_at' => now()])->save();
             }
 
             return [$invitation, $issued['token']];
         });
+
+        if ($invitation->isHeld()) {
+            // No link either: a link handed over by hand would be the send
+            // the hold exists to stop.
+            return response()->json(['data' => $this->present($invitation)], Response::HTTP_CREATED);
+        }
 
         $state = $this->deliver($invitation, $token);
 
@@ -614,6 +624,8 @@ class HrInvitationsController extends Controller
                 'name' => $invitation->invitedBy?->name,
             ],
             'sent_at'    => $invitation->sent_at->toIso8601String(),
+            // Waiting for the employer's signature before it is emailed.
+            'held'       => $invitation->isHeld(),
             'expires_at' => $invitation->expires_at->toIso8601String(),
             // The status says WHAT became of it; these say WHEN. Carried on
             // every row rather than only on the one the status names, because a

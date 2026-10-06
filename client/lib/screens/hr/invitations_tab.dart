@@ -363,7 +363,9 @@ class _InvitationsTabState extends State<InvitationsTab> {
     // revoked (Jose, 2026-10-05: "regardless of anything"). Expired is NOT
     // settled: chasing one that lapsed is the most useful thing Resend does.
     final settled = status == 'revoked';
-    final accepted = status == 'completed';
+    // Accepted: nothing to resend. Held: it goes out when the paperwork is
+    // signed, not before.
+    final accepted = status == 'completed' || invitation['held'] == true;
     final mayAct = widget.session.me?.can('hr.create') == true;
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -425,6 +427,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     String at(Object? iso) =>
         formatStamp(iso, 'at no stated time', formats: _formats);
 
+    if (invitation['held'] == true) {
+      return 'sent once the paperwork is signed';
+    }
+
     return switch (status) {
       'completed' => 'accepted ${at(invitation['accepted_at'])}',
       'revoked' => 'withdrawn ${at(invitation['revoked_at'])}',
@@ -443,7 +449,15 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
     if (created == null || !mounted) return;
 
-    await _showLink(created, resent: false);
+    // With paperwork it is held until the employer signs (Jose, 2026-10-06).
+    if (created['held'] == true) {
+      _snack(
+        'Saved. The invitation is emailed once you sign the paperwork, '
+        'under Onboarding.',
+      );
+    } else {
+      await _showLink(created, resent: false);
+    }
 
     if (mounted) await _load();
   }
