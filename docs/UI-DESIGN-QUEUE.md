@@ -2961,6 +2961,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 61 · AI Assistance · WhatsApp groups — **out for decision** (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
+
+From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
+groups (`docs/REPLACING-RODRIGO-BOT.md`). Backend on main f505e9e5 under `ai_assistance.manage`: GET
+`/ai-assistance/whatsapp-groups` {data [{id, purpose, subject, on_whatsapp, invite_link|null, members [{id, name,
+has_phone}]}], purposes [{key, label}]} (financial, gbp_updates, messages, dispatch, `daily:<franchise_id>` per
+branch); POST {purpose (unique), subject, member_ids ≤ 8}; PATCH; DELETE; POST `/{id}/publish` → 422 with a sentence
+until Meta's Official Business Account (~Oct 15), members get reports privately meanwhile. Desktop **1** a new WhatsApp
+groups tab: a card per group (report, name, delivery state or invite link + Copy, members as chips, a red chip for no
+phone, Add off at 8), and the reports with no group yet above the cards (recommended); **2** a table with the chosen
+group docked; **3** the list of reports, each with its group or "Make its group". Phone **4** (recommended) cards
+stacked; **5** rows → page; **6** reports list.
+
 ### 60 · Reports · Performance, rearranged — **out for decision** (`docs/previews/reports-performance-revamp-layouts.html`)
 
 Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
