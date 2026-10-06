@@ -58,13 +58,46 @@ class SyncWorkizClientIds extends Command
         return self::SUCCESS;
     }
 
-    /** @return array{matched: int, failed: ?string} */
+    /**
+     * v2 lists no further than row 10,000 of the client list: "page * pageSize
+     * must be less than 10000. Narrow the results with filters" (New Jersey,
+     * about 13,000 clients, 2026-10-06). So a full read walks one year of
+     * clients at a time, by when Workiz created them.
+     *
+     * ponytail: a single year past 10,000 clients would need months instead.
+     *
+     * @return array{matched: int, failed: ?string}
+     */
     private function sync(SocialConnection $connection): array
+    {
+        if (! $this->option('full')) {
+            return $this->pages($connection, []);
+        }
+
+        $matched = 0;
+
+        for ($year = 2014; $year <= now()->year; $year++) {
+            $result = $this->pages($connection, ['dateProperty' => 'created', 'dateOperator' => 'between', 'date' => $year.'-01-01_'.$year.'-12-31']);
+            $matched += $result['matched'];
+
+            if ($result['failed'] !== null) {
+                return ['matched' => $matched, 'failed' => $year.': '.$result['failed']];
+            }
+        }
+
+        return ['matched' => $matched, 'failed' => null];
+    }
+
+    /**
+     * @param  array<string, string>  $filter
+     * @return array{matched: int, failed: ?string}
+     */
+    private function pages(SocialConnection $connection, array $filter): array
     {
         $matched = 0;
 
         for ($page = 1; ; $page++) {
-            $read = WorkizV2::send($connection, 'GET', '/clients', ['page' => $page, 'pageSize' => 300, 'field' => 'serialId', 'order' => 'DESC'], 60);
+            $read = WorkizV2::send($connection, 'GET', '/clients', ['page' => $page, 'pageSize' => 300, 'field' => 'serialId', 'order' => 'DESC'] + $filter, 60);
 
             if ($read['refused'] !== null) {
                 return ['matched' => $matched, 'failed' => $read['refused']];

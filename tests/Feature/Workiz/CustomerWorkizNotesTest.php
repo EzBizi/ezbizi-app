@@ -104,6 +104,31 @@ class CustomerWorkizNotesTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * v2 stops a client list at row 10,000 (New Jersey, 2026-10-06), so --full
+     * walks one year of clients at a time, by when Workiz created them.
+     */
+    public function test_a_full_sweep_walks_the_clients_year_by_year(): void
+    {
+        $this->client(3909, null);
+        Http::fake(function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $q);
+
+            return Http::response(['hasMore' => false, 'data' => ($q['date'] ?? '') === '2025-01-01_2025-12-31'
+                ? [['id' => 'CL-new3909', 'serialId' => 3909]] : []]);
+        });
+
+        $this->artisan('ezbizi:sync-workiz-client-ids', ['--full' => true])->assertSuccessful();
+
+        $this->inTenant($this->tenant['org'], fn () => $this->assertSame('CL-new3909', WorkizClient::query()->sole()->v2_id));
+        Http::assertSentCount(now()->year - 2013);
+        Http::assertSent(function (Request $r) {
+            parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+
+            return ($q['dateProperty'] ?? null) === 'created' && ($q['dateOperator'] ?? null) === 'between' && $q['date'] === '2014-01-01_2014-12-31';
+        });
+    }
+
     /** v2 lists clients newest number first: a run stops at the first page with nothing new; --full reads on. */
     public function test_the_sweep_gives_each_client_its_v2_id(): void
     {
