@@ -7,6 +7,7 @@ use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use App\Support\Social\WhatsAppCloud;
 use App\Support\Social\WhatsAppGroups;
+use App\Support\Social\WhatsAppPeriodReports;
 use App\Support\Social\WhatsAppStaffBot;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -46,6 +47,7 @@ class WhatsAppWebhookController extends Controller
     public function __construct(
         private readonly WhatsAppStaffBot $bot,
         private readonly WhatsAppGroups $groups,
+        private readonly WhatsAppPeriodReports $periodReports,
     ) {}
 
     /**
@@ -204,6 +206,11 @@ class WhatsAppWebhookController extends Controller
                 continue;
             }
 
+            // The bookkeeper's APPROVE / REFRESH for the weekly and monthly PDFs.
+            if ($row->wasRecentlyCreated && $this->approval($phoneNumberId, $row)) {
+                continue;
+            }
+
             if ($row->wasRecentlyCreated && $this->bot->handles($phoneNumberId)) {
                 $this->answer($row, $phoneNumberId, isset($picked['id']) ? (string) $picked['id'] : null);
             }
@@ -303,6 +310,22 @@ class WhatsAppWebhookController extends Controller
                 'inbound' => $inbound->getKey(),
                 'reason' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function approval(string $phoneNumberId, WhatsAppMessage $row): bool
+    {
+        $number = WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
+
+        try {
+            return $number !== null && $this->periodReports->reply($number, (string) $row->counterparty, $row->body);
+        } catch (Throwable $e) {
+            Log::warning('A WhatsApp report approval could not be handled.', [
+                'phone_number_id' => $phoneNumberId,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 

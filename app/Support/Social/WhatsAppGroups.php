@@ -42,8 +42,35 @@ final class WhatsAppGroups
      */
     public function deliver(string $purpose, string $title, string $body): int
     {
+        return $this->fanOut($purpose, $title, ['type' => 'text', 'text' => ['body' => $body]], $body);
+    }
+
+    /**
+     * A PDF to the group: uploaded to Meta once, then sent by its media id.
+     */
+    public function deliverDocument(string $purpose, string $title, string $pdf, string $filename): int
+    {
+        $number = $this->numberFor($purpose);
+
+        if ($number === null) {
+            return 0;
+        }
+
+        $mediaId = $this->upload($number, $pdf, $filename);
+
+        return $this->fanOut($purpose, $title, [
+            'type' => 'document',
+            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => $title],
+        ], $title, $mediaId, $filename);
+    }
+
+    /**
+     * @param  array<string, mixed>  $message  the Cloud API message, minus who it is to
+     */
+    private function fanOut(string $purpose, string $title, array $message, string $body, ?string $mediaId = null, ?string $filename = null): int
+    {
         $group = WhatsAppGroup::query()->where('purpose', $purpose)->first();
-        $number = $group === null ? null : WhatsAppNumber::query()->where('phone_number_id', $group->phone_number_id)->first();
+        $number = $this->numberFor($purpose);
 
         if ($group === null || $number === null) {
             return 0;
@@ -54,8 +81,7 @@ final class WhatsAppGroups
                 'messaging_product' => 'whatsapp',
                 'recipient_type' => 'group',
                 'to' => $group->remote_id,
-                'type' => 'text',
-                'text' => ['body' => $body],
+                ...$message,
             ]);
 
             return 1;
@@ -65,7 +91,7 @@ final class WhatsAppGroups
 
         foreach ($group->members()->where('is_active', true)->get() as $user) {
             try {
-                $reached += $this->toPerson($number, $user, $title, $body) ? 1 : 0;
+                $reached += $this->toPerson($number, $user, $title, $message, $body, $mediaId, $filename) ? 1 : 0;
             } catch (Throwable $e) {
                 // One member's refusal must not cost the others their report.
                 report($e);
@@ -73,6 +99,33 @@ final class WhatsAppGroups
         }
 
         return $reached;
+    }
+
+    private function numberFor(string $purpose): ?WhatsAppNumber
+    {
+        $phoneNumberId = WhatsAppGroup::query()->where('purpose', $purpose)->value('phone_number_id');
+
+        return $phoneNumberId === null ? null : WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
+    }
+
+    private function upload(WhatsAppNumber $number, string $bytes, string $filename): string
+    {
+        $response = Http::withToken((string) config('services.meta.whatsapp_token'))
+            ->timeout(60)
+            ->attach('file', $bytes, $filename, ['Content-Type' => 'application/pdf'])
+            ->post(WhatsAppCloud::endpoint().'/'.$number->phone_number_id.'/media', [
+                'messaging_product' => 'whatsapp',
+                'type' => 'application/pdf',
+            ]);
+
+        $id = (string) ($response->json('id') ?? '');
+
+        if ($response->failed() || $id === '') {
+            throw new RuntimeException('Meta would not take '.$filename.': '
+                .($response->json('error.message') ?? 'HTTP '.$response->status()));
+        }
+
+        return $id;
     }
 
     /**
@@ -88,7 +141,9 @@ final class WhatsAppGroups
             ->get();
 
         foreach ($held as $report) {
-            $this->cloud->replyFreeForm($number, $counterparty, ['type' => 'text', 'text' => ['body' => $report->body]], $report->body);
+            $this->cloud->replyFreeForm($number, $counterparty, $report->media_id !== null
+                ? ['type' => 'document', 'document' => ['id' => $report->media_id, 'filename' => $report->filename, 'caption' => $report->body]]
+                : ['type' => 'text', 'text' => ['body' => $report->body]], $report->body);
             $report->forceFill(['delivered_at' => now()])->save();
         }
 
@@ -121,7 +176,8 @@ final class WhatsAppGroups
         $group->forceFill(['remote_id' => $id, 'invite_link' => $link['invite_link'] ?? null])->save();
     }
 
-    private function toPerson(WhatsAppNumber $number, User $user, string $title, string $body): bool
+    /** @param  array<string, mixed>  $message */
+    private function toPerson(WhatsAppNumber $number, User $user, string $title, array $message, string $body, ?string $mediaId, ?string $filename): bool
     {
         $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
@@ -132,7 +188,7 @@ final class WhatsAppGroups
         $to = ltrim($e164, '+');
 
         if ($this->windowOpen($number, $to)) {
-            $this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $body]], $body);
+            $this->cloud->replyFreeForm($number, $to, $message, $body);
 
             return true;
         }
@@ -142,6 +198,8 @@ final class WhatsAppGroups
             'phone_number_id' => $number->phone_number_id,
             'counterparty' => $to,
             'body' => $body,
+            'media_id' => $mediaId,
+            'filename' => $filename,
         ]);
 
         $this->cloud->send(self::READY_TEMPLATE, $e164, [$title], from: (string) $number->display_number);

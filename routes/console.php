@@ -350,6 +350,12 @@ Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('Amer
 // after Workiz's evening sync; the second run catches a branch that failed.
 Schedule::command('ezbizi:whatsapp-same-day-reports')->dailyAt('21:05')->timezone('America/New_York')->withoutOverlapping(30);
 Schedule::command('ezbizi:whatsapp-same-day-reports')->dailyAt('21:35')->timezone('America/New_York')->withoutOverlapping(30);
+// Weekly (Wednesday, once the bookkeeper's P&L week is in) and monthly (the
+// 2nd) PDFs go to the approver first; the noon run retries a failed one.
+Schedule::command('ezbizi:whatsapp-period-reports week')->weeklyOn(3, '08:00')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:whatsapp-period-reports week')->weeklyOn(3, '12:00')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '09:00')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')->timezone('America/New_York')->withoutOverlapping(30);
 // Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).
 Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
 

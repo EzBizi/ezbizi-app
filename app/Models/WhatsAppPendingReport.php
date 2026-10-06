@@ -23,7 +23,7 @@ class WhatsAppPendingReport extends Model implements HoldsPersonalData, StatesRe
 
     protected $table = 'whatsapp_pending_reports';
 
-    protected $fillable = ['organization_id', 'phone_number_id', 'counterparty', 'body', 'delivered_at'];
+    protected $fillable = ['organization_id', 'phone_number_id', 'counterparty', 'body', 'media_id', 'filename', 'delivered_at'];
 
     protected function casts(): array
     {

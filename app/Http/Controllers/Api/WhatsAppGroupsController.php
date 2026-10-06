@@ -31,6 +31,7 @@ class WhatsAppGroupsController extends Controller
         'gbp_updates' => 'Local Services & Google Business Profile updates',
         'messages' => 'New leads and customer messages',
         'dispatch' => 'Dispatch',
+        'approval' => 'Approves the weekly and monthly reports (the bookkeeper)',
     ];
 
     public function __construct(
