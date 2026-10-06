@@ -7,8 +7,8 @@ session does not already have.
 ## API keys
 
 `GET/POST/DELETE /api/v1/me/api-keys` — `POST {"name": "Claude", "access": "read"|"write"}`
-returns the key once. A key is a Sanctum token named `api-key:<name>`
-(`App\Support\Auth\ApiKey`):
+returns the key once. A key is a Sanctum token carrying the `api-key` ability
+(`App\Support\Auth\ApiKey`), set server-side, never from the client's device name:
 
 - never idles out (`SlideIdleWindow` skips it); lives until revoked, or until a
   password reset / staff reset deletes all the person's tokens;

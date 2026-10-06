@@ -21,13 +21,12 @@ class ApiKeysController
     public function index(Request $request): array
     {
         return [
-            'api_keys' => $request->user()->tokens()
-                ->where('name', 'like', ApiKey::PREFIX.'%')
+            'api_keys' => ApiKey::only($request->user()->tokens())
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(fn ($token) => [
                     'id' => $token->id,
-                    'name' => ApiKey::label($token),
+                    'name' => $token->name,
                     'access' => $token->can('*') ? 'write' : 'read',
                     'last_used_at' => $token->last_used_at?->toIso8601String(),
                     'created_at' => $token->created_at?->toIso8601String(),
@@ -44,8 +43,8 @@ class ApiKeysController
 
         $write = ($data['access'] ?? 'read') === 'write';
         $token = $request->user()->createToken(
-            ApiKey::PREFIX.$data['name'],
-            $write ? ['*'] : [ApiKey::READ],
+            $data['name'],
+            [ApiKey::MARKER, $write ? '*' : ApiKey::READ],
         );
 
         $this->audit->log('user.api_key_created', $token->accessToken, metadata: [
@@ -64,13 +63,11 @@ class ApiKeysController
 
     public function destroy(Request $request, int $id): Response
     {
-        $token = $request->user()->tokens()
-            ->where('name', 'like', ApiKey::PREFIX.'%')
-            ->findOrFail($id);
+        $token = ApiKey::only($request->user()->tokens())->findOrFail($id);
 
         $token->delete();
 
-        $this->audit->log('user.api_key_revoked', $token, metadata: ['name' => ApiKey::label($token)]);
+        $this->audit->log('user.api_key_revoked', $token, metadata: ['name' => $token->name]);
 
         return response()->noContent();
     }

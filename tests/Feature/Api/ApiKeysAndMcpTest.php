@@ -76,9 +76,25 @@ class ApiKeysAndMcpTest extends TestCase
         $this->assertNull($token->expires_at);
 
         $this->signedInAs($t['admin'])->getJson('/api/v1/me/sessions')
-            ->assertOk()->assertJsonMissing(['name' => 'api-key:Claude']);
+            ->assertOk()->assertJsonMissing(['name' => 'Claude']);
         $this->signedInAs($t['admin'])->getJson('/api/v1/me/api-keys')
             ->assertOk()->assertJsonPath('api_keys.0.name', 'Claude');
+    }
+
+    /** A client names its session; it must not be able to name it into a key. */
+    public function test_a_session_named_like_a_key_is_still_a_session(): void
+    {
+        $t = $this->provisionTenant();
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => $t['admin']->email, 'password' => 'a-real-password', 'device_name' => 'api-key:x',
+        ])->assertOk()->json('token');
+
+        $this->withToken($token)->getJson('/api/v1/me/sessions')
+            ->assertOk()->assertJsonFragment(['name' => 'api-key:x']);
+        $this->withToken($token)->getJson('/api/v1/me/api-keys')
+            ->assertOk()->assertJsonCount(0, 'api_keys');
+        $this->assertNotNull(PersonalAccessToken::findToken($token)->expires_at);
     }
 
     public function test_a_revoked_key_stops_working(): void
