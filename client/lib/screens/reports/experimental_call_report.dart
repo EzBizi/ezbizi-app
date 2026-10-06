@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../phone/recording_playback_bar.dart';
 import '../phone/recording_player.dart';
 
@@ -13,6 +17,11 @@ import '../phone/recording_player.dart';
 /// It reads RingCentral and Workiz and nothing in EzBizi, which is why it has
 /// no view switcher and no place picker — there is nothing tenant-shaped in it.
 ///
+/// Three tabs since UI queue 60 (Jose: "go ahead as u recommend", desktop 1
+/// and phone 4): Overview answers "how did we do", People is the table, Calls
+/// is every call. Each question got a page of its own instead of panels
+/// opening into the middle of the table.
+///
 /// ── The screen's job is to stop a number being read wrongly ─────
 ///
 /// Three of the sentences here exist only for that:
@@ -21,7 +30,8 @@ import '../phone/recording_player.dart';
 ///    three or four people until one picks up. The rang column is deliberately
 ///    NOT totalled — adding it would produce a number larger than the day's
 ///    calls that looks like the day's calls.
-/// 2. The Workiz accounts covered are named. The accounts are disjoint and the
+/// 2. The Workiz accounts covered are named, in Sources, and one that did not
+///    answer is an amber line above the tabs. The accounts are disjoint and the
 ///    same people book into all of them, so a missing account makes a person's
 ///    job count wrong rather than merely omitting a region.
 /// 3. A person known to only one of the two systems is marked. RingCentral's
@@ -62,6 +72,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _error;
   bool _loading = true;
 
+  /// The tab showing: 'overview', 'people' or 'calls'. Kept as a key, so the
+  /// strip and the page drawn under it cannot disagree.
+  String _view = 'overview';
+
+  /// What the Calls tab is narrowed to: 'all', 'missed', 'existing',
+  /// 'not_booked' or 'new'. A figure opens the tab already narrowed.
+  String _callsFilter = 'all';
+
   /// Which column the table is ordered by, and which way.
   ///
   /// Defaults to answered, descending: the question somebody opens this on a
@@ -83,17 +101,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Why a recording would not play, kept per call id.
   final Map<String, String> _recordingErrors = {};
 
-  final TextEditingController _token = TextEditingController();
-  String? _disconnecting;
-  String? _confirmingDisconnect;
-  bool _managing = false;
-  bool _connecting = false;
-  String? _connectError;
-  bool _showConnect = false;
-
-  /// Which card is open beneath the figures - 'missed', 'existing' or
-  /// 'not_booked' - and what the Missed list is narrowed to.
-  String? _panel;
+  /// What the Missed list is narrowed to: a reason, and new or existing.
   String? _nobodyFilter;
   String? _clientFilter;
 
@@ -131,42 +139,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   @override
   void dispose() {
-    _token.dispose();
     _player.dispose();
     super.dispose();
-  }
-
-  /// Attach one Workiz account to the branch currently in view.
-  ///
-  /// The server refuses outside a branch view and its sentence says so, which
-  /// is why nothing here tries to work out whether the view is right. One place
-  /// deciding beats two places agreeing.
-  Future<void> _connect() async {
-    setState(() {
-      _connecting = true;
-      _connectError = null;
-    });
-
-    final response = await widget.api.post('/reports/experimental/workiz', {
-      'api_token': _token.text.trim(),
-    });
-
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() {
-        _connecting = false;
-        _connectError = response.message;
-      });
-      return;
-    }
-
-    _token.clear();
-    setState(() {
-      _connecting = false;
-      _showConnect = false;
-    });
-    _load();
   }
 
   @override
@@ -200,6 +174,37 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     });
   }
 
+  /// Reloads, and hands the fresh report to the Sources panel: the panel is a
+  /// route of its own, so this page rebuilding does not redraw it.
+  Future<Map<String, dynamic>?> _reloaded() async {
+    await _load();
+    return _report;
+  }
+
+  void _openSources() {
+    final report = _report;
+    if (report == null) return;
+
+    showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Sources',
+        subtitle: 'Where the jobs in this report come from',
+        child: _Sources(api: widget.api, report: report, reload: _reloaded),
+      ),
+    );
+  }
+
+  /// The Calls tab narrowed to [filter] and nothing else, so the list holds
+  /// exactly what the figure or the card that opened it counted.
+  void _openCalls(String filter) => setState(() {
+    _view = 'calls';
+    _callsFilter = filter;
+    _labelFilter = null;
+    _nobodyFilter = null;
+    _clientFilter = null;
+  });
+
   DateTime get _today => DateSpan.single(widget.now()).from;
 
   /// One length back or forward: a day, a week, ten days — or a whole
@@ -211,7 +216,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final monthStart = span.from.day == 1 && span.from.month == span.to.month;
     final wholeMonth =
         monthStart &&
-        (span.to == DateTime(span.to.year, span.to.month + 1, 0) || span.to == today);
+        (span.to == DateTime(span.to.year, span.to.month + 1, 0) ||
+            span.to == today);
 
     var next = wholeMonth
         ? DateSpan(
@@ -334,7 +340,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               ),
             ],
             const SizedBox(height: 12),
-            Expanded(child: _body(context)),
+            Expanded(child: _body(context, phone: phone)),
           ],
         );
       },
@@ -359,15 +365,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               formats: widget.formats,
               open: _picking,
               expand: phone,
-              onToggle: _loading ? null : () => setState(() => _picking = !_picking),
+              onToggle: _loading
+                  ? null
+                  : () => setState(() => _picking = !_picking),
               onPrevious: _loading ? null : () => _move(-1),
               // Forward is disabled on today rather than hidden: a control
               // that vanishes reads as a bug, one that is greyed reads as a
               // boundary.
-              onNext: (_loading || !_span.to.isBefore(today)) ? null : () => _move(1),
+              onNext: (_loading || !_span.to.isBefore(today))
+                  ? null
+                  : () => _move(1),
             ),
           ),
         ),
+        if (!phone) _sourcesButton(),
         IconButton(
           onPressed: _loading ? null : _load,
           icon: const Icon(Icons.refresh),
@@ -377,7 +388,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _body(BuildContext context) {
+  /// The Workiz accounts behind the jobs, counted on the button that opens
+  /// them. Beside the dates; on a phone, where the dates need all of their
+  /// row and the tabs all of theirs, at the foot of the Overview.
+  Widget _sourcesButton() {
+    final count = (_report?['workiz_accounts'] as List?)?.length;
+
+    return TextButton.icon(
+      key: const Key('call-report-sources'),
+      onPressed: _report == null ? null : _openSources,
+      icon: const Icon(Icons.dns_outlined, size: 18),
+      label: Text(
+        count == null
+            ? 'Sources'
+            : 'Sources · $count Workiz ${count == 1 ? 'account' : 'accounts'}',
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context, {required bool phone}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -406,70 +435,74 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
 
-    final ordered = _sorted(
-      _tagFilter == null
-          ? people
-          : people.where((p) => p['tag'] == _tagFilter).toList(),
+    final problem = _sourcesProblem(context, report);
+    // The counts only where there is room for all three tabs beside them.
+    final views = [
+      ('overview', 'Overview', Icons.dashboard_outlined),
+      (
+        'people',
+        phone ? 'People' : 'People · ${people.length}',
+        Icons.people_outline,
+      ),
+      (
+        'calls',
+        phone ? 'Calls' : 'Calls · ${calls.length}',
+        Icons.call_outlined,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ?problem,
+        TabBarLike(
+          key: const Key('call-report-tabs'),
+          labels: [for (final view in views) (view.$2, view.$3)],
+          selected: views.indexWhere((view) => view.$1 == _view),
+          onSelected: (i) => setState(() => _view = views[i].$1),
+        ),
+        Expanded(
+          child: switch (_view) {
+            'people' => _peopleTab(context, people, calls),
+            'calls' => _callsTab(context, calls, report['conversions']),
+            _ => _overview(context, totals, calls, phone: phone),
+          },
+        ),
+      ],
     );
+  }
 
-    /*
-     * ── A CustomScrollView SO THE COLUMN HEADER CAN PIN ─────────
-     *
-     * Jose asked for the header to stay put while the people scroll. A
-     * DataTable cannot do that - it draws its own header inside itself and
-     * scrolls as one box - so the header is a sliver of its own and the rows
-     * are a list beneath it.
-     *
-     * Which means the widths can no longer be decided by the table. They come
-     * from _columns(), and the header and every row lay themselves out from
-     * that one list, so a column added to it cannot appear in one and not the
-     * other.
-     */
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= ExperimentalCallReport.tableAbove;
+  /// A problem with the Workiz accounts, as one amber line above the tabs.
+  /// Which accounts there are, and changing them, is behind Sources; only
+  /// what changes how the numbers read is said on the page.
+  Widget? _sourcesProblem(BuildContext context, Map<String, dynamic> report) {
+    final said = _workizProblem(report);
+    if (said == null) return null;
 
-        return CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _totals(context, totals)),
-            if (_panel == 'missed')
-              SliverToBoxAdapter(child: _reachedNobody(context, calls)),
-            if (_panel == 'existing')
-              SliverToBoxAdapter(child: _existingCalls(context, calls)),
-            if (_panel == 'not_booked')
-              SliverToBoxAdapter(
-                child: _notBooked(context, calls, report['conversions']),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            SliverToBoxAdapter(child: _coverage(context, report)),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            if (people.isNotEmpty)
-              SliverToBoxAdapter(child: _tagFilters(context)),
+    final theme = Theme.of(context);
+    final caution = ToneColours.of(context, Tone.caution);
 
-            if (people.isEmpty)
-              SliverToBoxAdapter(child: _nothing(context))
-            else if (wide) ...[
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _StickyHeader(child: _headerRow(context)),
-              ),
-              SliverList.builder(
-                itemCount: ordered.length,
-                itemBuilder: (context, index) =>
-                    _personRow(context, ordered[index], calls),
-              ),
-            ] else
-              SliverList.builder(
-                itemCount: ordered.length,
-                itemBuilder: (context, index) =>
-                    _card(context, ordered[index], calls),
-              ),
-
-            if (people.isNotEmpty)
-              SliverToBoxAdapter(child: _conversionNote(context)),
-          ],
-        );
-      },
+    return Container(
+      key: const Key('call-report-problem'),
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: caution.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 18, color: caution.ink),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              said,
+              style: theme.textTheme.bodySmall?.copyWith(color: caution.ink),
+            ),
+          ),
+          TextButton(onPressed: _openSources, child: const Text('Sources')),
+        ],
+      ),
     );
   }
 
@@ -506,58 +539,125 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Text(
-        'No calls and no jobs on this day.',
+        'No calls and no jobs in these dates.',
         style: Theme.of(context).textTheme.bodyMedium,
         textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget _totals(BuildContext context, Map<String, dynamic> totals) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        // Jose's order, 2026-10-05: Calls > Missed Calls > Existing Client >
-        // New Client > Jobs Booked > Conv. Rate > Not Booked.
-        _stat(context, 'Calls', totals['calls']),
-        _stat(
-          context,
-          'Missed calls',
-          totals['reached_nobody'],
-          key: const ValueKey('stat-reached-nobody'),
-          open: _panel == 'missed',
-          onTap: () => _toggle('missed'),
-        ),
-        _stat(
-          context,
-          'Existing client',
-          totals['existing_client'],
-          key: const ValueKey('stat-existing'),
-          open: _panel == 'existing',
-          onTap: () => _toggle('existing'),
-        ),
-        _stat(context, 'New client', totals['new_client']),
-        _stat(context, 'Jobs booked', totals['jobs']),
-        _stat(
-          context,
-          'Conv. rate',
-          _rate(totals['jobs'], totals['new_client']),
-        ),
-        _stat(
-          context,
-          'Not booked',
-          totals['not_booked'],
-          key: const ValueKey('stat-not-booked'),
-          open: _panel == 'not_booked',
-          onTap: () => _toggle('not_booked'),
-        ),
-      ],
+  // ── Overview ───────────────────────────────────────────────────
+
+  /// How the dates went: the seven figures, then the two lists that need
+  /// somebody — side by side when there is room, Not booked first because it
+  /// is the one somebody acts on.
+  Widget _overview(
+    BuildContext context,
+    Map<String, dynamic> totals,
+    List<Map<String, dynamic>> calls, {
+    required bool phone,
+  }) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final across = box.maxWidth >= 1100 ? 7 : (box.maxWidth >= 720 ? 4 : 2);
+        final notBooked = _notBookedCard(context, calls);
+        final missed = _missedCard(context, calls);
+
+        return ListView(
+          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          children: [
+            _figures(context, totals, across),
+            const SizedBox(height: 16),
+            if (box.maxWidth >= ExperimentalCallReport.tableAbove)
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: notBooked),
+                    const SizedBox(width: 12),
+                    Expanded(child: missed),
+                  ],
+                ),
+              )
+            else ...[
+              notBooked,
+              const SizedBox(height: 12),
+              missed,
+            ],
+            if (phone) ...[
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: _sourcesButton()),
+            ],
+          ],
+        );
+      },
     );
   }
 
-  void _toggle(String panel) =>
-      setState(() => _panel = _panel == panel ? null : panel);
+  /// The seven figures, one size, rows of [across].
+  ///
+  /// Jose's order, 2026-10-05: Calls > Missed Calls > Existing Client > New
+  /// Client > Jobs Booked > Conv. Rate > Not Booked. A figure with calls
+  /// behind it is the way into them.
+  Widget _figures(
+    BuildContext context,
+    Map<String, dynamic> totals,
+    int across,
+  ) {
+    final figures = <(String, Object?, String?, String?)>[
+      ('Calls', totals['calls'], 'all', 'stat-calls'),
+      (
+        'Missed calls',
+        totals['reached_nobody'],
+        'missed',
+        'stat-reached-nobody',
+      ),
+      (
+        'Existing client',
+        totals['existing_client'],
+        'existing',
+        'stat-existing',
+      ),
+      ('New client', totals['new_client'], 'new', 'stat-new'),
+      ('Jobs booked', totals['jobs'], null, null),
+      ('Conv. rate', _rate(totals['jobs'], totals['new_client']), null, null),
+      ('Not booked', totals['not_booked'], 'not_booked', 'stat-not-booked'),
+    ];
+    const gap = 12.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < figures.length; i += across) ...[
+          if (i > 0) const SizedBox(height: gap),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var j = i; j < i + across; j++) ...[
+                  if (j > i) const SizedBox(width: gap),
+                  Expanded(
+                    child: j < figures.length
+                        ? _stat(
+                            context,
+                            figures[j].$1,
+                            figures[j].$2,
+                            opens: figures[j].$3,
+                            key: switch (figures[j].$4) {
+                              final key? => ValueKey(key),
+                              null => null,
+                            },
+                          )
+                        : const SizedBox(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 
   /// Jobs over new-client calls, the same rule as each person's row; a dash
   /// when there were no new-client calls to convert.
@@ -565,6 +665,289 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final n = (newClient as num?) ?? 0;
     if (n == 0) return '—';
     return '${((((jobs as num?) ?? 0) / n) * 100).round()}%';
+  }
+
+  Widget _stat(
+    BuildContext context,
+    String label,
+    Object? value, {
+    Key? key,
+    String? opens,
+  }) {
+    final theme = Theme.of(context);
+    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+
+    return Material(
+      key: key,
+      color: theme.colorScheme.surfaceContainerHighest,
+      borderRadius: radius,
+      child: InkWell(
+        borderRadius: radius,
+        onTap: opens == null ? null : () => _openCalls(opens),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
+              Text(label, style: theme.textTheme.bodySmall),
+              // A figure that opens says so, or nobody finds out it does.
+              if (opens != null) ...[
+                const Spacer(),
+                const SizedBox(height: 6),
+                Text(
+                  opens == 'all' ? 'See calls ›' : 'See them ›',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// New-client calls somebody answered that did not become a job: no Workiz
+  /// job for the caller's number in the period, and not marked by hand.
+  List<Map<String, dynamic>> _unbooked(List<Map<String, dynamic>> calls) =>
+      calls
+          .where(
+            (c) =>
+                c['queue'] == _newQueue &&
+                c['answered_by'] != null &&
+                c['booked'] != true,
+          )
+          .toList();
+
+  /// The calls that reached nobody.
+  List<Map<String, dynamic>> _nobody(List<Map<String, dynamic>> calls) =>
+      calls.where((c) => c['outcome'] != 'answered').toList();
+
+  Widget _notBookedCard(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final open = _unbooked(calls);
+    final reasons = [
+      for (final entry in _notBookedLabels.entries)
+        if (open.where((c) => _labelOf(c, _labeller) == entry.key).length
+            case final n when n > 0)
+          '${entry.value} $n',
+    ];
+
+    return _listCard(
+      context,
+      key: const ValueKey('overview-not-booked'),
+      title: 'Not booked',
+      count: open.length,
+      detail: reasons.isEmpty
+          ? null
+          : '${_labeller == 'grok' ? 'Grok' : 'Claude'}: ${reasons.join(' · ')}',
+      empty: 'Every new-client call was booked.',
+      rows: [
+        for (final call in open.take(3))
+          _briefCall(
+            context,
+            call,
+            OutlinedButton(
+              key: ValueKey('overview-convert-${call['id']}'),
+              onPressed: _converting.contains('${call['id']}')
+                  ? null
+                  : () => _convert(call),
+              child: const Text('Convert to booked'),
+            ),
+          ),
+      ],
+      filter: 'not_booked',
+    );
+  }
+
+  Widget _missedCard(BuildContext context, List<Map<String, dynamic>> calls) {
+    final nobody = _nobody(calls);
+    int count(String queue) => nobody.where((c) => c['queue'] == queue).length;
+
+    return _listCard(
+      context,
+      key: const ValueKey('overview-missed'),
+      title: 'Missed calls',
+      count: nobody.length,
+      detail: nobody.isEmpty
+          ? null
+          : 'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
+      empty: 'Every call reached somebody.',
+      rows: [
+        for (final call in nobody.take(3))
+          _briefCall(
+            context,
+            call,
+            StatusPill(
+              _outcomes[call['outcome']] ?? 'Nobody answered',
+              tone: Tone.caution,
+            ),
+          ),
+      ],
+      filter: 'missed',
+    );
+  }
+
+  /// A list that needs somebody, its first three calls and the way to the
+  /// rest in the Calls tab.
+  Widget _listCard(
+    BuildContext context, {
+    required Key key,
+    required String title,
+    required int count,
+    required String? detail,
+    required String empty,
+    required List<Widget> rows,
+    required String filter,
+  }) {
+    final theme = Theme.of(context);
+
+    return Card(
+      key: key,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$count',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+            if (detail != null) Text(detail, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 8),
+            if (rows.isEmpty)
+              Text(empty, style: theme.textTheme.bodyMedium)
+            else
+              ...rows,
+            if (count > 0)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: ValueKey('see-all-$filter'),
+                  onPressed: () => _openCalls(filter),
+                  child: Text('See all $count in Calls ›'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One call on a line: when, who called, who took it and for how long, or
+  /// whom it rang. All of it — the recording, the words — is in Calls.
+  Widget _briefCall(
+    BuildContext context,
+    Map<String, dynamic> call,
+    Widget action,
+  ) {
+    final by = call['answered_by'];
+    final rang = ((call['rang'] as List?) ?? const []).join(', ');
+    final words = [
+      _clock(call['started_at']),
+      '${call['caller_label'] ?? call['from'] ?? 'Unknown caller'}',
+      if (by != null) ...[
+        '$by',
+        _mmss(call['talk_seconds']),
+      ] else if (rang.isNotEmpty)
+        'rang $rang',
+    ].where((w) => w.isNotEmpty).join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(words, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          const SizedBox(width: 8),
+          action,
+        ],
+      ),
+    );
+  }
+
+  // ── People ─────────────────────────────────────────────────────
+
+  /// The table and its filter, alone, and what the conversion column claims.
+  Widget _peopleTab(
+    BuildContext context,
+    List<Map<String, dynamic>> people,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final ordered = _sorted(
+      _tagFilter == null
+          ? people
+          : people.where((p) => p['tag'] == _tagFilter).toList(),
+    );
+
+    /*
+     * ── A CustomScrollView SO THE COLUMN HEADER CAN PIN ─────────
+     *
+     * Jose asked for the header to stay put while the people scroll. A
+     * DataTable cannot do that - it draws its own header inside itself and
+     * scrolls as one box - so the header is a sliver of its own and the rows
+     * are a list beneath it.
+     *
+     * Which means the widths can no longer be decided by the table. They come
+     * from _columns(), and the header and every row lay themselves out from
+     * that one list, so a column added to it cannot appear in one and not the
+     * other.
+     */
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= ExperimentalCallReport.tableAbove;
+
+        return CustomScrollView(
+          slivers: [
+            if (people.isNotEmpty)
+              SliverToBoxAdapter(child: _tagFilters(context)),
+
+            if (people.isEmpty)
+              SliverToBoxAdapter(child: _nothing(context))
+            else if (wide) ...[
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyHeader(child: _headerRow(context)),
+              ),
+              SliverList.builder(
+                itemCount: ordered.length,
+                itemBuilder: (context, index) =>
+                    _personRow(context, ordered[index], calls),
+              ),
+            ] else
+              SliverList.builder(
+                itemCount: ordered.length,
+                itemBuilder: (context, index) =>
+                    _card(context, ordered[index], calls),
+              ),
+
+            if (people.isNotEmpty)
+              SliverToBoxAdapter(child: _conversionNote(context)),
+          ],
+        );
+      },
+    );
   }
 
   /// All, or only the dispatchers tagged for one kind of client.
@@ -589,24 +972,78 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _panelBox(BuildContext context, List<Widget> children) => Container(
-    margin: const EdgeInsets.only(top: 12),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
-    ),
-  );
+  // ── Calls ──────────────────────────────────────────────────────
 
-  /// Every existing-client call in the period. The reason tags (Complaint,
-  /// Reschedule, ETA, Billing, Other) need the calls transcribed and read,
-  /// which is not switched on yet - the list says so rather than inventing
-  /// numbers.
-  Widget _existingCalls(
+  /// Every call in the dates, narrowed by the chips. The three lists that
+  /// used to open between the figures and the table are three of the chips,
+  /// each as it was.
+  Widget _callsTab(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+    Object? conversions,
+  ) {
+    final lists = <(String, String, List<Map<String, dynamic>>)>[
+      ('all', 'All', calls),
+      ('missed', 'Missed', _nobody(calls)),
+      (
+        'existing',
+        'Existing',
+        calls.where((c) => c['queue'] == _existingQueue).toList(),
+      ),
+      ('not_booked', 'Not booked', _unbooked(calls)),
+      ('new', 'New', calls.where((c) => c['queue'] == _newQueue).toList()),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.only(top: 4, bottom: 24),
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (key, label, list) in lists)
+              ChoiceChip(
+                key: ValueKey('calls-filter-$key'),
+                label: Text('$label ${list.length}'),
+                selected: _callsFilter == key,
+                onSelected: (_) => setState(() {
+                  _callsFilter = key;
+                  _labelFilter = null;
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...switch (_callsFilter) {
+          'missed' => _reachedNobody(context, calls),
+          'existing' => _existingCalls(context, calls),
+          'not_booked' => _notBooked(context, calls, conversions),
+          final key => _everyCall(
+            context,
+            lists.firstWhere((l) => l.$1 == key, orElse: () => lists.first).$3,
+          ),
+        },
+      ],
+    );
+  }
+
+  /// Every call, or every new-client one, each with its words.
+  List<Widget> _everyCall(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+  ) => [
+    if (calls.isEmpty)
+      Text('No calls.', style: Theme.of(context).textTheme.bodyMedium)
+    else
+      for (final call in calls) ...[
+        _call(context, null, call),
+        // Nothing was said on a call nobody took.
+        if (call['answered_by'] != null) _transcript(context, call),
+      ],
+  ];
+
+  /// Every existing-client call in the period, with what each AI made of it.
+  List<Widget> _existingCalls(
     BuildContext context,
     List<Map<String, dynamic>> calls,
   ) {
@@ -614,7 +1051,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final all = calls.where((c) => c['queue'] == _existingQueue).toList();
     final mine = _byLabel(all);
 
-    return _panelBox(context, [
+    return [
       _labelCounts(context, all, _existingLabels),
       const SizedBox(height: 8),
       if (mine.isEmpty)
@@ -624,7 +1061,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _call(context, null, call),
           _transcript(context, call),
         ],
-    ]);
+    ];
   }
 
   /// The calls narrowed to the chosen label, from the chosen AI.
@@ -709,7 +1146,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// A call's words, folded until asked for: whole calls in a list would bury
   /// the list. Transcribed on EzBizi's server, or reused from the same call's
-  /// Local Services lead; null until that has happened.
+  /// Local Services lead; null until that has happened. Folded, it shows its
+  /// first words, so a list can be read without opening every call.
   Widget _transcript(BuildContext context, Map<String, dynamic> call) {
     final theme = Theme.of(context);
     final id = '${call['id']}';
@@ -741,7 +1179,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               () =>
                   open ? _openTranscripts.remove(id) : _openTranscripts.add(id),
             ),
-            child: Text(open ? 'Hide transcript' : 'Transcript'),
+            child: Text(open ? 'Hide transcript' : _firstWords(words)),
           ),
           if (open)
             SelectableText(
@@ -756,27 +1194,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// New-client calls somebody answered that did not become a job: no Workiz
   /// job for the caller's number in the period, and not marked by hand. Each
   /// can be marked booked; the marks are the history beneath.
-  Widget _notBooked(
+  List<Widget> _notBooked(
     BuildContext context,
     List<Map<String, dynamic>> calls,
     Object? conversions,
   ) {
     final theme = Theme.of(context);
-    final open = calls
-        .where(
-          (c) =>
-              c['queue'] == _newQueue &&
-              c['answered_by'] != null &&
-              c['booked'] != true,
-        )
-        .toList();
+    final unbooked = _unbooked(calls);
     final history = ((conversions as List?) ?? const [])
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
-    final unbooked = open;
     final shown = _byLabel(unbooked);
 
-    return _panelBox(context, [
+    return [
       _labelCounts(context, unbooked, _notBookedLabels),
       const SizedBox(height: 8),
       if (shown.isEmpty)
@@ -829,52 +1259,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             '${_clock(row['converted_at'])}',
             style: theme.textTheme.bodySmall,
           ),
-    ]);
-  }
-
-  Widget _stat(
-    BuildContext context,
-    String label,
-    Object? value, {
-    Key? key,
-    bool open = false,
-    VoidCallback? onTap,
-  }) {
-    final theme = Theme.of(context);
-
-    return Material(
-      key: key,
-      color: open
-          ? theme.colorScheme.secondaryContainer
-          : theme.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(label, style: theme.textTheme.bodySmall),
-                  // A card that opens says so, or nobody finds out it does.
-                  if (onTap != null)
-                    Icon(
-                      open ? Icons.expand_less : Icons.expand_more,
-                      size: 16,
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    ];
   }
 
   /// Why a call reached nobody, in Jose's words (2026-09-24). The server
@@ -886,16 +1271,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'other': 'Other',
   };
 
-  /// The calls behind the Reached nobody card, narrowed by reason.
-  Widget _reachedNobody(
+  /// The calls that reached nobody, narrowed by reason.
+  List<Widget> _reachedNobody(
     BuildContext context,
     List<Map<String, dynamic>> calls,
   ) {
     final theme = Theme.of(context);
     // New or Existing narrows the list and the reason counts together
     // (Jose, 2026-10-05: "add filter for existing & new clients").
-    final nobody = calls
-        .where((c) => c['outcome'] != 'answered')
+    final nobody = _nobody(calls)
         .where(
           (c) =>
               _clientFilter == null ||
@@ -914,310 +1298,57 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? nobody
         : nobody.where((c) => c['outcome'] == _nobodyFilter).toList();
 
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return [
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (value, label) in const [
-                ('new', 'New client'),
-                ('existing', 'Existing client'),
-              ])
-                FilterChip(
-                  key: ValueKey('missed-client-$value'),
-                  label: Text(label),
-                  selected: _clientFilter == value,
-                  onSelected: (on) =>
-                      setState(() => _clientFilter = on ? value : null),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final entry in _outcomes.entries)
-                // A reason with no calls is still offered, at zero, so the
-                // choices do not change shape from day to day - except
-                // Other, which exists only to keep the count honest.
-                if (entry.key != 'other' || (counts['other'] ?? 0) > 0)
-                  FilterChip(
-                    key: ValueKey('nobody-${entry.key}'),
-                    label: Text('${entry.value} (${counts[entry.key] ?? 0})'),
-                    selected: _nobodyFilter == entry.key,
-                    onSelected: (on) =>
-                        setState(() => _nobodyFilter = on ? entry.key : null),
-                  ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Missed call: rang a line or queue, nobody picked up. '
-            'Voicemail: the caller left a message. '
-            'Blocked: a blocked or rejected number. '
-            'Callers who hung up in the phone menu are spam and not counted.',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 8),
-          if (shown.isEmpty)
-            Text('No calls.', style: theme.textTheme.bodyMedium)
-          else
-            for (final call in shown) _call(context, null, call),
+          for (final (value, label) in const [
+            ('new', 'New client'),
+            ('existing', 'Existing client'),
+          ])
+            FilterChip(
+              key: ValueKey('missed-client-$value'),
+              label: Text(label),
+              selected: _clientFilter == value,
+              onSelected: (on) =>
+                  setState(() => _clientFilter = on ? value : null),
+            ),
         ],
       ),
-    );
-  }
-
-  /// What these numbers cover, by name.
-  Widget _coverage(BuildContext context, Map<String, dynamic> report) {
-    final theme = Theme.of(context);
-
-    final accounts = (report['workiz_accounts'] as List? ?? const [])
-        .map((a) => (a as Map).cast<String, dynamic>())
-        .toList();
-
-    final failed = (report['workiz_failed'] as Map? ?? const {}).keys
-        .map((k) => k.toString())
-        .toList();
-
-    final covered = accounts
-        .map((a) => '${a['name']}')
-        .where((name) => !failed.contains(name))
-        .toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          covered.isEmpty
-              ? 'No Workiz account answered, so the jobs column is blank — '
-                    'that is not the same as nobody booking anything.'
-              : 'Jobs cover ${covered.length} Workiz '
-                    '${covered.length == 1 ? 'account' : 'accounts'}: '
-                    '${covered.join(', ')}.',
-          style: theme.textTheme.bodySmall,
-        ),
-        // A book nobody will ever read, named rather than absent. Jose,
-        // 2026-09-15: "we dont pay the api access there". Saying "not
-        // connected" would send somebody off to connect it.
-        for (final account
-            in (report['workiz_unreachable'] as List? ?? const []))
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '${(account as Map)['name']} is never included: '
-              '${account['reason']}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final entry in _outcomes.entries)
+            // A reason with no calls is still offered, at zero, so the
+            // choices do not change shape from day to day - except
+            // Other, which exists only to keep the count honest.
+            if (entry.key != 'other' || (counts['other'] ?? 0) > 0)
+              FilterChip(
+                key: ValueKey('nobody-${entry.key}'),
+                label: Text('${entry.value} (${counts[entry.key] ?? 0})'),
+                selected: _nobodyFilter == entry.key,
+                onSelected: (on) =>
+                    setState(() => _nobodyFilter = on ? entry.key : null),
               ),
-            ),
-          ),
-        if (failed.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            'Did not answer: ${failed.join(', ')}. The same people book into '
-            'every account, so those numbers are low rather than incomplete.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
         ],
-
-        /*
-         * ── THE ACCOUNTS ARE SAID IN WORDS, MANAGED BEHIND A CLICK ──
-         *
-         * A row of chips sitting above a table reads as a FILTER - Jose's
-         * words: "they appear as if they were filters and people can get
-         * confused". They were never filters; they are the connection list,
-         * and their X disconnects a credential.
-         *
-         * So which accounts a number covers stays in the sentence above, where
-         * it belongs to the report, and the chips move behind this toggle,
-         * where they belong to setup. Nothing is hidden that the reader needs
-         * in order to read the numbers correctly.
-         *
-         * The chips cannot be dropped entirely: a Workiz connection is a data
-         * source, excluded from the shared connections list on purpose, so this
-         * is still the ONLY place its id is published and the only way one can
-         * be taken back.
-         */
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => setState(() => _managing = !_managing),
-            icon: Icon(
-              _managing ? Icons.expand_less : Icons.expand_more,
-              size: 18,
-            ),
-            label: Text(
-              _managing
-                  ? 'Hide Workiz accounts'
-                  : 'Manage Workiz accounts (${accounts.length})',
-            ),
-          ),
-        ),
-        if (_managing) ...[
-          // Each connected branch, with the way to remove it. This is the ONLY
-          // place a Workiz account's id is published: it is a data source, and
-          // the shared connections list excludes those on purpose, so without
-          // these chips a credential could be connected and never taken back.
-          if (accounts.isNotEmpty)
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final account in accounts)
-                  if (_confirmingDisconnect == account['id'])
-                    // Confirmed IN PLACE rather than in a dialog, the same way
-                    // deleting a saved report is. The X used to disconnect on one
-                    // click, which is a poor trade: undoing it needs that
-                    // branch's Workiz token pasted again, and the token is not
-                    // something the app can show you.
-                    Wrap(
-                      spacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          'Disconnect ${account['name']}?',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        TextButton(
-                          onPressed: _disconnecting == account['id']
-                              ? null
-                              : () => _disconnect('${account['id']}'),
-                          child: const Text('Disconnect'),
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              setState(() => _confirmingDisconnect = null),
-                          child: const Text('Keep'),
-                        ),
-                      ],
-                    )
-                  else
-                    InputChip(
-                      label: Text('${account['name']}'),
-                      onDeleted: () => setState(
-                        () => _confirmingDisconnect = '${account['id']}',
-                      ),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      tooltip: 'Disconnect ${account['name']}',
-                    ),
-              ],
-            ),
-          const SizedBox(height: 8),
-          _connectControl(context),
-        ],
-      ],
-    );
-  }
-
-  /// Take a branch's Workiz account back.
-  ///
-  /// Straight through the shared connections endpoint, which already gates on
-  /// this provider's own connect permission and needs nothing from here beyond
-  /// the id.
-  ///
-  /// IT REMOVES EZBIZI'S STORED TOKEN AND NOTHING ELSE. No Workiz data is
-  /// touched, no job is deleted, nothing changes on their side — that branch
-  /// simply stops appearing in this report until somebody pastes its token
-  /// again. That is still worth a confirmation, because the token is write-only
-  /// once stored and nobody can read it back out of the app.
-  Future<void> _disconnect(String id) async {
-    setState(() {
-      _disconnecting = id;
-      _confirmingDisconnect = null;
-    });
-
-    final response = await widget.api.delete('/social/connections/$id');
-
-    if (!mounted) return;
-
-    setState(() => _disconnecting = null);
-
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-
-    _load();
-  }
-
-  /// The way a branch's Workiz account gets attached.
-  ///
-  /// It lives HERE rather than in Settings because the tokens and this report
-  /// are retired together, and a connect flow parked somewhere permanent
-  /// outlives the thing that needed it. It is also the entry point: without it
-  /// the report has no way to reach its first account, which is the kind of
-  /// dead end a screen full of stubbed rows never shows.
-  Widget _connectControl(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (!_showConnect) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: () => setState(() => _showConnect = true),
-          icon: const Icon(Icons.add_link),
-          label: const Text('Connect a Workiz account'),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Switch to the branch this account belongs to, then paste its API '
-          'Token from the v1 tab of Workiz › Developer API.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _token,
-                decoration: InputDecoration(
-                  labelText: 'Workiz API Token',
-                  border: const OutlineInputBorder(),
-                  errorText: _connectError,
-                ),
-                // Obscured: it is an account credential that can delete jobs,
-                // and it is being pasted on somebody's screen.
-                obscureText: true,
-                enabled: !_connecting,
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _connecting ? null : _connect,
-              child: const Text('Connect'),
-            ),
-            TextButton(
-              onPressed: _connecting
-                  ? null
-                  : () => setState(() {
-                      _showConnect = false;
-                      _connectError = null;
-                    }),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-      ],
-    );
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Missed call: rang a line or queue, nobody picked up. '
+        'Voicemail: the caller left a message. '
+        'Blocked: a blocked or rejected number. '
+        'Callers who hung up in the phone menu are spam and not counted.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      if (shown.isEmpty)
+        Text('No calls.', style: theme.textTheme.bodyMedium)
+      else
+        for (final call in shown) _call(context, null, call),
+    ];
   }
 
   /// The columns, once, so the header and the rows cannot disagree.
@@ -1663,16 +1794,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return null;
   }
 
-  /// The time of day out of an ISO stamp, without pulling in a date library
-  /// for eight characters.
+  /// When a call was, out of an ISO stamp, without pulling in a date library.
+  /// The time alone for one day; across several, the day as well, or a week
+  /// of calls reads as one morning.
   String _clock(dynamic stamp) {
     final parsed = DateTime.tryParse('$stamp')?.toLocal();
     if (parsed == null) return '';
 
     final hour = parsed.hour.toString().padLeft(2, '0');
     final minute = parsed.minute.toString().padLeft(2, '0');
+    if (_span.single) return '$hour:$minute';
 
-    return '$hour:$minute';
+    final day = dayWords(
+      parsed,
+      _today,
+      widget.formats,
+      weekday: _span.days <= 7,
+    );
+    return '$day $hour:$minute';
   }
 
   Widget _card(
@@ -1803,4 +1942,340 @@ class _StickyHeader extends SliverPersistentHeaderDelegate {
   /// pin a header showing the previous column's arrow forever.
   @override
   bool shouldRebuild(_StickyHeader old) => old.child != child;
+}
+
+/// A transcript's opening, quoted: the way into the rest of it.
+String _firstWords(String words) {
+  final text = words.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (text.isEmpty) return 'Transcript · nothing was said';
+  if (text.length <= 60) return '“$text”';
+
+  // At a word, not through one.
+  final cut = text.substring(0, 60);
+  final space = cut.lastIndexOf(' ');
+  return '“${(space > 30 ? cut.substring(0, space) : cut).trimRight()}…”';
+}
+
+List<Map<String, dynamic>> _accounts(Map<String, dynamic> report) =>
+    (report['workiz_accounts'] as List? ?? const [])
+        .map((a) => (a as Map).cast<String, dynamic>())
+        .toList();
+
+List<String> _failed(Map<String, dynamic> report) =>
+    (report['workiz_failed'] as Map? ?? const {}).keys
+        .map((k) => k.toString())
+        .toList();
+
+/// What is wrong with the Workiz accounts behind a report, or null.
+///
+/// The accounts are disjoint and the same people book into all of them, so
+/// one that did not answer makes everybody's jobs low rather than leaving a
+/// region out — which is why it is said where the numbers are read.
+String? _workizProblem(Map<String, dynamic> report) {
+  final accounts = _accounts(report);
+  final failed = _failed(report);
+
+  if (accounts.isEmpty) {
+    return 'No Workiz account is connected, so no jobs are counted — that is '
+        'not the same as nobody booking anything.';
+  }
+  if (accounts.every((a) => failed.contains('${a['name']}'))) {
+    return 'No Workiz account answered, so no jobs are counted — that is not '
+        'the same as nobody booking anything.';
+  }
+  if (failed.isEmpty) return null;
+
+  return 'Did not answer: ${failed.join(', ')}. The same people book into '
+      'every account, so those numbers are low rather than incomplete.';
+}
+
+/// Sources: the Workiz accounts the jobs are read from (UI queue 60).
+///
+/// ── NAMED AND MANAGED HERE; A PROBLEM IS SAID ON THE PAGE ──────
+///
+/// A row of chips above the table read as a FILTER - Jose's words: "they
+/// appear as if they were filters and people can get confused". They were
+/// never filters; they are the connection list, and their X disconnects a
+/// credential. So they are out of the page, behind Sources, and the one thing
+/// the reader needs in order to read the numbers correctly — an account that
+/// did not answer — is the amber line above the tabs.
+///
+/// The chips cannot be dropped entirely: a Workiz connection is a data source,
+/// excluded from the shared connections list on purpose, so this is still the
+/// ONLY place its id is published and the only way one can be taken back.
+///
+/// The connect flow lives here rather than in Settings because the tokens and
+/// this report are retired together, and a connect flow parked somewhere
+/// permanent outlives the thing that needed it. It is also the entry point:
+/// without it the report has no way to reach its first account.
+class _Sources extends StatefulWidget {
+  const _Sources({
+    required this.api,
+    required this.report,
+    required this.reload,
+  });
+
+  final ApiClient api;
+  final Map<String, dynamic> report;
+
+  /// Reloads the report behind the panel and hands back the new one.
+  final Future<Map<String, dynamic>?> Function() reload;
+
+  @override
+  State<_Sources> createState() => _SourcesState();
+}
+
+class _SourcesState extends State<_Sources> {
+  late Map<String, dynamic> _report = widget.report;
+
+  final TextEditingController _token = TextEditingController();
+  String? _disconnecting;
+  String? _confirmingDisconnect;
+  bool _connecting = false;
+  String? _connectError;
+  bool _showConnect = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _token.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final fresh = await widget.reload();
+    if (mounted && fresh != null) setState(() => _report = fresh);
+  }
+
+  /// Attach one Workiz account to the branch currently in view.
+  ///
+  /// The server refuses outside a branch view and its sentence says so, which
+  /// is why nothing here tries to work out whether the view is right. One place
+  /// deciding beats two places agreeing.
+  Future<void> _connect() async {
+    setState(() {
+      _connecting = true;
+      _connectError = null;
+    });
+
+    final response = await widget.api.post('/reports/experimental/workiz', {
+      'api_token': _token.text.trim(),
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _connecting = false;
+        _connectError = response.message;
+      });
+      return;
+    }
+
+    _token.clear();
+    setState(() {
+      _connecting = false;
+      _showConnect = false;
+    });
+    await _refresh();
+  }
+
+  /// Take a branch's Workiz account back.
+  ///
+  /// Straight through the shared connections endpoint, which already gates on
+  /// this provider's own connect permission and needs nothing from here beyond
+  /// the id.
+  ///
+  /// IT REMOVES EZBIZI'S STORED TOKEN AND NOTHING ELSE. No Workiz data is
+  /// touched, no job is deleted, nothing changes on their side — that branch
+  /// simply stops appearing in this report until somebody pastes its token
+  /// again. That is still worth a confirmation, because the token is write-only
+  /// once stored and nobody can read it back out of the app.
+  Future<void> _disconnect(String id) async {
+    setState(() {
+      _disconnecting = id;
+      _confirmingDisconnect = null;
+      _error = null;
+    });
+
+    final response = await widget.api.delete('/social/connections/$id');
+
+    if (!mounted) return;
+
+    setState(() => _disconnecting = null);
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accounts = _accounts(_report);
+    final failed = _failed(_report);
+    final problem = _workizProblem(_report);
+    final covered = [
+      for (final account in accounts)
+        if (!failed.contains('${account['name']}')) '${account['name']}',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          covered.isEmpty
+              ? (problem ?? '')
+              : 'Jobs cover ${covered.length} Workiz '
+                    '${covered.length == 1 ? 'account' : 'accounts'}: '
+                    '${covered.join(', ')}.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        if (covered.isNotEmpty && problem != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            problem,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+        // A book nobody will ever read, named rather than absent. Jose,
+        // 2026-09-15: "we dont pay the api access there". Saying "not
+        // connected" would send somebody off to connect it.
+        for (final account
+            in (_report['workiz_unreachable'] as List? ?? const []))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '${(account as Map)['name']} is never included: '
+              '${account['reason']}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+        Text('Workiz accounts', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (accounts.isEmpty)
+          Text('None connected.', style: theme.textTheme.bodySmall)
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final account in accounts)
+                if (_confirmingDisconnect == account['id'])
+                  // Confirmed IN PLACE rather than in a dialog, the same way
+                  // deleting a saved report is. The X used to disconnect on one
+                  // click, which is a poor trade: undoing it needs that
+                  // branch's Workiz token pasted again, and the token is not
+                  // something the app can show you.
+                  Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Disconnect ${account['name']}?',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      TextButton(
+                        key: ValueKey('sources-disconnect-${account['id']}'),
+                        onPressed: _disconnecting == account['id']
+                            ? null
+                            : () => _disconnect('${account['id']}'),
+                        child: const Text('Disconnect'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _confirmingDisconnect = null),
+                        child: const Text('Keep'),
+                      ),
+                    ],
+                  )
+                else
+                  InputChip(
+                    key: ValueKey('sources-account-${account['id']}'),
+                    label: Text('${account['name']}'),
+                    onDeleted: () => setState(
+                      () => _confirmingDisconnect = '${account['id']}',
+                    ),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    tooltip: 'Disconnect ${account['name']}',
+                  ),
+            ],
+          ),
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
+        const SizedBox(height: 12),
+        _connectControl(context),
+      ],
+    );
+  }
+
+  /// The way a branch's Workiz account gets attached.
+  Widget _connectControl(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (!_showConnect) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const Key('sources-connect'),
+          onPressed: () => setState(() => _showConnect = true),
+          icon: const Icon(Icons.add_link),
+          label: const Text('Connect a Workiz account'),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Switch to the branch this account belongs to, then paste its API '
+          'Token from the v1 tab of Workiz › Developer API.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('sources-token'),
+                controller: _token,
+                decoration: InputDecoration(
+                  labelText: 'Workiz API Token',
+                  border: const OutlineInputBorder(),
+                  errorText: _connectError,
+                ),
+                // Obscured: it is an account credential that can delete jobs,
+                // and it is being pasted on somebody's screen.
+                obscureText: true,
+                enabled: !_connecting,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              key: const Key('sources-connect-save'),
+              onPressed: _connecting ? null : _connect,
+              child: const Text('Connect'),
+            ),
+            TextButton(
+              onPressed: _connecting
+                  ? null
+                  : () => setState(() {
+                      _showConnect = false;
+                      _connectError = null;
+                    }),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
