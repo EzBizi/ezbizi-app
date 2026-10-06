@@ -23,6 +23,9 @@ class VersionHistory {
         'Workiz: who booked each job is back on the bookings report. Workiz\'s new connection stopped telling us, so EzBizi reads it from the old one.',
         'Email: a rule on new emails can show the sender\'s name, the subject and a preview of up to 178 characters. The preview is read only when an active rule uses it.',
         'AI Assistance settings: turn the new-contact question off or on.',
+        'A job now opens in tabs: Job, Money and Photos & files. Job shows Workiz\'s own details (System type, Time frames and so on) under the status, read only.',
+        'Money, for people who can see financials: the money card, then the invoice and each payment by date with who collected it, then Workiz\'s estimates with their status and the time on site.',
+        'Photos & files: the job\'s photos in a grid that opens large. Inspection reports open in a new tab.',
       ],
     ),
     VersionRelease(
