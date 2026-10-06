@@ -59,7 +59,7 @@ final class WorkizV2
         $client = self::map($job['clientInfo'] ?? null);
         $address = self::map($client['addressDetails'] ?? null);
 
-        return [
+        $payload = [
             'UUID' => $job['uuid'] ?? null,
             'SerialId' => $job['serialId'] ?? null,
             'ClientId' => $client['serialId'] ?? null,
@@ -109,6 +109,12 @@ final class WorkizV2
                 'Price' => $line['price'] ?? null,
                 'Taxable' => $line['taxable'] ?? null,
             ], array_filter($job['lineItems'] ?? [], 'is_array'))),
+            // v2 only (2026-10-06): the branch's own job fields -- System Type,
+            // Time Frames, Pricing -- with their values.
+            'CustomFields' => array_values(array_map(fn (array $field) => [
+                'Name' => trim((string) ($field['fieldName'] ?? '')),
+                'Value' => $field['value'] ?? null,
+            ], array_filter($job['customFields'] ?? [], 'is_array'))),
             'v2' => array_filter([
                 'id' => $job['id'] ?? null,
                 'client_id' => $client['clientId'] ?? null,
@@ -118,6 +124,20 @@ final class WorkizV2
                 'utc_updated_at' => $job['utcUpdatedAt'] ?? null,
             ], fn ($value) => $value !== null),
         ];
+
+        // The job's files, public links on Workiz's st.sendajob.com. Only a
+        // single read carries them, never the list (measured 2026-10-06), so a
+        // list read leaves the key out rather than saying there are none, and
+        // the row keeps what it had (WorkizJob::keepWhatV2CannotSay).
+        if (array_key_exists('attachments', $job)) {
+            $payload['Attachments'] = array_values(array_map(fn (array $file) => [
+                'id' => $file['id'] ?? null,
+                'Name' => $file['name'] ?? null,
+                'Url' => $file['fileUrl'] ?? null,
+            ], array_filter((array) $job['attachments'], 'is_array')));
+        }
+
+        return $payload;
     }
 
     /**

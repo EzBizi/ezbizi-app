@@ -70,6 +70,31 @@ class WorkizV2Test extends TestCase
         return ['pageSize' => 100, 'page' => 1, 'totalResults' => count($jobs), 'hasMore' => $more, 'data' => $jobs];
     }
 
+    /**
+     * Custom fields come with every read; a job's files only with a single
+     * read, never the list (measured 2026-10-06). So the list, which lands
+     * every minute, must not empty the files a single read found.
+     */
+    public function test_custom_fields_land_and_a_list_read_keeps_the_files_a_single_read_found(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $file = ['id' => 'FLE-ADybNZQonxAXWKn8', 'name' => 'IMG_2201', 'fileUrl' => 'https://st.sendajob.com/upload/IMG_2201'];
+
+        $this->inTenant($tenant['org'], function () use ($connection, $file) {
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job(['attachments' => [$file]])));
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job()));
+
+            $payload = WorkizJob::query()->sole()->payload;
+            $this->assertSame([['Name' => 'System Type', 'Value' => 'Wood Burning']], $payload['CustomFields']);
+            // assertEquals: MySQL's JSON keeps keys in its own order.
+            $this->assertEquals([['id' => $file['id'], 'Name' => 'IMG_2201', 'Url' => $file['fileUrl']]], $payload['Attachments']);
+
+            // A single read that finds none: the file was removed in Workiz.
+            WorkizJob::land($connection, WorkizV2::job($this->v2Job(['attachments' => []])));
+            $this->assertSame([], WorkizJob::query()->sole()->payload['Attachments']);
+        });
+    }
+
     public function test_a_v2_job_reads_as_the_v1_payload_every_reader_knows(): void
     {
         $p = WorkizV2::job($this->v2Job());
