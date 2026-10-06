@@ -963,7 +963,10 @@ class _JobsScreenState extends State<JobsScreen> {
       if (_jobs.any((job) => job['workiz_job_number'] != null))
         TableColumn(
           'Workiz',
-          width: 80,
+          // Workiz numbers are nine digits since 2025 ("#200021684"): 76-78 px
+          // at 14 px in Segoe UI and Arial, measured. At 80 the cell left 68
+          // and cut every one to "#20002…" (2026-10-06).
+          width: 100,
           cell: (_, job) => Text(
             job['workiz_job_number'] == null
                 ? '—'
