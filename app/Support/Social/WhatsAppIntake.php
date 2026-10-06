@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppMessage;
@@ -12,6 +13,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
 use App\Support\Notifications\LeadNotificationText;
 use App\Support\Notifications\NotificationDispatcher;
+use App\Support\Settings\SettingsResolver;
 
 /**
  * A stranger's first WhatsApp message: ask what they want, then route it.
@@ -39,6 +41,7 @@ final class WhatsAppIntake
         private readonly LeadThread $thread,
         private readonly EventEmitter $events,
         private readonly NotificationDispatcher $notifications,
+        private readonly SettingsResolver $settings,
     ) {}
 
     /**
@@ -46,12 +49,20 @@ final class WhatsAppIntake
      */
     public function handle(WhatsAppNumber $number, WhatsAppMessage $inbound, ?string $choice): bool
     {
+        $tapped = $choice === self::LEAD || $choice === self::HIRING;
+
+        // Switched off in AI Assistance settings: nobody is asked. A tap on a
+        // question sent before it was switched off is still honoured.
+        if (! $tapped && ! $this->settings->get('ai_assistance.ask_new_contacts', Organization::findOrFail($number->organization_id))) {
+            return false;
+        }
+
         $contact = WhatsAppContact::firstOrCreate(
             ['phone_number_id' => $inbound->phone_number_id, 'counterparty' => $inbound->counterparty],
             ['organization_id' => $number->organization_id, 'kind' => WhatsAppContact::KIND_UNKNOWN],
         );
 
-        if ($choice === self::LEAD || $choice === self::HIRING) {
+        if ($tapped) {
             $kind = $choice === self::LEAD ? WhatsAppContact::KIND_LEAD : WhatsAppContact::KIND_HIRING;
 
             // A second tap on an old question changes nothing: the first answer

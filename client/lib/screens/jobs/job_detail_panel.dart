@@ -12,9 +12,11 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';
 import 'job_where.dart';
+import 'job_workiz.dart';
 
 /// One job, opened from the list.
 ///
@@ -54,6 +56,9 @@ class JobDetailPanel extends StatefulWidget {
 }
 
 class _JobDetailPanelState extends State<JobDetailPanel> {
+  /// Job, Money or Photos & files (UI queue 58; Jose: "as recommended").
+  String _tab = 'job';
+
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _scheduled = TextEditingController();
@@ -314,7 +319,68 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               padding: EdgeInsets.all(32),
               child: Center(child: CircularProgressIndicator()),
             )
-          : Column(
+          : _tabbed(context, row, editable),
+    );
+  }
+
+  /// The tabs, when there is more than the job to show: Money for a reader
+  /// with Financials on a job Workiz has, Photos & files when Workiz holds
+  /// some. A job with neither keeps today's single page and no tab strip.
+  Widget _tabbed(BuildContext context, Map<String, dynamic>? row, bool editable) {
+    final money = JobMoney.of(row?['money']);
+    final extras = WorkizExtras.of(row?['workiz']);
+    final files = extras?.files ?? const [];
+    final tabs = <(String, String, IconData)>[
+      ('job', 'Job', Icons.work_outline),
+      if (money != null || (extras?.hasMoney ?? false))
+        (
+          'money',
+          money == null
+              ? 'Money'
+              : 'Money · ${formatMoney(money.total, currency: money.currency)}',
+          Icons.payments_outlined,
+        ),
+      if (files.isNotEmpty)
+        ('files', 'Photos & files · ${files.length}', Icons.photo_library_outlined),
+    ];
+    final current = tabs.any((t) => t.$1 == _tab) ? _tab : 'job';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (tabs.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TabBarLike(
+              key: const Key('job-tabs'),
+              labels: [for (final t in tabs) (t.$2, t.$3)],
+              selected: tabs.indexWhere((t) => t.$1 == current),
+              onSelected: (i) => setState(() => _tab = tabs[i].$1),
+            ),
+          ),
+        if (current == 'money') ...[
+          if (money != null) _MoneyCard(money, formats: _me.display),
+          if (extras != null && extras.hasMoney)
+            WorkizMoneyDetail(extras: extras, formats: _me.display),
+        ] else if (current == 'files')
+          WorkizFiles(files: files)
+        else
+          _jobPage(context, row, editable, extras),
+      ],
+    );
+  }
+
+  Widget _jobPage(
+    BuildContext context,
+    Map<String, dynamic>? row,
+    bool editable,
+    WorkizExtras? extras,
+  ) {
+    final customer = row?['customer'] as Map<String, dynamic>?;
+    final franchise = row?['franchise'] as Map<String, dynamic>?;
+    final fields = extras?.fields ?? const [];
+
+    return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (row != null)
@@ -340,11 +406,9 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       ],
                     ),
                   ),
-                // Workiz's money, first after the status it sits beside
-                // (queue 31): only when the payload carries it, which is
-                // only for a role with the Financials toggle.
-                if (JobMoney.of(row?['money']) case final money?)
-                  _MoneyCard(money, formats: _me.display),
+                // What Workiz says the job IS, before anything to edit
+                // (queue 58). Its money moved to the Money tab.
+                if (fields.isNotEmpty) WorkizFacts(fields: fields),
                 TextField(
                   controller: _title,
                   decoration: const InputDecoration(
@@ -467,8 +531,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   ErrorNote(_error!),
                 ],
               ],
-            ),
-    );
+            );
   }
 }
 
