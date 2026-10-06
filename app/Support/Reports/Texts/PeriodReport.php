@@ -233,9 +233,8 @@ final class PeriodReport
             ->whereBetween('starts_at', $range)->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get();
 
         foreach ($paid as $p) {
-            // Everyone Workiz does not list as team is one row, not one per id.
-            $id = isset($names[$p->user_remote_id]) || isset($techs[$p->user_remote_id]) ? (string) $p->user_remote_id : 'unlisted';
-            $techs[$id] ??= ['name' => trim((string) ($names[$id] ?? 'Not on the Workiz team list')), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
+            $id = (string) $p->user_remote_id;
+            $techs[$id] ??= ['name' => self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
             $techs[$id]['deposits'] += (float) $p->amount;
         }
 
@@ -363,6 +362,16 @@ final class PeriodReport
 
         return '<table><thead>'.$cells($head, 'th').'</thead><tbody>'
             .implode('', array_map(fn ($r) => $cells($r, 'td'), $rows)).'</tbody></table>';
+    }
+
+    /**
+     * Workiz's API names nobody behind 40% of payments (office and owner
+     * logins: /users omits them, 2026-10-06), so the id is shown, for someone
+     * who knows it to name.
+     */
+    public static function collector(?string $name, string $id): string
+    {
+        return trim((string) $name) ?: "Not in Workiz's API ({$id})";
     }
 
     private static function kind(?string $status): string
