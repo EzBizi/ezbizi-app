@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 59 · Customers · Workiz's money and notes on a customer — **out for decision** (`docs/previews/customers-workiz-money-notes-layouts.html`)
+### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — building (`docs/previews/customers-workiz-money-notes-layouts.html`)
 
 From Customers (`local_90d427a5…`), approved as a feature by Jose 2026-10-06. Money: `GET /customers/{id}?today=Y-m-d`
 → `data.money`, null without Jobs Financials (draw nothing), else one entry per currency {invoiced, due, past_due
