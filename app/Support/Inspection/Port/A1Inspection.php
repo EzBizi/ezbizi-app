@@ -195,18 +195,18 @@ final class A1Inspection
         return [
             'name' => 'Client and site',
             'fields' => [
-                ['key' => 'first_name', 'label' => 'First name', 'type' => 'text',
+                ['key' => 'first_name', 'label' => 'Name', 'type' => 'text',
                  'bind' => 'customer.name', 'print' => 'text'],
-                ['key' => 'email', 'label' => 'Email', 'type' => 'email', 'print' => 'text'],
-                ['key' => 'primary_phone', 'label' => 'Phone', 'type' => 'phone', 'print' => 'text'],
+                ['key' => 'email', 'label' => 'Email', 'type' => 'email', 'bind' => 'customer.email', 'print' => 'text'],
+                ['key' => 'primary_phone', 'label' => 'Phone', 'type' => 'phone', 'bind' => 'customer.phone', 'print' => 'text'],
 
                 ['type' => 'divider', 'label' => 'Address'],
-                ['key' => 'address_line_1', 'label' => 'Address', 'type' => 'text', 'print' => 'text'],
-                ['key' => 'address_line_2', 'label' => 'Address line 2', 'type' => 'text',
+                ['key' => 'address_line_1', 'label' => 'Address', 'type' => 'text', 'bind' => 'customer.address_line1', 'print' => 'text'],
+                ['key' => 'address_line_2', 'label' => 'Address line 2', 'type' => 'text', 'bind' => 'customer.address_line2',
                  'print' => 'text'],
-                ['key' => 'city', 'label' => 'City', 'type' => 'text', 'print' => 'text'],
-                ['key' => 'state', 'label' => 'State', 'type' => 'text', 'print' => 'text'],
-                ['key' => 'zip_code', 'label' => 'ZIP code', 'type' => 'text', 'print' => 'text'],
+                ['key' => 'city', 'label' => 'City', 'type' => 'text', 'bind' => 'customer.city', 'print' => 'text'],
+                ['key' => 'state', 'label' => 'State', 'type' => 'text', 'bind' => 'customer.state', 'print' => 'text'],
+                ['key' => 'zip_code', 'label' => 'ZIP code', 'type' => 'text', 'bind' => 'customer.postal_code', 'print' => 'text'],
 
                 ['type' => 'divider', 'label' => 'The visit'],
                 ['key' => 'exterior_home_image', 'label' => 'Photograph of the property',

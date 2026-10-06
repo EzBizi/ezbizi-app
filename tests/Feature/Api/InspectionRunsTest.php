@@ -196,6 +196,44 @@ class InspectionRunsTest extends TestCase
         $this->assertFalse(is_numeric($report['answers']['when']));
     }
 
+    /**
+     * Starting a run fills in what the client and job already know.
+     *
+     * A DATE field gets the job's day as `YYYY-MM-DD`: the date box reads
+     * nothing else, so the old "Tue 18 Aug, 9:00 AM" arrived and showed an
+     * empty box (Jose, 2026-10-06). Contact and address fields get the client's.
+     */
+    public function test_starting_a_run_prefills_the_client_and_the_job_day(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, jobNumber: 'J-1043', screens: [[
+            'name' => 'Client',
+            'fields' => [
+                ['key' => 'email', 'label' => 'Email', 'type' => 'email', 'bind' => 'customer.email'],
+                ['key' => 'city', 'label' => 'City', 'type' => 'text', 'bind' => 'customer.city'],
+                ['key' => 'zip', 'label' => 'ZIP', 'type' => 'text', 'bind' => 'customer.postal_code'],
+                ['key' => 'day', 'label' => 'Date', 'type' => 'date', 'bind' => 'job.scheduled_for'],
+            ],
+        ]]);
+
+        $this->inTenant($tenant['org'], function () use ($seeded) {
+            $seeded['customer']->update(['email' => 'maple@example.test', 'city' => 'Miami', 'postal_code' => '33180']);
+            $seeded['job']->update(['scheduled_for' => '2026-08-18 15:00:00']);
+        });
+
+        $answers = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
+            'customer_id' => $seeded['customer']->id,
+            'job_id' => $seeded['job']->id,
+            'inspection_definition_id' => $seeded['definition']->id,
+        ])->assertCreated()->json('data.answers');
+
+        $this->assertSame('maple@example.test', $answers['email'] ?? null);
+        $this->assertSame('Miami', $answers['city'] ?? null);
+        $this->assertSame('33180', $answers['zip'] ?? null);
+        $this->assertSame('2026-08-18', $answers['day'] ?? null);
+    }
+
     public function test_start_again_after_unpublish_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
