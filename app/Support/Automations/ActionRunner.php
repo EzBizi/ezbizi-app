@@ -2960,9 +2960,14 @@ class ActionRunner
          * reason only in the server log.
          */
         try {
+            // THE SECOND LINE (Jose, 2026-10-06, "Source Names for
+            // notification"): the number, length and place under the headline,
+            // or the reply itself. Interpolated like the title; empty is none.
+            $details = trim($this->interpolate((string) ($action['details'] ?? $action['body'] ?? ''), $event, $subject));
+
             $sent = $this->notifications->dispatch(
                 title: $title,
-                body: $action['body'] ?? null,
+                body: $details === '' ? null : $details,
                 subject: $subject,
                 source: 'automation',
                 eventId: $event->getKey(),
