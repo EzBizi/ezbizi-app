@@ -5,6 +5,7 @@ namespace App\Support\Email;
 use App\Models\Mailbox;
 use App\Support\Automations\AutomationConditions;
 use App\Support\Automations\EventEmitter;
+use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -80,6 +81,9 @@ final class MailboxWatcher
 {
     /** How many body words one organization's rules may ask to be tested. */
     private const MAX_BODY_WORDS = 25;
+
+    /** Jose, 2026-10-06: "Description up to 178 characters". The ellipsis counts. */
+    private const PREVIEW_CHARACTERS = 178;
 
     public function __construct(
         private readonly MailboxReaders $readers,
@@ -230,9 +234,9 @@ final class MailboxWatcher
         // BEFORE the transaction, deliberately. Matching reads bodies from the
         // mail service, and `commit` holds a row lock -- a provider having a
         // slow minute must not hold that lock while it does.
-        $matched = $this->bodyMatches($mailbox, $arrivals->messages);
+        $facts = $this->bodyFacts($mailbox, $arrivals->messages);
 
-        $announced = $this->commit($mailbox, $arrivals->mark, $arrivals->messages, $matched);
+        $announced = $this->commit($mailbox, $arrivals->mark, $arrivals->messages, $facts);
 
         return $announced === null ? PollResult::busy() : PollResult::announced($announced);
     }
@@ -241,15 +245,15 @@ final class MailboxWatcher
      * Write the events and the mark together, or write neither.
      *
      * @param  MessageSummary[]  $messages
-     * @param  array<string, string>  $matched  message id => the rule words found
+     * @param  array<string, array{matched: string, description: string}>  $facts  message id => what a rule asked of its body
      * @return int|null  how many were announced, or null when another sweep had
      *                   already moved the mark and this batch is theirs
      */
-    private function commit(Mailbox $mailbox, string $mark, array $messages, array $matched = []): ?int
+    private function commit(Mailbox $mailbox, string $mark, array $messages, array $facts = []): ?int
     {
         $startedFrom = $mailbox->watch_mark;
 
-        return DB::transaction(function () use ($mailbox, $mark, $messages, $matched, $startedFrom) {
+        return DB::transaction(function () use ($mailbox, $mark, $messages, $facts, $startedFrom) {
             /*
              * Re-read under a row lock, and compared against what this poll
              * started from.
@@ -273,7 +277,12 @@ final class MailboxWatcher
                 $this->events->emit(
                     'email.received',
                     $row,
-                    $this->payload($row, $message, $matched[$message->id] ?? ''),
+                    $this->payload(
+                        $row,
+                        $message,
+                        $facts[$message->id]['matched'] ?? '',
+                        $facts[$message->id]['description'] ?? '',
+                    ),
                 );
             }
 
@@ -315,22 +324,32 @@ final class MailboxWatcher
      * whether we could look inside it, and a rule that does not fire is a
      * better failure than mail that is never announced at all.
      *
+     * ── AND THE PREVIEW, ON THE SAME TERMS (2026-10-06) ──────────
+     *
+     * Jose: "Email notification: From Name / Subject / Description up to 178
+     * characters". `description` is the body as plain text, clipped to 178
+     * with the ellipsis counted (LeadNotificationText::clip, which Leads'
+     * notifications already use). It is read under exactly the rule above:
+     * only when an active rule on this trigger writes `{{description}}` into
+     * one of its steps. A tenant whose rules never use it stores no message
+     * text, and the same single fetch serves both questions when both are
+     * asked.
+     *
      * @param  MessageSummary[]  $messages
-     * @return array<string, string>  message id => matched words, space-joined
+     * @return array<string, array{matched: string, description: string}>  message id => facts
      */
-    private function bodyMatches(Mailbox $mailbox, array $messages): array
+    private function bodyFacts(Mailbox $mailbox, array $messages): array
     {
         if ($messages === []) {
             return [];
         }
 
-        $words = AutomationConditions::literalsFor(
-            'email.received',
-            'body_matched',
-            (string) $mailbox->organization_id,
-        );
+        $organizationId = (string) $mailbox->organization_id;
 
-        if ($words === []) {
+        $words = AutomationConditions::literalsFor('email.received', 'body_matched', $organizationId);
+        $wantsPreview = AutomationConditions::actionsUse('email.received', 'description', $organizationId);
+
+        if ($words === [] && ! $wantsPreview) {
             return [];
         }
 
@@ -350,7 +369,12 @@ final class MailboxWatcher
                 'limit'           => self::MAX_BODY_WORDS,
             ]);
 
-            return [];
+            // The words are refused; a preview somebody asked for is not.
+            if (! $wantsPreview) {
+                return [];
+            }
+
+            $words = [];
         }
 
         $reader = $this->readers->for($mailbox);
@@ -371,9 +395,10 @@ final class MailboxWatcher
                 }
             }
 
-            if ($hits !== []) {
-                $found[$message->id] = implode(' ', $hits);
-            }
+            $found[$message->id] = [
+                'matched'     => implode(' ', $hits),
+                'description' => $wantsPreview ? LeadNotificationText::clip($text, self::PREVIEW_CHARACTERS) : '',
+            ];
         }
 
         return $found;
@@ -404,9 +429,18 @@ final class MailboxWatcher
      * What the event carries — and the list is short on purpose.
      *
      * ═══════════════════════════════════════════════════════════════
-     *  NOT ONE CHARACTER OF THE MESSAGE.
+     *  NOT ONE CHARACTER OF THE MESSAGE -- UNLESS A RULE ASKED.
      *
-     *  No body, and no snippet either. The snippet is the one piece
+     *  Two exceptions, both read only when an active rule on this
+     *  trigger asks for them, and neither stored for anyone else:
+     *  `body_matched` (the RULE's own words found in the body, never
+     *  the body's) and, since 2026-10-06, `description` -- the first
+     *  178 characters, because Jose asked for them in the
+     *  notification. A rule that writes {{description}} is somebody
+     *  in the business agreeing the preview may go where that step
+     *  sends it; a tenant with no such rule stores no message text.
+     *
+     *  No body, and no snippet either, beyond that. The snippet is the one piece
      *  of message text this module handles at all — it exists so a
      *  list screen is readable, it lives in a cache measured in
      *  seconds, and {@see MessageSummary} says why that is tolerable
@@ -430,7 +464,7 @@ final class MailboxWatcher
      *
      * @return array<string, mixed>
      */
-    private function payload(Mailbox $mailbox, MessageSummary $message, string $matched = ''): array
+    private function payload(Mailbox $mailbox, MessageSummary $message, string $matched = '', string $description = ''): array
     {
         return [
             // The same two keys `email.mailbox_broken` uses, spelled the same
@@ -442,7 +476,10 @@ final class MailboxWatcher
 
             'message_id'   => $message->id,
             'subject'      => $message->subject,
-            'from_name'    => $message->fromName,
+            // The name, or the address where the sender gave none -- the way
+            // the inbox itself shows a sender, so "{{from_name}}: {{subject}}"
+            // never reads ": Quote request".
+            'from_name'    => trim($message->fromName) !== '' ? $message->fromName : $message->fromAddress,
             'from_address' => $message->fromAddress,
 
             // The mail service's own time, not ours. "When did this arrive" is
@@ -472,6 +509,11 @@ final class MailboxWatcher
              * somebody wrote the rule that needs it.
              */
             'body_matched' => $matched,
+
+            // Empty unless a rule writes {{description}}; see bodyFacts. Present
+            // either way, so the field picker can offer it before any rule uses
+            // it -- the same reason body_matched is always here.
+            'description'  => $description,
 
             // A header-level fact, and the one condition somebody reaches for
             // straight away: a photograph or a signed form arriving is a

@@ -322,7 +322,7 @@ void main() {
     expect(_signButton(tester).onPressed, isNull);
 
     await _draw(tester);
-    await _pressSign(tester);
+    await _pressSign(tester, () => signed != null);
 
     // The fingerprint of the document this screen displayed goes back with the
     // act. The server refuses without it, and a hash computed here rather than
@@ -387,11 +387,11 @@ void main() {
     await _tap(tester, find.byKey(const Key('signature-clear')));
     expect(_signButton(tester).onPressed, isNull);
     await _draw(tester);
-    await tester.runAsync(() async {
-      await tester.tap(find.byKey(const Key('signature-save')));
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    });
-    await tester.pumpAndSettle();
+    await _tapUntil(
+      tester,
+      find.byKey(const Key('signature-save')),
+      () => saves.isNotEmpty,
+    );
     final fresh = saves.single['drawing'] as String;
     expect(fresh, startsWith('data:image/png;base64,'));
     expect(fresh, isNot('data:image/png;base64,${base64Encode(_png)}'));
@@ -400,7 +400,7 @@ void main() {
     // Using the saved one now uses the new one, and Sign sends exactly it.
     await _tap(tester, find.byKey(const Key('signature-clear')));
     await _tap(tester, find.byKey(const Key('signature-use-saved')));
-    await _pressSign(tester);
+    await _pressSign(tester, () => signed != null);
     expect(signed!['drawing'], fresh);
   });
 
@@ -1382,13 +1382,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(sign().onPressed, isNotNull);
 
+    // Waits for the sign request itself, not a fixed time: the drawing is
+    // encoded off the fake clock, and on a loaded machine 300 ms was not
+    // always enough (desk, 0.0.0374 pre-check).
     await tester.runAsync(() async {
       await tester.tap(find.byKey(const Key('tax-form-sign')));
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      while (!calls.any((call) => call.$1.isEmpty) &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
     });
     await tester.pumpAndSettle();
 
-    final signed = calls.last;
+    final signed = calls.lastWhere((call) => call.$1.isEmpty);
     expect(signed.$1, isEmpty);
     expect(signed.$2['kind'], 'w4');
     expect((signed.$2['values'] as Map)['filing_status'], 'single');
@@ -1774,13 +1781,26 @@ Future<void> _draw(WidgetTester tester) async {
 
 /// Sign, pressed for real: drawing the PNG needs the engine, and a fake
 /// clock never lets that finish.
-Future<void> _pressSign(WidgetTester tester) async {
+Future<void> _pressSign(WidgetTester tester, bool Function() sent) async {
   final sign = find.widgetWithText(FilledButton, 'Sign');
   await tester.ensureVisible(sign);
   await tester.pumpAndSettle();
+  await _tapUntil(tester, sign, sent);
+}
+
+/// Tap, then wait off the fake clock until [done] holds: the request the tap
+/// starts, not a fixed time, which a loaded machine outran (desk, 0.0.0374).
+Future<void> _tapUntil(
+  WidgetTester tester,
+  Finder target,
+  bool Function() done,
+) async {
   await tester.runAsync(() async {
-    await tester.tap(sign);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await tester.tap(target);
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (!done() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   });
   await tester.pumpAndSettle();
 }

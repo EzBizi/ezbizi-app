@@ -2961,6 +2961,58 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 60 · Reports · Performance, rearranged — **out for decision** (`docs/previews/reports-performance-revamp-layouts.html`)
+
+Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
+things and the UI is not very good for it anymore."* Today one scroll holds the dates, seven figures, three panels that
+open between the figures and the table (missed by reason; existing with Claude/Grok labels; not booked with Convert to
+booked and its history), the Workiz account controls, the people filter and table (calls folded per person), and the
+conversion note. Nothing new on the server. Desktop **1** three tabs: Overview (the figures, then Not booked and Missed
+side by side, each "See all" into Calls), People (the table alone), Calls (every call, narrowed by chips, labels when
+they apply) (recommended); **2** the figures down the left as the way in; **3** one page tidied into three cards. Phone
+**4** (recommended) the same tabs; **5** the figures as the menu; **6** one page. All: Workiz accounts move to a Sources
+side panel and a problem with them is one amber line; the figures are one size.
+
+### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — building (`docs/previews/customers-workiz-money-notes-layouts.html`)
+
+From Customers (`local_90d427a5…`), approved as a feature by Jose 2026-10-06. Money: `GET /customers/{id}?today=Y-m-d`
+→ `data.money`, null without Jobs Financials (draw nothing), else one entry per currency {invoiced, due, past_due
+(null without `today`), paid, invoices, open_estimates, open_estimates_minor}, mirroring Workiz's client header (Past
+due / Due / Total revenue); scoped to the reader's branches; empty list = nothing in Workiz. Notes: `GET
+/customers/{id}/workiz-notes` (Workiz session building it), live, per Workiz client {client_id, franchise, notes
+[{text, created_at, author}], error?}. Desktop **1** the job panel's shape: Customer / Money (past due named in red on
+the tab) / Notes from Workiz (fetched when opened, grouped by branch, a failing branch on its own line with Try again)
+(recommended); **2** one panel: money first, Workiz notes folded under the customer's own notes; **3** a red line only
+when past due, notes behind a button. Phone **4** (recommended) the tabs; **5** one page; **6** the red line.
+
+Build notes from Customers: always send `?today=` (the reader's local date); `past_due_minor` null means unknown, never
+zero, and leaves the tab plain; the tab is coloured only for past due > 0. "Due" is computed (the lower of Workiz's
+`amountDue` snapshot and invoice minus payments, so it matches Workiz's own screen, not its API), so no "per Workiz"
+wording on it. `money` is a list per currency: draw the first; empty list or null hides the Money tab.
+
+### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — **BUILT** `20c0b4bf` (`docs/previews/jobs-workiz-extras-layouts.html`)
+
+From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
+main): `data.workiz` per job: `fields` [{name, value}] in Workiz's names (71% of recent jobs), `files` [{name, url}]
+(photos, files, inspection-report PDFs; 18% of jobs, ~8 each) for anyone; with Jobs Financials only `currency`,
+`invoices`, `payments`, `estimates` (Workiz's own: Won, Declined, Pending, Archived, Unsent, Approved) and `timesheets`,
+plus the "Pricing" field. Beside the queue-31 money card. Desktop **1** tabs in the job panel (Job with Workiz's
+fields as facts under the status · Money: the card, then invoice and payments as a dated line, estimates, time on
+site · Photos & files: a grid, PDFs listed) (recommended); **2** one panel, folding sections with counts; **3** the
+highlights up top (chips, four photos, money with payments) and "See all from Workiz" as a page. Phone **4**
+(recommended) the same tabs; **5** folding sections; **6** highlights, then a page of the rest. All: Workiz records
+marked read only; no Financials, no Money anything.
+
+Build notes, measured by Jobs on a real attachment: st.sendajob.com serves photos and PDFs with no auth and no referrer
+block, but with no CORS headers, so on web use `Image.network(url, webHtmlElementStrategy: WebHtmlElementStrategy.prefer)`
+(an `<img>`, which needs none). Photos are full size (one was 1.19 MB) with no thumbnail variant: set
+`cacheWidth`/`cacheHeight` and build the grid lazily. PDFs open in a new tab.
+
+Built as drawn (`client/lib/screens/jobs/job_workiz.dart`, tabs in `job_detail_panel.dart`). The queue-31 money card
+moved into the Money tab, whose label carries the total. The photo grid builds every tile, so a job's ~8 photos all
+load when the tab opens (`ponytail:` note; a thumbnail proxy is the upgrade). Tabs only when there is more than the job
+to show; a job Workiz does not have keeps one page.
+
 ### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `8da551c1` (`docs/previews/reports-performance-dates-layouts.html`)
 
 From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /

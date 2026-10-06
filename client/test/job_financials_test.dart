@@ -145,11 +145,18 @@ void main() {
     expect(find.text('Chimney Sweep'), findsOneWidget, reason: 'the control');
   });
 
-  testWidgets('the job opens with its money first: paid, due, and when', (
+  // Was "the job opens with its money first". Queue 58 (Jose: "as
+  // recommended") moved the money into the job's Money tab, which names the
+  // total so it is still read before anything is opened.
+  testWidgets('the Money tab holds the money: paid, due, and when', (
     tester,
   ) async {
     await _open(tester, permissions: _money, detailMoney: _partial);
     await tester.tap(find.text('Chimney Sweep'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('job-money')), findsNothing);
+    await tester.tap(find.textContaining('Money · '));
     await tester.pumpAndSettle();
 
     final card = find.byKey(const Key('job-money'));
@@ -172,14 +179,6 @@ void main() {
     expect(
       tester.widget<Text>(find.byKey(const Key('job-money-when'))).data,
       startsWith('Due by'),
-    );
-
-    // First after the status: above the job's own first field.
-    expect(
-      tester.getTopLeft(card).dy,
-      lessThan(
-        tester.getTopLeft(find.widgetWithText(TextField, 'What is the job')).dy,
-      ),
     );
 
     // The lines fold under it.
@@ -205,6 +204,8 @@ void main() {
       },
     );
     await tester.tap(find.text('Chimney Sweep'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Money · '));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('job-money-credit')), findsOneWidget);

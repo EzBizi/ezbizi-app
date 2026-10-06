@@ -35,6 +35,36 @@ final class EmailPictureLoader
         return $this->remote->fetch($src);
     }
 
+    /**
+     * Several at once: remote pictures fetched in parallel, `cid:` ones one by
+     * one (they come from the mail service, and none of the production mail
+     * measured on 2026-10-06 used them).
+     *
+     * @param  array<array-key, string>  $srcs
+     * @return array<array-key, EmailPicture|null>  same keys; null = could not be loaded
+     */
+    public function loadMany(Mailbox $mailbox, string $messageId, array $srcs): array
+    {
+        $out = [];
+        $remote = [];
+
+        foreach ($srcs as $key => $src) {
+            if (! str_starts_with(strtolower($src), 'cid:')) {
+                $remote[$key] = $src;
+
+                continue;
+            }
+
+            try {
+                $out[$key] = $this->cid($mailbox, $messageId, substr($src, 4));
+            } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|GoogleWorkspaceRefused) {
+                $out[$key] = null;
+            }
+        }
+
+        return array_replace(array_map(fn () => null, $srcs), $out, $this->remote->fetchMany($remote));
+    }
+
     private function cid(Mailbox $mailbox, string $messageId, string $contentId): EmailPicture
     {
         $provider = $mailbox->providerEnum();

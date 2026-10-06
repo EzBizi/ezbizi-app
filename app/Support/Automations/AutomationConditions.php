@@ -44,27 +44,60 @@ final class AutomationConditions
      *
      * @return list<string> unique, in no meaningful order
      */
-    public static function literalsFor(string $triggerKey, string $field, string $organizationId): array
+    /**
+     * Does any active rule on this trigger use `{{$field}}` in one of its steps?
+     *
+     * The action-side twin of {@see literalsFor}: a step that writes the field
+     * into a notification, a message or an email is asking for it just as much
+     * as a condition that compares it. Matched with the same pattern
+     * ActionRunner::interpolate fills -- `{{ field }}`, spaces allowed, any case.
+     */
+    public static function actionsUse(string $triggerKey, string $field, string $organizationId): bool
     {
         if ($triggerKey === '' || $field === '' || $organizationId === '') {
-            return [];
+            return false;
         }
 
-        $trees = AutomationVersion::query()
+        $pattern = '/\{\{\s*'.preg_quote($field, '/').'\s*\}\}/i';
+
+        foreach (self::activeVersions($triggerKey, $organizationId)->pluck('actions') as $actions) {
+            if (preg_match($pattern, (string) json_encode($actions)) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The live version of every rule on this trigger that is switched on.
+     *
+     * A rule that is off, or that switched itself off after repeated failure,
+     * is not asking about anything. Reading on its behalf would make a disabled
+     * rule cost a body fetch on every message.
+     */
+    private static function activeVersions(string $triggerKey, string $organizationId): \Illuminate\Database\Eloquent\Builder
+    {
+        return AutomationVersion::query()
             ->withoutGlobalScopes()
             ->where('automation_versions.organization_id', $organizationId)
             ->whereIn('id', Automation::query()
                 ->withoutGlobalScopes()
                 ->where('organization_id', $organizationId)
                 ->where('trigger_key', $triggerKey)
-                // A rule that is off, or that switched itself off after repeated
-                // failure, is not asking about anything. Reading its words would
-                // make a disabled rule cost a body fetch on every message.
                 ->where('is_active', true)
                 ->whereNull('disabled_at')
                 ->whereNotNull('active_version_id')
-                ->select('active_version_id'))
-            ->pluck('conditions');
+                ->select('active_version_id'));
+    }
+
+    public static function literalsFor(string $triggerKey, string $field, string $organizationId): array
+    {
+        if ($triggerKey === '' || $field === '' || $organizationId === '') {
+            return [];
+        }
+
+        $trees = self::activeVersions($triggerKey, $organizationId)->pluck('conditions');
 
         $found = [];
 

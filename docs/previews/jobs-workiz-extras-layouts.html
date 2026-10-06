@@ -1,0 +1,442 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jobs · from Workiz</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every person, figure and file is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. The customer, the people, the figures and the files are invented;
+   the field names are Workiz's own kind of names. */
+.jl{width:330px;flex:0 0 auto;border-right:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;min-height:0}
+.jr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:9px 14px;border-bottom:1px solid var(--line2);font-size:12px}
+.jr b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jr span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jr.on{background:var(--pric)}
+.jp{flex:1;min-width:0;background:var(--paper);display:flex;flex-direction:column;min-height:0}
+.jph{padding:12px 16px 8px;border-bottom:1px solid var(--line)}
+.jph .t{font-size:16px;font-weight:800}
+.jph .s{font-size:11.5px;color:var(--muted)}
+.jpb{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.jpb > *{flex:0 0 auto}
+.ptabs{display:flex;gap:6px;padding:8px 16px 0;border-bottom:1px solid var(--line)}
+.ptab{padding:6px 12px 8px;font-size:12px;font-weight:700;color:var(--neu);border-bottom:3px solid transparent;white-space:nowrap}
+.ptab.on{color:var(--prid);border-color:var(--pri)}
+.ptab i{font-style:normal;font-weight:600;color:var(--muted);margin-left:4px}
+.wz{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:#fbfcfd}
+.wzh{display:flex;align-items:center;gap:8px}
+.wzh b{font-size:12.5px}
+.ro{font-size:10px;font-weight:700;color:var(--neu);background:var(--neuc);border-radius:999px;padding:1px 8px;margin-left:auto;white-space:nowrap}
+.facts2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+.facts2 div{min-width:0}
+.facts2 .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts2 .v{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ff{display:flex;flex-direction:column;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 10px;background:var(--paper)}
+.ff .k{font-size:9.5px;color:var(--muted)} .ff .v{font-size:12.5px}
+.money3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mbox{border:1px solid var(--line);border-radius:var(--r);padding:6px 10px;background:var(--paper)}
+.mbox .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.mbox .v{font-size:16px;font-weight:800}
+.bar{height:7px;border-radius:99px;background:#e3e9ec;overflow:hidden}.bar i{display:block;height:100%;background:var(--on)}
+.tl{display:flex;flex-direction:column}
+.tli{display:grid;grid-template-columns:62px 16px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:30px;font-size:12px}
+.tli .d{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.tli .dot{width:10px;height:10px;border-radius:50%;background:var(--pri);justify-self:center;position:relative}
+.tli .dot.ok{background:var(--on)} .tli .dot.cau{background:var(--late)}
+.tli .g{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tli .g span{color:var(--muted)}
+.tli .a{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lblr{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.lblr .c{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:700;color:var(--pri)}
+.thumbs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.th{aspect-ratio:1/1;border-radius:8px;background:linear-gradient(135deg,#c9d6dc,#9fb2bb);position:relative;overflow:hidden}
+.th:nth-child(3n){background:linear-gradient(135deg,#d9cbb9,#b29a80)}
+.th:nth-child(4n){background:linear-gradient(135deg,#b8c4b0,#8a9a7e)}
+.th span{position:absolute;left:4px;bottom:3px;font-size:9px;color:#fff;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.th.more{background:var(--neuc);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--neu);font-size:13px}
+.thumbs3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.doc{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;font-size:12px;background:var(--paper)}
+.doc .ic{width:24px;height:28px;border-radius:4px;background:var(--badc);color:var(--bad);font-size:8.5px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.doc span{color:var(--muted);font-size:11px;margin-left:auto}
+.sec{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.sech{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800}
+.sech .n{font-weight:700;color:var(--muted);font-size:11.5px}
+.sech .chev{margin-left:auto;color:var(--pri);font-size:12px}
+.chipsx{display:flex;gap:6px;flex-wrap:wrap}
+.fx{display:inline-flex;gap:5px;align-items:center;font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--paper);white-space:nowrap}
+.fx b{font-weight:800} .fx span{color:var(--muted)}
+.phstrip{display:flex;gap:6px}
+.phstrip .th{width:64px;flex:0 0 auto}
+.see{font-size:12px;font-weight:700;color:var(--pri)}
+.est{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;font-size:12px;min-height:28px}
+.est .a{font-weight:800}
+.lock{font-size:11px;color:var(--muted);border:1px dashed #b9c7cd;border-radius:var(--r);padding:6px 10px}
+</style>
+
+<div class="wrap">
+<h1>Jobs · what Workiz knows about a job</h1>
+<p class="sub">From Jobs: Workiz v2's own data is now on every job (Jose, 2026-10-06: <i>"take advantage of everything v2 has to offer"</i>). The job panel today shows Workiz's money as one card (queue 31), then the job's fields, lines, materials and inspections. These options are where the rest goes.</p>
+<p class="need"><b>Data:</b> all there now, read only. For anyone who can open a job: <b>Workiz's fields</b> in Workiz's own names (71% of recent jobs have some), and <b>photos and files</b>, including inspection-report PDFs (18% of jobs have them, about 8 each). With <b>Jobs Financials</b> only: <b>invoices</b> (total, due, tax, tip, dates), <b>payments</b> (date, amount, charge or refund, who collected), <b>Workiz's estimates</b> (with Workiz's own status: Won, Pending, Declined…), <b>timesheets</b> (rare), and the "Pricing" field. Without Financials none of these appear, not even as an empty space. These are Workiz's own records, not EzBizi Estimates or invoices, and every one says so.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>Tabs in the job panel: Job, Money, Photos &amp; files <span class="rec">Recommended</span></h2>
+<p class="cap">The panel gets three tabs, each with its count. <b>Job</b> is today's panel, with Workiz's fields as a two-column fact list right under the status: what the job <i>is</i> (System type, Real wood, Time frame) before anything to edit. <b>Money</b> (Financials only) is today's money card, then what makes it up: the invoice, the payments as a dated line with who collected each, Workiz's estimates with their status, and time on site. <b>Photos &amp; files</b> is a grid of photos with the PDFs listed under it; a photo opens large in place. <span class="why">Why: a job is already a long panel. Tabs keep each question one tap away (what is it? is it paid? what did they find?) instead of somewhere down one scroll.</span></p>
+<div class="win" style="height:720px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Jobs</div></div>
+  <div class="body3" style="display:flex;flex:1;min-height:0;border-top:1px solid var(--line)">
+   <div class="jl">
+    <div class="jr"><b>Chimney sweep</b><span>Oct 6</span><span>Morgan Ellis · J-10490</span><span class="pill p-info">Scheduled</span></div>
+    <div class="jr on"><b>Sweep and inspection</b><span>Oct 2</span><span>Riley Park · J-10482</span><span class="pill p-ok">Done</span></div>
+    <div class="jr"><b>Crown repair</b><span>Sep 30</span><span>Quinn Avery · J-10477</span><span class="pill p-ok">Done</span></div>
+    <div class="jr"><b>Dryer vent cleaning</b><span>Sep 29</span><span>Casey Moore · J-10471</span><span class="pill p-neu">Canceled</span></div>
+   </div>
+   <div class="jp">
+    <div class="jph"><div class="t">Sweep and inspection</div><div class="s">J-10482 · Workiz #48120 · Riley Park · Harbor Chimney</div></div>
+    <div class="ptabs"><span class="ptab on">Job</span><span class="ptab">Money<i>$412</i></span><span class="ptab">Photos &amp; files<i>8</i></span></div>
+    <div class="jpb">
+     <div class="chipsx"><span class="pill p-ok">Done</span></div>
+     <div class="wz">
+      <div class="wzh"><b>From Workiz</b><span class="ro">read only</span></div>
+      <div class="facts2">
+       <div><div class="k">System type</div><div class="v">Wood Burning</div></div>
+       <div><div class="k">Real wood</div><div class="v">Ceramic Logs</div></div>
+       <div><div class="k">Time frames</div><div class="v">Appointment Time: 8-11</div></div>
+       <div><div class="k">Chimney height</div><div class="v">2 story</div></div>
+       <div><div class="k">Lead source</div><div class="v">Google</div></div>
+       <div><div class="k">Pricing</div><div class="v">$299 Chimney Sweep</div></div>
+      </div>
+     </div>
+     <div class="ff"><span class="k">What is the job</span><span class="v">Sweep and inspection</span></div>
+     <div class="ff"><span class="k">Status</span><span class="v">Done</span></div>
+     <div class="ff"><span class="k">Scheduled for</span><span class="v">10/2/2026 8:00 AM</span></div>
+     <div class="tiny">Then the notes, the lines, materials and inspections, as today.</div>
+    </div>
+   </div>
+   <div class="jp" style="border-left:1px solid var(--line)">
+    <div class="jph"><div class="t">Sweep and inspection</div><div class="s">J-10482 · Workiz #48120 · Riley Park</div></div>
+    <div class="ptabs"><span class="ptab">Job</span><span class="ptab on">Money<i>$412</i></span><span class="ptab">Photos &amp; files<i>8</i></span></div>
+    <div class="jpb">
+     <div class="money3"><div class="mbox"><div class="k">Total</div><div class="v">$412.00</div></div><div class="mbox"><div class="k">Paid</div><div class="v" style="color:var(--ok)">$412.00</div></div><div class="mbox"><div class="k">Due</div><div class="v">$0.00</div></div></div>
+     <div class="bar"><i style="width:100%"></i></div>
+     <div class="lblr">Invoice and payments<span class="ro" style="margin-left:auto">from Workiz · read only</span></div>
+     <div class="tl">
+      <div class="tli"><span class="d">Oct 2</span><span class="dot"></span><span class="g">Invoice #3381 <span>· tax $23.00</span></span><span class="a">$412.00</span></div>
+      <div class="tli"><span class="d">Oct 2</span><span class="dot ok"></span><span class="g">Paid by card <span>· Sam Ortega</span></span><span class="a">$250.00</span></div>
+      <div class="tli"><span class="d">Oct 3</span><span class="dot ok"></span><span class="g">Paid by card <span>· office</span></span><span class="a">$162.00</span></div>
+     </div>
+     <div class="lblr">Workiz estimates</div>
+     <div class="est"><span>#E-2207 · Relining, Oct 2</span><span class="pill p-cau">Pending</span><span class="a">$1,850.00</span></div>
+     <div class="est"><span>#E-2190 · Sweep, Sep 28</span><span class="pill p-ok">Won</span><span class="a">$299.00</span></div>
+     <div class="lblr">Time on site</div>
+     <div class="est"><span>Sam Ortega · 8:05 – 9:40 AM</span><span class="tiny">1 h 35 m</span><span class="a">$62.00</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:8px">Drawn twice, the Job tab and the Money tab, so both show; the real panel shows one tab at a time. The third tab:</p>
+<div class="win" style="height:430px;width:620px">
+ <div class="jp">
+  <div class="jph"><div class="t">Sweep and inspection</div><div class="s">J-10482 · Workiz #48120 · Riley Park</div></div>
+  <div class="ptabs"><span class="ptab">Job</span><span class="ptab">Money<i>$412</i></span><span class="ptab on">Photos &amp; files<i>8</i></span></div>
+  <div class="jpb">
+   <div class="thumbs"><div class="th"><span>crown.jpg</span></div><div class="th"><span>firebox.jpg</span></div><div class="th"><span>flue-1.jpg</span></div><div class="th"><span>flue-2.jpg</span></div><div class="th"><span>damper.jpg</span></div><div class="th"><span>cap.jpg</span></div><div class="th"><span>roof.jpg</span></div></div>
+   <div class="doc"><span class="ic">PDF</span><b>Inspection Report.pdf</b><span>opens in a new tab ↗</span></div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>One panel, with sections that fold, each showing its count</h2>
+<p class="cap">The panel stays one column. Under today's fields come new sections, each with a header you can fold: <b>From Workiz · 6</b>, <b>Photos &amp; files · 8</b> (a row of photos with "+4"), <b>Invoice and payments</b>, <b>Workiz estimates · 2</b>, and <b>Time on site · 1</b>. A section with nothing in it is not drawn. <span class="why">Why: nothing is hidden behind a tab, and it is the smallest change to today's panel. The cost is a long scroll before the money and the photos.</span></p>
+<div class="win" style="height:640px;width:620px">
+ <div class="jp">
+  <div class="jph"><div class="t">Sweep and inspection</div><div class="s">J-10482 · Workiz #48120 · Riley Park</div></div>
+  <div class="jpb">
+   <div class="tiny">… status, money card, fields, lines, as today …</div>
+   <div class="sec"><div class="sech">From Workiz<span class="n">6</span><span class="ro">read only</span><span class="chev">▾</span></div>
+    <div class="facts2"><div><div class="k">System type</div><div class="v">Wood Burning</div></div><div><div class="k">Real wood</div><div class="v">Ceramic Logs</div></div><div><div class="k">Time frames</div><div class="v">Appointment Time: 8-11</div></div><div><div class="k">Chimney height</div><div class="v">2 story</div></div></div></div>
+   <div class="sec"><div class="sech">Photos &amp; files<span class="n">8</span><span class="chev">▾</span></div>
+    <div class="thumbs"><div class="th"><span>crown.jpg</span></div><div class="th"><span>firebox.jpg</span></div><div class="th"><span>flue-1.jpg</span></div><div class="th more">+5</div></div></div>
+   <div class="sec"><div class="sech">Invoice and payments<span class="n">#3381 · paid</span><span class="chev">▾</span></div>
+    <div class="tl"><div class="tli"><span class="d">Oct 2</span><span class="dot"></span><span class="g">Invoice #3381</span><span class="a">$412.00</span></div><div class="tli"><span class="d">Oct 2</span><span class="dot ok"></span><span class="g">Paid by card <span>· Sam Ortega</span></span><span class="a">$250.00</span></div><div class="tli"><span class="d">Oct 3</span><span class="dot ok"></span><span class="g">Paid by card</span><span class="a">$162.00</span></div></div></div>
+   <div class="sec"><div class="sech">Workiz estimates<span class="n">2</span><span class="chev">▸</span></div></div>
+   <div class="sec"><div class="sech">Time on site<span class="n">1</span><span class="chev">▸</span></div></div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>The highlights up top, everything else one tap away</h2>
+<p class="cap">Under the job's name: Workiz's fields as a line of chips, the first four photos, and the money card, which gains the dated payments under it and one line for estimates ("1 pending · $1,850"). <b>See all from Workiz</b> opens the rest as a page inside the panel, with a back arrow. <span class="why">Why: the panel opens on the facts that matter most. The cost is two places to look, and chips cut long values short.</span></p>
+<div class="win" style="height:560px;width:620px">
+ <div class="jp">
+  <div class="jph"><div class="t">Sweep and inspection</div><div class="s">J-10482 · Workiz #48120 · Riley Park</div></div>
+  <div class="jpb">
+   <div class="chipsx"><span class="pill p-ok">Done</span><span class="fx"><span>System</span><b>Wood Burning</b></span><span class="fx"><span>Real wood</span><b>Ceramic Logs</b></span><span class="fx"><span>Time</span><b>8-11</b></span><span class="fx"><b>+3</b></span></div>
+   <div class="phstrip"><div class="th"><span>crown</span></div><div class="th"><span>firebox</span></div><div class="th"><span>flue-1</span></div><div class="th more" style="width:64px">+5</div></div>
+   <div class="wz">
+    <div class="wzh"><b>Money</b><span class="pill p-ok">Paid</span><span class="ro">from Workiz · read only</span></div>
+    <div class="money3"><div class="mbox"><div class="k">Total</div><div class="v">$412.00</div></div><div class="mbox"><div class="k">Paid</div><div class="v" style="color:var(--ok)">$412.00</div></div><div class="mbox"><div class="k">Due</div><div class="v">$0.00</div></div></div>
+    <div class="tl"><div class="tli"><span class="d">Oct 2</span><span class="dot ok"></span><span class="g">Card <span>· Sam Ortega</span></span><span class="a">$250.00</span></div><div class="tli"><span class="d">Oct 3</span><span class="dot ok"></span><span class="g">Card</span><span class="a">$162.00</span></div></div>
+    <div class="tiny">Workiz estimates: <b class="ink">1 pending · $1,850.00</b>, 1 won</div>
+   </div>
+   <span class="see">See all from Workiz ›</span>
+   <div class="tiny">… then the fields to edit, lines, materials, inspections …</div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · The same tabs, under the job's name <span class="rec">Recommended</span></p>
+ <div class="phn"><div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Sweep and inspection</span></div>
+  <div class="ptabs" style="padding:6px 12px 0;background:var(--paper)"><span class="ptab">Job</span><span class="ptab">Money<i>$412</i></span><span class="ptab on">Photos<i>8</i></span></div>
+  <div class="pb">
+   <div class="thumbs thumbs3"><div class="th"><span>crown</span></div><div class="th"><span>firebox</span></div><div class="th"><span>flue-1</span></div><div class="th"><span>flue-2</span></div><div class="th"><span>damper</span></div><div class="th"><span>cap</span></div><div class="th"><span>roof</span></div></div>
+   <div class="doc"><span class="ic">PDF</span><b>Inspection Report.pdf</b><span>↗</span></div>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · Sections that fold, one long page</p>
+ <div class="phn"><div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Sweep and inspection</span></div>
+  <div class="pb">
+   <div class="sec" style="border-top:0"><div class="sech">From Workiz<span class="n">6</span><span class="chev">▾</span></div>
+    <div class="facts2"><div><div class="k">System type</div><div class="v">Wood Burning</div></div><div><div class="k">Real wood</div><div class="v">Ceramic Logs</div></div><div><div class="k">Time frames</div><div class="v">8-11</div></div><div><div class="k">Height</div><div class="v">2 story</div></div></div></div>
+   <div class="sec"><div class="sech">Photos &amp; files<span class="n">8</span><span class="chev">▾</span></div><div class="thumbs"><div class="th"></div><div class="th"></div><div class="th"></div><div class="th more">+5</div></div></div>
+   <div class="sec"><div class="sech">Invoice and payments<span class="n">paid</span><span class="chev">▸</span></div></div>
+   <div class="sec"><div class="sech">Workiz estimates<span class="n">2</span><span class="chev">▸</span></div></div>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · Highlights, then a page of the rest</p>
+ <div class="phn"><div class="st"></div>
+  <div class="bk"><span class="ar">←</span><span class="t">Sweep and inspection</span></div>
+  <div class="pb">
+   <div class="chipsx"><span class="pill p-ok">Done</span><span class="fx"><b>Wood Burning</b></span><span class="fx"><b>8-11</b></span><span class="fx"><b>+4</b></span></div>
+   <div class="phstrip"><div class="th"></div><div class="th"></div><div class="th"></div><div class="th more" style="width:64px">+5</div></div>
+   <div class="wz"><div class="wzh"><b>Money</b><span class="pill p-ok">Paid</span></div><div class="money3"><div class="mbox"><div class="k">Total</div><div class="v">$412</div></div><div class="mbox"><div class="k">Paid</div><div class="v">$412</div></div><div class="mbox"><div class="k">Due</div><div class="v">$0</div></div></div></div>
+   <span class="see">See all from Workiz ›</span>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:14px">Without Jobs Financials the Money tab (or section, or card) is simply not there, and the Pricing field is left out of Workiz's fields. Photos open large inside the app; a PDF opens in a new browser tab, since Workiz hosts it. Every Workiz record is marked read only, because Workiz is where A-1's invoices are kept.</p>
+</div>

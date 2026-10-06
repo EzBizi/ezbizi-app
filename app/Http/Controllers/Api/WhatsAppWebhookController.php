@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use App\Support\Social\WhatsAppCloud;
+use App\Support\Social\WhatsAppGroups;
 use App\Support\Social\WhatsAppStaffBot;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -42,7 +43,10 @@ use Throwable;
  */
 class WhatsAppWebhookController extends Controller
 {
-    public function __construct(private readonly WhatsAppStaffBot $bot) {}
+    public function __construct(
+        private readonly WhatsAppStaffBot $bot,
+        private readonly WhatsAppGroups $groups,
+    ) {}
 
     /**
      * GET — the subscription handshake.
@@ -192,6 +196,14 @@ class WhatsAppWebhookController extends Controller
              * Meta makes more likely - earns a retry, and the retry earns the
              * person a second copy of every answer.
              */
+            // A report held for them (WhatsAppGroups) goes as soon as they
+            // write; a "Show report" tap is answered by that and nothing else.
+            $flushed = $row->wasRecentlyCreated ? $this->flush($phoneNumberId, (string) $row->counterparty) : 0;
+
+            if ($flushed > 0 && ($message['type'] ?? null) === 'button') {
+                continue;
+            }
+
             if ($row->wasRecentlyCreated && $this->bot->handles($phoneNumberId)) {
                 $this->answer($row, $phoneNumberId, isset($picked['id']) ? (string) $picked['id'] : null);
             }
@@ -291,6 +303,22 @@ class WhatsAppWebhookController extends Controller
                 'inbound' => $inbound->getKey(),
                 'reason' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function flush(string $phoneNumberId, string $counterparty): int
+    {
+        $number = WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
+
+        try {
+            return $number === null ? 0 : $this->groups->flushPending($number, $counterparty);
+        } catch (Throwable $e) {
+            Log::warning('A held WhatsApp report could not be sent.', [
+                'phone_number_id' => $phoneNumberId,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return 0;
         }
     }
 

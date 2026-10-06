@@ -133,6 +133,18 @@ class WhatsAppStaffBotTest extends TestCase
     /** @param array<string, mixed> $message */
     private function inbound(string $phoneNumberId, array $message, string $wamid = 'wamid.IN1', string $from = '17867762666')
     {
+        // Every sender here has already answered WhatsAppIntake's first
+        // question, so these tests are about the Library answers (the question
+        // itself is WhatsAppIntakeTest's).
+        $org = DB::table('whatsapp_numbers')->where('phone_number_id', $phoneNumberId)->value('organization_id');
+
+        if ($org !== null && ! DB::table('whatsapp_contacts')->where(['phone_number_id' => $phoneNumberId, 'counterparty' => $from])->exists()) {
+            DB::table('whatsapp_contacts')->insert([
+                'id' => (string) Str::uuid(), 'organization_id' => $org, 'phone_number_id' => $phoneNumberId,
+                'counterparty' => $from, 'kind' => 'lead', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
         $json = (string) json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => $phoneNumberId],
             'messages' => [['id' => $wamid, 'from' => $from, ...$message]],

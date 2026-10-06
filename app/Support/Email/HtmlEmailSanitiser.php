@@ -206,28 +206,44 @@ final class HtmlEmailSanitiser
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        $images = $document->getElementsByTagName('img');
+        // Pictures are FETCHED TOGETHER, in batches, then written in. This loop
+        // used to fetch one, write it, fetch the next -- so an email with 24
+        // pictures waited for 24 downloads in a row inside the open. Measured
+        // on production 2026-10-06: median 318 ms, worst 2.5 s, while
+        // sanitising the HTML itself took 7 ms. See RemotePictureFetcher::fetchMany.
+        //
+        // The cap means the same as before: up to MAX_IMAGES pictures that
+        // actually LOADED. A batch is as many as are still wanted, so in the
+        // ordinary case it is one batch; when some fail, the next pictures in
+        // the email get their chance exactly as they did one at a time.
+        /** @var list<DOMElement> $pending */
+        $pending = iterator_to_array($document->getElementsByTagName('img'));
         $done = 0;
 
-        /** @var DOMElement $img */
-        foreach (iterator_to_array($images) as $img) {
-            if ($done >= self::MAX_IMAGES) {
-                $img->parentNode?->removeChild($img);
+        while ($pending !== [] && $done < self::MAX_IMAGES) {
+            $batch = array_splice($pending, 0, self::MAX_IMAGES - $done);
 
-                continue;
+            $data = $this->pictureDataUris(
+                array_map(fn (DOMElement $img) => trim($img->getAttribute('src')), $batch),
+                $mailbox,
+                $messageId,
+            );
+
+            foreach ($batch as $i => $img) {
+                if ($data[$i] === null) {
+                    $img->removeAttribute('src');
+
+                    continue;
+                }
+
+                $img->setAttribute('src', $data[$i]);
+                $done++;
             }
+        }
 
-            $src = $img->getAttribute('src');
-            $data = $this->pictureDataUri($src, $mailbox, $messageId);
-
-            if ($data === null) {
-                $img->removeAttribute('src');
-
-                continue;
-            }
-
-            $img->setAttribute('src', $data);
-            $done++;
+        // Past the cap: removed, as before.
+        foreach ($pending as $img) {
+            $img->parentNode?->removeChild($img);
         }
 
         $body = $document->getElementsByTagName('body')->item(0);
@@ -245,24 +261,35 @@ final class HtmlEmailSanitiser
         return $inner;
     }
 
-    private function pictureDataUri(string $src, Mailbox $mailbox, string $messageId): ?string
+    /**
+     * Data URIs for these sources, fetched together. Same keys; null = dropped.
+     *
+     * @param  array<int, string>  $srcs
+     * @return array<int, string|null>
+     */
+    private function pictureDataUris(array $srcs, Mailbox $mailbox, string $messageId): array
     {
-        $src = trim($src);
+        $out = [];
+        $fetch = [];
 
-        if ($src === '') {
-            return null;
+        foreach ($srcs as $i => $src) {
+            if ($src === '') {
+                $out[$i] = null;
+            } elseif (str_starts_with(strtolower($src), 'data:image/')) {
+                $out[$i] = $src;
+            } else {
+                $fetch[$i] = $src;
+            }
         }
 
-        if (str_starts_with(strtolower($src), 'data:image/')) {
-            return $src;
+        foreach ($this->pictures->loadMany($mailbox, $messageId, $fetch) as $i => $picture) {
+            $out[$i] = $picture === null
+                ? null
+                : 'data:'.$picture->mime.';base64,'.base64_encode($picture->bytes);
         }
 
-        try {
-            $picture = $this->pictures->loadSrc($mailbox, $messageId, $src);
-        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|GoogleWorkspaceRefused) {
-            return null;
-        }
+        ksort($out);
 
-        return 'data:'.$picture->mime.';base64,'.base64_encode($picture->bytes);
+        return $out;
     }
 }
