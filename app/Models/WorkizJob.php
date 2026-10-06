@@ -121,10 +121,16 @@ class WorkizJob extends Model implements StatesRetention
      */
     private static function keepWhatV2CannotSay(SocialConnection $connection, array $attributes): array
     {
-        $held = static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->exists();
+        $held = static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->first(['payload']);
 
-        if (! $held) {
+        if ($held === null) {
             return $attributes;
+        }
+
+        // Only a single read carries a job's files; a list read has no
+        // `Attachments` at all (WorkizV2::job), and must not empty them.
+        if (! array_key_exists('Attachments', $attributes['payload']) && isset($held->payload['Attachments'])) {
+            $attributes['payload']['Attachments'] = $held->payload['Attachments'];
         }
 
         unset($attributes['address'], $attributes['unit'], $attributes['city'], $attributes['state'],
