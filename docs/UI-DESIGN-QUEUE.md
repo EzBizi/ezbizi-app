@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — building (`docs/previews/jobs-workiz-extras-layouts.html`)
+### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — **BUILT** `20c0b4bf` (`docs/previews/jobs-workiz-extras-layouts.html`)
 
 From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
 main): `data.workiz` per job: `fields` [{name, value}] in Workiz's names (71% of recent jobs), `files` [{name, url}]
@@ -2978,6 +2978,11 @@ Build notes, measured by Jobs on a real attachment: st.sendajob.com serves photo
 block, but with no CORS headers, so on web use `Image.network(url, webHtmlElementStrategy: WebHtmlElementStrategy.prefer)`
 (an `<img>`, which needs none). Photos are full size (one was 1.19 MB) with no thumbnail variant: set
 `cacheWidth`/`cacheHeight` and build the grid lazily. PDFs open in a new tab.
+
+Built as drawn (`client/lib/screens/jobs/job_workiz.dart`, tabs in `job_detail_panel.dart`). The queue-31 money card
+moved into the Money tab, whose label carries the total. The photo grid builds every tile, so a job's ~8 photos all
+load when the tab opens (`ponytail:` note; a thumbnail proxy is the upgrade). Tabs only when there is more than the job
+to show; a job Workiz does not have keeps one page.
 
 ### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `8da551c1` (`docs/previews/reports-performance-dates-layouts.html`)
 
