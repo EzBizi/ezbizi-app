@@ -2961,6 +2961,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 56 · Inspection · the Builder, made readable — **out for decision** (`docs/previews/inspection-builder-layouts.html`)
+
+Jose 2026-10-06: *"i think the UI for the builder is pretty much extremely hard to understand and use, it makes
+no sense whatsoever."* Measured causes: a picked question's settings open under the whole list (42 rows down on
+The system); screens and questions are two unrelated lists; types and conditions in code words (`choice`,
+`system_type`); what an answer reveals (a failed finding's photo, what is wrong, recommended work) is invisible
+and uneditable; a screen's own condition (Exterior only for Level 2) cannot be set; the Flow reads
+`screen['title']` where screens are named by `name`, so it says "Screen 1–4"; Save and Publish sit at the
+bottom. Data: all there today (`visible_if` on screens and fields, option `variant` and `fields`, `print`,
+`code_id`, `bind`, versions); one new flag would say whether the draft differs from the published version.
+Desktop **1** the form as it will look, each question opened where it stands, live phone beside (recommended);
+**2** an outline of the whole form, the chosen part edited beside it; **3** a table per screen. Phone **4** a
+screen's questions, one opened in place (recommended); **5** the outline; **6** the form with a pencil per
+question. All: changes save as you go, Publish in the top bar, settings in a side panel, drag to reorder.
+
 ### 55 · Marketing · QR Codes (dynamic codes for the vehicles) — **Jose: "Go ahead with ur recommendations" (relayed by Marketing) — 1 and 4** — **BUILT** `277cf4fd` (`docs/previews/marketing-qr-codes-layouts.html`)
 
 From Marketing (`local_067b17d7…`), Jose 2026-10-05: a QR code printed for good on the company vehicles, *"1
