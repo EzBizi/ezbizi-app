@@ -14,20 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0368',
-      date: '6 Oct 2026',
-      items: [
-        'Onboarding: each pay term can be turned off on its own, and only its lines leave the contract. Turning off Pay basis keeps the pay lines that were answered.',
-        'Onboarding: a "TBD" button on the employer\'s terms prints "To be determined" in the contract.',
-        'Onboarding: compensation method has quick picks, and short choices such as pay basis show their options as buttons.',
-        'Onboarding: "1 answer not saved" no longer appears after everything was saved. It blocked signing until the form was reopened.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0367',
       date: '6 Oct 2026',
       items: [
         'Monitoring Files: opening a computer now shows its drives instead of "This could not be read".',
+        'Onboarding: each pay term can be turned off on its own, and only its lines leave the contract. Turning off Pay basis keeps the pay lines that were answered.',
+        'Onboarding: a "TBD" button on the employer\'s terms prints "To be determined" in the contract.',
+        'Onboarding: compensation method has quick picks, and short choices such as pay basis show their options as buttons.',
+        'Onboarding: "1 answer not saved" no longer appears after everything was saved. It blocked signing until the form was reopened.',
       ],
     ),
     VersionRelease(
