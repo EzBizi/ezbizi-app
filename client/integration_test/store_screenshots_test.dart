@@ -258,7 +258,11 @@ void main() {
           // the dashboard card behind it, and .first tapped that: the frame
           // showed the open drawer, and 'Jobs' opened Scheduling.
           final menu = find.byType(Drawer);
-          final item = find.descendant(of: menu, matching: find.text(label));
+          // A tablet is wide enough for the sidebar and has no drawer; there
+          // the label is matched anywhere, as before.
+          final item = menu.evaluate().isEmpty
+              ? find.text(label)
+              : find.descendant(of: menu, matching: find.text(label));
           final list = find.descendant(of: menu, matching: find.byType(Scrollable));
           if (item.evaluate().isEmpty && list.evaluate().isNotEmpty) {
             // The drawer list is lazy: Reviews and Reports are not built

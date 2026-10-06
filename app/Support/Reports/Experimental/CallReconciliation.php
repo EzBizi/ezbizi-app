@@ -62,6 +62,11 @@ final class CallReconciliation
     public const ALIASES = [
         // Jose, 2026-09-14, asked whether these are the same person: "YES".
         'Adeline Pierre Louis-Aghaji' => 'Adeline Pierrelouis',
+
+        // Jose, 2026-10-06, asked whether each pair is one person: "Yes, all three".
+        'Chevel Richards' => 'Chevel Richards Turner',
+        'Hyanne Faelnar' => 'Hyanne Kylla Faelnar',
+        'Danika Kaye' => 'Danika Kaye Navarroza',
     ];
 
     private function canonical(?string $name): ?string

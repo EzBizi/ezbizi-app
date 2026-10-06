@@ -38,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // framework's priority sort happens to place it.
             'two-factor'   => App\Http\Middleware\RequireTwoFactorEnrolment::class,
             'idle'         => App\Http\Middleware\SlideIdleWindow::class,
+            'api-key'      => App\Http\Middleware\EnforceApiKeyAccess::class,
 
             // The control plane (§4.2) — deliberately not 'tenant'.
             'staff'        => App\Http\Middleware\StaffOnly::class,

@@ -1,0 +1,296 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Your account · API keys</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name and every key is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:30px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code,.mono{font:11.5px/1.5 ui-monospace,Consolas,monospace}
+code{background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:700px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.page{flex:1;min-width:0;overflow:hidden;padding:20px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:300px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0;flex:0 0 auto}
+.card.dim{opacity:.55}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.row{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:44px;border-top:1px solid var(--line2);font-size:12.5px}
+.row:first-of-type{border-top:0}
+.row .g{min-width:0;line-height:1.3}
+.row .g b{display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .g span{display:block;font-size:11px;color:var(--muted)}
+.ic{color:var(--neu);font-size:15px;text-align:center}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.fld .in{height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 10px;display:flex;align-items:center;background:var(--paper);font-size:12.5px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.choice{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;gap:8px;align-items:flex-start;background:var(--paper);font-size:12px;line-height:1.35}
+.choice.on{border-color:var(--pri);background:var(--pric)}
+.choice .rd{width:14px;height:14px;border-radius:50%;border:2px solid #7f9099;flex:0 0 auto;margin-top:1px}
+.choice.on .rd{border-color:var(--pri);box-shadow:inset 0 0 0 3px #fff;background:var(--pri)}
+.choice b{display:block;font-size:12.5px}
+.choice span{color:var(--muted);font-size:11.5px}
+.once{background:var(--cauc);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:7px;color:var(--cau)}
+.once .h{font-weight:800;font-size:12.5px;display:flex;gap:6px;align-items:center}
+.once .k{display:flex;gap:8px;align-items:center}
+.once .box{flex:1;min-width:0;background:var(--paper);border:1px solid #e6cf9c;border-radius:8px;padding:5px 9px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.once .lbl{font-size:11px;font-weight:700;color:var(--cau)}
+.confirm{background:var(--badc);border-radius:var(--r);padding:6px 8px 6px 12px;display:flex;align-items:center;gap:8px;color:var(--bad);font-size:12px}
+.confirm .sp{flex:1}
+.sp{flex:1}
+.steps{display:flex;flex-direction:column;gap:10px}
+.step{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start}
+.step .no{width:24px;height:24px;border-radius:50%;background:var(--pric);color:var(--prid);font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+.step.done .no{background:var(--okc);color:var(--ok)}
+.step .bd{display:flex;flex-direction:column;gap:6px;min-width:0}
+.step .bd b{font-size:12.5px}
+/* the side panel */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .ph{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .ph b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+/* two states side by side */
+.pair{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.state{display:flex;flex-direction:column;gap:6px}
+.state .lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.frame{width:592px;background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;padding:14px;box-shadow:0 6px 22px rgba(6,8,8,.06)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .lab{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.grp{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 4px 0}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r)}
+.li{display:flex;align-items:center;gap:12px;padding:0 12px;height:48px;border-top:1px solid var(--line2);font-size:13px}
+.li:first-child{border-top:0}
+.li .v{margin-left:auto;color:var(--muted);font-size:12px}
+.li.on{background:var(--pric)}
+.phn .choices{grid-template-columns:1fr}
+</style>
+<div class="wrap">
+
+<h1>Your account · API keys</h1>
+<p class="sub">From the MCP / API session, for Jose's ask of 2026-10-06: <i>"build the MCP and API so AIs can manage operations natively"</i>. An API key lets an AI (Claude, for one) or a script work in EzBizi <b>as you</b>, with your permissions and nothing more. You name the key, choose <b>Read only</b> or <b>Can make changes</b>, copy it once, and can revoke it at any time.</p>
+<p class="need"><b>Data:</b> <code>GET /me/api-keys</code> lists them (name, access, last used, made), <code>POST</code> makes one and returns the key <b>once</b>, since it can never be read back, and <code>DELETE</code> revokes it. The server is on the MCP session's branch and not on main yet. Keys stop being listed under "Where you are signed in". <b>In every option:</b> the key is shown on the page until you say you have copied it, so no stray click can lose it. Copy buttons for the key and for the Claude Code setup line. Revoking is confirmed in place, never in a dialog. The safer choice, Read only, comes selected.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>A card under "Where you are signed in": make, copy and revoke in the card <span class="rec">Recommended</span></h2>
+<p class="cap">The keys are listed like the sign-ins above them. <b>New API key</b> opens a short form in the card: a name and two side-by-side choices. Once it's made, an amber box at the top of the card holds the key and the setup line, each with Copy, until you press <b>Done</b>. <b>Why:</b> everything happens where the list is, there is no layer to dismiss by accident while the key is showing, and the page looks like the rest of Your account.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div><div class="t">Your account</div><div class="tiny">Yours, not the organization's. What an administrator controls is in Settings.</div></div>
+   <div class="cols">
+    <div class="main">
+     <div class="card dim"><h3>Where you are signed in</h3><div class="row"><span class="ic">💻</span><div class="g"><b>Chrome on Windows <span class="pill p-neu">This one</span></b><span>Just now</span></div><span></span></div></div>
+     <div class="card">
+      <h3>API keys <span class="sp"></span><span class="btn f sm">+ New API key</span></h3>
+      <p class="lead">Let an AI like Claude, or a script, work in EzBizi as you, with your permissions and nothing more.</p>
+      <div class="once">
+       <div class="h">⚠ Copy “Claude on my laptop” now. It will not be shown again.</div>
+       <div class="k"><div class="box mono">17|nQ4v8Lr2Xp0sTe6Wb1yKc5Hd3Jm7Gf9Aa2Zx</div><span class="btn sm">Copy key</span></div>
+       <div class="lbl">To connect Claude Code, paste this into a terminal:</div>
+       <div class="k"><div class="box mono">claude mcp add --transport http ezbizi https://app.ezbizi.com/api/v1/mcp --header "Authorization: Bearer 17|nQ4v…"</div><span class="btn sm">Copy</span></div>
+       <div style="display:flex"><span class="sp"></span><span class="btn f sm">Done, I've copied it</span></div>
+      </div>
+      <div>
+       <div class="row"><span class="ic">🔑</span><div class="g"><b>Claude on my laptop <span class="pill p-cau">Can make changes</span></b><span>Never used · made today</span></div><span class="btn t sm">Revoke</span></div>
+       <div class="row"><span class="ic">🔑</span><div class="g"><b>Weekly numbers script <span class="pill p-neu">Read only</span></b><span>Last used 2 h ago · made Oct 2</span></div><span class="btn t sm">Revoke</span></div>
+      </div>
+     </div>
+    </div>
+    <div class="side">
+     <div class="card dim"><h3>Role and access</h3><div class="tiny">Administrator · Harbor Group</div></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="cap" style="margin-top:12px"><b>Making one, and revoking one</b>, in the same card:</p>
+<div class="pair">
+ <div class="state"><span class="lab">New API key</span>
+  <div class="frame"><div class="card">
+   <h3>API keys</h3>
+   <div class="fld"><label>What is it for?</label><div class="in">Claude on my laptop</div></div>
+   <div class="choices">
+    <div class="choice on"><span class="rd"></span><div><b>Read only</b><span>Looks things up and never changes anything</span></div></div>
+    <div class="choice"><span class="rd"></span><div><b>Can make changes</b><span>Creates, edits and deletes, as you can</span></div></div>
+   </div>
+   <div style="display:flex;gap:8px"><span class="btn f">Make the key</span><span class="btn t">Cancel</span></div>
+  </div></div>
+ </div>
+ <div class="state"><span class="lab">Revoke, confirmed in place</span>
+  <div class="frame"><div class="card">
+   <h3>API keys</h3>
+   <div class="confirm">Revoke “Weekly numbers script”? Anything using it stops at once.<span class="sp"></span><span class="btn bad sm">Revoke</span><span class="btn t sm" style="color:var(--bad)">Keep</span></div>
+   <div class="row"><span class="ic">🔑</span><div class="g"><b>Claude on my laptop <span class="pill p-cau">Can make changes</span></b><span>Last used 4 min ago · made today</span></div><span class="btn t sm">Revoke</span></div>
+  </div></div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>Made in a side panel, and the key waits on the page</h2>
+<p class="cap"><b>New API key</b> opens a side panel with the name and the two choices. <b>Make the key</b> closes the panel, and the key appears in the same amber box at the top of the card. <b>Why:</b> the card stays a plain list and the form is out of the way. The panel only collects the name, so dismissing it loses nothing.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div><div class="t">Your account</div><div class="tiny">Yours, not the organization's. What an administrator controls is in Settings.</div></div>
+   <div class="cols">
+    <div class="main">
+     <div class="card dim"><h3>Where you are signed in</h3><div class="row"><span class="ic">💻</span><div class="g"><b>Chrome on Windows <span class="pill p-neu">This one</span></b><span>Just now</span></div><span></span></div></div>
+     <div class="card">
+      <h3>API keys <span class="sp"></span><span class="btn f sm">+ New API key</span></h3>
+      <div class="row"><span class="ic">🔑</span><div class="g"><b>Weekly numbers script <span class="pill p-neu">Read only</span></b><span>Last used 2 h ago · made Oct 2</span></div><span class="btn t sm">Revoke</span></div>
+     </div>
+    </div>
+    <div class="side"><div class="card dim"><h3>Role and access</h3><div class="tiny">Administrator · Harbor Group</div></div></div>
+   </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="panel">
+   <div class="ph"><b>New API key</b><span class="sp"></span><span class="muted">✕</span></div>
+   <div class="pbd">
+    <p class="tiny" style="margin:0">It works in EzBizi as you: your permissions, your branches, nothing more. It never expires; revoke it when you're done with it.</p>
+    <div class="fld"><label>What is it for?</label><div class="in">Claude on my laptop</div></div>
+    <div class="choices" style="grid-template-columns:1fr">
+     <div class="choice on"><span class="rd"></span><div><b>Read only</b><span>Looks things up and never changes anything</span></div></div>
+     <div class="choice"><span class="rd"></span><div><b>Can make changes</b><span>Creates, edits and deletes, as you can</span></div></div>
+    </div>
+   </div>
+   <div class="pf"><span class="btn t">Cancel</span><span class="btn f">Make the key</span></div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>A "Connect an AI" card that walks through it in three steps</h2>
+<p class="cap">The card is the instructions: <b>1</b> name it and choose its access, <b>2</b> copy the key, <b>3</b> paste the setup line into Claude Code. The keys you already have are listed under the steps. <b>Why:</b> someone who has never connected an AI needs no other help. The cost is a taller card that someone with keys already has to scroll past.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div><div class="t">Your account</div><div class="tiny">Yours, not the organization's. What an administrator controls is in Settings.</div></div>
+   <div class="cols">
+    <div class="main">
+     <div class="card">
+      <h3>Connect an AI</h3>
+      <p class="lead">An API key lets Claude, or a script, work in EzBizi as you, with your permissions and nothing more.</p>
+      <div class="steps">
+       <div class="step done"><span class="no">✓</span><div class="bd"><b>Name it and choose what it may do</b><span class="tiny">Claude on my laptop · Can make changes</span></div></div>
+       <div class="step"><span class="no">2</span><div class="bd"><b>Copy the key. It will not be shown again.</b>
+        <div class="once" style="padding:8px 10px"><div class="k"><div class="box mono">17|nQ4v8Lr2Xp0sTe6Wb1yKc5Hd3Jm7Gf9Aa2Zx</div><span class="btn sm">Copy key</span></div></div></div></div>
+       <div class="step"><span class="no">3</span><div class="bd"><b>Paste this into a terminal to connect Claude Code</b>
+        <div class="once" style="padding:8px 10px;background:var(--neuc);color:var(--neu)"><div class="k"><div class="box mono">claude mcp add --transport http ezbizi https://app.ezbizi.com/api/v1/mcp --header "Authorization: Bearer 17|nQ4v…"</div><span class="btn sm">Copy</span></div></div>
+        <div><span class="btn f sm">Done</span></div></div></div>
+      </div>
+      <div class="tiny b" style="margin-top:6px">YOUR KEYS</div>
+      <div class="row"><span class="ic">🔑</span><div class="g"><b>Weekly numbers script <span class="pill p-neu">Read only</span></b><span>Last used 2 h ago · made Oct 2</span></div><span class="btn t sm">Revoke</span></div>
+     </div>
+    </div>
+    <div class="side"><div class="card dim"><h3>Role and access</h3><div class="tiny">Administrator · Harbor Group</div></div></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<p class="cap">Your account on a phone is rows, each opening its own screen. An <b>API keys</b> row joins the "Signed in" group, showing how many keys there are.</p>
+<div class="phones">
+ <div class="pcol"><span class="lab">4 · The row opens the same card <span class="rec">Recommended</span></span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>←</span><span class="t">API keys</span></div>
+   <div class="pb">
+    <div class="card">
+     <p class="lead">Let an AI like Claude, or a script, work in EzBizi as you, with your permissions and nothing more.</p>
+     <div class="once">
+      <div class="h">⚠ Copy it now. It will not be shown again.</div>
+      <div class="box mono" style="white-space:normal;word-break:break-all">17|nQ4v8Lr2Xp0sTe6Wb1yKc5Hd3Jm7Gf9Aa2Zx</div>
+      <div style="display:flex;gap:8px"><span class="btn sm">Copy key</span><span class="btn sm">Copy setup line</span></div>
+      <div style="display:flex"><span class="sp"></span><span class="btn f sm">Done, I've copied it</span></div>
+     </div>
+     <div class="row"><span class="ic">🔑</span><div class="g"><b>Claude on my laptop</b><span><span class="pill p-cau">Can make changes</span> Never used</span></div><span class="btn t sm">Revoke</span></div>
+     <div class="row"><span class="ic">🔑</span><div class="g"><b>Weekly numbers script</b><span><span class="pill p-neu">Read only</span> 2 h ago</span></div><span class="btn t sm">Revoke</span></div>
+     <span class="btn f">+ New API key</span>
+    </div>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">5 · A list, then a screen per step</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>←</span><span class="t">New API key</span></div>
+   <div class="pb">
+    <div class="fld"><label>What is it for?</label><div class="in">Claude on my laptop</div></div>
+    <div class="choices">
+     <div class="choice on"><span class="rd"></span><div><b>Read only</b><span>Looks things up and never changes anything</span></div></div>
+     <div class="choice"><span class="rd"></span><div><b>Can make changes</b><span>Creates, edits and deletes, as you can</span></div></div>
+    </div>
+    <span class="btn f">Make the key</span>
+    <p class="tiny" style="margin:0">Next screen: the key and the setup line, each with Copy, and Done.</p>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">6 · The three steps</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>←</span><span class="t">Connect an AI</span></div>
+   <div class="pb">
+    <div class="steps">
+     <div class="step done"><span class="no">✓</span><div class="bd"><b>Name it, choose its access</b><span class="tiny">Claude on my laptop · Read only</span></div></div>
+     <div class="step"><span class="no">2</span><div class="bd"><b>Copy the key</b><div class="once" style="padding:8px"><div class="box mono" style="white-space:normal;word-break:break-all">17|nQ4v8Lr2Xp0sTe6Wb1yKc5Hd3Jm7Gf9Aa2Zx</div><span class="btn sm">Copy key</span></div></div></div>
+     <div class="step"><span class="no">3</span><div class="bd"><b>Connect Claude Code</b><span class="btn sm">Copy setup line</span></div></div>
+    </div>
+    <div class="grp">Your keys</div>
+    <div class="lst"><div class="li">🔑 Weekly numbers script<span class="v">Read only</span></div></div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="cap" style="margin-top:14px">The "Signed in" group on the account screen, with the new row: <b>Where you are signed in · 3</b> and <b>API keys · 2</b>.</p>
+</div>

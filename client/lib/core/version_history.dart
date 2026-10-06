@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0376',
+      date: '6 Oct 2026',
+      items: [
+        'Reports › Performance has three tabs. Overview: the figures (tap one to see its calls), with Not booked and Missed calls side by side. People: the table. Calls: every call, filtered by Missed, Existing, Not booked or New, each showing the first words said.',
+        'Reports › Performance: the Workiz accounts moved behind a Sources button, and an account that did not answer shows as one amber line at the top. Calls over several days show their day.',
+        'Email › Settings: each inbox has a Notify about new emails switch. It is the same as the New email automation, so changing one changes the other.',
+        'Customers: Notes from Workiz says plainly when a branch is not linked to Workiz yet, instead of showing an error with Try again.',
+        'HR: the twelve-month chart on the HR dashboard fits narrow screens and iPads.',
+        'Performance report: three dispatchers whose names differ between RingCentral and Workiz are now matched.',
+        'Inspections: a finished inspection\'s report is linked on its Workiz job.',
+        'Workiz: Massachusetts bookings can be credited to who booked them.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0375',
       date: '6 Oct 2026',
       items: [

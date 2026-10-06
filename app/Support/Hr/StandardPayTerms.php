@@ -27,7 +27,10 @@ final class StandardPayTerms
         'commission_pct', 'commission_stages', 'raise_amount', 'raise_period',
     ];
 
-    /** Retired: the choice between hourly and salary is now which lines are on. */
+    /**
+     * Retired, not removed: the choice between hourly and salary is now which
+     * lines are on, and its answers on earlier onboardings stay readable.
+     */
     public const RETIRED = ['pay_basis'];
 
     private const PAY_BLOCK = <<<'TXT'
@@ -93,7 +96,10 @@ TXT;
         }
         $kept = array_values(array_filter($subsections, fn ($s) => ! preg_match(self::REPLACED, $s['title'])));
 
-        $out = [...$intro, self::PAY_BLOCK];
+        // The heredoc is in this file's line endings, which a Windows checkout
+        // makes CRLF; bodies are compared with LF, so a second run would never
+        // match (MCP / API, 2026-10-07).
+        $out = [...$intro, str_replace("\r\n", "\n", self::PAY_BLOCK)];
         foreach ($kept as $i => $s) {
             $out[] = '('.chr(ord('b') + $i).') '.$s['title'];
             array_push($out, ...$s['paragraphs']);
@@ -110,7 +116,8 @@ TXT;
      * The pay questions in form order: a contract's own definition where it
      * has one (its label stays), the library's where not; each required so it
      * is answered, marked "To be determined" or turned off, and shown
-     * whatever else is chosen. The pay-basis choice goes.
+     * whatever else is chosen. The pay-basis choice is retired where a
+     * contract had it: kept, never asked again.
      *
      * @param  list<array<string, mixed>>  $fields
      * @return list<array<string, mixed>>
@@ -131,7 +138,17 @@ TXT;
             $others[] = $field;
         }
 
+        // Retired, never dropped: answers are stored against its key, and the
+        // contract guard refuses a version that loses one (desk, 2026-10-06,
+        // on the ten base contracts).
         $pay = [];
+        foreach (self::RETIRED as $key) {
+            if (isset($own[$key])) {
+                $field = array_merge($own[$key], ['required' => false, 'retired' => true]);
+                unset($field['shown_when']);
+                $pay[] = $field;
+            }
+        }
         foreach (self::KEYS as $key) {
             $field = $own[$key] ?? FieldLibrary::definition($key);
             unset($field['shown_when']);
