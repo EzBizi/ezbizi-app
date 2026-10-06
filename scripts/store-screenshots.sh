@@ -89,7 +89,9 @@ if [ "${1:-}" = "--remote" ]; then
     xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already booted is fine
     # A fresh install every run. "Keep me signed in" survives on the
     # simulator, and the next run opened signed in: no form, no frames.
+    # The token is in the keychain, which an uninstall leaves behind.
     xcrun simctl uninstall "$DEVICE" com.ezbizi.app 2>/dev/null || true
+    xcrun simctl keychain "$DEVICE" reset
     export SHOT_DIR="$SET"
   else
     # The debug app is sandboxed, so the test writes into its container.

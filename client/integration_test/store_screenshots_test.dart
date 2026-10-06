@@ -75,6 +75,9 @@ void main() {
     // fails a test that leaves onError changed.
     final testOnError = FlutterError.onError;
     FlutterError.onError = (details) {
+      // The harness's own expect() failures arrive here too. Swallowing
+      // them left the driver waiting for a result that never came.
+      if (details.exception is TestFailure) return testOnError?.call(details);
       // ignore: avoid_print
       print('  app error, run continues: ${details.exceptionAsString().split('\n').first}');
     };
