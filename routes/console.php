@@ -156,6 +156,13 @@ Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 
 /*
+ * Invoices, payments, estimates, time off, events, timesheets, custom fields
+ * and the price book (v2, 2026-10-06). Every ten minutes: each run reads only
+ * what changed, about eight calls a branch, well under the key's burst limit.
+ */
+Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+
+/*
  * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
  * as well, as well as leads". It was hourly, to spare the Workiz quota the job
  * sweep shares. Measured by the Workiz session since 0.0.0268: one 429 in
