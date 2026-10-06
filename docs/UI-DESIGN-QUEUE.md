@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 63 · Marketing · QR code stats — **waiting for Jose** (sent 2026-10-06; 10-minute rule) (`docs/previews/marketing-qr-stats-layouts.html`)
+### 63 · Marketing · QR code stats — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — building (`docs/previews/marketing-qr-stats-layouts.html`)
 
 Jose 2026-10-06, via the desk: *"Also wonder if we can add stats to each QR Code to see how many people used it"*.
 Marketing adds scans and unique scanners per day; payload proposed to Marketing (each code: `scans_30d`, `people_30d`,
@@ -2975,6 +2975,11 @@ card, Stats in a side panel (30/90 days, figures, bar chart with people inside s
 (recommended); **2** one line on the card, the numbers only in the panel; **3** every code compared in a table above the
 cards. Phone **4** (recommended) the strip on the card, Stats as its own screen; **5** one line; **6** the comparison
 first. Goes with the Deactivate / Reactivate card change (Jose, same day).
+
+Build notes from Marketing: a scanner is one phone or browser per day (IP + user agent hashed with a salt thrown away
+daily), so a period's `people` is the SUM of the daily figures, never distinct across days. Say "scanners" / "daily
+scanners", never "people". `daily_30d` ends today in the viewer's timezone; shade the paused stretch from
+`deactivated_at` only (no pause history).
 
 ### 62 · Your account · API keys — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — **BUILT** `1d88b9f0` (`docs/previews/account-api-keys-layouts.html`)
 
