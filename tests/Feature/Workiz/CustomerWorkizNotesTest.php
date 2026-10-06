@@ -5,7 +5,9 @@ namespace Tests\Feature\Workiz;
 use App\Models\Customer;
 use App\Models\SocialConnection;
 use App\Models\WorkizClient;
+use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
+use App\Support\Workiz\WorkizV2;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -127,6 +129,24 @@ class CustomerWorkizNotesTest extends TestCase
 
             return ($q['dateProperty'] ?? null) === 'created' && ($q['dateOperator'] ?? null) === 'between' && $q['date'] === '2014-01-01_2014-12-31';
         });
+    }
+
+    /**
+     * v2's list leaves out some clients it holds (Connecticut 5839,
+     * 2026-10-06): such a client takes the id its mirrored job carries, and a
+     * client with no job stays unmatched.
+     */
+    public function test_a_client_the_list_leaves_out_takes_the_id_its_job_carries(): void
+    {
+        $this->client(1008, null);
+        $this->client(3909, null);
+        $this->inTenant($this->tenant['org'], fn () => WorkizJob::land(SocialConnection::query()->sole(), WorkizV2::job(require base_path('tests/Fixtures/workiz/v2_job.php'))));
+        Http::fake(['api.workiz.com/crm/api/v2/clients*' => Http::response(['hasMore' => false, 'data' => []])]);
+
+        $this->artisan('ezbizi:sync-workiz-client-ids')->assertSuccessful();
+
+        $this->inTenant($this->tenant['org'], fn () => $this->assertSame(['1008' => 'CL-xzA4NAKqzXW76XQp', '3909' => null],
+            WorkizClient::query()->orderBy('client_id')->pluck('v2_id', 'client_id')->mapWithKeys(fn ($v, $k) => [(string) $k => $v])->all()));
     }
 
     /** v2 lists clients newest number first: a run stops at the first page with nothing new; --full reads on. */
