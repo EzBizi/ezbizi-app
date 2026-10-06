@@ -72,6 +72,17 @@ void SaveWindowPlacement(HWND window) {
   if (window == nullptr || !IsWindowVisible(window) || IsIconic(window)) {
     return;
   }
+  // Never while the Clock In lock screen holds the window (2026-10-06, Jose:
+  // the app kept forgetting its size). clock_window_io.dart makes it
+  // unresizable, always-on-top and full screen; saved then, the placement was
+  // the whole monitor, and a restart while locked (an overnight update, a
+  // reboot before clocking in) brought it back monitor-sized after clock-in.
+  // A window the person sized always has a resize frame and is never topmost.
+  const LONG_PTR style = GetWindowLongPtr(window, GWL_STYLE);
+  const LONG_PTR ex_style = GetWindowLongPtr(window, GWL_EXSTYLE);
+  if (!(style & WS_THICKFRAME) || (ex_style & WS_EX_TOPMOST)) {
+    return;
+  }
   WINDOWPLACEMENT placement = {};
   placement.length = sizeof(placement);
   if (!GetWindowPlacement(window, &placement)) {
