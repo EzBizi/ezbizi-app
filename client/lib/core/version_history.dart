@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Performance report: ready to label each call\'s reason with Claude and Grok side by side (switched off until the privacy page and keys are in place).',
         'A new inspection fills in the client\'s contact details and address, and the job\'s date.',
+        'Email: opening an email no longer waits on four slow steps. Pictures now load together, the Google sign-in is reused instead of renewed on every call, one Gmail fetch replaces two, and marking it read in Gmail happens after the email shows.',
       ],
     ),
     VersionRelease(
