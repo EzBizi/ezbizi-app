@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0366',
+      date: '6 Oct 2026',
+      items: [
+        'Windows app: the background checks Monitoring makes no longer run on the window itself, so a slow check can no longer freeze the app or turn it white.',
+        'Windows app: it keeps the size you gave it after the clock-in lock screen or a full-screen training video.',
+        'In Inspection › Builder › Flow, each screen is now called by its own name ("Client and site", "The system", and so on) instead of "Screen 1" to "Screen 4".',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0365',
       date: '6 Oct 2026',
       items: [
