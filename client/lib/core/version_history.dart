@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0373',
+      date: '6 Oct 2026',
+      items: [
+        'Performance report: ready to label each call\'s reason with Claude and Grok side by side (switched off until the privacy page and keys are in place).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0372',
       date: '6 Oct 2026',
       items: [
