@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Access\InboxAccess;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\GoogleWorkspace;
@@ -61,9 +62,11 @@ use Symfony\Component\HttpFoundation\Response;
  * per-inbox half is this organization's own — and composing them on one screen
  * is what makes a single menu out of two different kinds of thing.
  *
- * This controller does not write grants. It used to, and the two endpoints were
+ * This controller writes no ROLE grants. It used to, and the two endpoints were
  * removed; see the note in place of them for why one table with two writers is
- * the failure rather than the tidiness problem.
+ * the failure rather than the tidiness problem. Since 2026-10-06 it does give an
+ * inbox to a PERSON (Jose: "assign emails to specific people, instead of just
+ * roles") -- through InboxAccess, so that class is still the one writer.
  */
 class MailboxesController extends Controller
 {
@@ -75,6 +78,7 @@ class MailboxesController extends Controller
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
         private readonly GoogleWorkspace $workspace,
+        private readonly InboxAccess $inboxes,
     ) {}
 
     /**
@@ -559,6 +563,138 @@ class MailboxesController extends Controller
      * is what the mailbox screen needs. The question "which roles hold this
      * inbox" belongs to the roles editor and is answered there.
      */
+
+    // ── people (2026-10-06) ──────────────────────────────────────
+
+    /**
+     * GET /api/v1/email/mailboxes/{mailbox}/people
+     *
+     * Who can open this inbox, and who could be added. `roles` are shown so the
+     * screen can say "also everyone with these roles" -- read-only here, because
+     * role grants are the roles editor's.
+     *
+     * `candidates` is the picker, and it is deliberately NOT a staff directory:
+     * only people who would actually be able to open the inbox once added --
+     * active, their role holds the Email Inbox tab, and the inbox is within their
+     * reach. Offering anybody else would make "added" mean nothing on the day
+     * they try to open it. Administrators are left out: they open every inbox
+     * already.
+     */
+    public function people(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $this->assertMayChoosePeople($request->user(), $mailbox);
+
+        return response()->json(['data' => $this->peoplePayload($mailbox)]);
+    }
+
+    /**
+     * POST /api/v1/email/mailboxes/{mailbox}/people  { user_id }
+     *
+     * Give this person the inbox. Refused in a sentence when it could not take
+     * effect, for the same reason `candidates` leaves them out.
+     */
+    public function givePerson(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $this->assertMayChoosePeople($request->user(), $mailbox);
+
+        $input = $request->validate(['user_id' => ['required', 'string', 'max:64']]);
+
+        $person = User::query()->find($input['user_id']);
+
+        if ($person === null || $person->organization_id !== $mailbox->organization_id || ! $person->is_active) {
+            return response()->json(['message' => 'That person is not an active member of this organization.'], 422);
+        }
+
+        if (($why = $this->whyCannotBeGiven($person, $mailbox)) !== null) {
+            return response()->json(['message' => $why], 422);
+        }
+
+        if ($this->inboxes->givePerson($mailbox, $person)) {
+            $this->audit->log('mailbox.person_granted', $mailbox, [
+                'address' => $mailbox->address,
+                'person'  => $person->name,
+            ]);
+        }
+
+        return response()->json(['data' => $this->peoplePayload($mailbox)]);
+    }
+
+    /** DELETE /api/v1/email/mailboxes/{mailbox}/people/{user} */
+    public function takeFromPerson(Request $request, Mailbox $mailbox, User $user): JsonResponse
+    {
+        $this->assertMayChoosePeople($request->user(), $mailbox);
+
+        // The binding is tenant-scoped already; this does not lean on that.
+        abort_unless($user->organization_id === $mailbox->organization_id, 404);
+
+        if ($this->inboxes->takeFromPerson($mailbox, $user)) {
+            $this->audit->log('mailbox.person_revoked', $mailbox, [
+                'address' => $mailbox->address,
+                'person'  => $user->name,
+            ]);
+        }
+
+        return response()->json(['data' => $this->peoplePayload($mailbox)]);
+    }
+
+    /**
+     * Choosing who reads an inbox is managing it: `email.edit` and reach over
+     * the inbox, the same authority connecting it takes.
+     */
+    private function assertMayChoosePeople(User $user, Mailbox $mailbox): void
+    {
+        $refusal = $this->access->manageRefusal($user, $mailbox, 'choose who can open this inbox');
+
+        if ($refusal !== null) {
+            abort(response()->json(['message' => $refusal], 403));
+        }
+    }
+
+    /** Why adding this person would not let them open the inbox, or null if it would. */
+    private function whyCannotBeGiven(User $person, Mailbox $mailbox): ?string
+    {
+        if ($person->isAdministrator()) {
+            return $person->name.' is an Administrator and already opens every inbox.';
+        }
+
+        if (! $person->hasPermission(MailboxAccess::READ) || ! $person->hasPermission('email.inbox.view')) {
+            return $person->name.'\'s role does not include the Email Inbox tab, so adding them '
+                .'would not let them open it. Somebody who can edit roles can add the tab to '
+                .'their role first.';
+        }
+
+        if (! $this->access->reaches($person, $mailbox)) {
+            return $mailbox->address.' belongs to a part of the business '.$person->name
+                .' is not assigned to, so adding them would not let them open it.';
+        }
+
+        return null;
+    }
+
+    /** @return array<string, mixed> */
+    private function peoplePayload(Mailbox $mailbox): array
+    {
+        $given = $this->inboxes->peopleOn($mailbox);
+        $givenIds = $given->pluck('id')->all();
+
+        $candidates = User::query()
+            ->where('organization_id', $mailbox->organization_id)
+            ->where('is_active', true)
+            ->whereNotIn('id', $givenIds)
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (User $u) => $this->whyCannotBeGiven($u, $mailbox) === null)
+            ->values();
+
+        $person = fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'email' => $u->email];
+
+        return [
+            'people'     => $given->map($person)->values()->all(),
+            'roles'      => $this->inboxes->rolesOn($mailbox)
+                ->map(fn ($r) => ['id' => $r->getKey(), 'name' => $r->name])->values()->all(),
+            'candidates' => $candidates->map($person)->all(),
+        ];
+    }
 
 
     // ── the response ─────────────────────────────────────────────
