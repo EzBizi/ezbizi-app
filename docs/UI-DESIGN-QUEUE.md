@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 63 · Marketing · QR code stats — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — building (`docs/previews/marketing-qr-stats-layouts.html`)
+### 63 · Marketing · QR code stats — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — **BUILT** `814c7db8` (server `93dd2f00`) (`docs/previews/marketing-qr-stats-layouts.html`)
 
 Jose 2026-10-06, via the desk: *"Also wonder if we can add stats to each QR Code to see how many people used it"*.
 Marketing adds scans and unique scanners per day; payload proposed to Marketing (each code: `scans_30d`, `people_30d`,
