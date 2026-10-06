@@ -178,7 +178,23 @@ class NotificationDispatcher
          * switched off — which keeps the answer to "why did I get this email"
          * one switch rather than two places that have to be read together.
          */
-        $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($told, $title, $body, $scope) : 0;
+        /*
+         * WHO HAS NOT MUTED THEIR OWN ALERTS — the email and the push below
+         * go only to them; the bell rows above went to everybody.
+         *
+         * `notifications.alerts` is each person's switch in the bell panel
+         * (Jose, 2026-10-05: "turn notifications on or off ... individually
+         * for each user"). It silences what INTERRUPTS, never the list: the
+         * switch lives inside the list, so muting loses nothing.
+         *
+         * Read as "anything but an explicit false", so everybody who has never
+         * touched it — every user that exists today — keeps their alerts.
+         */
+        $alertable = $told->filter(
+            fn (User $user) => ($user->preferences['notifications.alerts'] ?? true) !== false
+        )->values();
+
+        $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($alertable, $title, $body, $scope) : 0;
 
         /*
          * AND THE THIRD CHANNEL — the only one that reaches a closed app.
@@ -196,7 +212,7 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
-        $pushed = $inAppOnly ? 0 : $this->alsoByPush($told, $title, $body, $scope);
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope);
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.

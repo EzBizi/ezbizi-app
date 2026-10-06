@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/os_notifications.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/notification_bell.dart';
 import 'package:flutter/material.dart';
@@ -254,6 +255,138 @@ void main() {
     // And the panel is still open, because nothing popped it.
     expect(find.text('Your trial ends tomorrow'), findsOneWidget);
   });
+
+  // Jose, 2026-10-05: "an option turn notifications on or off (individually
+  // for each user, something they can inside the notification button sidebar)".
+  testWidgets("the panel holds each person's own Alert me switch, and it saves", (
+    tester,
+  ) async {
+    final patches = <Object?>[];
+    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    final alertMe = find.widgetWithText(SwitchListTile, 'Alert me');
+    expect(tester.widget<SwitchListTile>(alertMe).value, isTrue,
+        reason: 'Never touched means on, or every existing user goes silent.');
+
+    await tester.tap(alertMe);
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {'notifications.alerts': false},
+      },
+    ]);
+    expect(tester.widget<SwitchListTile>(alertMe).value, isFalse);
+  });
+
+  testWidgets('with alerts on, a new notification pops up (the control)', (tester) async {
+    expect(await _popUpsAfterAnArrival(tester, alerts: true), ['New Live Chat Lead']);
+  });
+
+  testWidgets('with alerts off, the same notification does not pop up', (tester) async {
+    // Same arrival, same bell, one preference different. Without the control
+    // above, this would pass just as well if pop-ups had stopped working.
+    expect(await _popUpsAfterAnArrival(tester, alerts: false), isEmpty);
+  });
+}
+
+/// A bell with a signed-in session, whose list answers [items] on each fetch.
+Future<void> _pumpWithSession(
+  WidgetTester tester, {
+  required Map<String, dynamic> preferences,
+  required List<Map<String, dynamic>> Function() items,
+  List<Object?>? patches,
+}) async {
+  final api = ApiClient(
+    client: MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        return _json({
+          'data': {
+            'id': 'u-1',
+            'name': 'Jose Silva',
+            'email': 'jose@example.com',
+            'has_avatar': false,
+            'role': {'id': 'role-1', 'name': 'Administrator'},
+            'permissions': <String>[],
+            'modules': <Map<String, Object?>>[],
+            'preferences': preferences,
+            'organization': {
+              'id': 'org-1',
+              'name': 'A1-Group',
+              'franchise_label': 'Franchise',
+              'is_read_only': false,
+            },
+            'companies': <Map<String, Object?>>[],
+            'franchises': <Map<String, Object?>>[],
+          },
+        });
+      }
+      if (request.method == 'PATCH') {
+        patches?.add(jsonDecode(request.body));
+        return _json({'data': {}});
+      }
+      if (request.method == 'POST') return _json({'data': {}});
+
+      final data = items();
+      return _json({
+        'data': data,
+        'meta': {'unread': data.where((i) => i['read_at'] == null).length},
+      });
+    }),
+  );
+
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        appBar: AppBar(actions: [NotificationBell(api: api, session: session)]),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// What the bell asks the OS to show when one new notification arrives.
+Future<List<String>> _popUpsAfterAnArrival(
+  WidgetTester tester, {
+  required bool alerts,
+}) async {
+  final shown = <String>[];
+  OsNotifications.shownForTest = shown;
+  addTearDown(() => OsNotifications.shownForTest = null);
+
+  // Empty on the first fetch, which seeds the bell without announcing; the
+  // notification arrives on the next one.
+  var items = <Map<String, dynamic>>[];
+  await _pumpWithSession(
+    tester,
+    preferences: {'notifications.alerts': alerts},
+    items: () => items,
+  );
+
+  items = [
+    {
+      'id': 'n9',
+      'source': 'automation',
+      'title': 'New Live Chat Lead',
+      'body': null,
+      'subject': {'type': 'Lead', 'id': 'lead-1'},
+      'meta': {'module': 'leads', 'filter': 'website_chat'},
+      'read_at': null,
+      'created_at': '2026-10-05T12:00:00+00:00',
+    },
+  ];
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  await tester.pumpAndSettle();
+
+  return shown;
 }
 
 /// One notification in the list, and a spy for where a tap sends you.
