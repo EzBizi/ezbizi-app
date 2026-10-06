@@ -87,10 +87,16 @@ if [ "${1:-}" = "--remote" ]; then
     # this side, which writes store-screenshots/$SHOT_DIR/ under the project.
     OUT="$HOME/ezbizi-build/store-screenshots/$SET"
     xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already booted is fine
-    # A fresh install every run. "Keep me signed in" survives on the
-    # simulator, and the next run opened signed in: no form, no frames.
-    # The token is in the keychain, which an uninstall leaves behind.
-    xcrun simctl uninstall "$DEVICE" com.ezbizi.app 2>/dev/null || true
+    # Signed out every run: "Keep me signed in" puts the token in the
+    # keychain, and the next run opened signed in with no form to fill.
+    #
+    # NOT an uninstall. That also forgets the notification answer, and the
+    # system prompt AppDelegate raises at launch then sits over the app:
+    # every frame came back blank white while the test passed.
+    # ponytail: a new or erased simulator needs that prompt answered once.
+    # Over ssh nothing can tap it (no assistive access); the 2026-10-06 fix
+    # was authorizationStatus=2 for com.ezbizi.app in the shut-down sim's
+    # data/Library/BulletinBoard/VersionedSectionInfo.plist.
     xcrun simctl keychain "$DEVICE" reset
     export SHOT_DIR="$SET"
   else
