@@ -21,6 +21,7 @@ class VersionHistory {
         'Facebook and Instagram lead-ad forms arrive in Leads as Meta Form leads.',
         'Messenger and Instagram messages now start "new lead" automations, which they never did before.',
         'Workiz: who booked each job is back on the bookings report. Workiz\'s new connection stopped telling us, so EzBizi reads it from the old one.',
+        'Email: a rule on new emails can show the sender\'s name, the subject and a preview of up to 178 characters. The preview is read only when an active rule uses it.',
       ],
     ),
     VersionRelease(
