@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Reports › Performance shows its dates in words on one button, such as "This week · Mon, Oct 5 – today", instead of Day, Week and Month.',
         'Reports › Performance: click the dates for quick choices showing the dates each one means, a calendar where one click picks a day and two pick a range, or From and To typed in. The arrows step back and forward by the same length, and on a phone the picker opens as its own page.',
+        'Leads: a Workiz lead booked through Reserve with Google is announced as a Workiz Online lead.',
       ],
     ),
     VersionRelease(
