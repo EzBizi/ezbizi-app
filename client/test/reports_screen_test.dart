@@ -265,11 +265,14 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('stat-reached-nobody')), findsOneWidget);
+
+    // The table is on the People tab since UI queue 60.
+    await _performanceTab(tester, 'People');
     expect(find.text('Trey Brannan'), findsOneWidget);
     // The Answered card left the figures (Jose's order, 2026-10-05); the
     // per-person Answered column still carries it.
     expect(find.text('51'), findsOneWidget);
-    expect(find.text('Missed calls'), findsOneWidget);
   });
 
   testWidgets('a person only one system knows is marked, never merged', (
@@ -290,6 +293,7 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
+    await _performanceTab(tester, 'People');
     expect(find.text('not in Workiz'), findsOneWidget);
   });
 
@@ -308,11 +312,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // The accounts are disjoint and the same people book into all of them, so
-    // a count that silently covers fewer is wrong rather than partial. This
-    // stays in the SENTENCE even with the chips collapsed - it belongs to the
-    // report, not to setup.
-    expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
+    // a count that silently covers fewer is wrong rather than partial. Since
+    // UI queue 60 the page carries how many, on Sources, and an amber line
+    // when one did not answer; Sources names them.
+    expect(find.text('Sources · 2 Workiz accounts'), findsOneWidget);
     expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+
+    await _openSources(tester);
+    expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
   });
 
   testWidgets('a connected branch can be taken back from this screen', (
@@ -345,12 +352,11 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
-    // The chips are behind the toggle now: a row of them above the table read
+    // The chips are behind Sources now: a row of them above the table read
     // as a filter, and they are setup rather than part of the report.
     expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
 
-    await tester.tap(find.textContaining('Manage Workiz accounts'));
-    await tester.pumpAndSettle();
+    await _openSources(tester);
 
     expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
 
@@ -386,6 +392,8 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
+    // Named in Sources, with the accounts (UI queue 60).
+    await _openSources(tester);
     expect(
       find.textContaining('Massachusetts is never included'),
       findsOneWidget,
@@ -405,6 +413,8 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
+
+    await _performanceTab(tester, 'People');
 
     // The day's average card left the figures (Jose's order, 2026-10-05);
     // each person's average is still in the table.
@@ -449,8 +459,7 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.textContaining('Manage Workiz accounts'));
-    await tester.pumpAndSettle();
+    await _openSources(tester);
 
     await tester.tap(
       find.descendant(
@@ -524,11 +533,10 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
-    // Behind the manage toggle now, with the chips - connecting is setup.
+    // Behind Sources now, with the chips - connecting is setup.
     expect(find.text('Connect a Workiz account'), findsNothing);
 
-    await tester.tap(find.textContaining('Manage Workiz accounts'));
-    await tester.pumpAndSettle();
+    await _openSources(tester);
 
     expect(find.text('Connect a Workiz account'), findsOneWidget);
 
@@ -567,8 +575,7 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Manage Workiz accounts'));
-    await tester.pumpAndSettle();
+    await _openSources(tester);
 
     await tester.tap(find.text('Connect a Workiz account'));
     await tester.pumpAndSettle();
@@ -893,6 +900,23 @@ Future<void> _pumpReports(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+/// Performance opens on its Overview since UI queue 60: the table is on the
+/// People tab, and the Workiz accounts are behind Sources.
+Future<void> _performanceTab(WidgetTester tester, String tab) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const Key('call-report-tabs')),
+      matching: find.textContaining(tab),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openSources(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('call-report-sources')));
   await tester.pumpAndSettle();
 }
 

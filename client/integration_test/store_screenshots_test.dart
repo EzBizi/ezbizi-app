@@ -75,6 +75,9 @@ void main() {
     // fails a test that leaves onError changed.
     final testOnError = FlutterError.onError;
     FlutterError.onError = (details) {
+      // The harness's own expect() failures arrive here too. Swallowing
+      // them left the driver waiting for a result that never came.
+      if (details.exception is TestFailure) return testOnError?.call(details);
       // ignore: avoid_print
       print('  app error, run continues: ${details.exceptionAsString().split('\n').first}');
     };
@@ -255,7 +258,11 @@ void main() {
           // the dashboard card behind it, and .first tapped that: the frame
           // showed the open drawer, and 'Jobs' opened Scheduling.
           final menu = find.byType(Drawer);
-          final item = find.descendant(of: menu, matching: find.text(label));
+          // A tablet is wide enough for the sidebar and has no drawer; there
+          // the label is matched anywhere, as before.
+          final item = menu.evaluate().isEmpty
+              ? find.text(label)
+              : find.descendant(of: menu, matching: find.text(label));
           final list = find.descendant(of: menu, matching: find.byType(Scrollable));
           if (item.evaluate().isEmpty && list.evaluate().isNotEmpty) {
             // The drawer list is lazy: Reviews and Reports are not built

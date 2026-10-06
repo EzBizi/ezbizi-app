@@ -2965,6 +2965,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 62 · Your account · API keys — **waiting for Jose** (sent 2026-10-06; 10-minute rule) (`docs/previews/account-api-keys-layouts.html`)
+
+From MCP / API (`local_c0e813e0…`), for Jose 2026-10-06: *"build the MCP and API so AIs can manage operations
+natively"*. Backend on `session/ai-api`, not on main yet: `GET /me/api-keys` → {api_keys [{id, name, access
+read|write, last_used_at, created_at}]}; `POST {name ≤ 60, access}` → 201 {id, name, access, key}, the key shown once;
+`DELETE /me/api-keys/{id}` → 204. Keys leave "Where you are signed in". MCP: `POST /api/v1/mcp`, Claude Code setup
+`claude mcp add --transport http ezbizi <base>/mcp --header "Authorization: Bearer <key>"`. Desktop **1** a card under
+the sign-ins: list, New API key as a short form in the card, the key and setup line in an amber box with Copy until
+Done, revoke confirmed in place (recommended); **2** the form in a side panel, the key waiting on the page; **3** a
+"Connect an AI" card in three steps. Phone **4** (recommended) an API keys row under Signed in opening the same card;
+**5** a screen per step; **6** the three steps. All: Read only is the default; the key never sits in a layer a stray
+click can close.
+
 ### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
 From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
@@ -2983,7 +2996,7 @@ member picker reads `people: [{id, name, has_phone}]` (active users of this busi
 1daadbf0, not GET /users. Built: module_tabs_registry_test reds a drawn tab the registry lacks, so Meta registered
 `whatsapp_groups` at 3f460e6e; the tab needs `ai_assistance.whatsapp_groups.view` and `ai_assistance.manage`.
 
-### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-revamp-layouts.html`)
+### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `98f9a8b6` (`docs/previews/reports-performance-revamp-layouts.html`)
 
 Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
 things and the UI is not very good for it anymore."* Today one scroll holds the dates, seven figures, three panels that
@@ -2994,6 +3007,10 @@ side by side, each "See all" into Calls), People (the table alone), Calls (every
 they apply) (recommended); **2** the figures down the left as the way in; **3** one page tidied into three cards. Phone
 **4** (recommended) the same tabs; **5** the figures as the menu; **6** one page. All: Workiz accounts move to a Sources
 side panel and a problem with them is one amber line; the figures are one size.
+
+Built: on a phone the tabs drop their counts and Sources sits at the foot of the Overview, so the dates and the three
+tabs each keep a whole row (the date bar overflowed with Sources beside it). New client is a way into Calls too, since
+the Calls tab has a New chip. Calls over more than one day carry the day.
 
 ### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/customers-workiz-money-notes-layouts.html`)
 

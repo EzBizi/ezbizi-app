@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +21,7 @@ void main() {
   testWidgets('conversion is jobs over new-client calls, as a percent', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     // Ada: 4 new-client calls, 1 job.
     expect(find.text('25%'), findsOneWidget);
@@ -32,7 +33,7 @@ void main() {
   testWidgets('somebody who answered no new-client calls gets a dash, not 0%', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     // Cy answered nothing and booked nothing. 0% would read as a verdict on
     // somebody who was never given the chance, and 0/0 is not zero.
@@ -41,7 +42,7 @@ void main() {
   });
 
   testWidgets('the column says what it does not claim', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     // The word "Conversion" beside a name will be read as a verdict, so the
     // narrower true reading is on the screen rather than in a docblock.
@@ -54,7 +55,7 @@ void main() {
   // ── sorting ────────────────────────────────────────────────────
 
   testWidgets('the table opens on answered, most first', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     // Bo 9, Ada 6, Cy 0 — not alphabetical, which is what the server sends.
     expect(_names(tester), ['Bo', 'Ada', 'Cy']);
@@ -63,7 +64,7 @@ void main() {
   testWidgets('tapping a column sorts by it, and again reverses it', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     await tester.tap(_header('Jobs'));
     await tester.pumpAndSettle();
@@ -80,7 +81,7 @@ void main() {
   testWidgets('a person with no average talk sorts last both ways', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     await tester.tap(_header('Avg talk'));
     await tester.pumpAndSettle();
@@ -94,7 +95,7 @@ void main() {
   });
 
   testWidgets('only the column in force carries an arrow', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     expect(
       find.descendant(
@@ -108,7 +109,7 @@ void main() {
   // ── the drill-down ─────────────────────────────────────────────
 
   testWidgets('a row opens onto the calls behind its numbers', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     expect(find.textContaining('Kitchen tap'), findsNothing);
 
@@ -121,7 +122,7 @@ void main() {
   testWidgets('a call that rang somebody but was taken by another says so', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     // The call rang Ada and Bo; Bo picked it up. It has to appear under Ada —
     // her Rang column counts it — saying in WORDS who took it, with its talk
@@ -146,7 +147,9 @@ void main() {
   ) async {
     await _pump(tester, width: 1400);
 
-    expect(find.textContaining('Burst pipe'), findsNothing);
+    // The Overview shows the first missed calls (UI queue 60); the reasons
+    // are in Calls, which the figure opens.
+    expect(find.byKey(const ValueKey('nobody-voicemail')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
     await tester.pumpAndSettle();
@@ -255,7 +258,9 @@ void main() {
 
   // Was "choosing a week asks the server for a week". Day / Week / Month gave
   // way to the date picker (UI queue 57): a week is its dates now.
-  testWidgets('choosing last week asks the server for that week', (tester) async {
+  testWidgets('choosing last week asks the server for that week', (
+    tester,
+  ) async {
     final asked = <Map<String, String>>[];
     await _pump(
       tester,
@@ -279,15 +284,28 @@ void main() {
     tester,
   ) async {
     final asked = <Map<String, String>>[];
-    await _pump(tester, width: 1400, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+    await _pump(
+      tester,
+      width: 1400,
+      asked: asked,
+      now: () => DateTime(2026, 10, 6, 15),
+    );
 
     final button = find.byKey(const Key('date-range-button'));
-    expect(find.descendant(of: button, matching: find.text('Today')), findsOneWidget);
-    expect(find.descendant(of: button, matching: find.text('Tue, Oct 6')), findsOneWidget);
+    expect(
+      find.descendant(of: button, matching: find.text('Today')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: button, matching: find.text('Tue, Oct 6')),
+      findsOneWidget,
+    );
     expect(asked.first, {'from': '2026-10-06', 'to': '2026-10-06'});
     // Nothing after today to step to.
     expect(
-      tester.widget<IconButton>(find.byKey(const Key('date-range-next'))).onPressed,
+      tester
+          .widget<IconButton>(find.byKey(const Key('date-range-next')))
+          .onPressed,
       isNull,
     );
   });
@@ -296,7 +314,12 @@ void main() {
     tester,
   ) async {
     final asked = <Map<String, String>>[];
-    await _pump(tester, width: 1400, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+    await _pump(
+      tester,
+      width: 1400,
+      asked: asked,
+      now: () => DateTime(2026, 10, 6, 15),
+    );
 
     await tester.tap(find.byKey(const Key('date-range-previous')));
     await tester.pumpAndSettle();
@@ -321,7 +344,12 @@ void main() {
 
   testWidgets('on a phone the dates are a page of their own', (tester) async {
     final asked = <Map<String, String>>[];
-    await _pump(tester, width: 390, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+    await _pump(
+      tester,
+      width: 390,
+      asked: asked,
+      now: () => DateTime(2026, 10, 6, 15),
+    );
 
     await tester.tap(find.byKey(const Key('date-range-button')));
     await tester.pumpAndSettle();
@@ -363,7 +391,7 @@ void main() {
   });
 
   testWidgets('only one person is open at a time', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();
@@ -376,7 +404,7 @@ void main() {
   });
 
   testWidgets('a call with no recording offers no player', (tester) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();
@@ -391,7 +419,7 @@ void main() {
   testWidgets('the column header is pinned rather than scrolled away', (
     tester,
   ) async {
-    await _pump(tester, width: 1400);
+    await _pump(tester, width: 1400, view: 'People');
 
     final header = tester.widget<SliverPersistentHeader>(
       find.byType(SliverPersistentHeader),
@@ -403,7 +431,7 @@ void main() {
   testWidgets('a narrow screen draws cards and still opens the calls', (
     tester,
   ) async {
-    await _pump(tester, width: 375);
+    await _pump(tester, width: 375, view: 'People');
 
     expect(find.byType(SliverPersistentHeader), findsNothing);
 
@@ -419,7 +447,284 @@ void main() {
 
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
   });
+
+  // ── UI queue 60: Overview, People, Calls (Jose: 1 and 4) ───────
+
+  testWidgets('it opens on the Overview: the figures, not the table', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    final tabs = find.byKey(const Key('call-report-tabs'));
+    for (final label in ['Overview', 'People · 3', 'Calls · 4']) {
+      expect(
+        find.descendant(of: tabs, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+    expect(find.byKey(const ValueKey('stat-calls')), findsOneWidget);
+    expect(find.byType(SliverPersistentHeader), findsNothing);
+  });
+
+  testWidgets('the seven figures are one size', (tester) async {
+    await _pump(tester, width: 1400);
+
+    final opening = {
+      for (final key in [
+        'stat-calls',
+        'stat-reached-nobody',
+        'stat-existing',
+        'stat-new',
+        'stat-not-booked',
+      ])
+        tester.getSize(find.byKey(ValueKey(key))),
+    };
+    expect(opening, hasLength(1));
+
+    // The two that open nothing are no shorter for it.
+    for (final label in ['Jobs booked', 'Conv. rate']) {
+      final tile = find
+          .ancestor(of: find.text(label), matching: find.byType(Material))
+          .first;
+      expect(tester.getSize(tile), opening.single, reason: label);
+    }
+  });
+
+  testWidgets('a figure opens Calls narrowed to what it counted', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    await tester.tap(find.byKey(const ValueKey('stat-existing')));
+    await tester.pumpAndSettle();
+
+    expect(_chip(tester, 'existing').selected, isTrue);
+    expect(find.textContaining('Silent line'), findsOneWidget);
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+
+    // New: every new-client call, answered or not.
+    await tester.tap(find.byKey(const ValueKey('calls-filter-new')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+    expect(find.textContaining('Silent line'), findsNothing);
+  });
+
+  testWidgets('Not booked and Missed sit side by side, one height', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    await _pump(tester, width: 1400, posted: posted);
+
+    final notBooked = find.byKey(const ValueKey('overview-not-booked'));
+    final missed = find.byKey(const ValueKey('overview-missed'));
+    expect(
+      find.descendant(
+        of: notBooked,
+        matching: find.textContaining('Kitchen tap'),
+      ),
+      findsOneWidget,
+    );
+    for (final caller in ['Burst pipe', 'Silent line']) {
+      expect(
+        find.descendant(of: missed, matching: find.textContaining(caller)),
+        findsOneWidget,
+      );
+    }
+    expect(tester.getRect(notBooked).top, tester.getRect(missed).top);
+    expect(
+      tester.getRect(notBooked).left,
+      lessThan(tester.getRect(missed).left),
+    );
+    expect(tester.getSize(notBooked).height, tester.getSize(missed).height);
+
+    // Marked from the Overview as from the list.
+    await tester.tap(find.byKey(const ValueKey('overview-convert-c1')));
+    await tester.pumpAndSettle();
+    expect(posted, ['/api/v1/reports/experimental/calls/c1/convert']);
+  });
+
+  testWidgets('See all opens the whole list, whatever it was narrowed to', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    await tester.tap(find.byKey(const ValueKey('see-all-missed')));
+    await tester.pumpAndSettle();
+    expect(_chip(tester, 'missed').selected, isTrue);
+    await tester.tap(find.byKey(const ValueKey('nobody-voicemail')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Burst pipe'), findsNothing);
+
+    // Back to the Overview and in again: both missed calls, as counted.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('call-report-tabs')),
+        matching: find.text('Overview'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+    expect(find.textContaining('Silent line'), findsOneWidget);
+  });
+
+  testWidgets('on a phone the Overview stacks them, Not booked first', (
+    tester,
+  ) async {
+    await _pump(tester, width: 390);
+
+    final notBooked = tester.getRect(
+      find.byKey(const ValueKey('overview-not-booked')),
+    );
+    final missed = tester.getRect(
+      find.byKey(const ValueKey('overview-missed')),
+    );
+    expect(notBooked.bottom, lessThanOrEqualTo(missed.top));
+    expect(tester.takeException(), isNull);
+
+    // Sources is at the foot of the Overview, leaving the dates their row.
+    await tester.tap(find.byKey(const Key('call-report-sources')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SidePanel), findsOneWidget);
+  });
+
+  testWidgets('a call in Calls shows its first words and opens to the rest', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+
+    expect(find.text('“How much is a sweep?”'), findsOneWidget);
+    // Only Blocked drain waits for its words: nothing is said on a call
+    // nobody took, so those two say nothing about transcripts.
+    expect(find.text('Not transcribed yet.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('transcript-c1')));
+    await tester.pumpAndSettle();
+    expect(find.text('How much is a sweep?'), findsOneWidget);
+  });
+
+  testWidgets('over several days a call says which day it was', (tester) async {
+    await _pump(
+      tester,
+      width: 1400,
+      view: 'Calls',
+      now: () => DateTime(2026, 10, 6, 15),
+    );
+    expect(find.textContaining('Sep 16'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('date-range-apply')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Wed, Sep 16'), findsWidgets);
+  });
+
+  testWidgets('an account that did not answer is one line above the tabs', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400, report: () => _withAccounts());
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('call-report-problem')),
+        matching: find.textContaining('Did not answer: Harbor South.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Sources · 2 Workiz accounts'), findsOneWidget);
+    // The accounts themselves are not on the page.
+    expect(find.byType(InputChip), findsNothing);
+  });
+
+  testWidgets('no line when every account answered', (tester) async {
+    await _pump(
+      tester,
+      width: 1400,
+      report: () => _withAccounts(southAnswered: true),
+    );
+
+    expect(find.byKey(const Key('call-report-problem')), findsNothing);
+  });
+
+  testWidgets('Sources names the accounts and takes one back in place', (
+    tester,
+  ) async {
+    final deleted = <String>[];
+    await _pump(
+      tester,
+      width: 1400,
+      deleted: deleted,
+      report: () => _withAccounts(northGone: deleted.isNotEmpty),
+    );
+
+    await tester.tap(find.byKey(const Key('call-report-sources')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Jobs cover 1 Workiz account: Harbor North.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('sources-account-w1')),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(deleted, isEmpty, reason: 'asked first, in place');
+
+    await tester.tap(find.byKey(const ValueKey('sources-disconnect-w1')));
+    await tester.pumpAndSettle();
+    expect(deleted, ['/api/v1/social/connections/w1']);
+
+    // The panel reads the report as reloaded: South alone, and silent.
+    expect(find.byKey(const ValueKey('sources-account-w1')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.textContaining('No Workiz account answered'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a Workiz account is connected from Sources', (tester) async {
+    final posted = <String>[];
+    await _pump(tester, width: 1400, posted: posted);
+
+    await tester.tap(find.byKey(const Key('call-report-sources')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sources-connect')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('sources-token')), 'example');
+    await tester.tap(find.byKey(const Key('sources-connect-save')));
+    await tester.pumpAndSettle();
+
+    expect(posted, ['/api/v1/reports/experimental/workiz']);
+    expect(find.byKey(const Key('sources-token')), findsNothing);
+  });
 }
+
+ChoiceChip _chip(WidgetTester tester, String key) =>
+    tester.widget<ChoiceChip>(find.byKey(ValueKey('calls-filter-$key')));
+
+/// Two branches' accounts: North answered, South did not unless told to.
+Map<String, dynamic> _withAccounts({
+  bool southAnswered = false,
+  bool northGone = false,
+}) => {
+  ..._report,
+  'workiz_accounts': [
+    if (!northGone) {'id': 'w1', 'name': 'Harbor North'},
+    {'id': 'w2', 'name': 'Harbor South'},
+  ],
+  'workiz_failed': southAnswered ? {} : {'Harbor South': 'timed out'},
+};
 
 /// A column header, and not the summary stat that shares its wording.
 ///
@@ -445,6 +750,9 @@ Future<void> _pump(
   List<String>? posted,
   List<Map<String, String>>? asked,
   DateTime Function()? now,
+  Map<String, dynamic> Function()? report,
+  List<String>? deleted,
+  String? view,
 }) async {
   tester.view.physicalSize = Size(width, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -454,10 +762,17 @@ Future<void> _pump(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/reports/experimental/calls')) {
         asked?.add(request.url.queryParameters);
-        return _json(_report, 200);
+        return _json(report?.call() ?? _report, 200);
       }
-      if (request.method == 'POST' && request.url.path.endsWith('/convert')) {
+      if (request.method == 'POST' &&
+          (request.url.path.endsWith('/convert') ||
+              request.url.path.endsWith('/reports/experimental/workiz'))) {
         posted?.add(request.url.path);
+        return _json({'data': {}}, 200);
+      }
+      if (request.method == 'DELETE' &&
+          request.url.path.contains('/social/connections/')) {
+        deleted?.add(request.url.path);
         return _json({'data': {}}, 200);
       }
 
@@ -474,6 +789,17 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+
+  // The tab to start on, by the start of its label (People · 3).
+  if (view != null) {
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('call-report-tabs')),
+        matching: find.textContaining(view),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(

@@ -138,6 +138,83 @@ void main() {
   ///
   /// Somebody switching this on for a shared inbox needs to read the
   /// consequence before the first customer is missed, not after.
+  // ── "notify about new emails" (2026-10-06) ───────────────────
+
+  // Jose: "build also a link on email settings, so it can be changed from
+  // there as well like syncing with the automation".
+  testWidgets('an inbox switches the new-email notification on and off', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>?>[];
+
+    await _pump(tester, _handler(
+      alerts: const {'addresses': [], 'editable': true, 'reason': null, 'may_change': true},
+      onRequest: (method, path, body) {
+        if (method == 'PUT') sent.add(body);
+      },
+    ));
+    await _openSettings(tester);
+
+    final toggle = find.widgetWithText(SwitchListTile, 'Notify about new emails');
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+
+    await _tap(tester, toggle);
+    expect(sent.last, {'on': true});
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue, reason: 'The answer did not reach the switch.');
+
+    await _tap(tester, toggle);
+    expect(sent.last, {'on': false});
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+  });
+
+  // Somebody who may manage the inbox but not automations sees the state and
+  // why it cannot be changed here -- not a switch the server would refuse.
+  testWidgets('without permission to change automations the switch is read-only, with why', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(
+      alerts: const {
+        'addresses': ['info@a-1chimney.com'], 'editable': true, 'reason': null, 'may_change': false,
+      },
+    ));
+    await _openSettings(tester);
+
+    final toggle = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Notify about new emails'));
+    expect(toggle.value, isTrue);
+    expect(toggle.onChanged, isNull);
+    expect(find.text('Changing it takes permission to change automations.'), findsOneWidget);
+  });
+
+  testWidgets("a reshaped rule is shown read-only, in the server's words", (tester) async {
+    await _pump(tester, _handler(
+      alerts: const {
+        'addresses': [], 'editable': false,
+        'reason': 'This was changed in Automations. Edit it there.', 'may_change': true,
+      },
+    ));
+    await _openSettings(tester);
+
+    expect(
+      tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Notify about new emails')).onChanged,
+      isNull,
+    );
+    expect(find.text('This was changed in Automations. Edit it there.'), findsOneWidget);
+  });
+
+  testWidgets('a refused flip says why and leaves the switch where it was', (tester) async {
+    await _pump(tester, _handler(
+      alerts: const {'addresses': [], 'editable': true, 'reason': null, 'may_change': true},
+      alertRefusal: 'Who should be told is taken from your new-lead notification, and there is not exactly one.',
+    ));
+    await _openSettings(tester);
+
+    final toggle = find.widgetWithText(SwitchListTile, 'Notify about new emails');
+    await _tap(tester, toggle);
+
+    expect(find.textContaining('taken from your new-lead notification'), findsOneWidget);
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+  });
+
   // ── who can open an inbox, person by person (2026-10-06) ──────
 
   // Jose: "I also want to be able to assign emails to specific people,
@@ -2759,6 +2836,12 @@ MockClientHandler _handler({
 
   /// Addresses the batch add should report as skipped, address => reason.
   Map<String, String> batchSkips = const {},
+
+  /// What `…/new-mail-alerts` answers; null leaves the route unanswered.
+  Map<String, Object?>? alerts,
+
+  /// The sentence a switch flip is refused with (422), when set.
+  String? alertRefusal,
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
 
@@ -2778,6 +2861,21 @@ MockClientHandler _handler({
 
     if (path.endsWith('/people') || path.contains('/people/')) {
       return _json({'data': people});
+    }
+
+    if (alerts != null && path.endsWith('/new-mail-alerts')) {
+      return _json({'data': alerts});
+    }
+
+    if (alerts != null && path.endsWith('/new-mail-alert')) {
+      if (alertRefusal != null) return _json({'message': alertRefusal}, 422);
+
+      final address = rows.firstWhere((r) => path.contains('/${r['id']}/'))['address'];
+      final addresses = [...(alerts!['addresses'] as List)]..remove(address);
+      if (body?['on'] == true) addresses.add(address);
+      alerts = {...alerts!, 'addresses': addresses};
+
+      return _json({'data': alerts});
     }
 
     if (path.endsWith('/workspace-batch')) {

@@ -2321,6 +2321,11 @@ Route::prefix('v1')
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
 
+            // The new-email notification, edited from the inbox's card. The
+            // automation rule stays the source of truth: MailboxesController.
+            Route::get('email/mailboxes/new-mail-alerts', [MailboxesController::class, 'newMailAlerts']);
+            Route::put('email/mailboxes/{mailbox}/new-mail-alert', [MailboxesController::class, 'setNewMailAlert']);
+
             Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
             Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
 
