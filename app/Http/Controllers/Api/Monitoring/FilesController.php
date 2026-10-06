@@ -141,17 +141,26 @@ class FilesController extends Controller
 
         $data = $request->validate([
             'op' => ['required', 'string', 'in:list,download'],
-            // A path the agent resolves on its own disk. Bounded so nobody
-            // parks a huge string; the agent is the only thing that knows
-            // which paths are real, so content beyond the length is its call.
-            'path' => ['required', 'string', 'max:4096'],
+            // A path the agent resolves on its own disk. `present`, not
+            // `required`: the EMPTY string is the roots ("This PC" → the
+            // drives), and `required` rejects an empty string, which 422'd
+            // every roots request before it reached the agent. Bounded so
+            // nobody parks a huge string; the agent is the only thing that
+            // knows which paths are real, so content beyond the length is its
+            // call. `nullable` because the ConvertEmptyStringsToNull middleware
+            // rewrites the empty roots path to null before this runs; it is
+            // coerced back to '' below.
+            'path' => ['present', 'nullable', 'string', 'max:4096'],
         ]);
+
+        // The roots: '' reaches the agent, which reads it as "the drives".
+        $path = $data['path'] ?? '';
 
         $requestId = (string) Str::uuid();
 
         $queueKey = $this->requestQueueKey($device->id);
         $queue = Cache::get($queueKey, []);
-        $queue[] = ['id' => $requestId, 'op' => $data['op'], 'path' => $data['path']];
+        $queue[] = ['id' => $requestId, 'op' => $data['op'], 'path' => $path];
 
         if (count($queue) > self::MAX_PENDING_PER_DEVICE) {
             $queue = array_slice($queue, -self::MAX_PENDING_PER_DEVICE);
@@ -168,7 +177,7 @@ class FilesController extends Controller
                 : 'monitoring.files.listed',
             $device,
             [],
-            ['path' => $data['path'], 'device' => $device->label],
+            ['path' => $path, 'device' => $device->label],
         );
 
         return response()->json(['data' => ['request_id' => $requestId]]);
