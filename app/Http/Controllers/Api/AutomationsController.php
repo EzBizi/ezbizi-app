@@ -1488,18 +1488,7 @@ class AutomationsController extends Controller
 
     private function addVersion(Automation $automation, array $input, Request $request): void
     {
-        $next = ($automation->versions()->max('version') ?? 0) + 1;
-
-        $version = AutomationVersion::create([
-            'automation_id' => $automation->getKey(),
-            'version' => $next,
-            'conditions' => $input['conditions'] ?? null,
-            'actions' => $input['actions'],
-            'created_by' => $request->user()->getKey(),
-            'created_at' => now(),
-        ]);
-
-        $automation->forceFill(['active_version_id' => $version->getKey()])->save();
+        $automation->addVersion($input['conditions'] ?? null, $input['actions'], $request->user());
     }
 
     /**
