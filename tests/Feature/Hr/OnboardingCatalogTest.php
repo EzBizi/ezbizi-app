@@ -311,6 +311,10 @@ class OnboardingCatalogTest extends TestCase
         $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
             'name' => 'Accounting (salary)', 'body' => $body,
             'fields' => [
+                // A base contract's choice, with answers on record in real life:
+                // retired, never dropped (the box refused the ten that had it).
+                ['key' => 'pay_basis', 'label' => 'Pay basis', 'type' => 'choice', 'options' => ['Hourly', 'Salary'],
+                    'filled_by' => 'employer', 'required' => true],
                 ['key' => 'salary_amount', 'label' => 'Salary amount', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
                 ['key' => 'salary_period', 'label' => 'Salary period', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
                 ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
@@ -331,6 +335,9 @@ class OnboardingCatalogTest extends TestCase
                 $this->assertContains($key, $keys);
             }
             $this->assertSame('employee_signature', end($keys));
+            $basis = collect($v->fields)->firstWhere('key', 'pay_basis');
+            $this->assertTrue($basis['retired']);
+            $this->assertFalse($basis['required']);
             $this->assertStringContainsString("Hourly Rate: \${{hourly_rate}} per hour\n\nSalary: \${{salary_amount}} per {{salary_period}}", $v->body);
             $this->assertStringContainsString("(a) Pay\n\n", $v->body);
             $this->assertStringContainsString('Commission Rate: {{commission_pct}}%', $v->body);

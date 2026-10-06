@@ -947,9 +947,13 @@ class _OnboardingFormState extends State<OnboardingForm> {
       for (final signature in form.signatures) signature.fieldKey,
     };
 
+    // A retired question is asked of nobody; it shows only where an earlier
+    // answer is on record (pay basis, retired by the standard pay terms).
     final questions = [
       for (final question in form.questions)
-        if (!signatureKeys.contains(question.key) && _isShown(form, question))
+        if (!signatureKeys.contains(question.key) &&
+            _isShown(form, question) &&
+            !(question.field.retired && !question.answered))
           question,
     ];
 
