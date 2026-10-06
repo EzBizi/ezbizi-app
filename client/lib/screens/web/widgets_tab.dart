@@ -925,16 +925,25 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       if (form['antibot'] == true)
         _text(theme, 'Robot check wording', form['antibot_label'],
             (v) => _set('form', 'antibot_label', v)),
-      // Toula's "real CAPTCHA": the visitor's browser solves a puzzle EzBizi
-      // checks — nothing to click, no Google or Cloudflare account.
-      SwitchListTile(
+      // Always on since 2026-10-06 (Jose: "Activate captcha on all websites"),
+      // so it is said rather than switched: the visitor's browser solves a
+      // puzzle EzBizi checks, nothing to click, no Google or Cloudflare.
+      Padding(
         key: const Key('form-captcha'),
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        title: const Text('Stop robots with a CAPTCHA'),
-        subtitle: const Text('Checked by EzBizi. Visitors see nothing to solve.'),
-        value: form['captcha'] == true,
-        onChanged: widget.canEdit ? (on) => _set('form', 'captcha', on) : null,
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(Icons.verified_user_outlined, size: 18, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Robots are stopped by a CAPTCHA on every form and chat. '
+                'Visitors see nothing to solve.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
       ),
       _text(theme, 'Also email each enquiry to (up to 5, commas between)',
           form['notify'], (v) => _set('form', 'notify', v)),
