@@ -6,6 +6,11 @@
 #   ./scripts/store-screenshots.sh --probe    mechanics only: placeholder password,
 #                                             proves window size and capture, lands
 #                                             on the sign-in screen with an error
+#   ./scripts/store-screenshots.sh --device <simulator udid> <set>
+#                                             an iOS simulator instead of the Mac
+#                                             window, into screenshots/<set>, e.g.
+#                                             iphone69 or ipad13 (`xcrun simctl
+#                                             list devices` on the relay for udids)
 #
 # Credentials live ONLY on the Mac, in ~/ezbizi-signing/screenshot.env:
 #
@@ -77,12 +82,20 @@ if [ "${1:-}" = "--remote" ]; then
     fi
     set -a; . ~/ezbizi-signing/screenshot.env; set +a
   fi
-  # The debug app is sandboxed, so the test writes into its container.
-  OUT="$HOME/Library/Containers/com.ezbizi.app/Data/store-screenshots/macos"
+  if [ -n "${DEVICE:-}" ]; then
+    # A simulator frame goes through binding.takeScreenshot to the driver on
+    # this side, which writes store-screenshots/$SHOT_DIR/ under the project.
+    OUT="$HOME/ezbizi-build/store-screenshots/$SET"
+    xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already booted is fine
+    export SHOT_DIR="$SET"
+  else
+    # The debug app is sandboxed, so the test writes into its container.
+    OUT="$HOME/Library/Containers/com.ezbizi.app/Data/store-screenshots/macos"
+    pkill -x EzBizi 2>/dev/null || true
+  fi
   rm -rf "$OUT"
-  pkill -x EzBizi 2>/dev/null || true
   LOG=/tmp/store-screenshots.log
-  EZBIZI_WINDOW=1440x900 flutter drive -d macos \
+  EZBIZI_WINDOW=1440x900 flutter drive -d "${DEVICE:-macos}" \
     --driver=test_driver/screenshots.dart \
     --target=integration_test/store_screenshots_test.dart \
     --dart-define=API_BASE=https://app.ezbizi.com \
@@ -109,7 +122,11 @@ cd "$(dirname "$0")/.."
 MAC=mac
 MAC_PROJECT='~/ezbizi-build'
 PROBE=0; [ "${1:-}" = "--probe" ] && PROBE=1
-DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution/Apple/screenshots/macos"
+DEVICE=""; SET=macos
+if [ "${1:-}" = "--device" ]; then
+  DEVICE="${2:?--device needs a simulator udid}"; SET="${3:?--device needs a set name, e.g. iphone69}"
+fi
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution/Apple/screenshots/$SET"
 # A probe's frames are sign-in screens with an error banner. Written into the
 # real set they overwrite 01-sign-in and 02-dashboard with wrong pictures under
 # right names, which happened once on 2026-09-04. Probes get their own folder.
@@ -152,8 +169,12 @@ tar -cz \
   VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib ios macos integration_test test_driver \
   | ssh "$MAC" "tar -xz -C ${MAC_PROJECT}"
 
-echo "→ macos — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
-ssh "$MAC" "PROBE=$PROBE APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
+echo "→ $SET — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
+ssh "$MAC" "PROBE=$PROBE DEVICE=$DEVICE SET=$SET APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
 
-scp -q "$MAC:Library/Containers/com.ezbizi.app/Data/store-screenshots/macos/*.png" "$DIST/"
+if [ -n "$DEVICE" ]; then
+  scp -q "$MAC:ezbizi-build/store-screenshots/$SET/*.png" "$DIST/"
+else
+  scp -q "$MAC:Library/Containers/com.ezbizi.app/Data/store-screenshots/macos/*.png" "$DIST/"
+fi
 echo "✓ $(ls "$DIST"/*.png | wc -l | tr -d ' ') screenshot(s) → $DIST"

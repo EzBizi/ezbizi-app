@@ -272,9 +272,10 @@ void main() {
     await shoot('inspection', 'Inspection', '05-inspection', tab: 'Generated Reports');
     await shoot('inventory', 'Inventory', '06-inventory');
     await shoot('fleet_management', 'Fleet Management', '07-fleet');
+    // Scheduling on every platform: the week view is the phone's best frame.
+    await shoot('scheduling', 'Scheduling', '08-scheduling');
     if (desktop) {
       // A Mac listing takes ten, and the wide window has room for desk work.
-      await shoot('scheduling', 'Scheduling', '08-scheduling');
       await shoot('phone', 'Communication', '09-communication');
       await shoot('marketing', 'Marketing', '10-marketing');
     }
@@ -294,5 +295,11 @@ void main() {
     // ever renames it, shoot() prints a skip line and the run still produces
     // every other frame.
     await shoot('hr', 'Human Resources', '11-hr');
+
+    // Newer modules with demo data. A set is capped at ten per device, so a
+    // run shoots more than ships; the frames are chosen when uploading.
+    await shoot('leads', 'Leads', '12-leads');
+    await shoot('reviews', 'Reviews', '13-reviews');
+    await shoot('reports', 'Reports', '14-reports');
   });
 }
