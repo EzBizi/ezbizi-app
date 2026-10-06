@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\ApiKey;
 use App\Support\Auth\SessionContext;
 use App\Support\Files\FileStore;
 use App\Support\Scoping\ViewScope;
@@ -276,7 +277,7 @@ class ProfileController extends Controller
         $user    = $request->user();
         $current = $user->currentAccessToken();
 
-        $revoked = $user->tokens()
+        $revoked = ApiKey::except($user->tokens())
             ->when($current !== null, fn ($q) => $q->whereKeyNot($current->getKey()))
             ->delete();
 
@@ -292,7 +293,8 @@ class ProfileController extends Controller
         $current = $user->currentAccessToken();
 
         return [
-            'sessions' => $user->tokens()
+            // API keys are not sessions; they are revoked from their own list.
+            'sessions' => ApiKey::except($user->tokens())
                 ->orderByDesc('last_used_at')
                 ->get()
                 ->map(fn ($token) => [
