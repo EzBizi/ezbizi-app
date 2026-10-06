@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 61 · AI Assistance · WhatsApp groups — **out for decision** (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
+### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
 From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
 groups (`docs/REPLACING-RODRIGO-BOT.md`). Backend on main f505e9e5 under `ai_assistance.manage`: GET
@@ -2978,7 +2978,7 @@ Build notes from Meta: no registry tab key; gate the tab on `ai_assistance.manag
 member picker reads `people: [{id, name, has_phone}]` (active users of this business) from the same GET, added at
 1daadbf0, not GET /users.
 
-### 60 · Reports · Performance, rearranged — **out for decision** (`docs/previews/reports-performance-revamp-layouts.html`)
+### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-revamp-layouts.html`)
 
 Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
 things and the UI is not very good for it anymore."* Today one scroll holds the dates, seven figures, three panels that
