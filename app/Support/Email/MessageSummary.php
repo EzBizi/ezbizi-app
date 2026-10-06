@@ -75,6 +75,15 @@ final class MessageSummary
          * Null when it did not say (IMAP) or the header was missing.
          */
         public readonly ?bool $fromAuthenticated = null,
+
+        /**
+         * Sent to many, by a system -- not written by a person to this inbox.
+         *
+         * Read for the watcher's events (`is_bulk` on email.received) and NOT
+         * published on the list, which has no use for it. False where the
+         * provider gave nothing to judge by. See GmailMessageMapper::isBulk.
+         */
+        public readonly bool $isBulk = false,
     ) {}
 
     /**
@@ -86,7 +95,7 @@ final class MessageSummary
             $this->id, $this->threadId, $this->subject, $this->fromName, $this->fromAddress,
             $this->to, $this->sentAt, $this->snippet, $this->hasAttachments,
             $this->unreadAtProvider, $seenBy, $this->messageCount,
-            $this->fromAuthenticated,
+            $this->fromAuthenticated, $this->isBulk,
         );
     }
 

@@ -719,7 +719,12 @@ final class GmailMailboxReader implements MailboxReader
         foreach ($ids as $id) {
             $summaries[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
                 'format'          => 'metadata',
-                'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
+                // The last three are what `is_bulk` reads (GmailMessageMapper::isBulk).
+                // Headers only -- still no body.
+                'metadataHeaders' => [
+                    'From', 'To', 'Subject', 'Date', 'Authentication-Results',
+                    'List-Unsubscribe', 'Precedence', 'Auto-Submitted',
+                ],
             ]));
         }
 

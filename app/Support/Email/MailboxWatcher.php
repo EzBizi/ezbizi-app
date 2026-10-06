@@ -519,6 +519,10 @@ final class MailboxWatcher
             // straight away: a photograph or a signed form arriving is a
             // different event from a question.
             'has_attachments' => $message->hasAttachments,
+
+            // Sent to many by a system, not written by a person -- so a rule can
+            // say "only mail somebody wrote". See GmailMessageMapper::isBulk.
+            'is_bulk' => $message->isBulk,
         ];
     }
 

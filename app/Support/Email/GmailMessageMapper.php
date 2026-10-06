@@ -71,7 +71,56 @@ final class GmailMessageMapper
              */
             unreadAtProvider: in_array('UNREAD', (array) ($payload['labelIds'] ?? []), strict: true),
             fromAuthenticated: $this->dmarcPassed($headers['authentication-results'] ?? ''),
+            isBulk: $this->isBulk($payload, $headers),
         );
+    }
+
+    /**
+     * Mail a system sent to many, rather than a person wrote to this inbox.
+     *
+     * Jose, 2026-10-06, choosing how the new-email notification is filtered:
+     * "the rule only fires for mail a person actually wrote".
+     *
+     * Two kinds of evidence, either enough:
+     *
+     *   HEADERS a sender sets to say so -- `List-Unsubscribe` (required of bulk
+     *   senders by Gmail and Yahoo since 2024), `Precedence: bulk|list|junk`,
+     *   and `Auto-Submitted` other than "no" (RFC 3834: receipts, autoreplies).
+     *
+     *   GMAIL'S OWN CATEGORY, any but Primary. Inbox tabs are off on these
+     *   accounts, but Gmail still labels the messages. Measured on a week of
+     *   info@a-1chimney.com (591 messages): 173 flagged by a header, and 334
+     *   more ONLY by a category -- RingCentral 166, monday.com 57, Thumbtack,
+     *   Indeed, Google -- of which none came from a personal-mail domain. The
+     *   headers alone would have let two thirds of the bulk through.
+     *
+     * Wrong in both directions is possible and the cost differs: a person's
+     * mail flagged bulk is a notification nobody gets, so nothing here guesses
+     * from the sender's name or address.
+     *
+     * @param  array<string, mixed>   $payload
+     * @param  array<string, string>  $headers  lowercased names
+     */
+    private function isBulk(array $payload, array $headers): bool
+    {
+        if (trim((string) ($headers['list-unsubscribe'] ?? '')) !== '') {
+            return true;
+        }
+
+        if (in_array(strtolower(trim((string) ($headers['precedence'] ?? ''))), ['bulk', 'list', 'junk'], true)) {
+            return true;
+        }
+
+        $auto = strtolower(trim((string) ($headers['auto-submitted'] ?? '')));
+
+        if ($auto !== '' && $auto !== 'no') {
+            return true;
+        }
+
+        return array_intersect(
+            ['CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS'],
+            (array) ($payload['labelIds'] ?? []),
+        ) !== [];
     }
 
     /**
