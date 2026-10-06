@@ -103,15 +103,27 @@ class InspectionReportToWorkizTest extends TestCase
         $this->assertSame(1, collect(Http::recorded())->filter(fn ($pair) => $pair[0]->method() === 'PUT')->count());
     }
 
+    /** On a job Workiz does not have, or on a client alone, it is left alone -- though other jobs ARE in Workiz. */
     public function test_an_inspection_on_no_workiz_job_is_left_alone(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $report = $this->reportFor($tenant, workiz: false);
+        $mirrored = $this->reportFor($tenant);
+        $report = $this->inTenant($tenant['org'], function () use ($tenant, $mirrored) {
+            $job = Job::create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $mirrored->customer_id, 'number' => 'J-2', 'title' => 'Another', 'status' => 'scheduled']);
+
+            return [
+                $mirrored->replicate()->fill(['job_id' => $job->id]),
+                $mirrored->replicate()->fill(['job_id' => null]),
+            ];
+        });
         Http::fake();
 
-        $result = $this->act($tenant, $report);
+        foreach ($report as $unlinked) {
+            $this->inTenant($tenant['org'], fn () => $unlinked->save());
+            $result = $this->act($tenant, $unlinked);
+            $this->assertSame([false, 'This inspection is not on a Workiz job, so there was nothing to put it on.'], [$result['ok'], $result['detail']]);
+        }
 
-        $this->assertSame([false, 'This inspection is not on a Workiz job, so there was nothing to put it on.'], [$result['ok'], $result['detail']]);
         Http::assertNothingSent();
     }
 
