@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 57 · Reports · Performance · choosing the dates — **out for decision** (`docs/previews/reports-performance-dates-layouts.html`)
+### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-dates-layouts.html`)
 
 From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /
 Or specific date / Week is confussing what week is it ? Etc i should see the range / Maybe dropdown like google"*.
