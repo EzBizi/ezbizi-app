@@ -60,7 +60,8 @@ class ScreenshotService {
     this._api, {
     Duration interval = const Duration(minutes: 5),
     Future<CaptureAttempt> Function()? capture,
-    void Function({required bool ok, String? reason})? onOutcome,
+    void Function({required bool ok, String? reason, int? captureMs})?
+        onOutcome,
   })  : _interval = interval,
         _capture = capture ?? _defaultCapture,
         _onOutcome = onOutcome {
@@ -86,7 +87,8 @@ class ScreenshotService {
   /// Told the result of every attempt. Null in tests that do not care and in
   /// any future caller with nowhere to report — reporting is a courtesy to
   /// whoever is looking at the roster, never a precondition for capturing.
-  final void Function({required bool ok, String? reason})? _onOutcome;
+  final void Function({required bool ok, String? reason, int? captureMs})?
+      _onOutcome;
 
   Timer? _timer;
 
@@ -99,11 +101,17 @@ class ScreenshotService {
 
   Future<void> _captureAndUpload() async {
     try {
+      // Time the native capture only — the thing that runs on the platform
+      // thread and can stall. The upload after it is network, measured nowhere
+      // here. capture_ms rides the heartbeat so production shows which machines
+      // are slow to grab a frame.
+      final sw = Stopwatch()..start();
       final attempt = await _capture();
+      final captureMs = sw.elapsedMilliseconds;
       final bytes = attempt.bytes;
 
       if (bytes == null || bytes.isEmpty) {
-        _report(ok: false, reason: attempt.reason ?? 'empty_capture');
+        _report(ok: false, reason: attempt.reason ?? 'empty_capture', captureMs: captureMs);
         return;
       }
 
@@ -123,7 +131,7 @@ class ScreenshotService {
         // rather than flattened into a generic failure: `upload_404` means
         // the device row is missing, `upload_413`/`upload_422` mean the
         // frame itself was rejected, `upload_403` is the exemption.
-        _report(ok: false, reason: 'upload_${response.statusCode}');
+        _report(ok: false, reason: 'upload_${response.statusCode}', captureMs: captureMs);
 
         if (kDebugMode) {
           debugPrint('ScreenshotService: upload failed (${response.statusCode}): '
@@ -132,7 +140,7 @@ class ScreenshotService {
         return;
       }
 
-      _report(ok: true, reason: null);
+      _report(ok: true, reason: null, captureMs: captureMs);
     } catch (e) {
       _report(ok: false, reason: 'capture_failed');
 
@@ -144,9 +152,9 @@ class ScreenshotService {
 
   /// Never lets a reporting failure become a capture failure — [_onOutcome]
   /// is somebody else's code, and this runs inside a timer callback.
-  void _report({required bool ok, String? reason}) {
+  void _report({required bool ok, String? reason, int? captureMs}) {
     try {
-      _onOutcome?.call(ok: ok, reason: reason);
+      _onOutcome?.call(ok: ok, reason: reason, captureMs: captureMs);
     } catch (_) {
       // Deliberately swallowed: see above.
     }

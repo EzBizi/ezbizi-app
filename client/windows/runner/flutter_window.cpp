@@ -1,7 +1,11 @@
 #include "flutter_window.h"
 
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <variant>
 
@@ -9,6 +13,7 @@
 #include "monitoring_input.h"
 #include "monitoring_screenshot.h"
 #include "monitoring_specs.h"
+#include "platform_task.h"
 
 namespace {
 
@@ -44,33 +49,52 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   monitoring_specs_channel_ =
-      RegisterMonitoringSpecsChannel(flutter_controller_->engine());
+      RegisterMonitoringSpecsChannel(flutter_controller_->engine(),
+                                     GetHandle());
 
   monitoring_screenshot_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
           kMonitoringScreenshotChannel,
           &flutter::StandardMethodCodec::GetInstance());
+  HWND window = GetHandle();
   monitoring_screenshot_channel_->SetMethodCallHandler(
-      [](const flutter::MethodCall<flutter::EncodableValue>& call,
-         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
-             result) {
+      [window](const flutter::MethodCall<flutter::EncodableValue>& call,
+               std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                   result) {
         if (call.method_name() != kCaptureScreenshotMethod) {
           result->NotImplemented();
           return;
         }
-        // A failed capture is reported as an ERROR carrying the reason slug,
-        // not as Success(null). Both used to arrive in Dart as "no bytes",
-        // which meant a machine that could never capture looked exactly like
-        // one that had not captured yet — see monitoring_screenshot.h.
-        std::string reason;
-        std::vector<uint8_t> jpeg_bytes = CapturePrimaryMonitorJpeg(&reason);
-        if (jpeg_bytes.empty()) {
-          result->Error(reason.empty() ? "capture_failed" : reason,
-                        "The primary monitor could not be captured.");
-          return;
-        }
-        result->Success(flutter::EncodableValue(std::move(jpeg_bytes)));
+
+        // OFF THE PLATFORM THREAD, the same reason as ReadSpecs: BitBlt +
+        // GetDIBits + WIC JPEG on a busy or large display can take long enough
+        // to freeze the window, and this fires every 5 min and every ~8 s while
+        // someone watches live. shared_ptr so the completion can live in a
+        // std::function (which must be copyable).
+        std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> shared =
+            std::move(result);
+
+        std::thread([shared, window]() {
+          static std::mutex capture_mutex;
+          std::lock_guard<std::mutex> lock(capture_mutex);
+
+          std::string reason;
+          std::vector<uint8_t> jpeg_bytes = CapturePrimaryMonitorJpeg(&reason);
+
+          PostTaskToPlatform(window, [shared, jpeg_bytes = std::move(jpeg_bytes),
+                                      reason]() mutable {
+            // A failed capture is an ERROR carrying the reason slug, not
+            // Success(null): a machine that can never capture must not look
+            // like one that just has not yet — see monitoring_screenshot.h.
+            if (jpeg_bytes.empty()) {
+              shared->Error(reason.empty() ? "capture_failed" : reason,
+                            "The primary monitor could not be captured.");
+              return;
+            }
+            shared->Success(flutter::EncodableValue(std::move(jpeg_bytes)));
+          });
+        }).detach();
       });
 
   monitoring_input_channel_ =
@@ -155,6 +179,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case kWmRunOnPlatform: {
+      // A worker thread finished a monitoring read and posted its completion
+      // here, where result->Success/Error is allowed to run (the platform
+      // thread). See platform_task.h.
+      auto* task = reinterpret_cast<std::function<void()>*>(lparam);
+      if (task != nullptr) {
+        (*task)();
+        delete task;
+      }
+      return 0;
+    }
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

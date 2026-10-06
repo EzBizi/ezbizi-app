@@ -137,7 +137,7 @@ void main() {
         it.api,
         interval: const Duration(milliseconds: 20),
         capture: () async => (bytes: null, reason: 'jpeg_encoder_missing'),
-        onOutcome: ({required bool ok, String? reason}) =>
+        onOutcome: ({required bool ok, String? reason, int? captureMs}) =>
             outcomes.add((ok: ok, reason: reason)),
       );
 
@@ -167,7 +167,7 @@ void main() {
         it.api,
         interval: const Duration(milliseconds: 20),
         capture: () async => (bytes: Uint8List.fromList([1, 2, 3]), reason: null),
-        onOutcome: ({required bool ok, String? reason}) =>
+        onOutcome: ({required bool ok, String? reason, int? captureMs}) =>
             outcomes.add((ok: ok, reason: reason)),
       );
 
@@ -195,7 +195,7 @@ void main() {
         api,
         interval: const Duration(milliseconds: 20),
         capture: () async => (bytes: Uint8List.fromList([1, 2, 3]), reason: null),
-        onOutcome: ({required bool ok, String? reason}) =>
+        onOutcome: ({required bool ok, String? reason, int? captureMs}) =>
             outcomes.add((ok: ok, reason: reason)),
       );
 
@@ -223,7 +223,7 @@ void main() {
           attempts++;
           return (bytes: Uint8List.fromList([1, 2, 3]), reason: null);
         },
-        onOutcome: ({required bool ok, String? reason}) =>
+        onOutcome: ({required bool ok, String? reason, int? captureMs}) =>
             throw StateError('the reporter belongs to somebody else'),
       );
 

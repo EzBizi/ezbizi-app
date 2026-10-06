@@ -159,10 +159,11 @@ class MonitoringHeartbeat {
   /// capture at all looked exactly like one that had not tried yet. [reason]
   /// is a short slug from a fixed vocabulary, never free text and never
   /// anything read off the screen — see monitoring_capture_channel.dart.
-  void reportCapture({required bool ok, String? reason}) {
+  void reportCapture({required bool ok, String? reason, int? captureMs}) {
     _lastCapture = {
       'ok': ok,
       'reason': ?reason,
+      'capture_ms': ?captureMs,
       'at': DateTime.now().toUtc().toIso8601String(),
     };
   }
