@@ -22,6 +22,9 @@ class VersionHistory {
         'Reports: Experimental is now called Performance, and Builder is Report Builder.',
         'The Performance report loads much faster: Workiz jobs come from EzBizi\'s synced copy instead of being fetched live each time.',
         'Inspection reports: a plain choice now prints the option\'s words instead of its stored key.',
+        'Email: adding an address from Workspace now offers the branch subdomain addresses too, such as office@nj.a-1chimney.com.',
+        'Leads: another call on a Google Local Services call lead no longer raises a "customer replied" notification.',
+        'Notifications from a rule can carry a second line under the headline, and rules can use the new lead headline, details and reply preview wording.',
       ],
     ),
     VersionRelease(
