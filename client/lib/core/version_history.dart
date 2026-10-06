@@ -18,6 +18,7 @@ class VersionHistory {
       date: '6 Oct 2026',
       items: [
         'Performance report: ready to label each call\'s reason with Claude and Grok side by side (switched off until the privacy page and keys are in place).',
+        'A new inspection fills in the client\'s contact details and address, and the job\'s date.',
       ],
     ),
     VersionRelease(
