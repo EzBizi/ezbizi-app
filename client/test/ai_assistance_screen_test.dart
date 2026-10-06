@@ -64,6 +64,32 @@ void main() {
     expect(find.byType(SidePanel), findsOneWidget);
   });
 
+  // UI queue 61: the WhatsApp groups the reports go to. The tab's own grant,
+  // and manage, which every endpoint behind the tab asks for.
+  testWidgets('WhatsApp groups needs its own grant and manage', (tester) async {
+    for (final grants in [
+      ['ai_assistance.whatsapp_groups.view'],
+      ['ai_assistance.manage'],
+    ]) {
+      await _pump(tester, grants: ['ai_assistance.library.view', ...grants]);
+      expect(
+        find.widgetWithText(ChoiceChip, 'WhatsApp groups'),
+        findsNothing,
+        reason: 'only $grants',
+      );
+    }
+
+    await _pump(
+      tester,
+      grants: [
+        'ai_assistance.library.view',
+        'ai_assistance.whatsapp_groups.view',
+        'ai_assistance.manage',
+      ],
+    );
+    expect(find.widgetWithText(ChoiceChip, 'WhatsApp groups'), findsOneWidget);
+  });
+
   // ── the layout Jose picked (UI queue 40: 1 and 4) ─────────────────
 
   testWidgets('topics on the left open an answer in the middle, with where '

@@ -11,9 +11,12 @@ import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import '../jobs/job_detail_panel.dart';
+import 'customer_workiz.dart';
 
 /// One customer, opened from the list.
 ///
@@ -47,6 +50,10 @@ class CustomerDetailPanel extends StatefulWidget {
 }
 
 class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
+  /// Customer, Money or Notes from Workiz (UI queue 59; Jose: "as u
+  /// recommend").
+  String _tab = 'customer';
+
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
@@ -130,7 +137,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       _error = null;
     });
 
-    final response = await widget.api.get('/customers/${widget.id}');
+    // The reader's own date: past due is worked out against it, and the
+    // server's is UTC, already tomorrow every US evening.
+    final response = await widget.api.get('/customers/${widget.id}', {
+      'today': formatCalendarDay(DateTime.now()),
+    });
 
     if (!mounted) return;
 
@@ -201,6 +212,8 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     }
 
     final row = Map<String, dynamic>.from(response.data as Map);
+    // A save answers with the customer, not its money: keep what was shown.
+    if (!row.containsKey('money')) row['money'] = _row?['money'];
     _fill(row);
 
     setState(() {
@@ -299,7 +312,75 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
               padding: EdgeInsets.all(32),
               child: Center(child: CircularProgressIndicator()),
             )
-          : Column(
+          : _tabbed(context, row, owner, active, jobs, editable),
+    );
+  }
+
+  /// The tabs, when there is more than the customer to show: Money for a
+  /// reader with Financials whom Workiz has figures for, Notes from Workiz for
+  /// a customer linked to a Workiz client. Otherwise today's single page.
+  Widget _tabbed(
+    BuildContext context,
+    Map<String, dynamic>? row,
+    Map<String, dynamic>? owner,
+    bool active,
+    int jobs,
+    bool editable,
+  ) {
+    final money = CustomerMoney.of(row?['money']);
+    final linked = row != null && workizClientNumbers(row) != null;
+    final tabs = <(String, String, IconData, Tone?)>[
+      ('customer', 'Customer', Icons.person_outline, null),
+      if (money != null)
+        money.late
+            ? (
+                'money',
+                'Money · ${money.money(money.pastDue!)} past due',
+                Icons.payments_outlined,
+                Tone.bad,
+              )
+            : ('money', 'Money', Icons.payments_outlined, null),
+      if (linked) ('notes', 'Notes from Workiz', Icons.sticky_note_2_outlined, null),
+    ];
+    final current = tabs.any((t) => t.$1 == _tab) ? _tab : 'customer';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (tabs.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TabBarLike(
+              key: const Key('customer-tabs'),
+              labels: [for (final t in tabs) (t.$2, t.$3)],
+              tones: [for (final t in tabs) t.$4],
+              selected: tabs.indexWhere((t) => t.$1 == current),
+              onSelected: (i) => setState(() => _tab = tabs[i].$1),
+            ),
+          ),
+        if (current == 'money' && money != null)
+          CustomerMoneyCard(money: money)
+        else if (current == 'notes')
+          WorkizNotes(
+            api: widget.api,
+            customerId: widget.id,
+            formats: _me.display,
+          )
+        else
+          _customerPage(context, row, owner, active, jobs, editable),
+      ],
+    );
+  }
+
+  Widget _customerPage(
+    BuildContext context,
+    Map<String, dynamic>? row,
+    Map<String, dynamic>? owner,
+    bool active,
+    int jobs,
+    bool editable,
+  ) {
+    return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (row != null)
@@ -473,8 +554,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   ErrorNote(_error!),
                 ],
               ],
-            ),
-    );
+            );
   }
 }
 

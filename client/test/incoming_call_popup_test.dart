@@ -99,6 +99,37 @@ void main() {
     expect(tester.getTopLeft(card), before + const Offset(-150, 200));
   });
 
+  /// A ring that arrives DURING another widget's build does not assert.
+  ///
+  /// Apple, 2026-10-06, iOS debug: "setState() or markNeedsBuild() called
+  /// during build", from the desk notifying while a later widget built. The
+  /// window waits for the end of the frame and then shows the call.
+  testWidgets('a call that arrives mid-build is shown after the frame', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    var rung = false;
+    final service = await _pump(
+      tester,
+      device: device,
+      popup: true,
+      after: Builder(
+        builder: (context) {
+          if (!rung) {
+            rung = true;
+            device.ring('+13055550100');
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+    addTearDown(service.stop);
+
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('incoming-call-popup')), findsOneWidget);
+  });
+
   /// THE CONTROL: a company that switched it off does not get it.
   ///
   /// Without it the test above passes on a build that ignores the switch.
@@ -229,6 +260,7 @@ Future<PhoneCallService> _pump(
   bool known = true,
   List<void Function()>? holdReplies,
   VoidCallback? onUnderneath,
+  Widget? after,
 }) async {
   tester.view.physicalSize = const Size(900, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -304,6 +336,7 @@ Future<PhoneCallService> _pump(
               ),
             ),
             IncomingCallPopup(api: api, session: session, service: service),
+            ?after,
           ],
         ),
       ),

@@ -21,6 +21,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
+import 'ai_assistance/whatsapp_groups_tab.dart';
 import 'settings_screen.dart';
 
 class AiAssistanceScreen extends StatefulWidget {
@@ -66,6 +67,17 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
           session: widget.session,
           canEdit: _may('ai_assistance.manage'),
         ),
+      ),
+    // Where the reports replacing the Rodrigo bot's are sent (UI queue 61).
+    // Its own grant, and manage: every endpoint behind it asks for manage, so
+    // without it the tab could only show a refusal.
+    if (_may('ai_assistance.whatsapp_groups.view') &&
+        _may('ai_assistance.manage'))
+      (
+        'whatsapp',
+        'WhatsApp groups',
+        Icons.groups_outlined,
+        () => WhatsAppGroupsTab(api: widget.api),
       ),
     if (_may('ai_assistance.settings.view'))
       (

@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
+### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
 From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
 groups (`docs/REPLACING-RODRIGO-BOT.md`). Backend on main f505e9e5 under `ai_assistance.manage`: GET
@@ -2980,7 +2980,8 @@ stacked; **5** rows → page; **6** reports list.
 
 Build notes from Meta: no registry tab key; gate the tab on `ai_assistance.manage` (every endpoint's permission). The
 member picker reads `people: [{id, name, has_phone}]` (active users of this business) from the same GET, added at
-1daadbf0, not GET /users.
+1daadbf0, not GET /users. Built: module_tabs_registry_test reds a drawn tab the registry lacks, so Meta registered
+`whatsapp_groups` at 3f460e6e; the tab needs `ai_assistance.whatsapp_groups.view` and `ai_assistance.manage`.
 
 ### 60 · Reports · Performance, rearranged — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-revamp-layouts.html`)
 
@@ -2994,7 +2995,7 @@ they apply) (recommended); **2** the figures down the left as the way in; **3** 
 **4** (recommended) the same tabs; **5** the figures as the menu; **6** one page. All: Workiz accounts move to a Sources
 side panel and a problem with them is one amber line; the figures are one size.
 
-### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — building (`docs/previews/customers-workiz-money-notes-layouts.html`)
+### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/customers-workiz-money-notes-layouts.html`)
 
 From Customers (`local_90d427a5…`), approved as a feature by Jose 2026-10-06. Money: `GET /customers/{id}?today=Y-m-d`
 → `data.money`, null without Jobs Financials (draw nothing), else one entry per currency {invoiced, due, past_due

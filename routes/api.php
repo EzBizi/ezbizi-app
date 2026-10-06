@@ -581,6 +581,13 @@ Route::get('v1/phone/audio/{name}', [\App\Http\Controllers\Api\Phone\AudioContro
     ->middleware('signed')
     ->name('phone.audio');
 
+// An inspection report's PDF for places that cannot sign in (a Workiz job);
+// the signed link is the permission. See InspectionReport::shareUrl.
+Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class, 'shared'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->whereUuid('report')
+    ->name('inspection.report.shared');
+
 // A form upload, by the signed link in its enquiry — never guessable.
 Route::get('v1/web/form/files/{name}', [WebEnquiriesController::class, 'file'])
     ->middleware('signed')
