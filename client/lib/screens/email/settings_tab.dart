@@ -81,6 +81,11 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
   WorkspaceSettings? _workspace;
   bool _workspaceReachable = false;
 
+  /// The "New email" automation, as the server read it: which addresses it
+  /// covers, whether this screen may edit it, and why not. Null when it could
+  /// not be read -- the switch is then not drawn rather than drawn wrong.
+  Map<String, dynamic>? _alerts;
+
   /// The server's last word about something that just happened — what
   /// disconnecting took away, in its own sentence.
   ///
@@ -105,6 +110,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
 
     final response = await widget.api.get('/email/mailboxes');
     final workspace = await widget.api.get('/email/workspace');
+    final alerts = await widget.api.get('/email/mailboxes/new-mail-alerts');
 
     if (!mounted) return;
 
@@ -118,6 +124,9 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       }
 
       _mailboxes = MailboxConnection.listFrom(response.data);
+      _alerts = alerts.ok && alerts.data is Map<String, dynamic>
+          ? alerts.data as Map<String, dynamic>
+          : null;
 
       final meta = response.body['meta'];
 
@@ -241,6 +250,26 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
     }
 
     await _load();
+  }
+
+  /// Switches the new-email notification for one inbox. The automation rule is
+  /// the one record: this edits it, and Automations shows the same edit.
+  Future<void> _setNewMailAlert(MailboxConnection mailbox, bool on) async {
+    final response = await widget.api.put(
+      '/email/mailboxes/${mailbox.id}/new-mail-alert',
+      {'on': on},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      // The rule's own sentence: reshaped in Automations, two of them, or no
+      // new-lead notification to copy who is told from.
+      setState(() => _notice = response.reason);
+      return;
+    }
+
+    setState(() => _alerts = response.data as Map<String, dynamic>);
   }
 
   Future<void> _disconnect(MailboxConnection mailbox) async {
@@ -396,6 +425,8 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
               onConnect: () => _connect(mailbox),
               onDisconnect: () => _disconnect(mailbox),
               onMarkReadAtSource: (on) => _setMarkReadAtSource(mailbox, on),
+              alerts: mailbox.mayManage ? _alerts : null,
+              onNewMailAlert: (on) => _setNewMailAlert(mailbox, on),
               // Only for somebody who may manage this inbox: choosing who reads
               // it is managing it, and the server refuses anybody else.
               people: mailbox.mayManage
@@ -692,6 +723,8 @@ class _MailboxCard extends StatelessWidget {
     required this.onConnect,
     required this.onDisconnect,
     this.onMarkReadAtSource,
+    this.alerts,
+    this.onNewMailAlert,
     this.people,
   });
 
@@ -706,9 +739,25 @@ class _MailboxCard extends StatelessWidget {
   /// Null on the cards that are not a real mailbox row (the Workspace ones).
   final void Function(bool on)? onMarkReadAtSource;
 
+  /// The new-email notification's state (GET email/mailboxes/new-mail-alerts);
+  /// null hides the switch -- not this viewer's inbox to manage, or unreadable.
+  final Map<String, dynamic>? alerts;
+  final void Function(bool on)? onNewMailAlert;
+
   /// Who can open this inbox, person by person; null when this viewer may not
   /// choose. See inbox_people.dart.
   final Widget? people;
+
+  /// Why the switch cannot be flipped from here, or null when it can.
+  String? get _alertBlocker {
+    if (alerts!['editable'] != true) {
+      return '${alerts!['reason'] ?? 'This was changed in Automations.'}';
+    }
+    if (alerts!['may_change'] != true) {
+      return 'Changing it takes permission to change automations.';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -796,6 +845,26 @@ class _MailboxCard extends StatelessWidget {
                             'it marks it read for the others too.'
                       : 'Read and unread change only in EzBizi, so anyone looking at the mail '
                             'service directly still sees the old state.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ],
+            // Jose, 2026-10-06: the "New email" automation, switched from
+            // here as well as from Automations -- the same rule, so the two
+            // cannot disagree. Drawn disabled, with the reason, when this
+            // screen may not change it, so the state is still visible.
+            if (alerts != null && onNewMailAlert != null) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: (alerts!['addresses'] as List? ?? const [])
+                    .contains(mailbox.address.toLowerCase()),
+                onChanged: _alertBlocker == null ? onNewMailAlert : null,
+                title: const Text('Notify about new emails'),
+                subtitle: Text(
+                  _alertBlocker ??
+                      'Sender, subject and the start of the message, for mail a person '
+                          'wrote. Newsletters and other bulk mail are skipped. The same '
+                          'people as new leads are told; change it in Automations too.',
                   style: theme.textTheme.bodySmall,
                 ),
               ),
