@@ -12,6 +12,8 @@ use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Support\Automations\ActionRunner;
+use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\EventEmitter;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -152,6 +154,29 @@ class InspectionReportToWorkizTest extends TestCase
             ->flatMap(fn ($module) => $module['declared_actions'] ?? [])->keyBy('key');
 
         $this->assertTrue($actions['inspection.report.workiz']['implemented'] ?? false);
+    }
+
+    /**
+     * The rule the command made, run by the engine on the event a submission
+     * emits: A1-Group had no inspection report yet to watch it on
+     * (2026-10-06), and the other tests hand the action its subject directly.
+     */
+    public function test_a_submitted_inspection_reaches_workiz_through_the_rule(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $report = $this->reportFor($tenant);
+        $line = 'Inspection report 10/06/2026: '.$report->shareUrl();
+        $this->artisan('ezbizi:workiz-inspection-rule', ['organization' => $tenant['org']->id, 'by' => $tenant['admin']->id])->assertSuccessful();
+        Http::fake(['api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::sequence()
+            ->push(['data' => [$this->job(['description' => ''])]])
+            ->push($this->job(['description' => $line]))]);
+
+        $this->inTenant($tenant['org'], function () use ($report) {
+            $event = app(EventEmitter::class)->emit('inspection.submitted', $report, ['report_id' => $report->id]);
+            app(AutomationEngine::class)->deliver($event);
+        });
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['description'] === $line);
     }
 
     /** Jose asked for it for A1-Group: one active rule, made once. */
