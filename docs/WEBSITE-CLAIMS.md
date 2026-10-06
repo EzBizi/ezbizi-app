@@ -106,6 +106,8 @@ touches apps, monitoring, social, Google or mail.
 
 | QR scans: "The scan record holds no internet address, no device details and no location" · "a random key that is changed every day and thrown away after two" · "deleted after thirteen months" | `/privacy/` | `create_qr_code_scans_table` — four columns only (`organization_id`, `qr_code_id`, `scanned_at`, `visitor`); **a fifth column breaks the first sentence**. `QrCodeScan::visitorFor` — `sha256(salt|ip|ua)`, salt `Cache::remember('qr-scan-salt:'.$day, now()->addDays(2), random_bytes(32))`; a persisted or fixed salt makes "nobody can work out which phone" false. `RetentionPolicy::window(13, 'scanned_at')`. **Scoped to the SCAN RECORD on purpose**: nginx access logs on app.ezbizi.com record every request's IP including `/q/…`, so "we do not store IP addresses" would be false — never widen it. |
 
+| Call labelling: "Where call labelling is switched on, the text of a transcribed call … never the recording … sent to Anthropic (Claude) and to xAI (Grok)" · "one word" · "EzBizi keeps only that word, for twelve months" · sub-processor "Anthropic and xAI" | `/privacy/` | `app/Support/Reports/Tagging/` — every `CallTagger` implementation, and what its `tag()` sends (today: `CallLabels::instruction` + the transcript text, nothing else). **A third tagger falsifies "these are all of them" by existing.** `CallReportLabel::retention()` (`window(12)`); `create_call_report_labels` stores `label` only — **a column holding the model's reasoning or the transcript breaks "only that word"**. Switch: `config/experimental_reports.php` `tagging.enabled` (`REPORT_CALL_TAGGING`, default `false`). Written 2026-10-06 BEFORE the switch, on Reports' `0094`; the sentence is conditional so it is true either way. |
+
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
 it belongs here with the file that decides it.
@@ -2488,3 +2490,42 @@ directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-06: sixteen releases, and the privacy page now names Anthropic and xAI before their switch
+
+**Production is `0.0.0377` at `d6f7b986`** (`/download/windows.json`). Before
+this run's edit all seven pages, `robots.txt` and `sitemap.xml` were
+byte-identical to `www/`; `67b7bbc3` (QR scans, another session) is live —
+`/privacy/` `Last-Modified` 2026-10-06 21:21 UTC.
+
+**The finding was in the inbox, addressed to this role:**
+`docs/agents/inbox/0094-reports-to-website-privacy-call-transcripts-to-anthropic-and-xai.md`.
+`0.0.0373` (`b5dcedfa`) built Performance-report call labelling with Claude
+and Grok; it sends the transcript TEXT to `api.anthropic.com` (Anthropic SDK)
+and `api.x.ai`, stores one label (`call_report_labels`, 12 months), and is
+off until `REPORT_CALL_TAGGING`. Checked in the code, not taken from the note:
+both taggers send only the instruction and `"Transcript:
+
+".$transcript`;
+the transcripts are RingCentral calls (`RingCentralCallLog`), not Google user
+data. **Written conditionally** ("where call labelling is switched on") so it
+is true now and after the switch; added a paragraph under Calls and messages
+and an "Anthropic and xAI" sub-processor entry. **Not written:** "neither
+company keeps the transcript" — the note says the providers are "not asked to
+keep anything", which is not the same as not keeping it.
+
+**Walked `5d455440..d6f7b986` against the load-bearing table; nothing else
+moved:** `config/services.php` unchanged; no manifest / `Info.plist` /
+`pubspec.yaml` change; `SettingRegistry` gained only
+`ai_assistance.ask_new_contacts` (a WhatsApp menu, no LLM call); Monitoring
+Files still `list`/`download` only (`0.0.0367` lets an empty path mean the
+drives). Website-form CAPTCHA (`723fc8f6`) is EzBizi's own proof-of-work, no
+third party. QR `deactivated_at` is on `qr_codes`, not `qr_code_scans`.
+
+**Deliberately unpublished:** Workiz invoices / payments / estimates mirrored
+in `0.0.0368` (Workiz's records, not EzBizi billing — the do-not row holds),
+in-app I-9 and direct deposit, QR stats, Memberships.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, version 0.0.0347.
