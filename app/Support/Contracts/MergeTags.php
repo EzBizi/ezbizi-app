@@ -656,6 +656,14 @@ final class MergeTags
     public static function render(string $body, array $values, array $highlight = []): string
     {
         $escaped = self::e($body);
+        // "To be determined" in place of an amount loses the "$" before it
+        // and the "%" after it.
+        foreach ($values as $key => $value) {
+            if ($value->value === MergeValue::TO_BE_DETERMINED) {
+                $tag = '\{\{[ \t]*'.preg_quote((string) $key, '/').'[ \t]*\}\}';
+                $escaped = preg_replace(['/\$[ \t]*('.$tag.')/', '/('.$tag.')[ \t]*%/'], '$1', $escaped) ?? $escaped;
+            }
+        }
         $cut     = self::dropVoided(self::expandSections($escaped, $values), $values);
         $html    = BodyMarkup::html($cut);
 
@@ -780,7 +788,7 @@ final class MergeTags
             $replaced = preg_replace_callback(
                 $pattern,
                 function (array $m) use ($values) {
-                    return self::sectionKeeps($m[1], $values) ? $m[2] : '';
+                    return self::sectionKeeps($m[1], $values, $m[2]) ? $m[2] : '';
                 },
                 $body,
                 1,
@@ -854,7 +862,7 @@ final class MergeTags
     /**
      * @param  array<string, MergeValue>  $values
      */
-    private static function sectionKeeps(string $key, array $values): bool
+    private static function sectionKeeps(string $key, array $values, string $content = ''): bool
     {
         if (isset($values[$key]) && $values[$key]->isVoided()) {
             return false;
@@ -873,6 +881,16 @@ final class MergeTags
 
         if ($value === null || $value->isBlank()) {
             return false;
+        }
+
+        // The choice behind it does not apply: what was answered under it
+        // still prints, line by line (Jose, 2026-10-06: "it would just remove
+        // the lines related to it, instead of the whole section").
+        if ($value->isVoided()) {
+            preg_match_all('/\{\{[ \t]*([a-z0-9_]+)[ \t]*\}\}/i', $content, $tags);
+
+            return collect($tags[1])->contains(fn (string $k) => isset($values[$k])
+                && ! $values[$k]->isBlank() && ! $values[$k]->isVoided());
         }
 
         return self::optionSlug((string) $value->value) === $option;

@@ -71,7 +71,8 @@ void main() {
     // Theirs. Drawn, so the employer can see what is still outstanding, and
     // dead, because it is not their answer to give.
     expect(_box(tester, 'bank_account').enabled, isFalse);
-    expect(_dropdown(tester, 'shirt_size').onChanged, isNull);
+    // A short list is its options in sight (Jose, 2026-10-06).
+    expect(_chip(tester, 'shirt_size').onSelected, isNull);
 
     // And it says whose it is, in the SERVER's word for that side.
     expect(find.text('The new starter'), findsWidgets);
@@ -83,7 +84,7 @@ void main() {
     await _pumpForm(tester, _handler(form: _asEmployee));
 
     expect(_box(tester, 'bank_account').enabled, isTrue);
-    expect(_dropdown(tester, 'shirt_size').onChanged, isNotNull);
+    expect(_chip(tester, 'shirt_size').onSelected, isNotNull);
 
     // The wage is the employer's and stays theirs — but it is on the page, so a
     // wage nobody has set is visibly outstanding rather than invisible.
@@ -962,6 +963,67 @@ void main() {
     expect((rows.first as Map)['received'], isNotEmpty);
   });
 
+  // Jose, 2026-10-06: "she always gets the 1 missing field, even tho
+  // everything is saved". The saved value again is not an unsaved answer.
+  testWidgets('giving back the saved value leaves nothing unsaved', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _asEmployee));
+
+    await _type(tester, 'shoe_size', '44');
+    expect(find.text('1 answer not saved yet.'), findsOneWidget);
+    await _type(tester, 'shoe_size', '43');
+    expect(find.text('Everything on this page is saved.'), findsOneWidget);
+  });
+
+  // Jose, 2026-10-06: Eve wanted "to be determined", options she can see,
+  // and pay basis off without everything under it going too.
+  testWidgets('pay terms: TBD, visible options, and a basis that does not apply', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployer,
+          'fields': [
+            {
+              ..._field('pay_basis', 'Pay basis', 'choice', filledBy: 'employer', writable: true,
+                  options: const ['Hourly', 'Salary'], value: 'N/A'),
+              'voidable': true,
+            },
+            {
+              ..._field('hourly_rate', 'Hourly rate', 'number', filledBy: 'employer', writable: true),
+              'voidable': true,
+              'shown_when': {'key': 'pay_basis', 'is': 'hourly'},
+            },
+            {
+              ..._field('comp_method', 'Compensation method', 'text', filledBy: 'employer', writable: true),
+              'voidable': true,
+            },
+          ],
+        },
+        onSave: (body) => saved = body,
+      ),
+    );
+
+    // Pay basis does not apply, and the hourly rate under it is still there.
+    expect(find.text('Hourly rate'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const Key('tbd:hourly_rate')));
+    expect(find.text('To be determined'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('comp-method-Hourly plus commission')));
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(saved, {
+      'answers': {
+        'hourly_rate': 'To be determined',
+        'comp_method': 'Hourly plus commission',
+      },
+    });
+  });
+
   testWidgets('a county the search cannot find is saved as typed', (
     tester,
   ) async {
@@ -1683,6 +1745,15 @@ Future<void> _pressSign(WidgetTester tester) async {
 }
 
 /// Type into the box answering a field, or into the one carrying a label.
+ChoiceChip _chip(WidgetTester tester, String key) => tester.widget<ChoiceChip>(
+  find
+      .descendant(
+        of: find.byKey(answerKey(key)),
+        matching: find.byType(ChoiceChip),
+      )
+      .first,
+);
+
 Future<void> _type(
   WidgetTester tester,
   String? fieldKey,
