@@ -58,6 +58,7 @@ final class WhatsAppStaffBot
     public function __construct(
         private readonly WhatsAppCloud $cloud,
         private readonly AssistantBrain $brain,
+        private readonly WhatsAppIntake $intake,
     ) {}
 
     public function handles(string $phoneNumberId): bool
@@ -81,6 +82,11 @@ final class WhatsAppStaffBot
         // was staff stays in their chat after they are deactivated, and tapping
         // it later must not still hand over what the company pays each lender.
         $viewer = $this->staffMember($number, $to);
+
+        // A stranger is first asked whether they want a service or a job.
+        if ($viewer === null && $this->intake->handle($number, $inbound, $choice)) {
+            return;
+        }
 
         if ($choice !== null) {
             $this->answerChoice($number, $to, $viewer, $choice);

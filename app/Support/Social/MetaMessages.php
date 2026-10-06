@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
 use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Http\Client\ConnectionException;
@@ -40,7 +41,10 @@ final class MetaMessages
 {
     private const TIMEOUT = 20;
 
-    public function __construct(private readonly LeadThread $thread) {}
+    public function __construct(
+        private readonly LeadThread $thread,
+        private readonly EventEmitter $events,
+    ) {}
 
     /**
      * Which of our connections a delivery belongs to, or null.
@@ -167,7 +171,7 @@ final class MetaMessages
             return $lead;
         }
 
-        return Lead::query()->withoutGlobalScopes()->create([
+        $lead = Lead::query()->withoutGlobalScopes()->create([
             'organization_id' => $connection->organization_id,
             'company_id' => $connection->scope_type === SocialConnection::SCOPE_COMPANY
                 ? $connection->scope_id
@@ -197,6 +201,16 @@ final class MetaMessages
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
+
+        // Until 2026-10-06 a DM lead never raised this, so no "new lead" rule
+        // ever heard about Messenger or Instagram.
+        $this->events->emitAfterCommit('lead.received', $lead, [
+            'after' => $lead->only(['source', 'contact_name', 'phone', 'category', 'received_at']) + [
+                'kind' => $lead->kind(),
+            ],
+        ]);
+
+        return $lead;
     }
 
     /**

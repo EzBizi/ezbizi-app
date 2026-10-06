@@ -20,6 +20,7 @@ use App\Support\Phone\HttpTwilioGateway;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\MetaMessageReplies;
+use App\Support\Social\WhatsAppReplies;
 use App\Support\Social\MetaMessages;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
@@ -99,6 +100,8 @@ class AppServiceProvider extends ServiceProvider
             ),
         );
 
+        $this->app->bind('lead-reply-channel.whatsapp', WhatsAppReplies::class);
+
         $this->app->tag(
             [
                 LocalServicesLeads::class,
@@ -106,6 +109,7 @@ class AppServiceProvider extends ServiceProvider
                 WebsiteChatReplies::class,
                 'lead-reply-channel.facebook',
                 'lead-reply-channel.instagram',
+                'lead-reply-channel.whatsapp',
             ],
             LeadReplies::TAG,
         );

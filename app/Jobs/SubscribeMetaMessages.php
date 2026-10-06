@@ -58,10 +58,21 @@ final class SubscribeMetaMessages implements ShouldQueue
             return;
         }
 
-        $response = Http::timeout(10)->asForm()->post($url, [
+        $post = fn (string $fields) => Http::timeout(10)->asForm()->post($url, [
             'subscribed_fields' => $fields,
             'access_token' => $token,
         ]);
+
+        // A Page also delivers lead-ad forms (MetaLeadForms). Asked for with the
+        // messages, and dropped if Meta refuses it - a grant without
+        // leads_retrieval must still get its Messenger enquiries.
+        $response = $connection->provider === SocialProvider::FacebookPage->value
+            ? $post($fields.',leadgen')
+            : null;
+
+        if ($response === null || $response->failed() || $response->json('success') !== true) {
+            $response = $post($fields);
+        }
 
         if ($response->failed() || $response->json('success') !== true) {
             // Thrown so the queue retries, and the last failure is kept.
