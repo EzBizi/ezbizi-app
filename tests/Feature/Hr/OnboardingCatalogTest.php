@@ -296,6 +296,50 @@ class OnboardingCatalogTest extends TestCase
         $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
     }
 
+    /**
+     * Every contract carries the same pay terms, each its own line (Eve via
+     * Jose, 2026-10-06), whatever variant it was: a salary-only contract
+     * gains the hourly, commission and raise lines; the rest of its wording
+     * and its own subsections stay, lettered again.
+     */
+    public function test_every_contract_gets_the_same_pay_terms(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $body = "1. EMPLOYMENT DETAILS\n\nEmployment Type: W-2 Employee\n\nSalary: \${{salary_amount}} per {{salary_period}}\n\n"
+            ."3. COMPENSATION\n\n(a) Base Pay\n\nThe Employee shall receive a fixed salary of \${{salary_amount}} per {{salary_period}}.\n\n"
+            ."(b) Performance Bonus\n\nBonuses may be paid.\n\n(c) Payment Schedule\n\nPaid weekly.\n\n4. WORK SCHEDULE\n\nAs agreed.";
+        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Accounting (salary)', 'body' => $body,
+            'fields' => [
+                ['key' => 'salary_amount', 'label' => 'Salary amount', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+                ['key' => 'salary_period', 'label' => 'Salary period', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Accounting (salary): standard pay terms as version 2')->assertSuccessful();
+        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
+
+        $this->inTenant($alpha['org'], function () use ($id) {
+            $v = Contract::findOrFail($id)->currentVersion;
+            $this->assertSame(2, (int) $v->version);
+            $keys = array_column($v->fields, 'key');
+            foreach (\App\Support\Hr\StandardPayTerms::KEYS as $key) {
+                $this->assertContains($key, $keys);
+            }
+            $this->assertSame('employee_signature', end($keys));
+            $this->assertStringContainsString("Hourly Rate: \${{hourly_rate}} per hour\n\nSalary: \${{salary_amount}} per {{salary_period}}", $v->body);
+            $this->assertStringContainsString("(a) Pay\n\n", $v->body);
+            $this->assertStringContainsString('Commission Rate: {{commission_pct}}%', $v->body);
+            $this->assertStringContainsString("(b) Performance Bonus\n\nBonuses may be paid.\n\n(c) Payment Schedule", $v->body);
+            $this->assertStringNotContainsString('Base Pay', $v->body);
+            $this->assertStringContainsString("4. WORK SCHEDULE\n\nAs agreed.", $v->body);
+        });
+    }
+
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void
     {
         $alpha = $this->provisionTenant('Alpha');
