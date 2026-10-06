@@ -1358,6 +1358,197 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertNull(FakeMailboxReader::$openedThread, 'No hint must reach the reader as no hint.');
     }
 
+    // ══ 2b. AN INBOX GIVEN TO A PERSON (2026-10-06) ══════════════
+
+    /*
+     * Jose: "I also want to be able to assign emails to specific people,
+     * instead of just roles -- maybe done via the email settings tab".
+     */
+
+    private const INBOX_TAB = ['email.view', 'email.inbox.view'];
+
+    /**
+     * THE FEATURE, with its control in the same test: two people on the same
+     * role, the inbox given to ONE of them. If person grants did nothing, the
+     * first assertion fails; if they leaked to the whole role, the second does.
+     */
+    public function test_a_person_given_an_inbox_opens_it_and_a_colleague_on_the_same_role_does_not(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+        $bob = $this->userWithRole($t, 'Dispatcher too', self::INBOX_TAB, email: 'bob@a1.test');
+
+        // ON ANA'S ROLE, so the only difference between them is the grant.
+        $this->inTenant($t['org'], fn () => $bob->forceFill(['role_id' => $ana->role_id])->save());
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])
+            ->assertOk()
+            ->assertJsonPath('data.people.0.id', $ana->id);
+
+        $this->signedInAs($ana)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertOk();
+        $this->signedInAs($bob)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
+    }
+
+    /**
+     * A grant is a key to one door, not a way round the others: a person whose
+     * role lacks the Inbox tab is not let in by a person grant. Written straight
+     * to the table, because the endpoint refuses to create it at all.
+     */
+    public function test_a_person_grant_does_not_get_round_the_inbox_tab(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+
+        $carl = $this->userWithRole($t, 'Driver', ['email.view'], email: 'carl@a1.test');
+        $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::create([
+            'organization_id' => $t['org']->id, 'mailbox_id' => $mailbox->id, 'user_id' => $carl->id,
+        ]));
+
+        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
+
+        // And the endpoint says why rather than writing a grant that does nothing.
+        $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()->delete());
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $carl->id])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'Email Inbox tab'));
+    }
+
+    /** Reach still applies: a branch user cannot be given a company inbox above them. */
+    public function test_a_person_out_of_reach_is_refused_when_given(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $company = $this->inbox($t, 'info@a-1chimney.com', 'company', $t['company']->id);
+        $jenny = $this->userWithRole($t, 'Branch Manager', self::INBOX_TAB, onlyAt: $t['franchise']);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$company->id}/people", ['user_id' => $jenny->id])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'not assigned to'));
+
+        $this->assertSame([], $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()->pluck('id')->all()));
+    }
+
+    /**
+     * The picker offers exactly the people who could open it once added -- not
+     * the Administrator, not someone without the Inbox tab, not someone already
+     * on it -- and lists the roles that hold it alongside.
+     */
+    public function test_the_people_list_offers_only_those_who_could_open_it(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+        $dee = $this->userWithRole($t, 'Office', self::INBOX_TAB, email: 'dee@a1.test');
+        $carl = $this->userWithRole($t, 'Driver', ['email.view'], email: 'carl@a1.test');
+        $this->grant($t, $mailbox, 'Office');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])->assertOk();
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/people")
+            ->assertOk()->json('data');
+
+        $candidates = array_column($data['candidates'], 'id');
+
+        $this->assertSame([$ana->id], array_column($data['people'], 'id'));
+        $this->assertContains('Office', array_column($data['roles'], 'name'));
+        $this->assertContains($dee->id, $candidates);
+        $this->assertNotContains($ana->id, $candidates, 'Someone already on it was offered again.');
+        $this->assertNotContains($carl->id, $candidates, 'Someone without the Inbox tab was offered.');
+        $this->assertNotContains($t['admin']->id, $candidates, 'The Administrator was offered.');
+    }
+
+    public function test_taking_an_inbox_away_closes_it(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])->assertOk();
+        $this->signedInAs($ana)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertOk();
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/people/{$ana->id}")
+            ->assertOk()
+            ->assertJsonPath('data.people', []);
+
+        $this->signedInAs($ana)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
+    }
+
+    /** Choosing who reads an inbox is managing it: the Settings tab alone is not enough. */
+    public function test_choosing_people_needs_the_authority_to_manage_the_inbox(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+        $viewer = $this->userWithRole($t, 'Viewer', ['email.view', 'email.settings.view'], email: 'v@a1.test');
+
+        $this->signedInAs($viewer)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])
+            ->assertForbidden();
+
+        $this->assertSame([], $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()->pluck('id')->all()));
+    }
+
+    /**
+     * THE TWO-WRITERS HAZARD. The roles editor rewrites a role's inboxes from a
+     * list; if it ever touched person rows, saving a role would silently strip
+     * people of inboxes they were given in Email settings.
+     */
+    public function test_saving_a_roles_inboxes_leaves_person_grants_alone(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])->assertOk();
+
+        // Ana's own role saved with NO inboxes, then with this one, then without.
+        $this->inTenant($t['org'], function () use ($ana, $mailbox) {
+            $inboxes = app(\App\Support\Access\InboxAccess::class);
+            $inboxes->sync($ana->role, []);
+            $inboxes->sync($ana->role, [$mailbox->id]);
+            $inboxes->sync($ana->role, []);
+        });
+
+        $this->assertTrue(
+            $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()
+                ->where('mailbox_id', $mailbox->id)->where('user_id', $ana->id)->exists()),
+            'Saving a role removed a person grant.',
+        );
+    }
+
+    public function test_a_person_from_another_organization_cannot_be_given_it(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $other = $this->provisionTenant('Premier Garage');
+        $mailbox = $this->inbox($t);
+        $stranger = $this->userWithRole($other, 'Dispatcher', self::INBOX_TAB, email: 'x@other.test');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $stranger->id])
+            ->assertStatus(422);
+    }
+
     // ══ 4b. STARTING A CONVERSATION ══════════════════════════════
 
     public function test_a_composed_message_reaches_the_provider_whole(): void

@@ -2312,6 +2312,12 @@ Route::prefix('v1')
 
             Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
             Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
+
+            // Who can open an inbox, person by person (2026-10-06). Role grants
+            // stay with the roles editor; see MailboxesController::people.
+            Route::get('email/mailboxes/{mailbox}/people', [MailboxesController::class, 'people']);
+            Route::post('email/mailboxes/{mailbox}/people', [MailboxesController::class, 'givePerson']);
+            Route::delete('email/mailboxes/{mailbox}/people/{user}', [MailboxesController::class, 'takeFromPerson']);
             Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
         });
 
