@@ -1199,6 +1199,12 @@ class HrOnboardingsController extends Controller
 
         $this->tellTheOtherSide($onboarding->fresh(), $actor, $field->filledBy);
 
+        // The invitation held for this signature goes out now (Jose,
+        // 2026-10-06: "sent only after the employer signs").
+        if ($field->filledBy === FilledBy::EMPLOYER && $onboarding->invitation !== null) {
+            $this->actions->releaseHeld($onboarding->invitation);
+        }
+
         return response()->json([
             'data'      => $this->detail($onboarding->fresh(), $actor),
             'signature' => $this->presentSignature($signature),

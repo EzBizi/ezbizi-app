@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Support\Automations\ActionRunner;
 use App\Support\Leads\LeadReplies;
 use App\Support\Web\WebsiteChatReplies;
 use App\Support\Web\WebsiteEnquiries;
@@ -760,6 +761,28 @@ class WebsiteEnquiriesTest extends TestCase
                 LeadConversation::FROM_CONSUMER,
                 $lead->refresh()->last_contact_from,
             );
+        });
+    }
+
+    /** A rule's reply raises lead.auto_replied, for the WhatsApp messages feed (2026-10-06). */
+    public function test_a_rule_reply_raises_auto_replied(): void
+    {
+        $made = $this->siteWithKey();
+
+        $started = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $lead = WebChat::query()->findOrFail($started['chat'])->lead;
+            $received = AutomationEvent::query()->where('event_key', 'lead.received')->firstOrFail();
+
+            $result = app(ActionRunner::class)->run(['type' => 'reply', 'message' => 'Thanks!'], $received, $lead);
+            $this->assertTrue($result['ok'], (string) ($result['detail'] ?? ''));
+
+            $raised = AutomationEvent::query()->where('event_key', 'lead.auto_replied')->sole();
+            $this->assertSame('Thanks!', $raised->payload['after']['message']);
+            $this->assertSame(1, $raised->depth, 'caused by the rule, so loop protection sees it');
         });
     }
 

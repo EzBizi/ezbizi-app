@@ -79,7 +79,7 @@ class SameDayReportTest extends TestCase
             '*4. Field performance*',
             '• *Ann:* 2 completed · 0 canceled · $400.00 sales · $250.00 deposits',
             '• *Bo:* 1 completed · 1 canceled · $100.00 sales · $0.00 deposits',
-            '• *Not on the Workiz team list:* $1,000.00 in payments received · no completed, canceled, or sales activity today',
+            "• *Not in Workiz's API (USR-office):* $1,000.00 in payments received · no completed, canceled, or sales activity today",
             '*Total: 3 completed · 1 canceled · $500.00 sales · $1,250.00 deposits*',
             '',
             '_Ask me about any location, technician, source, or job behind these numbers._',

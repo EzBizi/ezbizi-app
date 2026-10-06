@@ -35,7 +35,7 @@ class AdsCampaignWatch extends Command
     protected $description = 'Notice when a Local Services campaign stops showing, and who paused it';
 
     /** Google's primary status for a campaign that is showing, or could. */
-    private const SHOWING = ['ELIGIBLE', 'LIMITED', 'LEARNING', 'PENDING'];
+    public const SHOWING = ['ELIGIBLE', 'LIMITED', 'LEARNING', 'PENDING'];
 
     public function handle(LsaCertifications $google, TenantContext $tenant, EventEmitter $events): int
     {
@@ -117,7 +117,7 @@ class AdsCampaignWatch extends Command
     }
 
     /** @param array<string, string> $campaign */
-    private static function showing(array $campaign): bool
+    public static function showing(array $campaign): bool
     {
         return $campaign['status'] === 'ENABLED' && in_array($campaign['primary_status'], self::SHOWING, true);
     }

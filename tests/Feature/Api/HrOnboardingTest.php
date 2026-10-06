@@ -1474,6 +1474,40 @@ class HrOnboardingTest extends TestCase
     }
 
     /**
+     * With paperwork, the invitation is emailed only once the employer signs
+     * (Jose, 2026-10-06: "make it so the onboarding gets sent only after the
+     * employer signs"). Until then there is no link and nothing to resend.
+     */
+    public function test_an_invitation_with_paperwork_goes_out_when_the_employer_signs(): void
+    {
+        config(['mail.default' => 'smtp', 'mail.mailers.smtp.username' => 'ezbizi', 'mail.from.address' => 'noreply@ezbizi.test']);
+        \Illuminate\Support\Facades\Notification::fake();
+        $alpha = $this->provisionTenant('Alpha');
+        $contractId = $this->aContract($alpha);
+
+        $created = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
+            'email' => 'held@example.test', 'first_name' => 'Hal', 'last_name' => 'Held',
+            'role_id' => $this->roleFor($alpha)->id, 'contract_id' => $contractId,
+            'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
+        ])->assertCreated()->assertJsonPath('data.held', true);
+        $this->assertArrayNotHasKey('accept_url', $created->json('data'));
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
+        $invitation = $created->json('data.id');
+        $this->as($alpha['admin'])->postJson("/api/v1/hr/invitations/{$invitation}/resend")->assertStatus(422);
+
+        $id = collect($this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings')->json('data'))
+            ->firstWhere('invitation_id', $invitation)['id'];
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
+            'answers' => ['wage' => '18.50', 'iban' => self::IBAN],
+        ])->assertOk();
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva')->assertCreated();
+
+        \Illuminate\Support\Facades\Notification::assertSentOnDemand(\App\Notifications\InvitationLink::class);
+        $this->assertFalse(collect($this->as($alpha['admin'])->getJson('/api/v1/hr/invitations')->json('data'))
+            ->firstWhere('id', $invitation)['held']);
+    }
+
+    /**
      * The employer signs before the new starter has accepted (Jose,
      * 2026-10-05: "she should be able to sign it regardless"); the employee
      * signs after accepting, and the two signatures make one agreement.

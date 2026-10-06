@@ -86,6 +86,13 @@ class CheckAdsCertifications extends Command
                             'soonest_expiry' => $verdict['soonest_expiry'],
                         ]);
                         $raised++;
+                    } elseif ($after === '' && $before !== '') {
+                        // Back to clean: the recovery line Rodrigo's monitor sent.
+                        $events->emit('ads.certification_resolved', $state, [
+                            'account' => $connection->label ?: $connection->display_name,
+                            'customer_id' => $connection->remote_id,
+                        ]);
+                        $raised++;
                     }
                 });
                 $checked++;

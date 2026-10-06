@@ -47,8 +47,9 @@ final class AutomationTemplates
                 'trigger_key' => 'lead.received',
                 'conditions' => null,
                 'actions' => [
-                    // Jose's two lines (2026-10-06): 'You got a new "Local
-                    // Services Call" lead', then number, length, company, place.
+                    // Jose's two lines (2026-10-06, title shortened by him
+                    // the next day): 'New "Local Services Call" lead', then
+                    // number, length, company, place.
                     ['type' => 'notify', 'message' => '{{lead_headline}}', 'details' => '{{lead_details}}'],
                 ],
             ],

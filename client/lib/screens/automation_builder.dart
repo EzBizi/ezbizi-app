@@ -299,6 +299,7 @@ class _ActionRow {
     'audience',
     'boolean',
     'work_hours_report',
+    'whatsapp_group',
     'contract',
     'date',
     'field',
@@ -2882,6 +2883,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             )
           // A WORK HOURS REPORT: who is in it and its default recipients
           // live on the definition, under Work Hours > Reports.
+          // A STAFF WHATSAPP GROUP, by purpose.
+          else if (definition.parameters[i].kind == 'whatsapp_group')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.whatsappGroups.isEmpty
+                  ? 'No WhatsApp group is set up yet.'
+                  : null,
+              options: [
+                for (final group in widget.catalogue.whatsappGroups)
+                  SearchOption<String>(value: group.key, label: group.label),
+              ],
+              onChanged: _busy || widget.catalogue.whatsappGroups.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'work_hours_report')
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

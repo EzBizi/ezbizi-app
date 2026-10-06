@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Console\Commands\A1LeadsDeltaSync;
 use App\Models\A1LeadsReview;
+use App\Models\AutomationEvent;
 use App\Services\A1Leads\A1LeadsClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -125,6 +126,19 @@ class A1LeadsDeltaSyncTest extends TestCase
         $this->page('5', [['seq' => 6, 'review_ref' => 'accounts/a/locations/l/reviews/a', 'kind' => 'review', 'tombstone' => true, 'review' => null]], '6', false);
         $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
         $this->assertArrayNotHasKey('accounts/a/locations/l/reviews/a', $this->rows());
+    }
+
+    /** Row G of REPLACING-RODRIGO-BOT: a review Google took down is raised, once. */
+    public function test_a_review_google_removes_is_raised_once(): void
+    {
+        $this->inTenant($this->t['org'], fn () => A1LeadsDeltaSync::apply(self::record(1, 'a', ['rating' => 1, 'comment' => 'Awful'])));
+        $this->inTenant($this->t['org'], fn () => A1LeadsDeltaSync::apply(self::record(2, 'a', ['rating' => 1, 'comment' => 'Awful', 'deleted_at' => '2026-09-25T09:00:00Z'], tombstone: true)));
+        $this->inTenant($this->t['org'], fn () => A1LeadsDeltaSync::apply(self::record(3, 'a', ['rating' => 1, 'comment' => 'Awful', 'deleted_at' => '2026-09-25T09:00:00Z'], tombstone: true)));
+
+        $raised = AutomationEvent::withoutGlobalScopes()->where('event_key', 'a1leads_gbp.review_removed')->get();
+        $this->assertCount(1, $raised);
+        $this->assertSame(1, $raised[0]->payload['rating']);
+        $this->assertSame('Awful', $raised[0]->payload['comment']);
     }
 
     public function test_an_older_record_never_overwrites_a_newer_one(): void

@@ -50,7 +50,7 @@ class MetaLeadFormsTest extends TestCase
         $lead = Lead::query()->withoutGlobalScopes()->sole();
         $this->assertSame(Lead::SOURCE_FACEBOOK, $lead->source);
         $this->assertSame('FORM', $lead->lead_type);
-        $this->assertSame('You got a new "Meta Form" lead', $lead->lead_headline);
+        $this->assertSame('New "Meta Form" lead', $lead->lead_headline);
         $this->assertSame('Dana Reyes', $lead->contact_name);
         $this->assertSame('+13055550199', $lead->phone);
         $this->assertSame('dana@example.com', $lead->email);

@@ -9,6 +9,7 @@ use App\Services\A1Leads\A1LeadsGbpReplies;
 use App\Models\TimeClockReport;
 use App\Support\TimeClock\TimeClockReports;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Social\WhatsAppGroups;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -401,6 +402,7 @@ class ActionRunner
             'add_to_audience' => $this->addToAudience($action, $subject),
             'review_reply' => $this->replyOnGoogle($action, $event, $subject, $automation),
             'send_report' => $this->sendWorkHoursReport($action, $event, $automation),
+            'whatsapp.group_send' => $this->sendToWhatsAppGroup($action, $event, $subject, $automation),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -966,17 +968,25 @@ class ActionRunner
             ];
         }
 
+        $text = $this->interpolate($message, $event, $subject);
+
         try {
-            $this->leadReplies->for($subject)?->send(
-                $subject,
-                $this->interpolate($message, $event, $subject),
-                automatic: true,
-            );
+            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
 
         $this->audit->log('automation.lead_replied', $subject);
+
+        // For the WhatsApp "A1 Messages" feed (row H of REPLACING-RODRIGO-BOT).
+        // causedBy carries the cascade depth, so a rule answering this cannot loop.
+        $this->emitter->emit('lead.auto_replied', $subject, ['after' => [
+            'source' => $subject->source,
+            'kind' => $subject->kind(),
+            'contact_name' => $subject->contact_name,
+            'phone' => $subject->phone,
+            'message' => $text,
+        ]], causedBy: $event);
 
         return [
             'type' => $type,
@@ -2335,6 +2345,37 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Post a free-text message to a staff WhatsApp group (Jose, 2026-10-06:
+     * EzBizi replaces the Rodrigo bot's alerts with rules). WhatsAppGroups
+     * delivers to the real group or, failing that, to its members one by one,
+     * and catches each member's refusal itself.
+     *
+     * Reaching nobody is a failure: no such group, or nobody in it with a
+     * phone, is something to fix, not a message that went out.
+     */
+    private function sendToWhatsAppGroup(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'whatsapp.group_send';
+        $purpose = trim((string) ($action['group'] ?? ''));
+        $body = trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject));
+
+        if ($purpose === '' || $body === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a group and a message.'];
+        }
+
+        // Meta's limit for one message.
+        $body = mb_substr($body, 0, 4096);
+        $title = mb_substr((string) ($automation?->name ?? 'EzBizi alert'), 0, 60);
+
+        $reached = app(WhatsAppGroups::class)->deliver($purpose, $title, $body);
+
+        return $reached > 0
+            ? ['type' => $type, 'ok' => true, 'detail' => $reached === 1 ? 'Sent to the WhatsApp group.' : "Sent to {$reached} people in the group."]
+            : ['type' => $type, 'ok' => false,
+                'detail' => 'Nobody was reached: the WhatsApp group "'.$purpose.'" does not exist, or nobody in it has a phone.'];
+    }
+
     /**
      * Email a Work Hours report (Jose, 2026-09-28: the week's hours every
      * Sunday 8 PM Miami time to the dispatch manager).

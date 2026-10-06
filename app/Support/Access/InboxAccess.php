@@ -2,6 +2,7 @@
 
 namespace App\Support\Access;
 
+use App\Models\Mailbox;
 use App\Models\MailboxGrant;
 use App\Models\Role;
 use App\Models\User;
@@ -405,6 +406,64 @@ class InboxAccess
             'added'   => $this->addresses($added, $inboxes),
             'removed' => $this->addresses($removed, $inboxes),
         ];
+    }
+
+    // ── per person (2026-10-06) ──────────────────────────────────
+
+    /*
+     * Jose: "I also want to be able to assign emails to specific people,
+     * instead of just roles -- maybe done via the email settings tab".
+     *
+     * Written HERE, beside the role grants, so this class stays the one place
+     * that writes `mailbox_grants`. The roles editor writes role rows; Email
+     * settings writes person rows; both come through this file. The removed
+     * second writer in MailboxesController is the reason that matters.
+     *
+     * Whether a person MAY be given an inbox (their role holds the Inbox tab,
+     * the inbox is within their reach) is judged by the caller, which has
+     * MailboxAccess; this only records the decision.
+     */
+
+    /** The people given this inbox directly, by name. */
+    public function peopleOn(Mailbox $mailbox): \Illuminate\Support\Collection
+    {
+        return User::query()
+            ->whereIn('id', MailboxGrant::query()
+                ->where('mailbox_id', $mailbox->getKey())
+                ->whereNotNull('user_id')
+                ->select('user_id'))
+            ->orderBy('name')
+            ->get();
+    }
+
+    /** @return bool  true when newly given, false when they already had it */
+    public function givePerson(Mailbox $mailbox, User $person): bool
+    {
+        return MailboxGrant::query()->firstOrCreate(
+            ['mailbox_id' => $mailbox->getKey(), 'user_id' => $person->getKey()],
+            ['organization_id' => $mailbox->organization_id],
+        )->wasRecentlyCreated;
+    }
+
+    /** @return bool  true when taken away, false when they did not have it */
+    public function takeFromPerson(Mailbox $mailbox, User $person): bool
+    {
+        return MailboxGrant::query()
+            ->where('mailbox_id', $mailbox->getKey())
+            ->where('user_id', $person->getKey())
+            ->delete() > 0;
+    }
+
+    /** The roles that hold this inbox, by name -- for the screen to show beside the people. */
+    public function rolesOn(Mailbox $mailbox): \Illuminate\Support\Collection
+    {
+        return Role::query()
+            ->whereIn('id', MailboxGrant::query()
+                ->where('mailbox_id', $mailbox->getKey())
+                ->whereNotNull('role_id')
+                ->select('role_id'))
+            ->orderBy('name')
+            ->get();
     }
 
     // ── shared ───────────────────────────────────────────────────

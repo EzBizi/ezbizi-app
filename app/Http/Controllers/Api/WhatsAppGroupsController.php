@@ -31,6 +31,7 @@ class WhatsAppGroupsController extends Controller
         'gbp_updates' => 'Local Services & Google Business Profile updates',
         'messages' => 'New leads and customer messages',
         'dispatch' => 'Dispatch',
+        'approval' => 'Approves the weekly and monthly reports (the bookkeeper)',
     ];
 
     public function __construct(
@@ -49,6 +50,11 @@ class WhatsAppGroupsController extends Controller
                 ->map(fn (WhatsAppGroup $g) => $this->present($g)),
             'purposes' => collect(self::PURPOSES)->merge($daily)
                 ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])->values(),
+            // Who can be added: this business's active people. Here rather
+            // than GET /users so the picker needs only ai_assistance.manage.
+            'people' => User::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'phone'])
+                ->map(fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'has_phone' => trim((string) $u->phone) !== ''])
+                ->values(),
         ]);
     }
 

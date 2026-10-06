@@ -108,4 +108,26 @@ class GmailReadStateTest extends TestCase
         $this->assertSame(self::API.'/messages/m-1/modify', $modifies[0]->url());
         $this->assertSame(['addLabelIds' => ['UNREAD']], $modifies[0]->data());
     }
+
+    /**
+     * The arrivals fetch ASKS Gmail for the headers `is_bulk` reads. Gmail
+     * returns only the headers it is asked for, so a mapper reading
+     * List-Unsubscribe from a fetch that never requested it would see nothing
+     * in production -- while any fake, which answers whatever it likes, passed.
+     */
+    public function test_the_arrivals_fetch_asks_for_the_bulk_headers(): void
+    {
+        [$t, $mailbox] = $this->gmailInbox();
+
+        $fetch = new \ReflectionMethod(GmailMailboxReader::class, 'summariesFor');
+        $fetch->setAccessible(true);
+        $this->inTenant($t['org'], fn () => $fetch->invoke(app(GmailMailboxReader::class), $mailbox, ['m-1']));
+
+        $asked = urldecode((string) Http::recorded(fn (Request $r) => str_contains($r->url(), '/messages/m-1'))
+            ->map(fn ($pair) => $pair[0]->url())->first());
+
+        foreach (['List-Unsubscribe', 'Precedence', 'Auto-Submitted'] as $header) {
+            $this->assertStringContainsString($header, $asked, "{$header} was not requested.");
+        }
+    }
 }

@@ -178,4 +178,26 @@ class Automation extends Model implements CarriesAutomationScope
             $this->forceFill(['consecutive_failures' => 0])->save();
         }
     }
+
+    /**
+     * Write the next version and make it the one that runs. The ONE writer:
+     * the builder's Save and anything else that edits a rule (the Email
+     * settings switch) go through here, so every change is a version with
+     * an author, never an edit in place.
+     */
+    public function addVersion(?array $conditions, array $actions, User $by): AutomationVersion
+    {
+        $version = AutomationVersion::create([
+            'automation_id' => $this->getKey(),
+            'version' => ($this->versions()->max('version') ?? 0) + 1,
+            'conditions' => $conditions,
+            'actions' => $actions,
+            'created_by' => $by->getKey(),
+            'created_at' => now(),
+        ]);
+
+        $this->forceFill(['active_version_id' => $version->getKey()])->save();
+
+        return $version;
+    }
 }

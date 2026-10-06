@@ -1229,6 +1229,31 @@ class MailboxWatchTest extends TestCase
         $this->assertSame('', $this->latestArrival($t['org'])->payload['description']);
     }
 
+    /**
+     * `is_bulk` reaches the event both ways round, so a rule can keep to mail a
+     * person wrote. Both in one test: a key that was always false, or always
+     * true, fails one of the two.
+     */
+    public function test_the_event_says_whether_the_mail_was_bulk(): void
+    {
+        $t = $this->watchedTenant();
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+        WatchedInbox::arrive('Ana Reis', 'ana@example.com', 'Quote request');
+        WatchedInbox::arrive('RingCentral', 'notify@ringcentral.com', 'New call', bulk: true);
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $bulk = $this->inTenant($t['org'], fn () => AutomationEvent::where('event_key', 'email.received')
+            ->orderBy('occurred_at')->orderBy('id')->get()
+            ->mapWithKeys(fn ($e) => [$e->payload['from_address'] => $e->payload['is_bulk']])
+            ->all());
+
+        $this->assertSame(false, $bulk['ana@example.com']);
+        $this->assertSame(true, $bulk['notify@ringcentral.com']);
+    }
+
     /** "{{from_name}}: {{subject}}" never reads ": Quote request". */
     public function test_from_name_falls_back_to_the_address(): void
     {
@@ -1317,8 +1342,9 @@ class WatchedInbox implements MailboxReader
         string $subject,
         string $snippet = '',
         string $body = '',
+        bool $bulk = false,
     ): void {
-        self::arriveFor('*', $name, $address, $subject, $snippet, $body);
+        self::arriveFor('*', $name, $address, $subject, $snippet, $body, $bulk);
     }
 
     /**
@@ -1341,6 +1367,7 @@ class WatchedInbox implements MailboxReader
         string $subject,
         string $snippet = '',
         string $body = '',
+        bool $bulk = false,
     ): void {
         $id = 'msg-'.self::$nextId++;
 
@@ -1359,6 +1386,7 @@ class WatchedInbox implements MailboxReader
             to: [],
             sentAt: Carbon::parse('2026-08-13 09:00:00'),
             snippet: $snippet,
+            isBulk: $bulk,
         );
     }
 

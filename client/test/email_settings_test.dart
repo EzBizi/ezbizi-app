@@ -138,6 +138,74 @@ void main() {
   ///
   /// Somebody switching this on for a shared inbox needs to read the
   /// consequence before the first customer is missed, not after.
+  // ── who can open an inbox, person by person (2026-10-06) ──────
+
+  // Jose: "I also want to be able to assign emails to specific people,
+  // instead of just roles — maybe done via the email settings tab".
+  testWidgets('a manager sees who can open an inbox, and adds and removes people', (
+    tester,
+  ) async {
+    final calls = <String>[];
+
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
+      people: const {
+        'people': [
+          {'id': 'u-ana', 'name': 'Ana Reis', 'email': 'ana@a1.test'},
+        ],
+        'roles': [
+          {'id': 'r-1', 'name': 'Office'},
+        ],
+        'candidates': [
+          {'id': 'u-bob', 'name': 'Bob Nunes', 'email': 'bob@a1.test'},
+        ],
+      },
+      onRequest: (method, path, body) {
+        if (path.contains('/people')) {
+          calls.add('$method $path ${body?['user_id'] ?? ''}'.trim());
+        }
+      },
+    ));
+
+    await _openSettings(tester);
+
+    expect(find.text('Who can open this inbox'), findsOneWidget);
+    expect(find.textContaining('Everyone with the role Office'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'Ana Reis'), findsOneWidget);
+
+    // Add Bob through the picker.
+    await _tap(tester, find.text('Add a person'));
+    await _tap(tester, find.text('Bob Nunes').last);
+
+    expect(calls, contains('POST /api/v1/email/mailboxes/mb-1/people u-bob'));
+
+    // Take Ana off.
+    // By its tooltip, which is also what a screen reader announces.
+    await _tap(tester, find.byTooltip('Take Ana Reis off this inbox'));
+
+    expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
+  });
+
+  // The control: somebody who may not manage the inbox is not shown the
+  // section at all, and is not made to fetch it — the server would refuse.
+  testWidgets('somebody who cannot manage an inbox is not shown who can open it', (
+    tester,
+  ) async {
+    final calls = <String>[];
+
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com', mayManage: false)],
+      onRequest: (method, path, body) {
+        if (path.contains('/people')) calls.add(path);
+      },
+    ));
+
+    await _openSettings(tester);
+
+    expect(find.text('Who can open this inbox'), findsNothing);
+    expect(calls, isEmpty);
+  });
+
   testWidgets('the switch explains the consequence in both positions', (
     tester,
   ) async {
@@ -2591,6 +2659,9 @@ MockClientHandler _handler({
   Future<http.Response> Function()? connect,
   Map<String, Object?>? workspace,
   List<Map<String, Object?>> directory = const [],
+
+  /// What `…/people` answers: who can open the inbox, by person (2026-10-06).
+  Map<String, Object?> people = const {'people': [], 'roles': [], 'candidates': []},
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
 
@@ -2607,6 +2678,10 @@ MockClientHandler _handler({
 
     onRequest?.call(request.method, path, body);
     onUrl?.call(request.url);
+
+    if (path.endsWith('/people') || path.contains('/people/')) {
+      return _json({'data': people});
+    }
 
     if (path.endsWith('/oauth/start')) {
       return _json(startBody, startStatus);

@@ -2543,6 +2543,12 @@ class ModuleServiceProvider extends ServiceProvider
                      * that just alerts somebody must not.
                      */
                     new TriggerDefinition(
+                        key: 'lead.auto_replied',
+                        label: 'Automatic reply sent',
+                        description: 'A rule answered the customer automatically. It carries the '
+                            .'source, the kind of lead, who it went to and the message as sent.',
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.classified',
                         label: 'Lead classified',
                         description: 'A lead was read and categorised — what kind of work it is '
@@ -2667,6 +2673,12 @@ class ModuleServiceProvider extends ServiceProvider
                             .'previous snapshot - never for the backlog. The payload carries the '
                             .'rating, the name of the reviewer, the location, and whether it already '
                             .'has a reply.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'a1leads_gbp.review_removed',
+                        label: 'Google review removed',
+                        description: 'Google no longer shows a review of A-1 Chimney that it used to. '
+                            .'It carries the rating, the reviewer, the location and what the review said.',
                     ),
                 ],
                 /*
@@ -3887,7 +3899,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // AdsAccountState, which sits where its connection sits.
                 // Pausing a campaign stays a person's button, not an action.
                 subject: new AutomationSubject(AdsAccountState::class, 'Google Ads account', key: 'ads'),
-                emits: [AdsAccountState::class],
+                emits: [AdsAccountState::class, Organization::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'ads.certification_problem',
@@ -3904,6 +3916,20 @@ class ModuleServiceProvider extends ServiceProvider
                             .'ended or no longer eligible - checked every hour. Names who paused it: '
                             .'the person, when it was paused in EzBizi; the Google user, when '
                             .'Google change history has one; nobody, when neither does.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'ads.certification_resolved',
+                        label: 'Certification problem resolved',
+                        description: 'A Local Services account that had a licence, insurance or '
+                            .'background check problem is clean again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'ads.daily_review',
+                        label: 'Daily account review',
+                        description: 'Every morning at 6:30 (New York): which Local Services accounts '
+                            .'have ads not running or licence / insurance problems. Monday is the whole '
+                            .'picture; other days only what changed, and nothing when nothing did. It '
+                            .'carries a ready summary for a WhatsApp or email step.',
                     ),
                 ],
             ),

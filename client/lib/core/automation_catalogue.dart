@@ -350,6 +350,7 @@ class AutomationCatalogue {
     this.people = const [],
     this.reports = const [],
     this.workHoursReports = const [],
+    this.whatsappGroups = const [],
     this.places = const [],
     this.templates = const [],
     this.trainings = const [],
@@ -377,6 +378,7 @@ class AutomationCatalogue {
       // constructs it and cannot construct it wrongly.
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
       workHoursReports: _list(json['work_hours_reports'], CatalogueChoice.tryFromIdLabel),
+      whatsappGroups: _list(json['whatsapp_groups'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
       contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
@@ -419,6 +421,9 @@ class AutomationCatalogue {
 
   /// Work Hours report definitions a rule can email. Name only.
   final List<CatalogueChoice> workHoursReports;
+
+  /// Staff WhatsApp groups a rule can post to: id is the group's purpose.
+  final List<CatalogueChoice> whatsappGroups;
 
   /// Where a rule can be pointed, in this person's own reach.
   ///
