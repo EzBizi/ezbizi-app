@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\A1LeadsReviewOpsController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\CustomerWorkizNotesController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\DevelopmentUnlockController;
@@ -769,6 +770,8 @@ Route::prefix('v1')
         Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
+        // Each branch's Workiz notes on the customer, read live, never copied.
+        Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
         Route::apiResource('jobs', JobsController::class);
 

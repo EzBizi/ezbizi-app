@@ -168,6 +168,9 @@ Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverl
  */
 Schedule::command('ezbizi:workiz-fill-creators')->everyFiveMinutes()->withoutOverlapping(10);
 
+// Each new Workiz client's v2 id, the only way v2 reads its notes: a page a branch.
+Schedule::command('ezbizi:sync-workiz-client-ids')->everyTenMinutes()->withoutOverlapping(10);
+
 /*
  * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
  * as well, as well as leads". It was hourly, to spare the Workiz quota the job
