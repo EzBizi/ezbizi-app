@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WorkizClient;
+use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizV2;
@@ -15,7 +16,8 @@ use Illuminate\Support\Facades\Log;
  * Give each mirrored Workiz client its v2 id (CL-…), which is the only way v2
  * reads a client's notes. v2 lists clients newest number first, so a run
  * stops at the first page whose clients all have their id already; `--full`
- * reads every page.
+ * reads every page. A client the list leaves out takes the id its mirrored
+ * jobs carry.
  */
 class SyncWorkizClientIds extends Command
 {
@@ -44,7 +46,7 @@ class SyncWorkizClientIds extends Command
             }
 
             $result = $tenant->run($organization, fn () => $this->sync($connection));
-            $matched += $result['matched'];
+            $matched += $result['matched'] + $tenant->run($organization, fn () => $this->fromJobs($connection));
 
             if ($result['failed'] !== null) {
                 $line = 'Workiz client ids: '.($connection->display_name ?: $connection->getKey()).': '.$result['failed'];
@@ -86,6 +88,29 @@ class SyncWorkizClientIds extends Command
         }
 
         return ['matched' => $matched, 'failed' => null];
+    }
+
+    /**
+     * v2's client list leaves out some clients it holds: Connecticut 5839
+     * answers GET /clients/{id}, and the list goes from 5840 to 5838
+     * (2026-10-06). Each mirrored job carries its client's v2 id, which agreed
+     * with the list for every one of about 46,000 clients that had both.
+     */
+    private function fromJobs(SocialConnection $connection): int
+    {
+        $missing = WorkizClient::query()->where('franchise_id', $connection->scope_id)->whereNull('v2_id')
+            ->get(['id', 'organization_id', 'client_id', 'v2_id']);
+        $ids = $missing->isEmpty() ? collect() : WorkizJob::query()->where('franchise_id', $connection->scope_id)
+            ->whereIn('client_id', $missing->pluck('client_id'))->whereNotNull('payload->v2->client_id')
+            ->get(['client_id', 'payload'])
+            ->mapWithKeys(fn (WorkizJob $job) => [(string) $job->client_id => (string) $job->payload['v2']['client_id']]);
+        $found = $missing->filter(fn (WorkizClient $c) => isset($ids[(string) $c->client_id]));
+
+        foreach ($found as $client) {
+            $client->forceFill(['v2_id' => $ids[(string) $client->client_id]])->save();
+        }
+
+        return $found->count();
     }
 
     /**
