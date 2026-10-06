@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0379',
+      date: '6 Oct 2026',
+      items: [
+        'Customers: Notes from Workiz also reach the few clients that Workiz\'s own client list leaves out.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0378',
       date: '6 Oct 2026',
       items: [
