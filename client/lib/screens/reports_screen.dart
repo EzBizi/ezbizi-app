@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/timestamps.dart';
 import '../core/api_client.dart';
 import '../core/module_screens.dart';
 import '../core/numbers.dart';
@@ -439,7 +440,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         );
 
       case 'Performance':
-        return ExperimentalCallReport(api: widget.api);
+        return ExperimentalCallReport(
+          api: widget.api,
+          formats: widget.session.me?.display ?? DisplayFormats.fallback,
+        );
 
       case 'Reports':
         break;
