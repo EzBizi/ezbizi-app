@@ -140,6 +140,11 @@ class ExperimentalCallReportController extends Controller
         $validated = $request->validate([
             'day' => ['nullable', 'date_format:Y-m-d'],
             'period' => ['nullable', 'in:day,week,month'],
+            // Any range, or one date (from = to): Jose, 2026-10-06, "From date
+            // to date / Or specific date". Up to a quarter, so a range cannot
+            // be asked of RingCentral by the year.
+            'from' => ['nullable', 'date_format:Y-m-d', 'required_with:to'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'required_with:from', 'after_or_equal:from'],
             'timezone' => ['nullable', 'string', 'timezone'],
         ]);
 
@@ -157,6 +162,16 @@ class ExperimentalCallReportController extends Controller
             'month' => [$day->startOfMonth(), $day->endOfMonth()],
             default => [$day, $day->endOfDay()],
         };
+        if (isset($validated['from'], $validated['to'])) {
+            $period = 'custom';
+            $start = CarbonImmutable::parse($validated['from'], $zone);
+            $end = CarbonImmutable::parse($validated['to'], $zone);
+
+            if ($start->diffInDays($end) > 92) {
+                abort(Status::HTTP_UNPROCESSABLE_ENTITY, 'Choose a range of three months or less.');
+            }
+        }
+
         $start = $start->startOfDay();
         $end = $end->endOfDay();
 

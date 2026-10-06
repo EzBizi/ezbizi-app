@@ -330,6 +330,29 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertStringContainsString('dateTo=2026-09-20T23:59:59-04:00', $days->last());
     }
 
+    /** Any range, or one date, chosen by hand - and not more than a quarter. */
+    public function test_a_custom_range_is_read_from_its_first_day_to_its_last(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?from=2026-09-10&to=2026-09-12&timezone=America/New_York')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(['2026-09-10', '2026-09-12', 'custom'], [$body['from'], $body['to'], $body['period']]);
+        $this->assertCount(3, collect(Http::recorded())->filter(fn ($pair) => str_contains($pair[0]->url(), 'call-log')));
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?from=2026-01-01&to=2026-09-12')
+            ->assertStatus(422);
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?from=2026-09-12&to=2026-09-10')
+            ->assertStatus(422);
+    }
+
     /** A dispatcher's tag is set by hand and comes back on their row. */
     public function test_a_dispatcher_tag_is_set_and_shown(): void
     {
