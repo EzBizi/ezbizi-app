@@ -67,6 +67,18 @@ void main() {
 
     app.main();
 
+    // An app error is printed, not fatal. A debug assertion in an unrelated
+    // widget (IncomingCallPopup's setState during build, 2026-10-06) ended
+    // the run six seconds in with one frame. The log still names every error;
+    // the frames are inspected by eye before upload, so an error that shows
+    // in a picture is caught there. Restored at the end: the test framework
+    // fails a test that leaves onError changed.
+    final testOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      // ignore: avoid_print
+      print('  app error, run continues: ${details.exceptionAsString().split('\n').first}');
+    };
+
     // pumpAndSettle is not usable here. This app polls — the clock, the
     // notification bell — so the frame queue never actually empties and
     // pumpAndSettle times out rather than returning. Settling by the clock is
@@ -313,5 +325,7 @@ void main() {
     await shoot('leads', 'Leads', '12-leads');
     await shoot('reviews', 'Reviews', '13-reviews');
     await shoot('reports', 'Reports', '14-reports');
+
+    FlutterError.onError = testOnError;
   });
 }

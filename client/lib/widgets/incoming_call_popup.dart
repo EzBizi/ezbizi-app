@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../core/api_client.dart';
 import '../core/phone_call_service.dart';
@@ -81,6 +82,17 @@ class _IncomingCallPopupState extends State<IncomingCallPopup> {
 
   void _onServiceChanged() {
     if (!mounted) return;
+
+    // NOT DURING SOMEBODY ELSE'S BUILD. The desk can notify from code that a
+    // build triggers, and a setState then asserts "called during build"
+    // (Apple, 2026-10-06: iOS debug, a few seconds after launch). Deferred to
+    // the end of the frame, where it is legal and changes nothing visible.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => _onServiceChanged());
+      return;
+    }
+
     setState(() {});
 
     final ringing = _service.incomingFrom;

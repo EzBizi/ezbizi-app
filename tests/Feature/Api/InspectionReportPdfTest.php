@@ -414,6 +414,30 @@ class InspectionReportPdfTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * The shared link opens with no session (a Workiz job pastes it), a forged
+     * one does not, and archiving the report takes the link back.
+     */
+    public function test_the_shared_link_opens_without_signing_in_until_archived(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, $this->textScreen());
+        $reportId = $this->submitWith($tech, $seeded, ['crown' => 'Cracked at the wash']);
+
+        $report = $this->inTenant($tenant['org'], fn () => \App\Models\InspectionReport::query()->findOrFail($reportId));
+        $url = $report->shareUrl();
+        $this->app['auth']->forgetGuards();
+
+        $response = $this->get($url)->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+
+        $this->get(str_replace($reportId, (string) \Illuminate\Support\Str::uuid(), $url))->assertForbidden();
+
+        $this->inTenant($tenant['org'], fn () => $report->archive());
+        $this->get($url)->assertNotFound();
+    }
+
     // ── helpers ──────────────────────────────────────────────────
 
     private function textScreen(bool $required = true): array

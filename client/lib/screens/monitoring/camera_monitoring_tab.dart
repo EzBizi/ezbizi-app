@@ -477,13 +477,11 @@ class _DisabledBody extends StatelessWidget {
   }
 }
 
-/// The live-view host for `mjpeg`/`snapshot` — a real inline `<img>` on web
-/// ([CameraImageView]), and an honest "go look at it yourself" card
-/// everywhere else, since nothing outside a browser can host that `<img>` at
-/// all. `kIsWeb` (not a conditional import here) is what decides between the
-/// two: it is a plain runtime check, cheap enough to make per-tile, and
-/// [CameraImageView] already keeps `dart:ui_web`/`package:web` out of every
-/// build that is not web regardless of which branch runs.
+/// The live-view host for `mjpeg`/`snapshot` — [CameraImageView], which is a
+/// DOM `<img>` on web and a native dart:io MJPEG/snapshot reader off-web
+/// (camera_view_stub.dart). Inline on every platform now; the conditional
+/// import keeps `dart:ui_web`/`package:web` out of non-web builds and `dart:io`
+/// out of the web build.
 class _InlineViewCard extends StatelessWidget {
   const _InlineViewCard({super.key, required this.url});
 
@@ -491,54 +489,12 @@ class _InlineViewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CameraImageView(url: url),
-      );
-    }
-
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.videocam_outlined,
-              size: 20,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 6),
-            // Capped rather than left to wrap freely: this sits inside a
-            // fixed-height grid cell (R7 — 375px is the narrowest column),
-            // and an uncapped line count is exactly what overflowed the
-            // tile the first time this was measured.
-            Text(
-              'Live view opens in a browser.',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 6),
-            SelectableText(url, maxLines: 1, style: theme.textTheme.labelSmall),
-            const SizedBox(height: 6),
-            OutlinedButton.icon(
-              onPressed: () => _openUrl(url),
-              icon: const Icon(Icons.open_in_browser, size: 16),
-              label: const Text('Open in browser'),
-            ),
-          ],
-        ),
-      ),
+    // Inline everywhere now: the web half is the DOM <img>, and the off-web
+    // half (camera_view_stub.dart) is a native dart:io MJPEG/snapshot reader.
+    // Jose, 2026-10-06: the cameras "should work on the app, not just on web."
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: CameraImageView(url: url),
     );
   }
 }

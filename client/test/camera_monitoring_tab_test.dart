@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -26,6 +29,12 @@ import 'package:http/testing.dart';
 /// camera_monitoring_tab.dart's `_InlineViewCard` vs `_DeepLinkCard`), which
 /// is what the distinguishing-tile test actually exercises.
 void main() {
+  // Off-web (flutter test runs on the VM), an mjpeg/snapshot tile now renders
+  // the native MJPEG reader, which opens an HttpClient. Feed it a fake frame so
+  // no test touches the real network.
+  setUp(() => HttpOverrides.global = _FrameHttpOverrides());
+  tearDown(() => HttpOverrides.global = null);
+
   testWidgets(
     'without monitoring.cameras.view, the tab shows the no-permission note '
     'and never fetches',
@@ -215,18 +224,24 @@ void main() {
         findsOneWidget,
         reason: 'An mjpeg camera should render through the inline-view host.',
       );
+      // Off-web it now renders the native inline view (an Image once a frame
+      // arrives), NOT the old open-in-browser card. Jose, 2026-10-06: it
+      // "should work on the app, not just on web."
+      await tester.pump();
       expect(
-        find.descendant(
-          of: mjpegTile,
-          matching: find.text('Open in browser'),
-        ),
+        find.descendant(of: mjpegTile, matching: find.byType(Image)),
         findsOneWidget,
+        reason: 'An mjpeg camera renders a live frame inline, off-web too.',
+      );
+      expect(
+        find.descendant(of: mjpegTile, matching: find.text('Open in browser')),
+        findsNothing,
+        reason: 'No browser hand-off — the frame is in the tile.',
       );
       expect(
         find.descendant(of: mjpegTile, matching: find.text('Copy URL')),
         findsNothing,
-        reason: 'The inline-view card must not carry the deep-link card\'s '
-            'controls.',
+        reason: 'The inline-view host must not carry the deep-link controls.',
       );
 
       expect(
@@ -563,3 +578,53 @@ const _me = {
     },
   ],
 };
+
+/// A synthetic JPEG frame (FFD8…FFD9) the native reader will frame on.
+final Uint8List _fakeFrame = Uint8List.fromList([0xFF, 0xD8, 0xAA, 0xBB, 0xFF, 0xD9]);
+
+/// Feeds every request one frame and then holds the connection open, so the
+/// reader shows a frame and schedules no reconnect timer (a closed stream would
+/// trigger the 4s poll and leave a pending timer at test end).
+class _FrameHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => _FrameHttpClient();
+}
+
+class _FrameHttpClient implements HttpClient {
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async => _FrameRequest();
+  @override
+  void close({bool force = false}) {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FrameRequest implements HttpClientRequest {
+  @override
+  final HttpHeaders headers = _FrameHeaders();
+  @override
+  Future<HttpClientResponse> close() async => _FrameResponse();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FrameHeaders implements HttpHeaders {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FrameResponse extends Stream<List<int>> implements HttpClientResponse {
+  final Stream<List<int>> _s = (() async* {
+    yield _fakeFrame;
+    await Completer<void>().future; // stay open: no onDone, no reconnect
+  })();
+
+  @override
+  int get statusCode => 200;
+  @override
+  StreamSubscription<List<int>> listen(void Function(List<int>)? onData,
+          {Function? onError, void Function()? onDone, bool? cancelOnError}) =>
+      _s.listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}

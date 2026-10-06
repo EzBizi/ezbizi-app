@@ -14,6 +14,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0375',
+      date: '6 Oct 2026',
+      items: [
+        'Notifications: lead notification titles are shorter: New "Local Services Call" lead, New reply on "Local Services Text", and so on.',
+        'Customers: a customer\'s panel has tabs like a job\'s. Money (for people who can see financials) shows what Workiz has invoiced, what is due, what is past due (in red on the tab) and what is paid. Notes from Workiz shows each branch\'s Workiz notes about the customer.',
+        'AI Assistance: a new WhatsApp groups tab picks who gets each WhatsApp report (up to 8 per group), flags anyone with no phone, and copies the invite link once it is a real WhatsApp group. Once a group is set up, the nightly Same-Day Reports and the weekly and monthly PDFs (after the bookkeeper approves them) go out on WhatsApp.',
+        'Automations: a rule can post to a staff WhatsApp group, and new triggers fire for the daily account review, a certification problem resolved, a Google review removed and an automatic reply sent.',
+        'Email: an inbox can be given to a person, not only to a role, under Who can open this inbox in Email › Settings.',
+        'Email: several Workspace addresses can be added at once. Tick them in the directory search, or Select all, then Add.',
+        'Leads: the "customer waiting" warning names the phone number, or "A customer", when the lead has no name.',
+        'HR: an invitation sent with a contract goes out by email once the employer has signed the paperwork.',
+        'HR: every contract now has the same pay options (hourly, salary, absence deduction, commission, overtime, scheduled increases), each turned on or off on its own.',
+        'Camera tiles show live video inside the desktop and mobile app, not only through a browser link.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0374',
       date: '6 Oct 2026',
       items: [
