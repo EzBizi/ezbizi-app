@@ -22,6 +22,9 @@ class VersionHistory {
         'Email › Settings: each inbox has a Notify about new emails switch. It is the same as the New email automation, so changing one changes the other.',
         'Customers: Notes from Workiz says plainly when a branch is not linked to Workiz yet, instead of showing an error with Try again.',
         'HR: the twelve-month chart on the HR dashboard fits narrow screens and iPads.',
+        'Performance report: three dispatchers whose names differ between RingCentral and Workiz are now matched.',
+        'Inspections: a finished inspection\'s report is linked on its Workiz job.',
+        'Workiz: Massachusetts bookings can be credited to who booked them.',
       ],
     ),
     VersionRelease(
