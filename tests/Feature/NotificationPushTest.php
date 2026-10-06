@@ -123,6 +123,41 @@ class NotificationPushTest extends TestCase
             && $request['message']['android']['notification']['channel_id'] === 'ezbizi_notifications');
     }
 
+    /**
+     * A person who muted their own alerts gets no push — their colleague does.
+     *
+     * Jose, 2026-10-05: per-user on/off, from the bell panel. The colleague in
+     * the same dispatch is the control: their handset IS sent to, so this
+     * cannot pass because push stopped working altogether.
+     */
+    public function test_a_person_who_muted_alerts_gets_no_push_but_a_colleague_does(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Alpha');
+        $colleague = $this->userWithRole($tenant, 'Dispatcher');
+        $this->device($tenant, $tenant['admin']->id, 'token-muted-phone');
+        $this->device($tenant, $colleague->id, 'token-colleague-phone');
+
+        $this->inTenant($tenant['org'], fn () => $tenant['admin']
+            ->forceFill(['preferences' => ['notifications.alerts' => false]])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead',
+            subject: $tenant['org'],
+            source: 'automation',
+        ));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-colleague-phone');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-muted-phone');
+    }
+
     public function test_one_person_with_two_handsets_is_one_person_told(): void
     {
         Http::fake([

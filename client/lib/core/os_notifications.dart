@@ -129,6 +129,15 @@ class OsNotifications {
   /// sign-out cannot reach a widget that no longer exists.
   static void Function(String? payload)? onClick;
 
+  /// Every title [show] was ASKED to raise, while a test is listening.
+  ///
+  /// Recorded before the permission check on purpose: a test host never grants
+  /// permission, so the only observable difference between "the bell decided
+  /// to alert" and "the bell decided not to" is whether it asked. Null outside
+  /// tests, where it costs one null check.
+  @visibleForTesting
+  static List<String>? shownForTest;
+
   /// Ask for permission, initialising the plugin the first time.
   ///
   /// Returns whether an OS notification can actually be shown. False is a
@@ -210,6 +219,7 @@ class OsNotifications {
     String? body,
     String? payload,
   }) async {
+    shownForTest?.add(title);
     if (!_permitted) return;
 
     try {

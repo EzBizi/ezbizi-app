@@ -299,6 +299,40 @@ class NotificationEmailTest extends TestCase
     }
 
     /**
+     * A person who muted their own alerts is not emailed — and still belled.
+     *
+     * Jose, 2026-10-05: "an option turn notifications on or off (individually
+     * for each user ...)". The colleague in the same dispatch, who has never
+     * touched the switch, is the control: one mail, to them. A broken email
+     * channel would send zero and fail the assertSentTo; a switch that muted
+     * everybody would fail it too.
+     */
+    public function test_a_person_who_muted_alerts_is_not_emailed_but_still_belled(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant('Mute');
+        $this->orgLevelStaff($tenant, 1, 'mute');
+
+        $colleague = $this->inTenant($tenant['org'], function () use ($tenant): User {
+            $tenant['admin']->forceFill(['preferences' => ['notifications.alerts' => false]])->save();
+
+            return User::where('email', 'person0@mute.test')->firstOrFail();
+        });
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'hr',
+        ));
+
+        NotificationFacade::assertNotSentTo($tenant['admin'], NotificationNotice::class);
+        NotificationFacade::assertSentTo($colleague, NotificationNotice::class);
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Notification::where('user_id', $tenant['admin']->id)->count()),
+            'Muting silences the alert, never the bell.');
+    }
+
+    /**
      * An automation's notification is never emailed, whatever the org chose.
      *
      * Jose, 2026-09-28: "the toggle should not exist at all, there is an
