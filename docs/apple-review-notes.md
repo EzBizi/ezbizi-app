@@ -180,7 +180,7 @@ Both paired iPhones run iOS 26.6, which is current, so either works:
 
 | They asked about | EzBizi |
 |---|---|
-| Account registration | **Does not exist in the app** — say so aloud |
+| Account registration | **In the app** since production set `signup_open: true` (measured 2026-10-06) — "Create an account" on the sign-in screen. Show it |
 | Login | Yes — show it |
 | Account deletion | **In the app** - `DELETE /api/v1/me`, from the account screen. Show it |
 | Paid content, purchase, subscription | None. Nothing is sold in the app |
