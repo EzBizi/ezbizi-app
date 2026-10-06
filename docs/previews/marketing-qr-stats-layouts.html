@@ -1,0 +1,232 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marketing · QR code stats</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, address and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --cau:#734600;--cauc:#fff0d2;--neu:#33404a;--neuc:#e8ecf0;--r:10px;--bar:#00708f;--bar2:#9fd0df}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:30px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:640px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.page{flex:1;min-width:0;overflow:hidden;padding:16px 22px;display:flex;flex-direction:column;gap:12px}
+.tabs{display:flex;gap:6px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu)}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.hd{display:flex;align-items:center;gap:10px}
+.hd .t{font-size:15px;font-weight:800}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:26px;font-size:11.5px;padding:0 9px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;gap:12px;min-width:0}
+.card.paused .qr{opacity:.35}
+.qr{width:96px;height:96px;flex:0 0 auto;border:1px solid var(--edge);border-radius:8px;background:
+ repeating-linear-gradient(90deg,#111 0 6px,#fff 6px 12px),repeating-linear-gradient(0deg,#111 0 6px,#fff 6px 12px);background-blend-mode:difference}
+.body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.nm{font-weight:800;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;background:var(--neuc);color:var(--neu)}
+.tiny{font-size:11px;color:var(--muted)}
+.line{font-size:12px;color:var(--muted)}
+.line b{color:var(--ink)}
+.acts{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.spark{display:flex;align-items:flex-end;gap:2px;height:30px;margin:2px 0}
+.spark i{display:block;width:5px;background:var(--bar);border-radius:1px}
+.spark i.z{background:#dfe6ea;height:2px!important}
+.spark i.p{background:#c9cfd3}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+.panel{position:absolute;top:0;right:0;bottom:0;width:470px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .ph{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .ph b{font-size:16px}
+.panel .pbd{padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+.seg{display:inline-flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden}
+.seg span{padding:4px 12px;font-size:12px;font-weight:600;color:var(--pri)}
+.seg span.on{background:var(--pric);color:var(--prid)}
+.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fig{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px}
+.fig .v{font-size:20px;font-weight:800}
+.fig .k{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.chart{position:relative;height:150px;border-bottom:1px solid var(--line);display:flex;align-items:flex-end;gap:2px;padding-top:8px}
+.chart .b{flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.chart .b .s{width:100%;background:var(--bar);border-radius:2px 2px 0 0}
+.chart .b .u{position:absolute;bottom:0;width:45%;background:var(--bar2);border-radius:2px 2px 0 0}
+.chart .shade{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,rgba(115,70,0,.08) 0 6px,transparent 6px 12px);border-left:1px dashed #c4a46a}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.tr{display:grid;grid-template-columns:minmax(0,1.6fr) 90px 90px 170px 80px;gap:10px;align-items:center;padding:0 12px;height:40px;border-top:1px solid var(--line2);font-size:12.5px}
+.tr:first-child{border-top:0}
+.tr.h{height:34px;font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:#f7f9fa}
+.tr.on{background:var(--pric)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .lab{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .card{flex-direction:column}
+.phn .qr{width:72px;height:72px}
+</style>
+<div class="wrap">
+
+<h1>Marketing · QR code stats</h1>
+<p class="sub">Jose, 2026-10-06, through the desk: <i>"Also wonder if we can add stats to each QR Code to see how many people used it"</i>. Marketing is adding scans per day and different scanners per day. This is where each code's numbers live. It goes with the Deactivate / Reactivate change: a paused code's scans still count, so the paused stretch is shaded on its chart.</p>
+<p class="need"><b>Data:</b> each code in the list gains its last 30 days (scans, scanners, one number per day for a small chart), and <code>GET /marketing/qr-codes/{id}/stats?days=30|90</code> returns every day of the period, zeros included, with the period's totals. Marketing is confirming the shape, and what one "scanner" is: per phone or per person. The word on the card follows their answer, and "people" is only used if it really counts people.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>A 30-day strip on each card, and Stats in a side panel <span class="rec">Recommended</span></h2>
+<p class="cap">Each card adds a line, <b>128 scans · 96 people in 30 days</b>, over a strip of 30 small bars, one per day. <b>Stats</b> opens a side panel: the 30 / 90-day switch, a bar chart of scans per day with scanners beside it, the totals and the busiest day, and the paused stretch shaded. <b>Why:</b> the card answers "is it being used?" without a click, and the panel answers "when?". The strip takes the space under the scans line, so the cards stay one size.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div class="tabs"><span class="tab">Posts</span><span class="tab">Accounts</span><span class="tab on">QR Codes</span></div>
+   <div class="hd"><div><div class="t">QR codes</div><div class="tiny">Print one once. Change where it goes here, any time, without reprinting.</div></div><span class="sp"></span><span class="btn f">+ New QR code</span></div>
+   <div class="grid">
+    <div class="card"><div class="qr"></div><div class="body">
+     <div class="nm">Van 1, side door</div>
+     <div class="line">Goes to <b>harborchimney.example/spring</b> <span class="btn t sm">Change</span></div>
+     <div class="line"><b>128 scans · 96 people</b> in 30 days · last 3 hours ago</div>
+     <div class="spark"><i style="height:6px"></i><i style="height:9px"></i><i class="z"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:15px"></i><i style="height:22px"></i><i style="height:10px"></i><i style="height:7px"></i><i class="z"></i><i style="height:9px"></i><i style="height:14px"></i><i style="height:18px"></i><i style="height:26px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:6px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:20px"></i><i style="height:30px"></i><i style="height:14px"></i><i style="height:9px"></i><i class="z"></i><i style="height:7px"></i><i style="height:12px"></i><i style="height:17px"></i><i style="height:21px"></i><i style="height:13px"></i><i style="height:10px"></i></div>
+     <div class="acts"><span class="btn sm">⬇ SVG</span><span class="btn sm">⬇ PNG</span><span class="btn sm">📈 Stats</span><span class="btn t sm">⋮</span></div>
+    </div></div>
+    <div class="card paused"><div class="qr"></div><div class="body">
+     <div class="nm">Yard sign <span class="pill">Deactivated</span></div>
+     <div class="line">Goes to <b>harborchimney.example/fall</b> <span class="btn t sm">Change</span></div>
+     <div class="line"><b>9 scans · 8 people</b> in 30 days · last 2 days ago</div>
+     <div class="spark"><i style="height:4px"></i><i class="z"></i><i style="height:6px"></i><i class="z"></i><i class="z"></i><i style="height:4px"></i><i class="z"></i><i style="height:8px"></i><i class="z"></i><i class="z"></i><i style="height:4px"></i><i class="z"></i><i class="z"></i><i style="height:6px"></i><i class="z"></i><i class="z"></i><i class="z"></i><i style="height:4px"></i><i class="z"></i><i class="z"></i><i class="p" style="height:6px"></i><i class="z"></i><i class="p" style="height:4px"></i><i class="z"></i><i class="z"></i><i class="p" style="height:4px"></i><i class="z"></i><i class="z"></i><i class="z"></i><i class="z"></i></div>
+     <div class="tiny">Paused since Oct 1. Scanning it shows "This QR code is paused." Scans still count.</div>
+     <div class="acts"><span class="btn sm">⬇ SVG</span><span class="btn sm">⬇ PNG</span><span class="btn sm">📈 Stats</span><span class="btn f sm">Reactivate</span></div>
+    </div></div>
+   </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="panel">
+   <div class="ph"><b>Van 1, side door · stats</b><span class="sp"></span><span class="tiny">✕</span></div>
+   <div class="pbd">
+    <div><span class="seg"><span class="on">30 days</span><span>90 days</span></span> <span class="tiny" style="margin-left:8px">Sep 7 – today</span></div>
+    <div class="figs"><div class="fig"><div class="v">128</div><div class="k">Scans</div></div><div class="fig"><div class="v">96</div><div class="k">People</div></div><div class="fig"><div class="v">Sat, Sep 27</div><div class="k">Busiest day · 11</div></div></div>
+    <div class="legend"><span><i style="background:var(--bar)"></i>Scans</span><span><i style="background:var(--bar2)"></i>People</span><span><i style="background:repeating-linear-gradient(45deg,rgba(115,70,0,.25) 0 3px,transparent 3px 6px)"></i>Paused</span></div>
+    <div class="chart">
+     <div class="b"><div class="s" style="height:24px"></div><div class="u" style="height:18px"></div></div><div class="b"><div class="s" style="height:34px"></div><div class="u" style="height:25px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:44px"></div><div class="u" style="height:33px"></div></div><div class="b"><div class="s" style="height:30px"></div><div class="u" style="height:22px"></div></div><div class="b"><div class="s" style="height:56px"></div><div class="u" style="height:41px"></div></div><div class="b"><div class="s" style="height:80px"></div><div class="u" style="height:59px"></div></div><div class="b"><div class="s" style="height:38px"></div><div class="u" style="height:28px"></div></div><div class="b"><div class="s" style="height:26px"></div><div class="u" style="height:19px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:34px"></div><div class="u" style="height:25px"></div></div><div class="b"><div class="s" style="height:52px"></div><div class="u" style="height:38px"></div></div><div class="b"><div class="s" style="height:66px"></div><div class="u" style="height:49px"></div></div><div class="b"><div class="s" style="height:96px"></div><div class="u" style="height:71px"></div></div><div class="b"><div class="s" style="height:44px"></div><div class="u" style="height:33px"></div></div><div class="b"><div class="s" style="height:30px"></div><div class="u" style="height:22px"></div></div><div class="b"><div class="s" style="height:22px"></div><div class="u" style="height:16px"></div></div><div class="b"><div class="s" style="height:40px"></div><div class="u" style="height:30px"></div></div><div class="b"><div class="s" style="height:60px"></div><div class="u" style="height:44px"></div></div><div class="b"><div class="s" style="height:74px"></div><div class="u" style="height:55px"></div></div><div class="b"><div class="s" style="height:120px"></div><div class="u" style="height:89px"></div></div><div class="b"><div class="s" style="height:52px"></div><div class="u" style="height:38px"></div></div><div class="b"><div class="s" style="height:34px"></div><div class="u" style="height:25px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:26px"></div><div class="u" style="height:19px"></div></div><div class="b"><div class="s" style="height:44px"></div><div class="u" style="height:33px"></div></div><div class="b"><div class="s" style="height:62px"></div><div class="u" style="height:46px"></div></div><div class="b"><div class="s" style="height:78px"></div><div class="u" style="height:58px"></div></div><div class="b"><div class="s" style="height:48px"></div><div class="u" style="height:36px"></div></div><div class="b"><div class="s" style="height:36px"></div><div class="u" style="height:27px"></div></div>
+    </div>
+    <div class="tiny" style="display:flex;justify-content:space-between"><span>Sep 7</span><span>Sep 21</span><span>today</span></div>
+    <div class="tiny">People counts each phone once a day. A day with no scans shows as a flat line, not a gap.</div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>One line on the card; the numbers live in the Stats panel</h2>
+<p class="cap">The card keeps a single line, <b>128 scans in 30 days</b>, and <b>Stats</b> opens the same side panel as in 1. <b>Why:</b> the cards stay as compact as they are today. The cost is that you can't see from the card when a code went quiet.</p>
+<div class="win" style="height:330px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div class="grid">
+    <div class="card"><div class="qr"></div><div class="body">
+     <div class="nm">Van 1, side door</div>
+     <div class="line">Goes to <b>harborchimney.example/spring</b> <span class="btn t sm">Change</span></div>
+     <div class="line"><b>128 scans</b> in 30 days · last 3 hours ago <span class="btn t sm">Stats ›</span></div>
+     <div class="acts"><span class="btn sm">⬇ SVG</span><span class="btn sm">⬇ PNG</span><span class="btn t sm">⋮</span></div>
+    </div></div>
+    <div class="card paused"><div class="qr"></div><div class="body">
+     <div class="nm">Yard sign <span class="pill">Deactivated</span></div>
+     <div class="line">Goes to <b>harborchimney.example/fall</b> <span class="btn t sm">Change</span></div>
+     <div class="line"><b>9 scans</b> in 30 days · last 2 days ago <span class="btn t sm">Stats ›</span></div>
+     <div class="acts"><span class="btn sm">⬇ SVG</span><span class="btn sm">⬇ PNG</span><span class="btn f sm">Reactivate</span></div>
+    </div></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>Every code compared, above the cards</h2>
+<p class="cap">A table, <b>All codes · last 30 days</b>, lists each code's scans and scanners with a trend, busiest first. A row opens that code's Stats panel, and the cards stay below it. <b>Why:</b> it answers "which van or sign actually gets scanned?" in one look. The cost is a second list of the same codes on one page.</p>
+<div class="win" style="height:420px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div class="hd"><div class="t">All codes · last 30 days</div><span class="sp"></span><span class="seg"><span class="on">30 days</span><span>90 days</span></span></div>
+   <div class="tbl">
+    <div class="tr h"><span>Code</span><span class="num">Scans</span><span class="num">People</span><span>Last 30 days</span><span></span></div>
+    <div class="tr"><span class="b">Van 1, side door</span><span class="num">128</span><span class="num">96</span><span class="spark" style="height:18px"><i style="height:6px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:15px"></i><i style="height:10px"></i><i style="height:14px"></i><i style="height:18px"></i><i style="height:12px"></i><i style="height:16px"></i><i style="height:9px"></i><i style="height:13px"></i></span><span class="btn t sm">Stats ›</span></div>
+    <div class="tr"><span class="b">Business cards</span><span class="num">41</span><span class="num">37</span><span class="spark" style="height:18px"><i style="height:4px"></i><i style="height:6px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:4px"></i><i style="height:9px"></i><i style="height:6px"></i><i style="height:4px"></i><i style="height:7px"></i><i style="height:5px"></i><i style="height:6px"></i><i style="height:8px"></i></span><span class="btn t sm">Stats ›</span></div>
+    <div class="tr"><span class="b">Yard sign <span class="pill">Deactivated</span></span><span class="num">9</span><span class="num">8</span><span class="spark" style="height:18px"><i style="height:4px"></i><i class="z"></i><i style="height:6px"></i><i class="z"></i><i class="p" style="height:4px"></i><i class="z"></i><i class="p" style="height:4px"></i><i class="z"></i><i class="z"></i><i class="z"></i><i class="z"></i><i class="z"></i></span><span class="btn t sm">Stats ›</span></div>
+   </div>
+   <div class="tiny">The cards follow below, as today.</div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="phones">
+ <div class="pcol"><span class="lab">4 · The strip on the card, Stats as its own screen <span class="rec">Recommended</span></span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span>←</span><span class="t">Van 1, side door</span></div>
+   <div class="pb">
+    <span class="seg"><span class="on">30 days</span><span>90 days</span></span>
+    <div class="figs"><div class="fig"><div class="v">128</div><div class="k">Scans</div></div><div class="fig"><div class="v">96</div><div class="k">People</div></div><div class="fig"><div class="v" style="font-size:15px">Sep 27</div><div class="k">Busiest · 11</div></div></div>
+    <div class="chart" style="height:130px">
+     <div class="b"><div class="s" style="height:20px"></div><div class="u" style="height:15px"></div></div><div class="b"><div class="s" style="height:30px"></div><div class="u" style="height:22px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:38px"></div><div class="u" style="height:28px"></div></div><div class="b"><div class="s" style="height:26px"></div><div class="u" style="height:19px"></div></div><div class="b"><div class="s" style="height:48px"></div><div class="u" style="height:36px"></div></div><div class="b"><div class="s" style="height:70px"></div><div class="u" style="height:52px"></div></div><div class="b"><div class="s" style="height:34px"></div><div class="u" style="height:25px"></div></div><div class="b"><div class="s" style="height:22px"></div><div class="u" style="height:16px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:30px"></div><div class="u" style="height:22px"></div></div><div class="b"><div class="s" style="height:46px"></div><div class="u" style="height:34px"></div></div><div class="b"><div class="s" style="height:58px"></div><div class="u" style="height:43px"></div></div><div class="b"><div class="s" style="height:84px"></div><div class="u" style="height:62px"></div></div><div class="b"><div class="s" style="height:38px"></div><div class="u" style="height:28px"></div></div><div class="b"><div class="s" style="height:26px"></div><div class="u" style="height:19px"></div></div><div class="b"><div class="s" style="height:20px"></div><div class="u" style="height:15px"></div></div><div class="b"><div class="s" style="height:36px"></div><div class="u" style="height:27px"></div></div><div class="b"><div class="s" style="height:52px"></div><div class="u" style="height:38px"></div></div><div class="b"><div class="s" style="height:64px"></div><div class="u" style="height:47px"></div></div><div class="b"><div class="s" style="height:104px"></div><div class="u" style="height:77px"></div></div><div class="b"><div class="s" style="height:46px"></div><div class="u" style="height:34px"></div></div><div class="b"><div class="s" style="height:30px"></div><div class="u" style="height:22px"></div></div><div class="b"><div class="s" style="height:2px;background:#dfe6ea"></div></div><div class="b"><div class="s" style="height:22px"></div><div class="u" style="height:16px"></div></div><div class="b"><div class="s" style="height:38px"></div><div class="u" style="height:28px"></div></div><div class="b"><div class="s" style="height:54px"></div><div class="u" style="height:40px"></div></div><div class="b"><div class="s" style="height:68px"></div><div class="u" style="height:50px"></div></div><div class="b"><div class="s" style="height:42px"></div><div class="u" style="height:31px"></div></div><div class="b"><div class="s" style="height:32px"></div><div class="u" style="height:24px"></div></div>
+    </div>
+    <div class="tiny" style="display:flex;justify-content:space-between"><span>Sep 7</span><span>today</span></div>
+    <div class="tiny">The card in the list shows the 30-day line and the strip, with Stats beside the downloads.</div>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">5 · One line on the card, Stats screen</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span class="t">QR codes</span></div>
+   <div class="pb">
+    <div class="card"><div style="display:flex;gap:10px"><div class="qr"></div><div class="body"><div class="nm">Van 1, side door</div><div class="line">Goes to <b>…/spring</b></div><div class="line"><b>128 scans</b> in 30 days</div></div></div><div class="acts"><span class="btn sm">⬇ SVG</span><span class="btn sm">⬇ PNG</span><span class="btn sm">Stats ›</span></div></div>
+    <div class="card paused"><div style="display:flex;gap:10px"><div class="qr"></div><div class="body"><div class="nm">Yard sign <span class="pill">Deactivated</span></div><div class="line"><b>9 scans</b> in 30 days</div></div></div><div class="acts"><span class="btn sm">Stats ›</span><span class="btn f sm">Reactivate</span></div></div>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">6 · Every code compared first</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span class="t">QR codes</span></div>
+   <div class="pb">
+    <div class="tiny b" style="font-weight:800">ALL CODES · LAST 30 DAYS</div>
+    <div class="tbl">
+     <div class="tr" style="grid-template-columns:minmax(0,1fr) 50px 50px;height:44px"><span class="b">Van 1, side door</span><span class="num">128</span><span class="num tiny">96</span></div>
+     <div class="tr" style="grid-template-columns:minmax(0,1fr) 50px 50px;height:44px"><span class="b">Business cards</span><span class="num">41</span><span class="num tiny">37</span></div>
+     <div class="tr" style="grid-template-columns:minmax(0,1fr) 50px 50px;height:44px"><span class="b">Yard sign</span><span class="num">9</span><span class="num tiny">8</span></div>
+    </div>
+    <div class="tiny">Scans, then people. A row opens that code's stats; the cards follow below.</div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
