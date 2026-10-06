@@ -2961,6 +2961,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 60 · Reports · Performance, rearranged — **out for decision** (`docs/previews/reports-performance-revamp-layouts.html`)
+
+Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
+things and the UI is not very good for it anymore."* Today one scroll holds the dates, seven figures, three panels that
+open between the figures and the table (missed by reason; existing with Claude/Grok labels; not booked with Convert to
+booked and its history), the Workiz account controls, the people filter and table (calls folded per person), and the
+conversion note. Nothing new on the server. Desktop **1** three tabs: Overview (the figures, then Not booked and Missed
+side by side, each "See all" into Calls), People (the table alone), Calls (every call, narrowed by chips, labels when
+they apply) (recommended); **2** the figures down the left as the way in; **3** one page tidied into three cards. Phone
+**4** (recommended) the same tabs; **5** the figures as the menu; **6** one page. All: Workiz accounts move to a Sources
+side panel and a problem with them is one amber line; the figures are one size.
+
 ### 59 · Customers · Workiz's money and notes on a customer — **Jose: "as u recommend" (2026-10-06, relayed verbatim by Customers) — 1 and 4** — building (`docs/previews/customers-workiz-money-notes-layouts.html`)
 
 From Customers (`local_90d427a5…`), approved as a feature by Jose 2026-10-06. Money: `GET /customers/{id}?today=Y-m-d`

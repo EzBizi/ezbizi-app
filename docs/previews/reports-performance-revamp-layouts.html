@@ -1,0 +1,472 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reports · Performance, rearranged</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every person, caller and figure is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px;
+ --on:#1a7f37;--late:#b37400;--miss:#e34948;--away:#2a78d6;--off:#e3e9ec}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:24px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.why{font-size:12.5px;font-weight:600;color:var(--pri)}
+.cap{color:var(--muted);margin:0 0 8px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+ul.cap{padding-left:18px;margin-top:4px}
+ul.cap li{margin-bottom:4px}
+.need{margin:0 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+/* a dashed tag on anything the server does not send today */
+.new{display:inline-flex;align-items:center;font:800 9px/1 Inter,"Segoe UI",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--neu);border:1px dashed #6f808a;border-radius:999px;padding:3px 6px;background:var(--paper);white-space:nowrap;vertical-align:1px;flex:0 0 auto}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.mh{padding:12px 18px 4px;flex:0 0 auto}
+.mh .t{font-size:19px;font-weight:800;line-height:1.15}
+.tabs{display:flex;gap:6px;padding:4px 16px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu);white-space:nowrap;flex:0 0 auto}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tab .ic{font-size:12px;opacity:.75}
+.sp{flex:1}
+.dash{flex:1;min-height:0;overflow:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:30px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap;color:var(--neu);flex:0 0 auto}
+.chip.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.chip .c{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.on .c{color:var(--prid)}
+.ib{width:30px;height:30px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--neu);font-size:16px;flex:0 0 auto}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:30px;color:var(--muted);background:var(--paper);font-size:12px;white-space:nowrap;min-width:0;overflow:hidden;flex:0 0 auto}
+.srch.pick{color:var(--ink);font-weight:600;justify-content:space-between}
+.fld{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 9px;height:30px;background:var(--paper);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+.fld .cal-ic{color:var(--pri);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .ink{color:var(--ink)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.z{color:#9aa7ae}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--on);flex:0 0 auto}
+/* avatars: PersonColours, light */
+.av{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex:0 0 auto}
+.a1{background:#DCEAFB;color:#0B4A8F}.a2{background:#D8F1F0;color:#0B5957}.a3{background:#DFF2E3;color:#1C5E2E}.a4{background:#EAF0D2;color:#4A5A12}
+.a5{background:#F8EDC6;color:#6A4F00}.a6{background:#FFE6D2;color:#8A3A00}.a7{background:#FDE2DE;color:#8E2418}.a8{background:#EFE3D8;color:#5E3B22}
+/* figures: siblings are one fixed size */
+.tiles{display:grid;gap:10px;flex:0 0 auto}
+.tiles.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.tiles.t3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tiles.t2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{height:66px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tile.on{background:var(--pric);border-color:var(--edge)}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.on .k,.tile.on .d{color:var(--prid)}
+.tile .v{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:5px}
+.tile .v small{font-size:11px;font-weight:600;color:var(--muted)}
+.tile .v.cau{color:var(--cau)} .tile .v.bad{color:var(--bad)}
+.tile .d{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a person's figures in a panel: label over value, two to a row */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;flex:0 0 auto}
+.facts .k{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.facts .v b{font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .v b.cau{color:var(--cau)} .facts .v b.bad{color:var(--bad)}
+/* the people table */
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.tr{display:grid;grid-template-columns:var(--g);align-items:center;gap:8px;padding:0 12px;height:34px;border-bottom:1px solid var(--line2);font-size:12px;flex:0 0 auto}
+.tr:last-child{border-bottom:0}
+.tr.hd{height:38px;font-size:10.5px;font-weight:800;color:var(--muted);background:#f7f9fa;line-height:1.15}
+.tr.hd .srt{color:var(--pri)}
+.tr.on{background:var(--pric)}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .nm{display:block;min-width:0;line-height:1.2}
+.who .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.who .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr.on .who .nm i{color:var(--prid)}
+.rate{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.mtr{height:6px;border-radius:3px;background:#e3e9ec;overflow:hidden;flex:0 0 auto;width:32px}
+.mtr i{display:block;height:100%;background:var(--pri);border-radius:3px}
+.tr.on .mtr{background:#c2dfea}
+/* boxes and lists */
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bh{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex:0 0 auto;min-width:0}
+.bh .ic{font-size:13px;width:16px;text-align:center;flex:0 0 auto}
+.bh b{font-size:12.5px;white-space:nowrap}
+.lr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:36px;border-top:1px solid var(--line2);font-size:12px}
+.lr:first-of-type{border-top:0}
+.lr .g{min-width:0;line-height:1.25}
+.lr .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.lr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .rt{display:flex;align-items:center;gap:6px}
+.foot{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;line-height:1.35}
+.more{font-size:11.5px;font-weight:700;color:var(--pri)}
+.clear{display:flex;gap:6px;align-items:flex-start}
+.clear .ck{color:var(--ok);font-weight:800}
+.strip{flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px;display:flex;align-items:center;gap:14px;min-width:0;height:54px}
+.strip .f{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.strip .f b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.strip .f span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.strip .f b.cau{color:var(--cau)} .strip .f b.bad{color:var(--bad)}
+.vsep{width:1px;align-self:stretch;background:var(--line);flex:0 0 auto}
+/* the docked panel */
+.dock{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;overflow:hidden;flex:0 0 auto}
+.dh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.dh .av{width:36px;height:36px;font-size:12.5px}
+.dh .t{font-size:15px;font-weight:800;line-height:1.2}
+.db{flex:1;min-height:0;overflow:hidden;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
+.df{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex:0 0 auto}
+.df .btn{flex:1}
+.lbl{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.day{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line2);min-height:40px}
+.day:first-of-type{border-top:0}
+.day .dt{line-height:1.25}
+.day .dt b{display:block;font-size:12px}
+.day .dt span{display:block;font-size:10.5px;color:var(--muted)}
+.day .tm{font-size:12px;font-variant-numeric:tabular-nums;line-height:1.25;min-width:0}
+.day .tm span{display:block;font-size:10.5px;color:var(--muted)}
+.day .fl{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+/* a period as a strip of days */
+.cells{display:flex;gap:2px;height:14px;flex:0 0 auto}
+.cells i{flex:1;border-radius:2px;background:var(--off);position:relative}
+.cells i.ok{background:var(--on)} .cells i.late{background:var(--late)} .cells i.miss{background:var(--miss)} .cells i.tag{background:var(--away)}
+.cells i.offw{background:var(--off);box-shadow:inset 0 0 0 1.5px #6f808a}
+.ticks{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1}
+.leg{display:flex;gap:10px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* the month, one cell a day */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:9.5px;font-weight:800;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cal.sm .c{height:26px}
+.cal .c{height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;color:var(--muted)}
+.cal .c.ok{background:var(--okc);color:var(--ok)} .cal .c.late{background:var(--cauc);color:var(--cau)}
+.cal .c.miss{background:var(--badc);color:var(--bad)} .cal .c.tag{background:var(--infoc);color:var(--info)}
+.cal .c.off{color:#9aa7ae} .cal .c.out{visibility:hidden}
+.cal .c.sel{outline:2px solid var(--pri);outline-offset:1px}
+.cal .c.au::after{content:"";position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--cau)}
+.hint{border-radius:var(--r);padding:7px 10px;font-size:11.5px;line-height:1.4}
+.hint.bad{background:var(--badc);color:var(--bad)}
+/* person cards */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;flex:1;min-height:0;align-content:start}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;display:flex;flex-direction:column;gap:4px;min-width:0;height:114px}
+.pc.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.pc .hdr{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .hdr .nm{flex:1;min-width:0;line-height:1.2}
+.pc .hdr .nm b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .hdr .nm i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .big{text-align:right;line-height:1.05}
+.pc .big b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pc .big span{font-size:9.5px;color:var(--muted)}
+.pc .ln{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.pc .ln b{color:var(--ink);font-weight:700}
+.pc .ln b.cau{color:var(--cau)} .pc .ln b.bad{color:var(--bad)}
+/* what exists today */
+.now{background:var(--paper);border:1px solid #c9d4d9;border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-width:1080px;margin:6px 0 10px}
+.nr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nr .nl{width:104px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.nr .tab.add{border-style:dashed;border-color:var(--pri)}
+/* phones */
+.pairp{display:flex;gap:26px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.pl{font:800 10px Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#5b6672;margin:0 0 6px 4px}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:44px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .ab .org{font-size:10.5px;font-weight:600;border:1px solid var(--line);border-radius:var(--r);padding:2px 7px;color:var(--neu);margin-left:auto;white-space:nowrap}
+.phn .tabs{padding:8px 12px;overflow:hidden;background:var(--paper);-webkit-mask-image:linear-gradient(to right,#000 80%,transparent);mask-image:linear-gradient(to right,#000 80%,transparent)}
+.phn .tab{height:28px;padding:0 10px;font-size:11.5px}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:8px 12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tile{height:62px;padding:7px 10px}
+.phn .tile .k{font-size:9.5px;letter-spacing:.02em}
+.phn .tile .v{font-size:19px}
+.phn .srch,.phn .fld{height:34px}
+.bk{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto;min-width:0}
+.bk .ar{font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bk .t{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:center;padding:0 12px;height:47px;border-top:1px solid var(--line2)}
+.prr:first-child{border-top:0}
+.prr .av{width:28px;height:28px;font-size:10px}
+.prr .g{min-width:0;line-height:1.25}
+.prr .g b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .g span{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prr .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prr .r b{font-size:13px;font-variant-numeric:tabular-nums}
+.sh{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.sh .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.one{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px}
+.one .chev{margin-left:auto;color:var(--pri);font-weight:700;font-size:11.5px}
+.hs{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+.ppc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;display:flex;flex-direction:column;gap:5px}
+</style>
+<style>
+/* This gallery's own pieces, on the same tokens. Every person, caller and figure is invented. */
+.hdr{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:0}
+.rb{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid #93aab3;border-radius:var(--r);background:var(--paper);font-size:12.5px;white-space:nowrap}
+.rb b{font-weight:800} .rb .dt{color:var(--neu)} .rb .cv{color:var(--pri);font-size:10px}
+.arr{width:26px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:var(--pri);font-weight:800}
+.stabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.stab{padding:6px 14px 8px;font-size:12.5px;font-weight:700;color:var(--neu);border-bottom:3px solid transparent;white-space:nowrap}
+.stab.on{color:var(--prid);border-color:var(--pri)}
+.stab i{font-style:normal;color:var(--muted);font-weight:600;margin-left:4px}
+.t7b{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;flex:0 0 auto}
+.tl{height:70px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.tl .k{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl .v{font-size:20px;font-weight:800;line-height:1}
+.tl .d{font-size:10px;color:var(--pri);font-weight:700;white-space:nowrap}
+.tl.bad .v{color:var(--bad)} .tl.cau .v{color:var(--cau)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;flex:0 0 auto;min-width:0}
+.box2{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.bh2{display:flex;align-items:center;gap:8px}
+.bh2 b{font-size:13px}
+.bh2 .c{font-weight:800;color:var(--bad)}
+.bh2 .sp{flex:1}
+.cr{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:30px;border-top:1px solid var(--line2);font-size:12px}
+.cr:first-of-type{border-top:0}
+.cr .tm{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.cr .g{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cr .g span{color:var(--muted)}
+.btn.xs{height:24px;padding:0 8px;font-size:11px}
+.lbls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lbl2{font-size:11px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap;background:var(--paper);color:var(--neu)}
+.lbl2.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.lbl2 b{color:var(--ink)}
+.seg2{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg2 span{font-size:11px;font-weight:700;padding:3px 10px;color:var(--neu)}
+.seg2 span.on{background:var(--pric);color:var(--prid)}
+.ptbl .tr{--g:minmax(0,1.2fr) repeat(6,minmax(0,.85fr)) 64px 16px;height:34px;gap:6px}
+.ptbl .tr.hd{height:32px}
+.call{display:grid;grid-template-columns:58px minmax(0,1.3fr) minmax(0,1fr) auto auto;gap:10px;align-items:center;min-height:38px;border-top:1px solid var(--line2);font-size:12px;padding:0 4px}
+.call .tm{color:var(--muted);font-size:11px}
+.call .g b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.call .g span{display:block;font-size:10.5px;color:var(--muted)}
+.play{width:24px;height:24px;border-radius:50%;background:var(--pric);color:var(--prid);display:inline-flex;align-items:center;justify-content:center;font-size:9px}
+.side{width:220px;flex:0 0 auto;display:flex;flex-direction:column;gap:6px}
+.nav2{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);background:var(--paper);border:1px solid var(--line);font-size:12.5px}
+.nav2 b{margin-left:auto;font-size:15px;font-weight:800}
+.nav2.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.nav2.bad b{color:var(--bad)}
+.banner{border-radius:var(--r);background:var(--cauc);color:var(--cau);padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.banner .more{color:var(--cau);margin-left:auto;font-weight:700}
+.row2{display:flex;gap:12px;min-height:0;flex:1}
+.grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;min-height:0}
+.sec2{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+.t4{grid-template-columns:repeat(2,minmax(0,1fr))}
+</style>
+
+<div class="wrap">
+<h1>Reports · Performance, rearranged</h1>
+<p class="sub">Jose, 2026-10-06: <i>"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many things and the UI is not very good for it anymore."</i> What it holds today, in one scroll: the dates, seven figures, three panels that open between the figures and the table (Missed calls by reason; Existing-client calls with Claude's and Grok's labels; Not booked with Convert to booked and its history), the Workiz account controls, the people filter, the people table with each person's calls folded in, and a note on conversion.</p>
+<p class="need"><b>Data:</b> nothing new. Every option keeps every piece: the figures, the three call lists and their labels, the recordings and transcripts, Convert to booked, the people table and its sorting, the Workiz accounts, and the conversion note. What changes is where each one lives. <b>In all of them:</b> the Workiz account controls leave the page for a <b>Sources</b> side panel opened from the top, and a problem with them shows as one amber line at the top instead of a paragraph mid-page. The seven figures are always the same size.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>Three tabs: Overview, People, Calls <span class="rec">Recommended</span></h2>
+<p class="cap"><b>Overview</b> answers "how did we do": the seven figures, then side by side the two lists that need somebody: <b>Not booked</b> (with Convert to booked) and <b>Missed calls</b>. Each shows its first few calls, with "See all" opening the Calls tab already narrowed to it. <b>People</b> is the table and its filter, alone. <b>Calls</b> is every call in one list, narrowed by chips (Missed, Existing, Not booked, New), with Claude's and Grok's reasons showing when they apply. Each call shows the first words of its transcript. A figure is a way in: tapping Missed calls opens Calls narrowed to missed. <span class="why">Why: each question gets a page of its own instead of panels opening into the middle of a table, and nothing that exists today is lost.</span></p>
+<div class="win" style="height:620px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="dash">
+   <div class="hdr"><span class="arr">‹</span><span class="rb"><b>Last week</b><span class="dt">Mon, Sep 28 – Sun, Oct 4</span><span class="cv">▾</span></span><span class="arr">›</span><span class="sp"></span><span class="btn">Sources · 2 Workiz accounts</span><span class="ib">↻</span></div>
+   <div class="stabs"><span class="stab on">Overview</span><span class="stab">People<i>6</i></span><span class="stab">Calls<i>128</i></span></div>
+   <div class="t7b">
+    <div class="tl"><span class="k">Calls</span><span class="v">128</span><span class="d">See calls ›</span></div>
+    <div class="tl bad"><span class="k">Missed calls</span><span class="v">9</span><span class="d">See them ›</span></div>
+    <div class="tl"><span class="k">Existing client</span><span class="v">61</span><span class="d">See them ›</span></div>
+    <div class="tl"><span class="k">New client</span><span class="v">41</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">Jobs booked</span><span class="v">27</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">Conv. rate</span><span class="v">66%</span><span class="d">&nbsp;</span></div>
+    <div class="tl cau"><span class="k">Not booked</span><span class="v">14</span><span class="d">See them ›</span></div>
+   </div>
+   <div class="two">
+    <div class="box2">
+     <div class="bh2"><b>Not booked</b><span class="c">14</span><span class="sp"></span><span class="lbls"><span class="lbl2">Price <b>6</b></span><span class="lbl2">Availability <b>3</b></span></span></div>
+     <div class="cr"><span class="tm">Mon 9:14</span><span class="g">Kitchen tap leak <span>· Ada · 3:02</span></span><span class="btn xs">Convert to booked</span></div>
+     <div class="cr"><span class="tm">Mon 11:40</span><span class="g">Crown estimate <span>· Bo · 6:15</span></span><span class="btn xs">Convert to booked</span></div>
+     <div class="cr"><span class="tm">Tue 8:22</span><span class="g">Dryer vent quote <span>· Ada · 2:41</span></span><span class="btn xs">Convert to booked</span></div>
+     <span class="more">See all 14 in Calls ›</span>
+    </div>
+    <div class="box2">
+     <div class="bh2"><b>Missed calls</b><span class="c">9</span><span class="sp"></span><span class="lbls"><span class="lbl2">New <b>4</b></span><span class="lbl2">Existing <b>5</b></span></span></div>
+     <div class="cr"><span class="tm">Mon 7:02</span><span class="g">(555) 210-4471 <span>· rang Ada, Bo · nobody</span></span><span class="pill p-bad">Missed</span></div>
+     <div class="cr"><span class="tm">Wed 5:48</span><span class="g">(555) 662-0193 <span>· after hours</span></span><span class="pill p-bad">Missed</span></div>
+     <div class="cr"><span class="tm">Thu 12:30</span><span class="g">Riley Park <span>· rang Cy · hung up</span></span><span class="pill p-bad">Missed</span></div>
+     <span class="more">See all 9 in Calls ›</span>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:8px">The other two tabs:</p>
+<div class="win" style="height:430px">
+ <div class="shell" style="border-top:0">
+  <div class="mod">
+   <div class="dash">
+    <div class="stabs"><span class="stab">Overview</span><span class="stab on">People<i>6</i></span><span class="stab">Calls<i>128</i></span></div>
+    <div class="chips"><span class="chip on">Everyone</span><span class="chip">New client</span><span class="chip">Existing client</span></div>
+    <div class="tbl ptbl">
+     <div class="tr hd"><span>Person</span><span class="num">Rang</span><span class="num srt">Answered ↓</span><span class="num">New</span><span class="num">Existing</span><span class="num">Jobs</span><span class="num">Conversion</span><span class="num">Avg talk</span><span></span></div>
+     <div class="tr"><span class="b">Ada</span><span class="num">34</span><span class="num">30</span><span class="num">12</span><span class="num">15</span><span class="num">9</span><span class="num">75%</span><span class="num">2:10</span><span class="more">▾</span></div>
+     <div class="tr"><span class="b">Bo</span><span class="num">29</span><span class="num">26</span><span class="num">10</span><span class="num">14</span><span class="num">7</span><span class="num">70%</span><span class="num">2:40</span><span class="more">▾</span></div>
+     <div class="tr"><span class="b">Cy</span><span class="num">22</span><span class="num">19</span><span class="num">9</span><span class="num">9</span><span class="num">6</span><span class="num">67%</span><span class="num">1:55</span><span class="more">▾</span></div>
+     <div class="tr"><span class="b">Dee</span><span class="num">18</span><span class="num">14</span><span class="num">6</span><span class="num">8</span><span class="num">3</span><span class="num">50%</span><span class="num">3:05</span><span class="more">▾</span></div>
+    </div>
+    <div class="tiny">Conversion is jobs booked over new-client calls answered, over the same dates…</div>
+   </div>
+  </div>
+  <div class="mod" style="border-left:1px solid var(--line)">
+   <div class="dash">
+    <div class="stabs"><span class="stab">Overview</span><span class="stab">People<i>6</i></span><span class="stab on">Calls<i>128</i></span></div>
+    <div class="chips"><span class="chip">All <span class="c">128</span></span><span class="chip">Missed <span class="c">9</span></span><span class="chip on">Existing <span class="c">61</span></span><span class="chip">Not booked <span class="c">14</span></span><span class="chip">New <span class="c">41</span></span></div>
+    <div class="lbls"><span class="seg2"><span class="on">Claude</span><span>Grok</span></span><span class="lbl2">Complaint <b>4</b></span><span class="lbl2 on">Reschedule <b>12</b></span><span class="lbl2">ETA <b>9</b></span><span class="lbl2">Billing <b>6</b></span><span class="lbl2">Other <b>30</b></span></div>
+    <div class="box2" style="padding:4px 10px">
+     <div class="call"><span class="tm">Mon 9:02</span><span class="g"><b>Morgan Ellis</b><span>Existing client · Ada · 3:12</span></span><span class="tiny">“Can we move it to Thursday…”</span><span class="pill p-info">Reschedule</span><span class="play">▶</span></div>
+     <div class="call"><span class="tm">Tue 1:40</span><span class="g"><b>Quinn Avery</b><span>Existing client · Bo · 1:48</span></span><span class="tiny">“Any chance you could come earlier…”</span><span class="pill p-info">Reschedule</span><span class="play">▶</span></div>
+     <div class="call"><span class="tm">Wed 10:15</span><span class="g"><b>Casey Moore</b><span>Existing client · Cy · 2:05</span></span><span class="tiny">“With the rain, could we…”</span><span class="pill p-info">Reschedule</span><span class="play">▶</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>The figures down the left, as the way in</h2>
+<p class="cap">The seven figures become a column on the left, like folders in an inbox. Choosing one fills the right with its list: <b>Calls</b> shows the people table, <b>Missed calls</b> its calls by reason, <b>Existing client</b> its calls with Claude's and Grok's reasons, <b>Not booked</b> its calls with Convert to booked. <span class="why">Why: the number and the list behind it are always side by side. The cost is that it hides the people table until Calls is chosen, and the figures read as a menu rather than a summary.</span></p>
+<div class="win" style="height:520px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="dash">
+   <div class="hdr"><span class="arr">‹</span><span class="rb"><b>Last week</b><span class="dt">Mon, Sep 28 – Sun, Oct 4</span><span class="cv">▾</span></span><span class="arr">›</span><span class="sp"></span><span class="btn">Sources</span></div>
+   <div class="row2">
+    <div class="side">
+     <div class="nav2 on">Calls<b>128</b></div>
+     <div class="nav2 bad">Missed calls<b>9</b></div>
+     <div class="nav2">Existing client<b>61</b></div>
+     <div class="nav2">New client<b>41</b></div>
+     <div class="nav2">Jobs booked<b>27</b></div>
+     <div class="nav2">Conv. rate<b>66%</b></div>
+     <div class="nav2">Not booked<b>14</b></div>
+    </div>
+    <div class="grow">
+     <div class="chips"><span class="chip on">Everyone</span><span class="chip">New client</span><span class="chip">Existing client</span></div>
+     <div class="tbl ptbl">
+      <div class="tr hd"><span>Person</span><span class="num">Rang</span><span class="num">Answered</span><span class="num">New</span><span class="num">Existing</span><span class="num">Jobs</span><span class="num">Conversion</span><span class="num">Avg talk</span><span></span></div>
+      <div class="tr"><span class="b">Ada</span><span class="num">34</span><span class="num">30</span><span class="num">12</span><span class="num">15</span><span class="num">9</span><span class="num">75%</span><span class="num">2:10</span><span class="more">▾</span></div>
+      <div class="tr"><span class="b">Bo</span><span class="num">29</span><span class="num">26</span><span class="num">10</span><span class="num">14</span><span class="num">7</span><span class="num">70%</span><span class="num">2:40</span><span class="more">▾</span></div>
+      <div class="tr"><span class="b">Cy</span><span class="num">22</span><span class="num">19</span><span class="num">9</span><span class="num">9</span><span class="num">6</span><span class="num">67%</span><span class="num">1:55</span><span class="more">▾</span></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>One page, tidied into three cards</h2>
+<p class="cap">One scroll as today, but in a fixed order. First the figures. Then one <b>Calls to look at</b> card whose own tabs (Not booked, Missed, Existing) replace the panels that used to open between the figures and the table. Then the <b>People</b> card with its filter. The Sources line is at the top. <span class="why">Why: the smallest change, and nothing is behind a tab except the three call lists. The cost is the same long scroll, just in a better order.</span></p>
+<div class="win" style="height:640px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="mh"><div class="t">Reports</div></div>
+  <div class="tabs"><span class="tab">Reports</span><span class="tab">Report Builder</span><span class="tab on">Performance</span></div>
+  <div class="dash">
+   <div class="hdr"><span class="arr">‹</span><span class="rb"><b>Last week</b><span class="dt">Mon, Sep 28 – Sun, Oct 4</span><span class="cv">▾</span></span><span class="arr">›</span><span class="sp"></span><span class="btn">Sources</span></div>
+   <div class="banner">One Workiz account did not answer, so Jobs booked may be short.<span class="more">Sources ›</span></div>
+   <div class="t7b">
+    <div class="tl"><span class="k">Calls</span><span class="v">128</span><span class="d">&nbsp;</span></div>
+    <div class="tl bad"><span class="k">Missed calls</span><span class="v">9</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">Existing client</span><span class="v">61</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">New client</span><span class="v">41</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">Jobs booked</span><span class="v">27</span><span class="d">&nbsp;</span></div>
+    <div class="tl"><span class="k">Conv. rate</span><span class="v">66%</span><span class="d">&nbsp;</span></div>
+    <div class="tl cau"><span class="k">Not booked</span><span class="v">14</span><span class="d">&nbsp;</span></div>
+   </div>
+   <div class="sec2">
+    <div class="bh2"><b>Calls to look at</b><span class="sp"></span><span class="chips"><span class="chip on">Not booked 14</span><span class="chip">Missed 9</span><span class="chip">Existing 61</span></span></div>
+    <div class="cr"><span class="tm">Mon 9:14</span><span class="g">Kitchen tap leak <span>· Ada · 3:02</span></span><span class="btn xs">Convert to booked</span></div>
+    <div class="cr"><span class="tm">Mon 11:40</span><span class="g">Crown estimate <span>· Bo · 6:15</span></span><span class="btn xs">Convert to booked</span></div>
+   </div>
+   <div class="sec2">
+    <div class="bh2"><b>People</b><span class="sp"></span><span class="chips"><span class="chip on">Everyone</span><span class="chip">New client</span><span class="chip">Existing client</span></span></div>
+    <div class="tbl ptbl" style="border:0">
+     <div class="tr hd"><span>Person</span><span class="num">Rang</span><span class="num">Answered</span><span class="num">New</span><span class="num">Existing</span><span class="num">Jobs</span><span class="num">Conversion</span><span class="num">Avg talk</span><span></span></div>
+     <div class="tr"><span class="b">Ada</span><span class="num">34</span><span class="num">30</span><span class="num">12</span><span class="num">15</span><span class="num">9</span><span class="num">75%</span><span class="num">2:10</span><span class="more">▾</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="pairp">
+ <div><p class="pl">4 · The same three tabs <span class="rec">Recommended</span></p>
+ <div class="phn"><div class="st"></div>
+  <div class="ab"><span class="t">Performance</span></div>
+  <div class="pb">
+   <span class="rb" style="justify-content:flex-start"><b>Last week</b><span class="dt">Sep 28 – Oct 4</span><span class="cv" style="margin-left:auto">▾</span></span>
+   <div class="stabs"><span class="stab on">Overview</span><span class="stab">People</span><span class="stab">Calls</span></div>
+   <div class="t7b t4" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <div class="tl"><span class="k">Calls</span><span class="v">128</span><span class="d">&nbsp;</span></div>
+    <div class="tl bad"><span class="k">Missed</span><span class="v">9</span><span class="d">See them ›</span></div>
+    <div class="tl"><span class="k">Jobs booked</span><span class="v">27</span><span class="d">&nbsp;</span></div>
+    <div class="tl cau"><span class="k">Not booked</span><span class="v">14</span><span class="d">See them ›</span></div>
+   </div>
+   <div class="box2"><div class="bh2"><b>Not booked</b><span class="c">14</span></div>
+    <div class="cr"><span class="tm">Mon 9:14</span><span class="g">Kitchen tap <span>· Ada</span></span><span class="btn xs">Booked</span></div>
+    <div class="cr"><span class="tm">Mon 11:40</span><span class="g">Crown estimate <span>· Bo</span></span><span class="btn xs">Booked</span></div></div>
+  </div>
+ </div></div>
+ <div><p class="pl">5 · The figures as the menu</p>
+ <div class="phn"><div class="st"></div>
+  <div class="ab"><span class="t">Performance</span></div>
+  <div class="pb">
+   <span class="rb" style="justify-content:flex-start"><b>Last week</b><span class="dt">Sep 28 – Oct 4</span></span>
+   <div class="nav2">Calls<b>128</b></div>
+   <div class="nav2 bad">Missed calls<b>9</b></div>
+   <div class="nav2">Existing client<b>61</b></div>
+   <div class="nav2">New client<b>41</b></div>
+   <div class="nav2">Jobs booked<b>27</b></div>
+   <div class="nav2">Conv. rate<b>66%</b></div>
+   <div class="nav2">Not booked<b>14</b></div>
+  </div>
+ </div></div>
+ <div><p class="pl">6 · One page in three cards</p>
+ <div class="phn"><div class="st"></div>
+  <div class="ab"><span class="t">Performance</span></div>
+  <div class="pb">
+   <span class="rb" style="justify-content:flex-start"><b>Last week</b><span class="dt">Sep 28 – Oct 4</span></span>
+   <div class="t7b" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div class="tl"><span class="k">Calls</span><span class="v">128</span><span class="d">&nbsp;</span></div><div class="tl bad"><span class="k">Missed</span><span class="v">9</span><span class="d">&nbsp;</span></div></div>
+   <div class="sec2"><div class="bh2"><b>Calls to look at</b></div><div class="chips"><span class="chip on">Not booked 14</span><span class="chip">Missed 9</span></div></div>
+   <div class="sec2"><div class="bh2"><b>People</b></div><div class="cr"><span class="tm"></span><span class="g">Ada <span>· 30 answered · 75%</span></span><span class="more">›</span></div></div>
+  </div>
+ </div></div>
+</div>
+<p class="cap" style="margin-top:14px">On a phone the people table is already drawn as one card per person, and stays that way. In <b>4</b> the Calls tab is one list with the same chips as on desktop, and the Overview keeps Not booked first because it is the list someone acts on.</p>
+</div>
