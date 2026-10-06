@@ -2030,6 +2030,7 @@ var whoBox=w.querySelector('.ezbizi-rf-who');
 w.querySelector('.ezbizi-rf-continue').addEventListener('click',function(){var v=who(whoBox.value);v.rating='happy';if(v.email||v.phone)tell(v);show('happy');});
 w.querySelector('.ezbizi-rf-skip').addEventListener('click',function(){show('happy');});
 var f=w.querySelector('form'),note=w.querySelector('.ezbizi-rf-note');
+" . ezbizi_solver_js() . "
 f.addEventListener('submit',function(e){
   e.preventDefault();
   if(f.elements.website.value!==''){show('sent');return;}
@@ -2038,7 +2039,9 @@ f.addEventListener('submit',function(e){
   var g=function(n){return f.elements[n].value;};
   var v={key:" . wp_json_encode($key) . ",name:g('name'),email:g('email'),phone:g('phone'),page_url:location.href,
     fields:{'Rating':'Not happy','Name':g('name'),'Phone':g('phone'),'Email':g('email'),'What happened?':g('feedback')}};
-  fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)})
+  // The robot check every EzBizi form carries (Jose, 2026-10-06).
+  ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
+  return fetch(api+'/api/v1/web/form',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
   .then(function(r){if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });

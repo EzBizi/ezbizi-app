@@ -82,7 +82,12 @@ final class LeadThread
                 ],
             ]);
 
-            if ($hadConversation) {
+            // Another call on a Local Services CALL lead is not a reply (Jose,
+            // 2026-10-06: "Get rid of a reply on LS Call notification").
+            $callOnACallLead = $lead->source === Lead::SOURCE_LOCAL_SERVICES
+                && $lead->lead_type === 'PHONE_CALL';
+
+            if ($hadConversation && ! $callOnACallLead) {
                 $this->events->emitAfterCommit('lead.customer_replied', $lead, [
                     'after' => [
                         'source'       => $lead->source,

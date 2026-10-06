@@ -2498,6 +2498,33 @@ class AutomationEngineTest extends TestCase
             array_column($step['parameters'], 'key'))));
     }
 
+    /**
+     * The second line (Jose, 2026-10-06): interpolated like the title and
+     * carried as the notification's body, so bell, pop-up and push show both.
+     * A step without one is the control: its body stays empty, not "".
+     */
+    public function test_a_notification_carries_its_second_line(): void
+    {
+        $runner = app(ActionRunner::class);
+        $admin = $this->org['admin'];
+
+        $event = $this->inTenant(fn () => AutomationEvent::create(['organization_id' => $this->org['organization']->id,
+            'event_key' => 'lead.received', 'payload' => ['after' => ['source' => 'thumbtack']],
+            'occurred_at' => now(), 'available_at' => now()]));
+
+        $bodies = $this->inTenant(function () use ($runner, $admin, $event) {
+            $runner->run(['type' => 'notify', 'message' => 'One', 'details' => 'From {{source}}', 'user_ids' => [$admin->id]],
+                $event, $this->org['organization']);
+            $runner->run(['type' => 'notify', 'message' => 'Two', 'user_ids' => [$admin->id]],
+                $event, $this->org['organization']);
+
+            return Notification::query()->pluck('body', 'title')->all();
+        });
+
+        $this->assertSame('From thumbtack', $bodies['One']);
+        $this->assertNull($bodies['Two']);
+    }
+
     public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
     {
         // A notification never emails (2026-09-28), so with the bell off it

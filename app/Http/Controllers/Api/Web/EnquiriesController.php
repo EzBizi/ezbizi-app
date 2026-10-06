@@ -83,7 +83,14 @@ class EnquiriesController extends Controller
             // Same pair as the form. See submitForm.
             'marketing_consent' => ['nullable', 'boolean'],
             'marketing_consent_text' => ['nullable', 'string', 'max:500'],
+            // The robot check every website form carries (2026-10-06).
+            'captcha' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        if (config('ezbizi.web_form_captcha') && ! FormChallenge::passes($input['captcha'] ?? null)) {
+            return response()->json(['message' => 'The chat could not confirm you are a person. Please try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
+        }
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
 
@@ -222,7 +229,7 @@ class EnquiriesController extends Controller
         return $this->tenant->run($organization, function () use ($site, $input, $request): JsonResponse {
             $form = WebWidget::resolvedFor($site)['form'] ?? [];
 
-            if (! empty($form['captcha']) && ! FormChallenge::passes($input['captcha'] ?? null)) {
+            if ((config('ezbizi.web_form_captcha') || ! empty($form['captcha'])) && ! FormChallenge::passes($input['captcha'] ?? null)) {
                 return response()->json(['message' => 'The form could not confirm you are a person. Please try again.'],
                     Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
             }

@@ -281,4 +281,13 @@ return [
          */
         'max_backoff_seconds' => (int) env('EZBIZI_MAIL_WATCH_MAX_BACKOFF', 21600),
     ],
+
+    /*
+     * The robot check on every website form and chat start (Jose, 2026-10-06:
+     * "Activate captcha on all websites for anti spam web forms"). Always on
+     * in production; the test suite turns it off so a test that posts a form
+     * is not also a test of the puzzle, and WebFormOptionsTest turns it back
+     * on to test exactly that.
+     */
+    'web_form_captcha' => filter_var(env('EZBIZI_WEB_FORM_CAPTCHA', true), FILTER_VALIDATE_BOOL),
 ];

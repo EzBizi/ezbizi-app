@@ -878,7 +878,7 @@ check('the button says what EzBizi says', str_contains($form, '>Send it<'), true
 check('the form posts to the form endpoint', str_contains($form, "'/api/v1/web/form'"), true);
 check('a file question is a file picker', str_contains($form, '<input type="file"'), true);
 check('a question can wait for another answer', str_contains($form, 'data-if-field="Service" data-if-value="Repair"'), true);
-check('no CAPTCHA unless EzBizi asks for one', str_contains($form, 'captcha=false'), true);
+check('the CAPTCHA is always on (Jose, 2026-10-06)', str_contains($form, 'captcha=true') && str_contains($form, 'function ezSolve(api)'), true);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);
 check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), true);
@@ -1042,6 +1042,7 @@ $GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
 ezbizi_fetch();
 $GLOBALS['is_admin'] = false;
 $chat_html = $GLOBALS['sc']['ezbizi_chat']([]);
+check('the chat start solves the robot check (Jose, 2026-10-06)', str_contains($chat_html, 'function ezSolve(api)') && str_contains($chat_html, 'if(sol)body.captcha=sol'), true);
 
 check('it asks for a name', str_contains($chat_html, 'name="name"'), true);
 check('and two ways to reply', str_contains($chat_html, 'name="phone"') && str_contains($chat_html, 'name="email"'), true);
@@ -1837,7 +1838,8 @@ check('it asks the question', str_contains($faces, 'How was your experience?'), 
 check('two faces', substr_count($faces, 'class="ezbizi-rf-face"'), 2);
 check('happy goes to the review link', str_contains($faces, 'href="https://g.page/r/a1chimney/review"'), true);
 check('in a new tab', str_contains($faces, 'target="_blank" rel="noopener noreferrer"'), true);
-check('sad posts to the form endpoint', str_contains($faces, 'web' . chr(92) . '/form'), true);
+check('sad posts to the form endpoint', str_contains($faces, "api+'/api/v1/web/form'"), true);
+check('with the robot check solved first', str_contains($faces, 'ezSolve(api)') && str_contains($faces, 'function ezSolve(api)'), true);
 check('with the site key', str_contains($faces, 'pk_testkey'), true);
 check('the button wears the accent', str_contains($faces, 'background:#aa0000'), true);
 check('light by default', str_contains($faces, 'color:#fff}'), false);
@@ -1863,7 +1865,7 @@ serve_preset_payload(['review_link' => 'https://a-1chimney.com/reviews/', 'googl
 $_SERVER['REQUEST_URI'] = '/reviews/';
 check('the Google review link is used first', str_contains($GLOBALS['sc']['ezbizi_review_faces']([]), 'href="https://g.page/r/a1/review"'), true);
 $_SERVER['REQUEST_URI'] = '/';
-check('the sad form still works', str_contains($no_link, 'web' . chr(92) . '/form'), true);
+check('the sad form still works', str_contains($no_link, "api+'/api/v1/web/form'"), true);
 
 reset_site();
 serve_preset_payload(['review_link' => 'https://g.page/r/a1chimney/review']);

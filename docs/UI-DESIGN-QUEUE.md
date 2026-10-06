@@ -2961,6 +2961,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — building (`docs/previews/reports-performance-dates-layouts.html`)
+
+From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /
+Or specific date / Week is confussing what week is it ? Etc i should see the range / Maybe dropdown like google"*.
+Today: Day/Week/Month segments, arrows, and `2026-09-28 – 2026-10-04`. Server (Reports' branch, 2660648c): a period
+around a day (Mon–Sun weeks) or `from`–`to`, one date = from=to, up to 92 days. Desktop **1** one button that says
+the dates in words, opening a Google-style picker IN the page under it (quick choices each with their dates, two
+months to click one day or two, From/To boxes, a day count, Apply) (recommended); **2** chips with the range spelled
+out under them and From/To fields for Custom; **3** the same picker in a side panel. Phone **4** (recommended) the
+button, then a page of dates with a month and "Show 2 days"; **5** scrolling chips with the dates in words; **6** a
+list to pick from, From/To under it for Custom. All: dates in words never ISO; arrows step by the chosen length.
+
 ### 56 · Inspection · the Builder, made readable — **Jose: "go ahead" (2026-10-06) — 1 and 4** — **BUILT** `2916cdcb` (`docs/previews/inspection-builder-layouts.html`)
 
 Jose 2026-10-06: *"i think the UI for the builder is pretty much extremely hard to understand and use, it makes

@@ -47,7 +47,9 @@ final class AutomationTemplates
                 'trigger_key' => 'lead.received',
                 'conditions' => null,
                 'actions' => [
-                    ['type' => 'notify', 'message' => 'New enquiry from {{source_name}}.'],
+                    // Jose's two lines (2026-10-06): 'You got a new "Local
+                    // Services Call" lead', then number, length, company, place.
+                    ['type' => 'notify', 'message' => '{{lead_headline}}', 'details' => '{{lead_details}}'],
                 ],
             ],
             [
@@ -150,7 +152,7 @@ final class AutomationTemplates
                 'trigger_key' => 'lead.customer_replied',
                 'conditions' => null,
                 'actions' => [
-                    ['type' => 'notify', 'message' => 'A customer replied on {{source_name}}: {{preview}}'],
+                    ['type' => 'notify', 'message' => '{{reply_headline}}', 'details' => '{{reply_preview}}'],
                 ],
             ],
             [

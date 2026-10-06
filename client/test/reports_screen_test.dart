@@ -231,8 +231,8 @@ void main() {
     await _pumpReports(tester, reports: [_report]);
 
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsOneWidget);
   });
 
   testWidgets('the Builder tab opens the builder', (tester) async {
@@ -247,7 +247,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Builder'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Report Builder'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
@@ -262,7 +262,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     expect(find.text('Trey Brannan'), findsOneWidget);
@@ -287,7 +287,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     expect(find.text('not in Workiz'), findsOneWidget);
@@ -304,7 +304,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     // The accounts are disjoint and the same people book into all of them, so
@@ -342,7 +342,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     // The chips are behind the toggle now: a row of them above the table read
@@ -383,7 +383,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     expect(
@@ -403,7 +403,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     // The day's average card left the figures (Jose's order, 2026-10-05);
@@ -446,7 +446,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.textContaining('Manage Workiz accounts'));
@@ -481,7 +481,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Did not answer: NJ'), findsOneWidget);
@@ -500,7 +500,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     expect(find.text('RingCentral is not connected.'), findsOneWidget);
@@ -521,7 +521,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     // Behind the manage toggle now, with the chips - connecting is setup.
@@ -565,7 +565,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Manage Workiz accounts'));
     await tester.pumpAndSettle();
@@ -647,13 +647,13 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
     // Absent, not disabled - a chip leading to a refusal tells somebody the
     // app is for other people.
-    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
     // Experimental goes too, and for the same reason: its endpoint is gated on
     // `reports.build` because the report names every member of staff and how
     // many calls they took. It used to be shown to everyone, which was right
     // while the pane was an empty placeholder and became wrong the moment it
     // had contents.
-    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
   testWidgets('Experimental is still reachable when Builder is absent', (
@@ -667,7 +667,7 @@ void main() {
     // drop both chips and leave this test with nothing to shift.
     await _pumpReports(tester, reports: [_report], width: 375);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
 
     // Reached the Experimental pane, not the Builder that used to sit at this
@@ -723,8 +723,8 @@ void main() {
       ],
     );
 
-    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
   testWidgets('the library chip is absent without the library grant', (
@@ -743,7 +743,7 @@ void main() {
     // Absent, not disabled — the same rule as New report. A chip leading to a
     // refusal tells somebody the app is for other people.
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsOneWidget);
   });
 
   testWidgets(
@@ -817,8 +817,8 @@ void main() {
     await _pumpReports(tester, reports: [_report], permissions: const []);
 
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 }
 

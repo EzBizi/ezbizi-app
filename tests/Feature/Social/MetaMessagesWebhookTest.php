@@ -136,6 +136,7 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertNotSame($other['org']->id, $lead->organization_id);
         $this->assertSame(Lead::SOURCE_FACEBOOK, $lead->source);
         $this->assertSame(self::SENDER, $lead->remote_id);
+        $this->assertSame('MESSAGE', $lead->lead_type); // "Meta Text" in its notification
 
         $said = LeadConversation::query()->withoutGlobalScopes()->firstOrFail();
         $this->assertSame('Do you clean chimneys in Hallandale?', $said->text);
