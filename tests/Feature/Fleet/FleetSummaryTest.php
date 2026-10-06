@@ -5,7 +5,9 @@ namespace Tests\Feature\Fleet;
 use App\Models\Vehicle;
 use App\Models\VehicleInsurancePolicy;
 use App\Models\VehiclePayment;
+use App\Support\Time\ViewTimezone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -20,9 +22,27 @@ class FleetSummaryTest extends TestCase
 
     public function test_it_counts_the_register_and_names_what_needs_attention(): void
     {
+        // Pinned INSIDE the window that used to fail every night: 01:30 UTC is
+        // still the previous evening in the company's zone. The payment was
+        // dated by the UTC clock, so between 00:00 and 04:00 UTC it landed the
+        // day after the month's end in the company's zone and the total read
+        // 0 (gate, 0.0.0364). The summary was right: a payment's day is the
+        // company's calendar day.
+        $this->travelTo(Carbon::parse('2026-10-15 01:30:00', 'UTC'));
+
         $t = $this->provisionTenant('Alpha');
 
         $this->inTenant($t['org'], function () use ($t) {
+            $today = Carbon::now(ViewTimezone::forUser($t['admin']))->toDateString();
+
+            // Control: if the company's zone were UTC this test would no
+            // longer sit on the edge it exists to hold, and would say so.
+            $this->assertNotSame(
+                now('UTC')->toDateString(),
+                $today,
+                'the pinned instant must fall on different days in UTC and the company zone',
+            );
+
             $overdue = Vehicle::factory()->create([
                 'company_id' => $t['company']->id, 'status' => 'active',
                 'next_service_on' => now()->subDays(3)->toDateString(),
@@ -39,7 +59,7 @@ class FleetSummaryTest extends TestCase
             VehiclePayment::create([
                 'organization_id' => $t['org']->id, 'vehicle_id' => $overdue->id,
                 'category' => 'maintenance', 'amount_cents' => 12500,
-                'occurred_on' => now()->toDateString(), 'method' => 'credit_card',
+                'occurred_on' => $today, 'method' => 'credit_card',
             ]);
         });
 

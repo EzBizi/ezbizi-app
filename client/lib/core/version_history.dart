@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0364',
+      date: '5 Oct 2026',
+      items: [
+        'Workiz: a job Workiz deleted no longer stays in EzBizi just because an ad lead was matched to it by phone, or because its status change fired an automation. The lead is matched again to the job it became, such as the Massachusetts copy of a moved job.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0363',
       date: '5 Oct 2026',
       items: [

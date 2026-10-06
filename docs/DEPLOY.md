@@ -438,7 +438,7 @@ Two systemd units, both versioned in `deploy/` and installed on the app box:
 
 | Unit | Does |
 |---|---|
-| `ezbizi-scheduler.timer` → `.service` | `artisan schedule:run` every minute |
+| `ezbizi-scheduler-0/1/2.timer` → `ezbizi-scheduler@N.service` | `artisan schedule:run` every minute, from three timers on staggered minutes so a slow run never skips the next one (since 2026-10-06) |
 | `ezbizi-worker.service` | `artisan queue:work`, restarted on deploy |
 
 **Neither existed until 2026-08-06**, which meant audit retention, impersonation
@@ -447,7 +447,7 @@ an error, because nothing was broken. They simply never executed. If automation
 ever looks inert again, check these first:
 
 ```bash
-ssh app 'systemctl is-active ezbizi-scheduler.timer ezbizi-worker'
+ssh app 'systemctl is-active ezbizi-scheduler-0.timer ezbizi-scheduler-1.timer ezbizi-scheduler-2.timer ezbizi-worker'
 ```
 
 ## Rules

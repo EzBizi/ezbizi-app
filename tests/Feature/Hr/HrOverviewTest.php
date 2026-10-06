@@ -17,20 +17,28 @@ class HrOverviewTest extends TestCase
 
     public function test_the_overview_counts_by_start_date_and_hides_what_the_viewer_cannot_open(): void
     {
+        // Pinned, and dated in the organization's day as the app records one:
+        // a UTC date written between 00:00 and 04:00 UTC is tomorrow in New
+        // York, outside a window that ends today (desk, 2026-10-05: red every
+        // night at the gate).
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-15 02:30:00', 'UTC'));
         $t = $this->provisionTenant('Alpha');
+        $today = $this->inTenant($t['org'], fn () => \Illuminate\Support\Carbon::now(
+            (string) app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $t['org']),
+        )->toDateString());
         $veteran = $this->userWithRole($t, 'Technician', ['customers.view']);
         $starter = $this->userWithRole($t, 'Dispatcher', ['customers.view']);
         $leaver = $this->userWithRole($t, 'Helper', ['customers.view']);
         $reader = $this->userWithRole($t, 'HR reader', ['hr.view', 'hr.dashboard.view']);
 
-        $this->inTenant($t['org'], function () use ($t, $veteran, $starter, $leaver) {
+        $this->inTenant($t['org'], function () use ($t, $veteran, $starter, $leaver, $today) {
             $event = fn ($u, $kind, $on) => EmploymentEvent::create([
                 'organization_id' => $t['org']->id, 'user_id' => $u->id, 'kind' => $kind, 'occurred_on' => $on,
             ]);
             $event($veteran, EmploymentEvent::STARTED, '2019-04-01');
-            $event($starter, EmploymentEvent::STARTED, now()->toDateString());
+            $event($starter, EmploymentEvent::STARTED, $today);
             $event($leaver, EmploymentEvent::STARTED, '2024-01-01');
-            $event($leaver, EmploymentEvent::LEFT, now()->toDateString());
+            $event($leaver, EmploymentEvent::LEFT, $today);
             $leaver->forceFill(['is_active' => false])->save();
 
             TimeClockShift::create(['organization_id' => $t['org']->id, 'user_id' => $starter->id,

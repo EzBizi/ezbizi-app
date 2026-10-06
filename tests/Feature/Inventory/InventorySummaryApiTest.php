@@ -2,17 +2,30 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Models\Company;
+use App\Models\InventoryAdjustment;
 use App\Models\InventoryBalance;
+use App\Models\InventoryIssue;
+use App\Models\InventoryIssueLine;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
+use App\Models\InventoryPurchaseOrder;
+use App\Models\InventoryPurchaseOrderLine;
+use App\Models\InventoryReceive;
+use App\Models\InventoryReceiveLine;
 use App\Models\InventorySale;
 use App\Models\InventorySaleFulfillment;
 use App\Models\InventorySaleFulfillmentLine;
 use App\Models\InventorySaleLine;
+use App\Models\InventoryTransfer;
+use App\Models\InventoryTransferLine;
+use App\Models\InventoryVendor;
 use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryPurchaseOrderStatus;
 use App\Support\Inventory\InventorySalePaymentStatus;
 use App\Support\Inventory\InventorySaleStatus;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Time\ViewTimezone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -30,6 +43,18 @@ class InventorySummaryApiTest extends TestCase
     {
         Carbon::setTestNow();
         parent::tearDown();
+    }
+
+    /**
+     * Today in the tenant's own timezone: the day InventoryMover stamps a
+     * movement with and the summary buckets by. A bare now() is the UTC day,
+     * which is tomorrow there every evening.
+     */
+    private function tenantToday(array $tenant): string
+    {
+        $tz = ViewTimezone::forFranchise($tenant['franchise'], $tenant['org']);
+
+        return Carbon::now($tz)->toDateString();
     }
 
     public function test_health_counts_what_is_in_reach(): void
@@ -106,31 +131,31 @@ class InventorySummaryApiTest extends TestCase
         $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.general.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
-            $vendor = \App\Models\InventoryVendor::factory()->create([
+            $vendor = InventoryVendor::factory()->create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
             ]);
 
             // ordered_on is nullable. Ageing a null from zero would mark every
             // undated order permanently fine, which is the opposite of a warning.
-            \App\Models\InventoryPurchaseOrder::create([
+            InventoryPurchaseOrder::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
                 'vendor_id' => $vendor->id,
                 'number' => 'PO-1',
-                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'status' => InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => null,
             ]);
 
             // Control: a dated order old enough to trigger the warning, so the
             // absence above proves the null was excluded and not that the
             // query never fires at all.
-            \App\Models\InventoryPurchaseOrder::create([
+            InventoryPurchaseOrder::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
                 'vendor_id' => $vendor->id,
                 'number' => 'PO-2',
-                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'status' => InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => now()->subDays(60),
             ]);
         });
@@ -216,7 +241,7 @@ class InventorySummaryApiTest extends TestCase
         $this->inTenant($tenant['org'], function () use ($tenant) {
             app(SettingsResolver::class)->set('timezone', $tenant['org'], 'America/New_York');
 
-            $vendor = \App\Models\InventoryVendor::factory()->create([
+            $vendor = InventoryVendor::factory()->create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
             ]);
@@ -226,23 +251,23 @@ class InventorySummaryApiTest extends TestCase
             // 30 days old is not yet "more than 30 days" and must be
             // excluded — but a UTC-dated "today" of the 9th would wrongly
             // include it.
-            \App\Models\InventoryPurchaseOrder::create([
+            InventoryPurchaseOrder::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
                 'vendor_id' => $vendor->id,
                 'number' => 'PO-BOUNDARY',
-                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'status' => InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => '2026-08-09',
             ]);
 
             // Control: one calendar day further back — over 30 days under
             // either timezone's "today" — proves the query still fires.
-            \App\Models\InventoryPurchaseOrder::create([
+            InventoryPurchaseOrder::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
                 'vendor_id' => $vendor->id,
                 'number' => 'PO-OVER',
-                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'status' => InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => '2026-08-08',
             ]);
         });
@@ -446,21 +471,21 @@ class InventorySummaryApiTest extends TestCase
                 'status' => InventoryItemStatus::Active,
             ]);
 
-            $vendor = \App\Models\InventoryVendor::factory()->create([
+            $vendor = InventoryVendor::factory()->create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
             ]);
 
-            $order = \App\Models\InventoryPurchaseOrder::create([
+            $order = InventoryPurchaseOrder::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
                 'vendor_id' => $vendor->id,
                 'number' => 'PO-'.uniqid(),
-                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'status' => InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => now()->toDateString(),
             ]);
 
-            $orderLine = \App\Models\InventoryPurchaseOrderLine::create([
+            $orderLine = InventoryPurchaseOrderLine::create([
                 'organization_id' => $tenant['org']->id,
                 'purchase_order_id' => $order->id,
                 'item_id' => $item->id,
@@ -468,14 +493,14 @@ class InventorySummaryApiTest extends TestCase
                 'qty_received' => $qty,
             ]);
 
-            $receive = \App\Models\InventoryReceive::create([
+            $receive = InventoryReceive::create([
                 'organization_id' => $tenant['org']->id,
                 'purchase_order_id' => $order->id,
                 'location_id' => $into->id,
-                'received_on' => now()->toDateString(),
+                'received_on' => $this->tenantToday($tenant),
             ]);
 
-            \App\Models\InventoryReceiveLine::create([
+            InventoryReceiveLine::create([
                 'organization_id' => $tenant['org']->id,
                 'receive_id' => $receive->id,
                 'purchase_order_line_id' => $orderLine->id,
@@ -486,6 +511,12 @@ class InventorySummaryApiTest extends TestCase
 
     public function test_a_receive_counts_as_in(): void
     {
+        // 02:00 UTC is still yesterday in New York. The fixtures used to stamp
+        // the UTC date, so every evening there their movement fell a day past
+        // the period and this read 0 (blocked 0.0.0364). Pinned to that hour
+        // so the case is tested every run, not only after 8 pm.
+        Carbon::setTestNow(Carbon::parse('2026-09-09 02:00:00', 'UTC'));
+
         $tenant = $this->provisionTenant('Alpha');
         $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.general.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
@@ -516,7 +547,7 @@ class InventorySummaryApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $sibling = $this->inTenant($tenant['org'], fn () => \App\Models\Company::create([
+        $sibling = $this->inTenant($tenant['org'], fn () => Company::create([
             'organization_id' => $tenant['org']->id,
             'name' => 'Beta Co',
             'is_active' => true,
@@ -609,15 +640,15 @@ class InventorySummaryApiTest extends TestCase
                 'status' => InventoryItemStatus::Active,
             ]);
 
-            $transfer = \App\Models\InventoryTransfer::create([
+            $transfer = InventoryTransfer::create([
                 'organization_id' => $tenant['org']->id,
                 'from_location_id' => $from->id,
                 'to_location_id' => $to->id,
                 'number' => 'TR-'.uniqid(),
-                'transferred_on' => now()->toDateString(),
+                'transferred_on' => $this->tenantToday($tenant),
             ]);
 
-            \App\Models\InventoryTransferLine::create([
+            InventoryTransferLine::create([
                 'organization_id' => $tenant['org']->id,
                 'transfer_id' => $transfer->id,
                 'item_id' => $item->id,
@@ -639,14 +670,14 @@ class InventorySummaryApiTest extends TestCase
                 'status' => InventoryItemStatus::Active,
             ]);
 
-            \App\Models\InventoryAdjustment::create([
+            InventoryAdjustment::create([
                 'organization_id' => $tenant['org']->id,
                 'location_id' => $location->id,
                 'item_id' => $item->id,
                 'qty_before' => $before,
                 'qty_after' => $after,
                 'reason' => 'Counted.',
-                'adjusted_on' => now()->toDateString(),
+                'adjusted_on' => $this->tenantToday($tenant),
             ]);
         });
     }
@@ -664,15 +695,15 @@ class InventorySummaryApiTest extends TestCase
                 'status' => InventoryItemStatus::Active,
             ]);
 
-            $issue = \App\Models\InventoryIssue::create([
+            $issue = InventoryIssue::create([
                 'organization_id' => $tenant['org']->id,
                 'location_id' => $location->id,
                 'note' => 'Used on site.',
                 'number' => 'IS-'.uniqid(),
-                'issued_on' => now()->toDateString(),
+                'issued_on' => $this->tenantToday($tenant),
             ]);
 
-            \App\Models\InventoryIssueLine::create([
+            InventoryIssueLine::create([
                 'organization_id' => $tenant['org']->id,
                 'issue_id' => $issue->id,
                 'item_id' => $item->id,
@@ -722,7 +753,7 @@ class InventorySummaryApiTest extends TestCase
                 'organization_id' => $tenant['org']->id,
                 'sale_id' => $sale->id,
                 'location_id' => $location->id,
-                'fulfilled_on' => now()->toDateString(),
+                'fulfilled_on' => $this->tenantToday($tenant),
             ]);
 
             InventorySaleFulfillmentLine::create([

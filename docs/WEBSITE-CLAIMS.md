@@ -2454,3 +2454,35 @@ WordPress directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-05: twelve releases, nothing on the site went false, and the privacy backlog is live
+
+**Production is `0.0.0361` at `5d455440`** (`/download/windows.json`; main is
+at `0.0.0363`). No desk asked: `send_message` is unavailable to a scheduled
+run. `0090` (desk) confirms the 10-02 edit published in `0.0.0350`; today's
+transcription disclosure (`fd3d93ad`, written by another session off `0093`)
+is live too — `/privacy/` `Last-Modified` 2026-10-05 22:21 UTC, "Last updated 5
+October 2026". All seven pages, `robots.txt` and `sitemap.xml` are
+byte-identical to `www/`.
+
+**Walked `f2b575e1..5d455440` against the load-bearing table; nothing moved:**
+no new outbound host (only TikTok, a connected account); no manifest,
+`Info.plist`, `pubspec.yaml` or runtime-permission change; `config/services.php`
+gained only `workiz.retire_deleted`; `SettingRegistry` gained
+`leads.office_hours`, `leads.photos_email`, `hr.onboarding_approval` — the two
+defaults the site leans on are untouched; `app/Mail`/`app/Notifications`: only
+retries on `PasswordResetLink`. RingCentral and Workiz v2 are "the accounts you
+connect". Monitoring's drive list is still list/download only.
+
+**Deliberately unpublished:** Memberships (join page, visit booking, plan
+prices — shipped, no row count; no payment taken), Marketing QR Codes, call
+report transcripts on any landing card (privacy only), estimates (row above).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0347; WordPress
+directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
