@@ -2974,6 +2974,10 @@ phone, Add off at 8), and the reports with no group yet above the cards (recomme
 group docked; **3** the list of reports, each with its group or "Make its group". Phone **4** (recommended) cards
 stacked; **5** rows → page; **6** reports list.
 
+Build notes from Meta: no registry tab key; gate the tab on `ai_assistance.manage` (every endpoint's permission). The
+member picker reads `people: [{id, name, has_phone}]` (active users of this business) from the same GET, added at
+1daadbf0, not GET /users.
+
 ### 60 · Reports · Performance, rearranged — **out for decision** (`docs/previews/reports-performance-revamp-layouts.html`)
 
 Jose 2026-10-06, to me: *"I believe we also need a ui revamp for the Reports Performance Tab, as we have added too many
