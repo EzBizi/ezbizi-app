@@ -2081,6 +2081,100 @@ void main() {
     expect(bodies.single['provider'], 'gmail_workspace');
   });
 
+  // Jose, 2026-10-06: "add ability to add emails by bulk as well, when
+  // selecting workspace". Several ticked, one request, the panel closes.
+  testWidgets('several Workspace addresses can be ticked and added in one go', (
+    tester,
+  ) async {
+    final calls = <String, Map<String, dynamic>?>{};
+
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: const [],
+        workspaceUsable: true,
+        directory: const [
+          {'address': 'office@nj.a-1chimney.com', 'name': 'NJ Office'},
+          {'address': 'office@atl.a-1chimney.com', 'name': 'Atlanta Office'},
+          {'address': 'info@a-1chimney.com', 'name': 'Info'},
+        ],
+        onRequest: (method, path, body) {
+          if (method == 'POST') calls[path] = body;
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Mail service'));
+    await _tap(tester, find.text('Google Workspace').last);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Search the directory'), 'office@');
+    await tester.pumpAndSettle();
+
+    // Every branch office in one tap, then one more from a second search --
+    // typing again must not lose what was ticked.
+    await _tap(tester, find.text('Select all 2 shown'));
+    await tester.enterText(find.widgetWithText(TextFormField, 'Search the directory'), 'info@');
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('info@a-1chimney.com · Info'));
+
+    expect(find.text('3 addresses selected. Search again to add more.'), findsOneWidget);
+    // Several are named from the directory, so the single name field goes.
+    expect(find.widgetWithText(TextFormField, 'What to call it'), findsNothing);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add 3 addresses'));
+
+    final sent = calls['/api/v1/email/mailboxes/workspace-batch'];
+    expect(sent, isNotNull, reason: 'The batch endpoint was not called.');
+    expect(calls.containsKey('/api/v1/email/mailboxes'), isFalse, reason: 'It added them one by one.');
+    expect(
+      [for (final row in sent!['addresses'] as List) (row as Map)['address']],
+      unorderedEquals(['office@nj.a-1chimney.com', 'office@atl.a-1chimney.com', 'info@a-1chimney.com']),
+    );
+    expect(
+      [for (final row in sent['addresses'] as List) (row as Map)['display_name']],
+      containsAll(['NJ Office', 'Atlanta Office', 'Info']),
+    );
+
+    // All added: the panel has closed.
+    expect(find.text('Search the directory'), findsNothing);
+  });
+
+  // Partial success stays on screen, in the server's words, with the ones that
+  // did not go in still ticked -- not a closed panel and a silent loss.
+  testWidgets('a batch that adds some says which were not added and why', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: const [],
+        workspaceUsable: true,
+        directory: const [
+          {'address': 'office@nj.a-1chimney.com', 'name': 'NJ Office'},
+          {'address': 'office@atl.a-1chimney.com', 'name': 'Atlanta Office'},
+        ],
+        batchSkips: const {'office@atl.a-1chimney.com': 'It has already been added.'},
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Mail service'));
+    await _tap(tester, find.text('Google Workspace').last);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Search the directory'), 'office@');
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Select all 2 shown'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add 2 addresses'));
+
+    expect(find.textContaining('Added 1.'), findsOneWidget);
+    expect(find.textContaining('office@atl.a-1chimney.com — It has already been added.'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'office@atl.a-1chimney.com'), findsOneWidget, reason: 'The skipped one should stay ticked.');
+    expect(find.widgetWithText(InputChip, 'office@nj.a-1chimney.com'), findsNothing, reason: 'The added one should be unticked.');
+    expect(find.widgetWithText(TextButton, 'Done'), findsOneWidget);
+  });
+
   // ── gating ─────────────────────────────────────────────────────
 
   testWidgets('a role that may read the mail but not manage it gets no live '
@@ -2662,6 +2756,9 @@ MockClientHandler _handler({
 
   /// What `…/people` answers: who can open the inbox, by person (2026-10-06).
   Map<String, Object?> people = const {'people': [], 'roles': [], 'candidates': []},
+
+  /// Addresses the batch add should report as skipped, address => reason.
+  Map<String, String> batchSkips = const {},
 }) {
   final rows = mailboxes ?? [_row(id: 'mb-1', address: 'info@a-1chimney.com')];
 
@@ -2681,6 +2778,27 @@ MockClientHandler _handler({
 
     if (path.endsWith('/people') || path.contains('/people/')) {
       return _json({'data': people});
+    }
+
+    if (path.endsWith('/workspace-batch')) {
+      final asked = [
+        for (final row in (body?['addresses'] as List? ?? const []))
+          '${(row as Map)['address']}',
+      ];
+      final added = [
+        for (final a in asked)
+          if (!batchSkips.containsKey(a)) _row(id: 'mb-$a', address: a),
+      ];
+
+      return _json({
+        'data': {
+          'added': added,
+          'skipped': [
+            for (final a in asked)
+              if (batchSkips.containsKey(a)) {'address': a, 'reason': batchSkips[a]},
+          ],
+        },
+      }, added.isEmpty ? 422 : 201);
     }
 
     if (path.endsWith('/oauth/start')) {
