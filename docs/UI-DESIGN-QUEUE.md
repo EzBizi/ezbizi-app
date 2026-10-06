@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 56 · Inspection · the Builder, made readable — **Jose: "go ahead" (2026-10-06) — 1 and 4** — building (`docs/previews/inspection-builder-layouts.html`)
+### 56 · Inspection · the Builder, made readable — **Jose: "go ahead" (2026-10-06) — 1 and 4** — **BUILT** `2916cdcb` (`docs/previews/inspection-builder-layouts.html`)
 
 Jose 2026-10-06: *"i think the UI for the builder is pretty much extremely hard to understand and use, it makes
 no sense whatsoever."* Measured causes: a picked question's settings open under the whole list (42 rows down on
@@ -2975,6 +2975,14 @@ Desktop **1** the form as it will look, each question opened where it stands, li
 **2** an outline of the whole form, the chosen part edited beside it; **3** a table per screen. Phone **4** a
 screen's questions, one opened in place (recommended); **5** the outline; **6** the form with a pencil per
 question. All: changes save as you go, Publish in the top bar, settings in a side panel, drag to reorder.
+
+Built as drawn, with what the drawing did not settle: **the Look is not offered** (nothing reads `layout_preset`: the
+run and the report draw all three the same, so the choice changed nothing; the stored value is untouched); the
+"N changes since" flag is **not built** (the server does not say whether a draft differs from its version); a
+phone's back row says "Screens" because the editable title under it is the name. Answers whose value is their own
+words carry renames into every condition waiting for them; a keyed answer (`ok`, `not-ok`) keeps its key. Code:
+`client/lib/screens/inspection/builder_{tab,model,question,phone}.dart`; tests `inspection_builder_test.dart` (the
+old file, kept) and `inspection_builder_form_test.dart`.
 
 ### 55 · Marketing · QR Codes (dynamic codes for the vehicles) — **Jose: "Go ahead with ur recommendations" (relayed by Marketing) — 1 and 4** — **BUILT** `277cf4fd` (`docs/previews/marketing-qr-codes-layouts.html`)
 
