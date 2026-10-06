@@ -19,10 +19,12 @@
 #include <wscapi.h>
 
 #include "monitoring_specs.h"
+#include "platform_task.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cwctype>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -935,25 +937,43 @@ void AddActivity(EncodableMap& m) {
 EncodableMap ReadSpecs() {
   EncodableMap m;
 
+  // Per-section timing rides along in `specs_section_ms`. A freeze is
+  // environmental — a WLAN scan, a busy Security Center, a slow GPU-counter
+  // enumeration — so it shows up on the machine that stalls, not on a dev box
+  // where every section is a few ms. This is where the slow section is found:
+  // in production, per machine, beside the total `specs_ms`.
+  EncodableMap sections;
+  auto timed = [&sections](const char* name, void (*fn)(EncodableMap&),
+                           EncodableMap& out) {
+    const auto start = std::chrono::steady_clock::now();
+    fn(out);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - start)
+                        .count();
+    sections[EncodableValue(name)] = EncodableValue(static_cast<int64_t>(ms));
+  };
+
   // Every block only ever ADDS keys, and only on success. A machine where one
   // probe fails reports everything else rather than nothing — which is why
   // none of these return a status and none of them can fail the read.
-  AddSystem(m);
-  AddMemory(m);
-  AddStorage(m);
-  AddOsVersion(m);
-  AddNetwork(m);
-  AddActivity(m);
-  AddGpuLoad(m);
-  AddSecurity(m);
-  AddInstalledPrograms(m);
-  AddConnections(m);
-  AddBrowserTabs(m);
+  timed("system", AddSystem, m);
+  timed("memory", AddMemory, m);
+  timed("storage", AddStorage, m);
+  timed("os", AddOsVersion, m);
+  timed("network", AddNetwork, m);
+  timed("activity", AddActivity, m);
+  timed("gpu", AddGpuLoad, m);
+  timed("security", AddSecurity, m);
+  timed("programs", AddInstalledPrograms, m);
+  timed("connections", AddConnections, m);
+  timed("browser_tabs", AddBrowserTabs, m);
 
   int64_t cpu = 0;
   if (CpuPercentSinceLastCall(&cpu)) {
     m[EncodableValue("cpu_percent")] = EncodableValue(cpu);
   }
+
+  m[EncodableValue("specs_section_ms")] = EncodableValue(std::move(sections));
 
   return m;
 }
@@ -961,18 +981,50 @@ EncodableMap ReadSpecs() {
 }  // namespace
 
 std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
-RegisterMonitoringSpecsChannel(flutter::FlutterEngine* engine) {
+RegisterMonitoringSpecsChannel(flutter::FlutterEngine* engine, HWND window) {
   auto channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
       engine->messenger(), "com.ezbizi.app/monitoring_specs",
       &flutter::StandardMethodCodec::GetInstance());
   channel->SetMethodCallHandler(
-      [](const flutter::MethodCall<flutter::EncodableValue>& call,
-         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
-        if (call.method_name() == "readSpecs") {
-          result->Success(EncodableValue(ReadSpecs()));
-        } else {
+      [window](const flutter::MethodCall<flutter::EncodableValue>& call,
+               std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                   result) {
+        if (call.method_name() != "readSpecs") {
           result->NotImplemented();
+          return;
         }
+
+        // OFF THE PLATFORM THREAD. ReadSpecs makes a dozen blocking Win32 calls
+        // (WLAN, PDH GPU counters, Security Center, the registry sweep, the TCP
+        // table) and any one can stall; running it here would freeze the window.
+        // A shared_ptr, not the unique_ptr the handler is given, because the
+        // completion is carried in a std::function, which must be copyable.
+        std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> shared =
+            std::move(result);
+
+        std::thread([shared, window]() {
+          // Serialised: a stalled ReadSpecs must not overlap the next poll and
+          // corrupt the per-call CPU/GPU deltas it keeps in statics. Waiting
+          // here costs a worker thread, never the UI.
+          static std::mutex read_mutex;
+          std::lock_guard<std::mutex> lock(read_mutex);
+
+          const auto start = std::chrono::steady_clock::now();
+          EncodableMap specs = ReadSpecs();
+          const auto elapsed =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - start)
+                  .count();
+
+          // Rides the specs the heartbeat already sends, so production shows
+          // how long the read took and on which machine.
+          specs[EncodableValue("specs_ms")] =
+              EncodableValue(static_cast<int64_t>(elapsed));
+
+          PostTaskToPlatform(window, [shared, specs = std::move(specs)]() mutable {
+            shared->Success(EncodableValue(std::move(specs)));
+          });
+        }).detach();
       });
   return channel;
 }

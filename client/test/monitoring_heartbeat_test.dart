@@ -292,6 +292,32 @@ void main() {
       it.heartbeat.dispose();
     });
 
+    test('capture_ms rides the beat when the service timed the capture', () async {
+      // The freeze diagnostic (2026-10-06): production shows how long a capture
+      // took per machine. Omitted when not measured, present when it is.
+      final it = harness();
+
+      it.heartbeat.reportCapture(ok: true, captureMs: 42);
+      await it.heartbeat.enter('jobs');
+
+      final capture = it.posted.single['capture'] as Map<String, dynamic>;
+      expect(capture['capture_ms'], 42);
+
+      it.heartbeat.dispose();
+    });
+
+    test('capture_ms is omitted, not null, when it was not measured', () async {
+      final it = harness();
+
+      it.heartbeat.reportCapture(ok: false, reason: 'screen_locked');
+      await it.heartbeat.enter('jobs');
+
+      final capture = it.posted.single['capture'] as Map<String, dynamic>;
+      expect(capture.containsKey('capture_ms'), isFalse);
+
+      it.heartbeat.dispose();
+    });
+
     test('the outcome keeps riding on later beats until it is replaced', () async {
       final it = harness();
 
