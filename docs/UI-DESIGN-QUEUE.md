@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 58 · Jobs · what Workiz knows about a job — **out for decision** (`docs/previews/jobs-workiz-extras-layouts.html`)
+### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — building (`docs/previews/jobs-workiz-extras-layouts.html`)
 
 From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
 main): `data.workiz` per job: `fields` [{name, value}] in Workiz's names (71% of recent jobs), `files` [{name, url}]
