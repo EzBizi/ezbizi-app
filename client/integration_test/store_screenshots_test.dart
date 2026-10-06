@@ -239,7 +239,19 @@ void main() {
             await tester.tap(drawer.first);
             await settle(2);
           }
-          final item = find.text(label);
+          // Inside the drawer only. A bare find.text('Customers') also matches
+          // the dashboard card behind it, and .first tapped that: the frame
+          // showed the open drawer, and 'Jobs' opened Scheduling.
+          final menu = find.byType(Drawer);
+          final item = find.descendant(of: menu, matching: find.text(label));
+          final list = find.descendant(of: menu, matching: find.byType(Scrollable));
+          if (item.evaluate().isEmpty && list.evaluate().isNotEmpty) {
+            // The drawer list is lazy: Reviews and Reports are not built
+            // until scrolled to.
+            try {
+              await tester.scrollUntilVisible(item, 200, scrollable: list.first);
+            } catch (_) {}
+          }
           if (item.evaluate().isEmpty) {
             // ignore: avoid_print
             print('  skipped $label — not in the drawer');

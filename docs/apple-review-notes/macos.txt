@@ -11,7 +11,7 @@ ACCESS
 One account type. Sign in with the credentials in the Sign-In Information fields. That account administers a demonstration organization holding invented data only - no real customer or business information. No setup, no sample files. The sidebar lists every area; account deletion is in the account screen, reached from the avatar.
 
 WHAT THE APP DOES NOT DO
-No registration - EzBizi is used by invitation and there is no public sign-up.
+Registration: "Create an account" on the sign-in screen sets up a new business with its owner as administrator. Staff join by invitation from their organization. No payment is asked for or taken in the app.
 No purchases, subscriptions or paid content. Nothing is sold in the app.
 No user-generated public content, no feed and no public profiles. Everything written is a private business record visible only to that organization. People can reach only colleagues inside their own organization - for example by dialling a coworker's phone extension - and never anyone outside it.
 

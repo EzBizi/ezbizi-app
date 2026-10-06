@@ -517,6 +517,98 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertNull($refusal, 'A branch subdomain address was listed and then refused to open.');
     }
 
+    /** How many times the directory itself was read. */
+    private function directoryReads(): int
+    {
+        return Http::recorded(fn ($request) => str_contains($request->url(), 'admin/directory/v1/users'))->count();
+    }
+
+    /** @param list<string> $addresses */
+    private function batch(array $t, array $addresses, ?\App\Models\User $as = null): \Illuminate\Testing\TestResponse
+    {
+        return $this->signedInAs($as ?? $t['admin'])->postJson('/api/v1/email/mailboxes/workspace-batch', [
+            'scope_type' => 'organization',
+            'scope_id'   => $t['org']->id,
+            'addresses'  => array_map(fn ($a) => ['address' => $a, 'display_name' => strtok($a, '@')], $addresses),
+        ]);
+    }
+
+    /**
+     * Jose: "add ability to add emails by bulk as well, when selecting
+     * workspace". Several listed addresses, one request, all connected -- and
+     * the directory read ONCE, not once per address.
+     */
+    public function test_several_workspace_addresses_are_added_in_one_go(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $data = $this->batch($t, ['office@nj.a-1chimney.com', 'office@atl.a-1chimney.com', self::INFO])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame(
+            ['office@nj.a-1chimney.com', 'office@atl.a-1chimney.com', self::INFO],
+            array_column($data['added'], 'address'),
+        );
+        $this->assertSame([], $data['skipped']);
+        $this->assertSame(['connected'], array_values(array_unique(array_column($data['added'], 'status'))));
+        $this->assertSame(1, $this->directoryReads(), 'The directory was read once per address.');
+    }
+
+    /**
+     * Partial success is reported, not hidden: one address already there and
+     * one not on the directory are skipped WITH a reason, and the rest land.
+     */
+    public function test_a_batch_skips_what_it_cannot_add_and_says_why(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $this->batch($t, [self::INFO])->assertCreated();
+
+        $data = $this->batch($t, [self::INFO, 'hello@premiergarage.com', 'office@nj.a-1chimney.com', 'office@nj.a-1chimney.com'])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame(['office@nj.a-1chimney.com'], array_column($data['added'], 'address'), 'Added twice, or not at all.');
+
+        $skipped = array_column($data['skipped'], 'reason', 'address');
+        $this->assertStringContainsString('already been added', $skipped[self::INFO]);
+        $this->assertStringContainsString('directory', $skipped['hello@premiergarage.com']);
+    }
+
+    /** Nothing addable is a refusal, with the reasons -- not an empty success. */
+    public function test_a_batch_that_adds_nothing_is_refused(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $this->batch($t, ['hello@premiergarage.com'])
+            ->assertStatus(422)
+            ->assertJsonPath('data.added', []);
+    }
+
+    /** Same authority as adding one. */
+    public function test_a_batch_needs_permission_to_add_an_inbox(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $viewer = $this->userWithRole($t, 'Viewer', ['email.view', 'email.settings.view']);
+
+        $this->batch($t, [self::INFO], $viewer)->assertForbidden();
+        $this->assertTrue($this->inTenant($t['org'], fn () => Mailbox::query()->doesntExist()));
+    }
+
     public function test_picking_a_listed_address_connects_it_without_a_mailbox_secret(): void
     {
         $this->withSigningKey();
