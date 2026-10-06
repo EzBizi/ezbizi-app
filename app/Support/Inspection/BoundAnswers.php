@@ -34,7 +34,7 @@ final class BoundAnswers
                     continue;
                 }
 
-                $rendered = self::render($customer, $job, $bind);
+                $rendered = self::render($customer, $job, $bind, (string) ($field['type'] ?? ''));
                 if ($rendered !== null) {
                     $answers[$key] = $rendered;
                 }
@@ -150,7 +150,7 @@ final class BoundAnswers
         return $keys;
     }
 
-    public static function render(?Customer $customer, ?Job $job, string $bind): ?string
+    public static function render(?Customer $customer, ?Job $job, string $bind, string $type = ''): ?string
     {
         [$source, $column] = array_pad(explode('.', $bind, 2), 2, '');
 
@@ -174,7 +174,10 @@ final class BoundAnswers
                     return null;
                 }
 
-                return $at->timezone($job->franchise?->timezone ?: 'UTC')->format('D j M, g:i A');
+                // A date field reads an ISO day and shows nothing for anything else,
+                // so the job's day goes in as one; a text field gets the words.
+                return $at->timezone($job->franchise?->timezone ?: 'UTC')
+                    ->format($type === FieldType::DATE ? 'Y-m-d' : 'D j M, g:i A');
             }
 
             return self::stringify($job->getAttribute($column));

@@ -58,7 +58,7 @@ class TranscribeReportCalls extends Command
             return self::SUCCESS;
         }
 
-        $organization = $this->organization();
+        $organization = self::reportOrganization($this->option('organization'));
 
         if ($organization === null) {
             $this->warn('Which organization? Pass --organization; more or fewer than one has Workiz connected.');
@@ -158,9 +158,10 @@ class TranscribeReportCalls extends Command
         }
     }
 
-    private function organization(): ?Organization
+    /** Whose report: the one named, or the one organization with Workiz connected. */
+    public static function reportOrganization(?string $id): ?Organization
     {
-        if (($id = $this->option('organization')) !== null) {
+        if ($id !== null) {
             return Organization::query()->find($id);
         }
 

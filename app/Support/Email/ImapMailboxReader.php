@@ -644,6 +644,15 @@ final class ImapMailboxReader implements MailboxReader
         );
     }
 
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'EzBizi opens a mail server connected by password in read-only mode, so it '
+            .'cannot mark mail as unread there. The message is still marked as unread in '
+            .'EzBizi.',
+        );
+    }
+
     /**
      * What this particular server has, which is the only way to know.
      *

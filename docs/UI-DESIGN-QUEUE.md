@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 57 · Reports · Performance · choosing the dates — **out for decision** (`docs/previews/reports-performance-dates-layouts.html`)
+### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `8da551c1` (`docs/previews/reports-performance-dates-layouts.html`)
 
 From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /
 Or specific date / Week is confussing what week is it ? Etc i should see the range / Maybe dropdown like google"*.
@@ -2972,6 +2972,12 @@ months to click one day or two, From/To boxes, a day count, Apply) (recommended)
 out under them and From/To fields for Custom; **3** the same picker in a side panel. Phone **4** (recommended) the
 button, then a page of dates with a month and "Show 2 days"; **5** scrolling chips with the dates in words; **6** a
 list to pick from, From/To under it for Custom. All: dates in words never ISO; arrows step by the chosen length.
+
+Built as drawn, as a shared widget (`client/lib/widgets/date_range_picker.dart`: DateSpan, the presets, DateRangeBar,
+DateRangePanel) so Ads' range chips (still on `showDateRangePicker`, a dialog) can move to it later. The calendar
+stays still under the pointer between the two clicks of a range (the first build moved it, and the second click
+landed a month away). Month-shaped ranges step by whole months; the day/month order follows the organization's date
+format. Reports reviewed: no changes. Server: dd37e992.
 
 ### 56 · Inspection · the Builder, made readable — **Jose: "go ahead" (2026-10-06) — 1 and 4** — **BUILT** `2916cdcb` (`docs/previews/inspection-builder-layouts.html`)
 

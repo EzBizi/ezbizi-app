@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportLabel;
 use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
@@ -140,6 +141,11 @@ class ExperimentalCallReportController extends Controller
         $validated = $request->validate([
             'day' => ['nullable', 'date_format:Y-m-d'],
             'period' => ['nullable', 'in:day,week,month'],
+            // Any range, or one date (from = to): Jose, 2026-10-06, "From date
+            // to date / Or specific date". Up to a quarter, so a range cannot
+            // be asked of RingCentral by the year.
+            'from' => ['nullable', 'date_format:Y-m-d', 'required_with:to'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'required_with:from', 'after_or_equal:from'],
             'timezone' => ['nullable', 'string', 'timezone'],
         ]);
 
@@ -157,6 +163,16 @@ class ExperimentalCallReportController extends Controller
             'month' => [$day->startOfMonth(), $day->endOfMonth()],
             default => [$day, $day->endOfDay()],
         };
+        if (isset($validated['from'], $validated['to'])) {
+            $period = 'custom';
+            $start = CarbonImmutable::parse($validated['from'], $zone);
+            $end = CarbonImmutable::parse($validated['to'], $zone);
+
+            if ($start->diffInDays($end) > 92) {
+                abort(Status::HTTP_UNPROCESSABLE_ENTITY, 'Choose a range of three months or less.');
+            }
+        }
+
         $start = $start->startOfDay();
         $end = $end->endOfDay();
 
@@ -242,12 +258,21 @@ class ExperimentalCallReportController extends Controller
      */
     private function withTranscripts(array $day): array
     {
-        $words = CallReportTranscript::query()
-            ->whereIn('call_id', array_column($day['calls'] ?? [], 'id'))
-            ->pluck('transcript', 'call_id');
+        $ids = array_column($day['calls'] ?? [], 'id');
+
+        $words = CallReportTranscript::query()->whereIn('call_id', $ids)->pluck('transcript', 'call_id');
+
+        // Each provider's label for the call, side by side for comparing.
+        $labels = [];
+        foreach (CallReportLabel::query()->whereIn('call_id', $ids)->get(['call_id', 'provider', 'label']) as $row) {
+            $labels[$row->call_id][$row->provider] = $row->label;
+        }
 
         $day['calls'] = array_map(
-            fn (array $call) => $call + ['transcript' => $words[$call['id']] ?? null],
+            fn (array $call) => $call + [
+                'transcript' => $words[$call['id']] ?? null,
+                'labels' => (object) ($labels[$call['id']] ?? []),
+            ],
             $day['calls'] ?? [],
         );
 

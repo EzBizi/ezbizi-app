@@ -142,7 +142,8 @@
                 "Forms",
                 "Messenger",
                 "Instagram",
-                "Workiz"
+                "Workiz",
+                "WhatsApp"
             ]
         },
         "marketing": {
@@ -394,6 +395,7 @@
         "leads.view",
         "leads.website_chat.view",
         "leads.website_form.view",
+        "leads.whatsapp.view",
         "leads.workiz.view",
         "marketing.accounts.view",
         "marketing.edit",

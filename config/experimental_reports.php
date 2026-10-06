@@ -31,6 +31,22 @@ return [
     // (deploy desk, 2026-10-06). Turn on with REPORT_CALL_TRANSCRIPTS=true.
     'transcribe' => (bool) env('REPORT_CALL_TRANSCRIPTS', false),
 
+    // Labelling transcribed calls with AI, Claude and Grok side by side
+    // (Jose, 2026-10-06: "build for both, so i can try both"). OFF until the
+    // privacy page names Anthropic and xAI. Each provider runs only with its key;
+    // the models are settings so either can change without code.
+    'tagging' => [
+        'enabled' => (bool) env('REPORT_CALL_TAGGING', false),
+        'claude' => [
+            'key' => env('ANTHROPIC_API_KEY'),
+            'model' => env('REPORT_TAG_CLAUDE_MODEL', 'claude-opus-5-5'),
+        ],
+        'grok' => [
+            'key' => env('XAI_API_KEY'),
+            'model' => env('REPORT_TAG_GROK_MODEL', 'grok-4.6'),
+        ],
+    ],
+
     /*
      * ── WORKIZ IS NOT HERE ANY MORE, AND THAT IS THE POINT ──────────
      *

@@ -735,21 +735,44 @@ class MailboxMessagesController extends Controller
      * raises `email.mailbox_broken` when a call fails for a reason that means
      * the connection is gone.
      *
+     * ── Both directions, and the cached list ─────────────────────
+     *
+     * `$read` false marks it UNREAD at the service. Until 2026-10-06 only
+     * reading was carried across, so "mark as unread" changed EzBizi's record
+     * while the list's bold came from the provider's flag -- the message went
+     * straight back to read on the next refresh.
+     *
+     * And a successful write clears the cached listing, which only trash did
+     * before. The list is cached for a short while, so without this the list
+     * kept showing the provider's OLD flag for that window: open a message,
+     * come back, and it was bold again. That bounce is what Jose saw as read
+     * state "not syncing".
+     *
+     * Only asked of a reader that can actually do it. Outlook and IMAP are
+     * read-only grants by design; asking them anyway would make a failing call
+     * on every open of every such inbox for no outcome.
+     *
      * @return bool|null  true marked, false tried and refused, null not asked for
      */
-    private function alsoMarkAtSource(Mailbox $mailbox, string $message): ?bool
+    private function alsoMarkAtSource(Mailbox $mailbox, string $message, bool $read = true): ?bool
     {
-        if (! $mailbox->mark_read_at_source) {
+        $reader = $this->readers->for($mailbox);
+
+        if (! $mailbox->mark_read_at_source || ! $reader->canMarkReadAtSource($mailbox)) {
             return null;
         }
 
         try {
-            $this->readers->for($mailbox)->markReadAtSource($mailbox, $message);
-
-            return true;
+            $read
+                ? $reader->markReadAtSource($mailbox, $message)
+                : $reader->markUnreadAtSource($mailbox, $message);
         } catch (CannotChangeMail|CannotReadMailbox|CannotReachHost) {
             return false;
         }
+
+        $this->cache->forget($mailbox);
+
+        return true;
     }
 
     /**
@@ -772,6 +795,7 @@ class MailboxMessagesController extends Controller
                 'message_id' => $message,
                 'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
                 'shared'     => $this->readState->isShared($mailbox),
+                'at_source'  => $this->alsoMarkAtSource($mailbox, $message, read: false),
             ],
         ]);
     }
@@ -828,6 +852,13 @@ class MailboxMessagesController extends Controller
                     'seen'   => $this->readState->markSeen($mailbox, $id, $user),
                     'unseen' => $this->readState->forgetSeen($mailbox, $id, $user),
                 };
+
+                // The ticked-row buttons are the same two actions as the
+                // single-message ones, so they carry across the same way.
+                if ($input['action'] !== 'trash') {
+                    $this->alsoMarkAtSource($mailbox, $id, read: $input['action'] === 'seen');
+                }
+
                 $done[] = $id;
             }
         } catch (CannotReadMailbox $e) {
