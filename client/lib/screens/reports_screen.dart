@@ -273,9 +273,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
        */
       if (_mayOpen('library')) ('Reports', Icons.list_alt_outlined, null),
       if (canBuildHere && _mayOpen('builder'))
-        ('Builder', Icons.build_outlined, null),
+        ('Report Builder', Icons.build_outlined, null),
       if (canExperiment && _mayOpen('experimental'))
-        ('Experimental', Icons.science_outlined, null),
+        ('Performance', Icons.science_outlined, null),
       if (me != null)
         for (final module in me.reachableModules)
           if (module.parent == 'reports')
@@ -369,7 +369,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget? _newReport({required bool canBuildHere}) {
     // canExperiment: canBuildHere already implies reports.build.
     final builder = _indexOf(
-      'Builder',
+      'Report Builder',
       canBuildHere: canBuildHere,
       canExperiment: true,
     );
@@ -419,7 +419,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       canBuildHere: canBuildHere,
       canExperiment: canExperiment,
     )) {
-      case 'Builder':
+      case 'Report Builder':
         return ReportBuilder(
           api: widget.api,
           onSaved: (_) {
@@ -438,7 +438,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           },
         );
 
-      case 'Experimental':
+      case 'Performance':
         return ExperimentalCallReport(api: widget.api);
 
       case 'Reports':

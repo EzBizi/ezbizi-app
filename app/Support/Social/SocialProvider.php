@@ -488,12 +488,12 @@ enum SocialProvider: string
             self::Workiz => $many
                 ? sprintf(
                     '%d Workiz accounts are connected to EzBizi. You can close this window — '
-                    .'their jobs appear in the Experimental report under Reports.',
+                    .'their jobs appear in the Performance report under Reports.',
                     $count,
                 )
                 : sprintf(
                     '%s is connected to EzBizi. You can close this window — its jobs appear in '
-                    .'the Experimental report under Reports.',
+                    .'the Performance report under Reports.',
                     $name,
                 ),
 

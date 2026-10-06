@@ -124,6 +124,38 @@ final class WorkizJobs
     }
 
     /**
+     * Jobs booked since a date, read from EzBizi's synced copy (`workiz_jobs`,
+     * kept current by ezbizi:sync-workiz-jobs) rather than from Workiz.
+     *
+     * For the Experimental report (Jose, 2026-10-06: "Experimental loading
+     * slow"). Measured on the box: asking Workiz live took 5.7 s of every load
+     * for 3,700 jobs; the copy matched it to one job on 2026-10-05 (310 vs
+     * 309) and was synced within the minute. The copy's `payload` is the job
+     * as Workiz sent it, so the same shape() reads both.
+     *
+     * @return array{jobs: list<array<string, mixed>>, synced_at: ?string}
+     */
+    public function stored(User $user, string $since): array
+    {
+        $connections = $this->connections($user)->keyBy(fn (SocialConnection $c) => (string) $c->getKey());
+
+        $rows = WorkizJob::query()
+            ->whereIn('connection_id', $connections->keys()->all())
+            ->where('booked_at', '>=', $since);
+
+        $jobs = [];
+
+        (clone $rows)->select(['id', 'connection_id', 'payload'])->lazyById(500)
+            ->each(function (WorkizJob $row) use (&$jobs, $connections) {
+                foreach ($this->shape([(array) $row->payload]) as $job) {
+                    $jobs[] = ['account' => (string) $connections[(string) $row->connection_id]->display_name] + $job;
+                }
+            });
+
+        return ['jobs' => $jobs, 'synced_at' => $rows->max('synced_at')];
+    }
+
+    /**
      * Connected Workiz accounts this person may see in their current view.
      *
      * @return Collection<int, SocialConnection>

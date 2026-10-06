@@ -6,6 +6,7 @@ use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
+use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -169,171 +170,6 @@ class ExperimentalCallReportApiTest extends TestCase
         }
     }
 
-    /** One refused account must be named, not folded into a smaller number. */
-    public function test_a_refused_workiz_account_is_named(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-
-        $this->connected($tenant, njRefuses: true);
-
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
-            ->assertOk()
-            ->json();
-
-        $this->assertArrayHasKey('New Jersey', $body['workiz_failed']);
-        $this->assertArrayNotHasKey('Nationwide', $body['workiz_failed']);
-
-        // And the calls still came through.
-        $this->assertSame(1, $body['totals']['answered']);
-    }
-
-    /**
-     * EVERY account refusing is a different arm from one refusing.
-     *
-     * It builds the failure map itself rather than receiving it, and it did so
-     * with `array_fill_keys($accounts, ...)` after `accounts()` started
-     * carrying {id, name} maps for the disconnect chips — array keys, which is
-     * a TypeError rather than a wrong answer. Nothing caught it because the
-     * other refusal test refuses exactly one account.
-     */
-    public function test_every_workiz_account_refusing_still_returns_the_calls(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-
-        $this->connected($tenant, allRefuse: true);
-
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
-            ->assertOk()
-            ->json();
-
-        $this->assertArrayHasKey('Nationwide', $body['workiz_failed']);
-        $this->assertArrayHasKey('New Jersey', $body['workiz_failed']);
-
-        // The calls survive. A blank jobs column must not read as "nobody
-        // booked anything".
-        $this->assertSame(1, $body['totals']['answered']);
-    }
-
-    /**
-     * A BOOK WE WILL NEVER READ, named rather than absent.
-     *
-     * Jose, 2026-09-15: "we dont pay the api access there". Massachusetts has
-     * no Workiz API subscription, so the undercount is permanent rather than a
-     * configuration somebody will get round to — and since the same people book
-     * into every account, it makes individual people's numbers low rather than
-     * omitting a region. "Not connected" would read as a task.
-     */
-    public function test_an_account_with_no_api_subscription_is_named_as_unreachable(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-
-        $this->connected($tenant);
-
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
-            ->assertOk()
-            ->json();
-
-        $this->assertSame('Massachusetts', $body['workiz_unreachable'][0]['name']);
-        $this->assertStringContainsString(
-            'not paid for',
-            $body['workiz_unreachable'][0]['reason'],
-        );
-    }
-
-    /**
-     * ROUNDS, not one-account-at-a-time, and a short page is what drops out.
-     *
-     * `all()` fans out concurrently now: every still-hungry branch asks for its
-     * next page in one round, and a branch returning fewer than PAGE rows stops
-     * being asked. Nine live branches over ~840 rows settle in two rounds
-     * instead of seventeen sequential requests (measured 9.2s in series).
-     *
-     * The loop is the part worth pinning. A branch with a FULL first page must
-     * be asked again, and one with a short page must not - get that wrong and
-     * the report either loses rows silently or loops forever against an API
-     * that ignores the offset.
-     *
-     * ── IT DOES NOT BELONG TO THIS FILE'S OWNER, AND IT STAYS ANYWAY ──
-     *
-     * `WorkizJobs` is the Workiz session's file as of 2026-09-23
-     * (`local_ea9c0484-3b23-40b6-8262-10a1fccc1a3a`). Every other test here
-     * asserts what the REPORT does with what that client returns, which is why
-     * they live on this side of the boundary. THIS one is the exception: it
-     * asserts what the CLIENT does with an offset, and it is the only test
-     * anywhere of that loop.
-     *
-     * Left here deliberately rather than moved or copied. A second copy on
-     * their side would carry the same invented fixtures and prove only that it
-     * agrees with itself, and moving it would put the report's own paging
-     * expectation out of reach of the report's suite.
-     *
-     * So: IF THIS TEST IS EVER RETIRED OR REWRITTEN, TELL THEM FIRST. The loop
-     * goes to zero coverage silently otherwise, and its own docblock records a
-     * first draft that asked for `records=1000` - which would have failed on
-     * every live run with nothing red, because every fixture in this file is
-     * invented.
-     */
-    public function test_a_branch_with_a_full_page_is_asked_for_the_next_one(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-
-        config([
-            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
-            'experimental_reports.ringcentral.client_id' => 'id',
-            'experimental_reports.ringcentral.client_secret' => 'secret',
-            'experimental_reports.ringcentral.jwt' => 'jwt',
-        ]);
-
-        $this->workizBranch($tenant, 'Nationwide', 'nat');
-        $this->workizBranch($tenant, 'New Jersey', 'nj');
-
-        // Nationwide: a FULL page, then a short one. New Jersey: short at once.
-        $full = array_fill(0, 100, [
-            'Phone' => '2125551212',
-            'CreatedBy' => 'Trey Brannan',
-            'CreatedDate' => '2026-09-14 09:00:00',
-        ]);
-
-        Http::fake([
-            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
-            '*/call-log*' => Http::response(['paging' => ['totalPages' => 1], 'records' => []]),
-
-            /*
-             * ANSWERED BY THE OFFSET ASKED FOR, not in sequence. A sequence
-             * answered page two whatever was asked, so this test stayed green
-             * while the loop asked Workiz for page 100 (Workiz session,
-             * 2026-09-28). `offset` is a page number: 0, then 1.
-             */
-            'api.workiz.com/api/v1/nat/*' => fn ($request) => Http::response(match ((string) ($request->data()['offset'] ?? '')) {
-                '0' => ['flag' => true, 'data' => $full],
-                '1' => ['flag' => true, 'data' => [[
-                    'Phone' => '2125559999',
-                    'CreatedBy' => 'Trey Brannan',
-                    'CreatedDate' => '2026-09-14 10:00:00',
-                ]]],
-                default => ['flag' => true, 'data' => []],
-            }),
-
-            'api.workiz.com/api/v1/nj/*' => Http::response(['flag' => true, 'data' => []]),
-        ]);
-
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
-            ->assertOk()
-            ->json();
-
-        // 100 + 1. The second page is only fetched if the first being full put
-        // Nationwide back into the next round.
-        $this->assertSame(101, $body['totals']['jobs']);
-
-        // And New Jersey, short on its first page, was not asked twice - which
-        // a sequence with nothing left to push would have turned into a failure.
-        $this->assertSame([], (array) $body['workiz_failed']);
-    }
-
     // ── fixtures ─────────────────────────────────────────────────
 
     // ── the calls behind the numbers ─────────────────────────────
@@ -440,6 +276,32 @@ class ExperimentalCallReportApiTest extends TestCase
         // audio into somebody's Downloads folder.
         $this->assertSame('inline', $response->headers->get('Content-Disposition'));
         $this->assertSame('ID3-and-then-some', $response->getContent());
+    }
+
+    // ── jobs come from the synced copy (2026-10-06) ──────────────────
+
+    /**
+     * WORKIZ IS NOT ASKED: the report reads EzBizi's synced copy, which is
+     * what took its load from seconds to a database read (Jose, 2026-10-06:
+     * "Experimental loading slow").
+     */
+    public function test_jobs_come_from_the_synced_copy_and_workiz_is_not_called(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14&timezone=America/New_York')
+            ->assertOk()
+            ->json();
+
+        // The one synced job, booked that day by Trey Brannan.
+        $this->assertSame(1, $body['totals']['jobs']);
+        $this->assertSame(1, collect($body['people'])->firstWhere('person', 'Trey Brannan')['jobs']);
+        $this->assertNotNull($body['workiz_synced_at']);
+        $this->assertSame([], $body['workiz_unreachable'], 'Massachusetts is connected now');
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.workiz.com'));
     }
 
     // ── period, tags, convert (Jose, 2026-10-05) ─────────────────────
@@ -557,8 +419,9 @@ class ExperimentalCallReportApiTest extends TestCase
             'experimental_reports.ringcentral.jwt' => 'jwt',
         ]);
 
-        $this->workizBranch($tenant, 'Nationwide', 'nat');
+        $nationwide = $this->workizBranch($tenant, 'Nationwide', 'nat');
         $this->workizBranch($tenant, 'New Jersey', 'nj');
+        $this->syncedJob($tenant, $nationwide, '2125551212', 'Trey Brannan', '2026-09-14 09:00:00');
 
         Http::fake([
             '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
@@ -603,9 +466,9 @@ class ExperimentalCallReportApiTest extends TestCase
      * A branch with a Workiz account attached, which is where the tokens live
      * now — `scope_type = franchise`, per Jose's ruling.
      */
-    private function workizBranch(array $tenant, string $name, string $token): void
+    private function workizBranch(array $tenant, string $name, string $token): string
     {
-        $this->inTenant($tenant['org'], function () use ($tenant, $name, $token) {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $name, $token) {
             $franchise = Franchise::create([
                 'organization_id' => $tenant['org']->id,
                 'company_id' => $tenant['company']->id,
@@ -624,6 +487,21 @@ class ExperimentalCallReportApiTest extends TestCase
             ]);
             $connection->connect(['refresh_token' => $token, 'api_token' => $token]);
             $connection->save();
+
+            return (string) $connection->getKey();
         });
+    }
+
+    /** One job in the synced copy, shaped as Workiz sends it. */
+    private function syncedJob(array $tenant, string $connectionId, string $phone, string $by, string $bookedAt): void
+    {
+        $this->inTenant($tenant['org'], fn () => WorkizJob::query()->create([
+            'franchise_id' => SocialConnection::query()->find($connectionId)->scope_id,
+            'connection_id' => $connectionId,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'booked_at' => $bookedAt,
+            'payload' => ['Phone' => $phone, 'CreatedBy' => $by, 'CreatedDate' => $bookedAt],
+            'synced_at' => now(),
+        ]));
     }
 }

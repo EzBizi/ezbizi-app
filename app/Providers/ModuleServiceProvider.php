@@ -3786,8 +3786,11 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('library', 'Reports'),
-                    new TabDefinition('builder', 'Builder'),
-                    new TabDefinition('experimental', 'Experimental'),
+                    // Labels renamed by Jose, 2026-10-06; the keys (and so the
+                    // permissions reports.builder.view / reports.experimental.view)
+                    // stay, so no role loses a grant.
+                    new TabDefinition('builder', 'Report Builder'),
+                    new TabDefinition('experimental', 'Performance'),
                 ],
                 actionRequires: [
                     'build' => ['reports.view'],
