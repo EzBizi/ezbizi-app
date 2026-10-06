@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -8,7 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Builder: list | field work | live phone. Stacked at 375, side by side wide.
+/// Builder: screens | the chosen screen's questions | live phone, side by side
+/// wide (UI queue 56); on a phone the screens are a list and a screen its page.
 void main() {
   testWidgets('three panes sit side by side on a wide window', (tester) async {
     await _pump(tester, size: const Size(1400, 900));
@@ -23,16 +26,22 @@ void main() {
     expect((fields.top - phone.top).abs(), lessThan(8));
   });
 
-  testWidgets('three panes stack on 375', (tester) async {
-    await _pump(tester, size: const Size(375, 2400));
+  // Was "three panes stack on 375". Phone option 4 replaced the stack: the
+  // screens are a list, and a screen opens as its own page.
+  testWidgets('on 375 the screens are a list and a screen opens as a page', (
+    tester,
+  ) async {
+    await _pump(tester, size: const Size(375, 900));
 
-    final list = tester.getRect(find.byKey(const Key('inspection-builder-list')));
-    final fields = tester.getRect(find.byKey(const Key('inspection-builder-fields')));
-    final phone = tester.getRect(find.byKey(const Key('inspection-builder-phone')));
+    expect(find.byKey(const Key('inspection-builder-list')), findsNothing);
+    expect(find.text('Crown'), findsOneWidget);
+    expect(find.text('Client'), findsNothing);
 
-    expect(list.top, lessThan(fields.top));
-    expect(fields.top, lessThan(phone.top));
-    expect((list.left - fields.left).abs(), lessThan(8));
+    await tester.tap(find.text('Crown'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client'), findsOneWidget);
+    expect(find.byTooltip('Back to the screens'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -49,10 +58,8 @@ void main() {
   testWidgets('a published inspection is unpublished, not deleted', (tester) async {
     await _pump(tester, size: const Size(1400, 900));
 
-    await tester.drag(
-      find.byKey(const Key('inspection-builder-fields')),
-      const Offset(0, -600),
-    );
+    // In Settings now, out of the way of the questions.
+    await tester.tap(find.byKey(const Key('inspection-settings')));
     await tester.pumpAndSettle();
 
     expect(find.text('Unpublish'), findsOneWidget);
@@ -65,35 +72,38 @@ void main() {
   /// could ask "one of a list" and never say which list — which stayed invisible
   /// only because the technician's screen drew every field as a text box.
   testWidgets('a choice field can be given its choices', (tester) async {
-    await _pump(tester, size: const Size(1400, 900), list: _choiceList);
-
-    // Scrolled into view first. The settings pane grew a "Belongs to" picker,
-    // which pushed this below the fold at this window size. The field is still
-    // built and still works — it is simply no longer above the fold, and
-    // enterText cannot type into a widget that is off screen.
-    final options = find.byKey(const Key('field-options'), skipOffstage: false);
-    await tester.ensureVisible(options);
-    await tester.pumpAndSettle();
-
-    expect(options, findsOneWidget);
-
-    final box = tester.widget<TextField>(options);
-    expect(box.controller?.text, 'Clay\nMetal',
-        reason: 'the options already on the field should be in the box');
-
-    // Read back through the phone preview, which samples `options.first`.
-    // That is the only place the parsed list is observable from here, and it
-    // proves the two things worth proving: the box writes to the field, and a
-    // pasted list arrives trimmed rather than with its whitespace intact.
-    await tester.enterText(
-      find.byKey(const Key('field-options')),
-      '  Brick  \n\nClay\n',
+    final patches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      size: const Size(1400, 900),
+      list: _choiceList,
+      onRequest: (request) {
+        if (request.method != 'PATCH') return null;
+        patches.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response('{"data": {}}', 200, headers: _json);
+      },
     );
+
+    // Opened where it stands, its answers one row each (UI queue 56).
+    await _open(tester, 'Flue');
+
+    final clay = find.widgetWithText(TextField, 'Clay');
+    expect(clay, findsOneWidget,
+        reason: 'the options already on the field should be in their rows');
+    expect(find.widgetWithText(TextField, 'Metal'), findsOneWidget);
+
+    // Typed with its whitespace; stored without it. Read back from what was
+    // SENT, the only place the stored list is observable from here.
+    await tester.enterText(clay, '  Brick  ');
+    await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
+    final options = ((patches.last['screens'] as List).first['fields'] as List)
+        .first['options'] as List;
+    expect([for (final o in options) (o as Map)['value']], ['Brick', 'Metal']);
+    expect([for (final o in options) (o as Map)['label']], ['Brick', 'Metal']);
     expect(find.text('Brick'), findsWidgets,
-        reason: 'the first choice, trimmed, should be the sample answer');
-    expect(find.text('  Brick  '), findsNothing);
+        reason: 'the phone offers the new answer');
   });
 
   /// Every part of a ported inspection has to be editable here.
@@ -108,26 +118,28 @@ void main() {
   /// port is a second hardcoded form in a different language.
   testWidgets('a field can be given a condition and a print mode', (tester) async {
     await _pump(tester, size: const Size(1400, 2400), list: _twoFieldList);
+    await _open(tester, 'Flue');
+
+    // No condition yet, said in words, with the way to add one.
+    expect(find.byKey(const Key('cond-field')), findsNothing);
+    expect(find.text('Always asked'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('cond-start')));
+    await tester.pumpAndSettle();
 
     // The condition points at the OTHER field. Reaching across is the whole
     // point — answering on screen one is what removes questions from screen
-    // four — so the picker is not limited to this screen.
-    final condField = find.byKey(const Key('cond-field'));
-    await tester.ensureVisible(condField);
-    await tester.pumpAndSettle();
-
-    final picker = tester.widget<SearchPickerField<String>>(condField);
-    expect(picker.value, isNull, reason: 'no condition yet');
+    // four — so the picker is not limited to this question.
+    final picker = tester.widget<SearchPickerField<String>>(
+      find.byKey(const Key('cond-field')),
+    );
+    expect(picker.value, 'notes');
 
     // And how it prints, which defaults to a plain line so no existing report
     // is restyled.
-    final print = find.byKey(const Key('field-print-insp-1-0-0'));
-    await tester.ensureVisible(print);
-    await tester.pumpAndSettle();
-
     expect(
-      tester.widget<SearchPickerField<String>>(print).value,
-      'text',
+      tester.widget<ChoiceChip>(find.byKey(const ValueKey('print-text'))).selected,
+      isTrue,
     );
   });
 
@@ -135,9 +147,11 @@ void main() {
   /// empty dropdown that writes a condition naming no field.
   testWidgets('a lone field is told there is nothing to condition on', (tester) async {
     await _pump(tester, size: const Size(1400, 2400), list: _choiceList);
+    await _open(tester, 'Flue');
 
-    expect(find.text('Add another field first.'), findsOneWidget);
+    expect(find.text('Always asked. Add another question first.'), findsOneWidget);
     expect(find.byKey(const Key('cond-field')), findsNothing);
+    expect(find.byKey(const Key('cond-start')), findsNothing);
   });
 
   testWidgets('a never-published draft can be deleted', (tester) async {
@@ -156,6 +170,9 @@ void main() {
         return null;
       },
     );
+
+    await tester.tap(find.byKey(const Key('inspection-settings')));
+    await tester.pumpAndSettle();
 
     expect(find.text('Delete draft'), findsOneWidget);
     expect(find.text('Unpublish'), findsNothing);
@@ -180,6 +197,9 @@ void main() {
       (tester) async {
     await _pump(tester, size: const Size(1400, 900));
 
+    await tester.tap(find.byKey(const Key('inspection-settings')));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const Key('inspection-scope-picker')), findsOneWidget);
 
     // Opened, because the options are what matter and the closed control shows
@@ -195,6 +215,18 @@ void main() {
     expect(find.text('A1Chimney'), findsNWidgets(2));
   });
 
+}
+
+/// Open a question where it stands, by tapping its card — not its twin on the
+/// phone beside it, which shows the same words.
+Future<void> _open(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const Key('inspection-builder-fields')),
+      matching: find.text(label),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(
