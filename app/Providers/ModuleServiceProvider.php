@@ -2420,6 +2420,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),
+                    new TabDefinition('whatsapp', 'WhatsApp'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
