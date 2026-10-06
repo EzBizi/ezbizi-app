@@ -91,6 +91,13 @@ class InvitationActions
     {
         $this->assertOpen($invitation);
 
+        if ($invitation->isHeld()) {
+            throw new CannotActOnInvitation(
+                'This invitation goes out when the employer signs the paperwork, so there is '
+                .'nothing to resend yet.'
+            );
+        }
+
         $moving = $email !== null && strtolower(trim($email)) !== $invitation->email;
 
         return DB::transaction(function () use ($invitation, $email, $moving) {
@@ -200,6 +207,36 @@ class InvitationActions
                 ],
             ]);
         });
+    }
+
+    /**
+     * Send an invitation held for the employer's signature: a fresh link and
+     * a fresh week, emailed now (Jose, 2026-10-06). Nothing when it is not
+     * held, or was accepted or withdrawn meanwhile.
+     */
+    public function releaseHeld(Invitation $invitation): void
+    {
+        if (! $invitation->isHeld() || $invitation->accepted_at !== null || $invitation->revoked_at !== null) {
+            return;
+        }
+
+        $token = DB::transaction(function () use ($invitation) {
+            $invitation->forceFill(['held_at' => null])->save();
+            $token = $this->invitations->resend($invitation);
+            $this->audit->log('invitation.released', $invitation, metadata: [
+                'email' => $invitation->email,
+                'expires_at' => $invitation->expires_at->toIso8601String(),
+            ]);
+
+            return $token;
+        });
+
+        try {
+            \Illuminate\Support\Facades\Notification::route('mail', $invitation->email)
+                ->notify(new \App\Notifications\InvitationLink($invitation, $this->invitations->acceptUrl($token)));
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

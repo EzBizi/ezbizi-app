@@ -155,12 +155,85 @@ class CustomersController extends Controller
         ]);
     }
 
-    /** GET /api/v1/customers/{customer} */
-    public function show(Customer $customer): JsonResponse
+    /** GET /api/v1/customers/{customer}?today=Y-m-d */
+    public function show(Request $request, Customer $customer): JsonResponse
     {
         $this->authorize('view', $customer);
 
-        return response()->json(['data' => $this->present($customer, detailed: true)]);
+        // The reader's date, as Jobs takes it: the server's is UTC and already
+        // tomorrow every US evening. Without it, past_due is null, not guessed.
+        $request->validate(['today' => ['nullable', 'date_format:Y-m-d']]);
+
+        return response()->json(['data' => $this->present($customer, detailed: true) + [
+            // Null without Financials -- Jobs' money rule (Jose, 2026-09-29).
+            'money' => $request->user()->hasPermission('jobs.financials')
+                ? $this->money($customer, $request->query('today'), $request)
+                : null,
+        ]]);
+    }
+
+    /**
+     * What Workiz shows in a client's header -- invoiced, due, past due, paid --
+     * summed from the v2 mirror (`workiz_records`) through this customer's jobs.
+     * Minor units, one entry per currency; empty when Workiz holds none.
+     * Only jobs in franchises the reader can see: another branch's
+     * takings on a shared customer are that branch's numbers (§4).
+     *
+     * `paid` nets refunds (Workiz stores them as negative payments). Open
+     * estimates are the ones still in play: Pending, Unsent, Approved.
+     *
+     * ponytail: reached through jobs only; Workiz's ~300 invoices with no job
+     * are not counted. Add a client-id path if a customer's totals disagree
+     * with Workiz's header.
+     */
+    private function money(Customer $customer, ?string $today, Request $request): array
+    {
+        $reachable = \App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds();
+        $open = "workiz_records.type = 'estimate' AND workiz_records.status IN ('Pending', 'Unsent', 'Approved')";
+        // What an invoice still owes: the LOWER of Workiz's amountDue and the
+        // invoice less the payments that name it. Each source errs only high.
+        // Measured on A-1, 2026-10-06: on 910 invoices amountDue was the
+        // pre-payment snapshot -- every one paid after the invoice was last
+        // updated, $659k "due" against $4.8k unpaid -- and on 283 Workiz knew
+        // of payments the mirror holds no invoice link for.
+        $owed = "GREATEST(LEAST(workiz_records.amount_due, workiz_records.amount - COALESCE((
+            SELECT SUM(p.amount) FROM workiz_records p
+            WHERE p.job_id = workiz_records.job_id AND p.type = 'payment' AND p.status = 'succeeded'
+              AND JSON_UNQUOTE(JSON_EXTRACT(p.payload, '$.invoiceId')) = workiz_records.remote_id
+        ), 0)), 0)";
+        $invoice = "workiz_records.type = 'invoice'";
+
+        return \App\Models\WorkizRecord::query()
+            ->join('jobs', 'jobs.id', '=', 'workiz_records.job_id')
+            ->where('jobs.customer_id', $customer->getKey())
+            ->whereIn('jobs.franchise_id', $reachable)
+            ->whereNull('jobs.deleted_at')
+            // Per currency and never summed across, as Jobs does.
+            ->groupBy('jobs.currency')
+            ->selectRaw("
+                jobs.currency,
+                COALESCE(SUM(CASE WHEN workiz_records.type = 'invoice' THEN ROUND(workiz_records.amount * 100) END), 0) AS invoiced,
+                COALESCE(SUM(CASE WHEN {$invoice} THEN ROUND({$owed} * 100) END), 0) AS due,
+                COALESCE(SUM(CASE WHEN {$invoice} AND LEFT(JSON_UNQUOTE(JSON_EXTRACT(workiz_records.payload, '$.amountDueDate')), 10) < ?
+                    THEN ROUND({$owed} * 100) END), 0) AS past_due,
+                COALESCE(SUM(CASE WHEN workiz_records.type = 'payment' AND workiz_records.status = 'succeeded' THEN ROUND(workiz_records.amount * 100) END), 0) AS paid,
+                SUM(workiz_records.type = 'invoice') AS invoices,
+                SUM({$open}) AS open_estimates,
+                COALESCE(SUM(CASE WHEN {$open} THEN ROUND(workiz_records.amount * 100) END), 0) AS open_estimates_amount
+            ", [$today ?? ''])
+            ->get()
+            ->map(fn ($row) => [
+                'currency' => $row->currency,
+                'invoiced_minor' => (int) $row->invoiced,
+                'due_minor' => (int) $row->due,
+                'past_due_minor' => $today === null ? null : (int) $row->past_due,
+                'paid_minor' => (int) $row->paid,
+                'invoices' => (int) $row->invoices,
+                'open_estimates' => (int) $row->open_estimates,
+                'open_estimates_minor' => (int) $row->open_estimates_amount,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

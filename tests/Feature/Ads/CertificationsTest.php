@@ -182,6 +182,8 @@ class CertificationsTest extends TestCase
         $this->artisan('ezbizi:ads-certifications')->assertSuccessful();
         $this->assertCount(2, $this->raised());
         $this->assertSame(0, $this->state($c)->certification_problem_count);
+        // ...but the recovery is news of its own (Rodrigo's monitor sent it).
+        $this->assertSame(1, AutomationEvent::withoutGlobalScopes()->where('event_key', 'ads.certification_resolved')->count());
     }
 
     public function test_a_refusal_keeps_the_last_verdict_and_says_why(): void

@@ -69,6 +69,23 @@ class ReplyOverdueTest extends TestCase
         return AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.reply_overdue')->get()->all();
     }
 
+    /** 2026-10-06: 22 warnings went out as " has waited 10 minutes…". */
+    public function test_a_nameless_customer_is_named_by_phone_or_a_word(): void
+    {
+        $byPhone = $this->lead('p', 'MESSAGE', '2026-09-28T14:45:00Z');
+        $nothing = $this->lead('n', 'MESSAGE', '2026-09-28T14:45:00Z');
+        $this->inTenant($this->t['org'], function () use ($byPhone, $nothing) {
+            $byPhone->forceFill(['contact_name' => null, 'phone' => '+13192102005'])->save();
+            $nothing->forceFill(['contact_name' => null, 'phone' => null])->save();
+        });
+
+        $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
+
+        $names = collect($this->raised())->mapWithKeys(fn ($e) => [$e->subject_id => $e->payload['after']['contact_name']]);
+        $this->assertSame('(319) 210-2005', $names[$byPhone->id]);
+        $this->assertSame('A customer', $names[$nothing->id]);
+    }
+
     public function test_a_waiting_customer_is_raised_once_and_marked_on_the_list(): void
     {
         $waiting = $this->lead('a', 'MESSAGE', '2026-09-28T14:45:00Z');

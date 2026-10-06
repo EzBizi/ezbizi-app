@@ -968,17 +968,25 @@ class ActionRunner
             ];
         }
 
+        $text = $this->interpolate($message, $event, $subject);
+
         try {
-            $this->leadReplies->for($subject)?->send(
-                $subject,
-                $this->interpolate($message, $event, $subject),
-                automatic: true,
-            );
+            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
 
         $this->audit->log('automation.lead_replied', $subject);
+
+        // For the WhatsApp "A1 Messages" feed (row H of REPLACING-RODRIGO-BOT).
+        // causedBy carries the cascade depth, so a rule answering this cannot loop.
+        $this->emitter->emit('lead.auto_replied', $subject, ['after' => [
+            'source' => $subject->source,
+            'kind' => $subject->kind(),
+            'contact_name' => $subject->contact_name,
+            'phone' => $subject->phone,
+            'message' => $text,
+        ]], causedBy: $event);
 
         return [
             'type' => $type,

@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\A1LeadsReview;
+use App\Models\A1LeadsReviewEvent;
 use App\Models\Organization;
 use App\Services\A1Leads\A1LeadsReviewOpsClient;
+use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -159,7 +161,45 @@ class A1LeadsDeltaSync extends Command
         if ($row === null) {
             A1LeadsReview::query()->create(['google_review_name' => $name, ...$values]);
         } else {
+            $wasRemoved = $row->removed;
             $row->fill($values)->save();
+
+            // Google took down a review we held (row G). Never on a rebuild:
+            // that starts from an empty copy, so no row was ever un-removed.
+            if (! $wasRemoved && $row->removed) {
+                self::raiseRemoved($row);
+            }
         }
+    }
+
+    private static function raiseRemoved(A1LeadsReview $row): void
+    {
+        $companyId = config('services.a1leads.company_id');
+        if (! is_string($companyId) || $companyId === '') {
+            return;
+        }
+
+        $review = (array) $row->review;
+        $subject = A1LeadsReviewEvent::query()->firstOrCreate(
+            ['google_review_name' => $row->google_review_name],
+            [
+                'company_id' => $companyId,
+                'rating' => $row->rating,
+                'reviewer_name' => $row->reviewer_name,
+                'location_name' => is_string($review['location_title'] ?? null) ? mb_substr($review['location_title'], 0, 200) : null,
+                'location_address' => is_string($review['location_address'] ?? null) ? mb_substr($review['location_address'], 0, 300) : null,
+                'has_reply' => $row->has_reply,
+                'review_created_at' => $row->review_created_at,
+            ],
+        );
+
+        app(EventEmitter::class)->emit('a1leads_gbp.review_removed', $subject, [
+            'rating' => $row->rating,
+            'reviewer_name' => $row->reviewer_name,
+            'location_name' => $subject->location_name,
+            'location_address' => $subject->location_address,
+            'comment' => is_string($review['comment'] ?? null) ? mb_substr($review['comment'], 0, 500) : null,
+            'review_created_at' => $row->review_created_at?->toIso8601String(),
+        ]);
     }
 }

@@ -7,6 +7,7 @@ use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadReplies;
+use App\Support\Notifications\LeadNotificationText;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 
@@ -56,7 +57,11 @@ class LeadsReplyOverdue extends Command
                         'after' => [
                             'source' => $lead->source,
                             'kind' => $lead->kind(),
-                            'contact_name' => $lead->contact_name,
+                            // Never blank: the warning starts with this word
+                            // (2026-10-06, 22 sent as " has waited…").
+                            'contact_name' => $lead->contact_name
+                                ?: LeadNotificationText::phone($lead->phone)
+                                ?: 'A customer',
                             'phone' => $lead->phone,
                             'minutes_waiting' => (int) $lead->last_contact_at->diffInMinutes(now()),
                             'preview' => $lead->last_contact_preview,
