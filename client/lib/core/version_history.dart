@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0377',
+      date: '6 Oct 2026',
+      items: [
+        'Marketing › QR Codes: each card shows its scans and daily scanners over the last 30 days, with a strip of the days. Stats opens 30 or 90 days, day by day, with the busiest day and the all-time total. A scanner is one phone or browser on one day, and nothing about who scanned is kept.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0376',
       date: '6 Oct 2026',
       items: [
