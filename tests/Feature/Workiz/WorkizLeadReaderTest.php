@@ -4,6 +4,7 @@ namespace Tests\Feature\Workiz;
 
 use App\Models\Franchise;
 use App\Models\SocialConnection;
+use App\Support\Notifications\LeadNotificationText;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizLeadAttributes;
@@ -116,6 +117,22 @@ class WorkizLeadReaderTest extends TestCase
         $this->assertSame('Wants a quote this week', $out['summary']);
         $this->assertSame('2026-09-23 09:15:00', $out['received_at'], 'naive and unconverted');
         $this->assertFalse($out['is_test']);
+    }
+
+    /**
+     * Jose, 2026-10-06: a lead from Reserve with Google reads "Workiz Online";
+     * every other Workiz lead reads "Workiz". Workiz records no intake
+     * channel, so the source is all there is, in any of its spellings.
+     */
+    public function test_only_reserve_with_google_is_an_online_lead(): void
+    {
+        foreach (['Reserve with Google', ' reserve With  Google '] as $source) {
+            $this->assertSame(LeadNotificationText::WORKIZ_ONLINE, WorkizLeadAttributes::fromPayload($this->lead(['JobSource' => $source]))['lead_type'], $source);
+        }
+
+        foreach (['GMB /SEO', '', 'Google', 'Reserve'] as $source) {
+            $this->assertNull(WorkizLeadAttributes::fromPayload($this->lead(['JobSource' => $source]))['lead_type'], $source);
+        }
     }
 
     /**

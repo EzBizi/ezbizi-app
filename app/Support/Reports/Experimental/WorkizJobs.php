@@ -125,7 +125,7 @@ final class WorkizJobs
 
     /**
      * Jobs booked since a date, read from EzBizi's synced copy (`workiz_jobs`,
-     * kept current by ezbizi:sync-workiz-jobs) rather than from Workiz.
+     * kept current by ezbizi:sync-workiz) rather than from Workiz.
      *
      * For the Experimental report (Jose, 2026-10-06: "Experimental loading
      * slow"). Measured on the box: asking Workiz live took 5.7 s of every load

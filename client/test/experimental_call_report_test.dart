@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -227,14 +228,138 @@ void main() {
     expect(posted, ['/api/v1/reports/experimental/calls/c1/convert']);
   });
 
-  testWidgets('choosing a week asks the server for a week', (tester) async {
-    final asked = <Map<String, String>>[];
-    await _pump(tester, width: 1400, asked: asked);
+  testWidgets('Not booked counts reasons per AI, and shows both on a call', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
 
-    await tester.tap(find.text('Week'));
+    await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
     await tester.pumpAndSettle();
 
-    expect(asked.last['period'], 'week');
+    // Claude's reading first: Kitchen tap is a price call.
+    expect(find.text('Price 1'), findsOneWidget);
+    expect(find.text('Availability 0'), findsOneWidget);
+    expect(find.text('Claude: Price · Grok: Availability'), findsOneWidget);
+
+    // Grok read the same call differently.
+    await tester.tap(find.text('Grok'));
+    await tester.pumpAndSettle();
+    expect(find.text('Price 0'), findsOneWidget);
+    expect(find.text('Availability 1'), findsOneWidget);
+
+    // A count narrows the list to its calls.
+    await tester.tap(find.byKey(const ValueKey('label-price')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+  });
+
+  // Was "choosing a week asks the server for a week". Day / Week / Month gave
+  // way to the date picker (UI queue 57): a week is its dates now.
+  testWidgets('choosing last week asks the server for that week', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pump(
+      tester,
+      width: 1400,
+      asked: asked,
+      now: () => DateTime(2026, 10, 6, 15),
+    );
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('date-preset-last_week')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('date-range-apply')));
+    await tester.pumpAndSettle();
+
+    expect(asked.last['from'], '2026-09-28');
+    expect(asked.last['to'], '2026-10-04');
+  });
+
+  testWidgets('the dates are on the button in words, and asked for as dates', (
+    tester,
+  ) async {
+    final asked = <Map<String, String>>[];
+    await _pump(tester, width: 1400, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+
+    final button = find.byKey(const Key('date-range-button'));
+    expect(find.descendant(of: button, matching: find.text('Today')), findsOneWidget);
+    expect(find.descendant(of: button, matching: find.text('Tue, Oct 6')), findsOneWidget);
+    expect(asked.first, {'from': '2026-10-06', 'to': '2026-10-06'});
+    // Nothing after today to step to.
+    expect(
+      tester.widget<IconButton>(find.byKey(const Key('date-range-next'))).onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('the arrows step by the length chosen, a month by the month', (
+    tester,
+  ) async {
+    final asked = <Map<String, String>>[];
+    await _pump(tester, width: 1400, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+
+    await tester.tap(find.byKey(const Key('date-range-previous')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'from': '2026-10-05', 'to': '2026-10-05'});
+    expect(find.text('Yesterday'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('date-preset-this_month')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('date-range-apply')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'from': '2026-10-01', 'to': '2026-10-06'});
+
+    // A whole September, not September 25 to 30.
+    await tester.tap(find.byKey(const Key('date-range-previous')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'from': '2026-09-01', 'to': '2026-09-30'});
+    expect(find.text('Last month'), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('on a phone the dates are a page of their own', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pump(tester, width: 390, asked: asked, now: () => DateTime(2026, 10, 6, 15));
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dates'), findsOneWidget);
+    expect(find.byKey(const Key('date-range-button')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show 7 days'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last, {'from': '2026-09-30', 'to': '2026-10-06'});
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('on a phone the button gives the dates the width it has', (
+    tester,
+  ) async {
+    await _pump(tester, width: 700, now: () => DateTime(2026, 10, 6, 15));
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('date-preset-this_week')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show 2 days'));
+    await tester.pumpAndSettle();
+
+    // Drawn whole, not cut to "Mon, Oct 5 –…" by a second flexible child
+    // taking half the row for nothing.
+    final words = find.byKey(const Key('date-range-words'));
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(of: words, matching: find.byType(RichText)),
+    );
+    expect(
+      paragraph.getMaxIntrinsicWidth(double.infinity),
+      lessThanOrEqualTo(paragraph.size.width + 0.5),
+    );
   });
 
   testWidgets('only one person is open at a time', (tester) async {
@@ -319,6 +444,7 @@ Future<void> _pump(
   required double width,
   List<String>? posted,
   List<Map<String, String>>? asked,
+  DateTime Function()? now,
 }) async {
   tester.view.physicalSize = Size(width, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -342,7 +468,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: ExperimentalCallReport(api: api)),
+      home: Scaffold(
+        body: ExperimentalCallReport(api: api, now: now ?? DateTime.now),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -423,6 +551,7 @@ const _report = {
       'rang': ['Ada'],
       'outcome': 'answered',
       'transcript': 'How much is a sweep?',
+      'labels': {'claude': 'price', 'grok': 'availability'},
       'booked': false,
     },
     {

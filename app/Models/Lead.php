@@ -59,6 +59,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_WEBSITE_FORM = 'website_form';
 
     /**
+     * A WhatsApp contact who tapped "I need a service" (Jose, 2026-10-06),
+     * written by App\Support\Social\WhatsAppIntake. No connection_id, so it is
+     * not in SOURCES_VIA_CONNECTION.
+     */
+    public const SOURCE_WHATSAPP = 'whatsapp';
+
+    /**
      * A message sent to the business's Facebook Page, and to its Instagram.
      *
      * Two sources rather than one, for the same reason chat and form are two:
@@ -150,6 +157,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_WEBSITE_FORM,
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
+        self::SOURCE_WHATSAPP,
     ];
 
     /**
@@ -250,6 +258,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WORKIZ,
+        self::SOURCE_WHATSAPP,
     ];
 
     /**
@@ -733,6 +742,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             self::SOURCE_WEBSITE_CHAT => 'Chat',
             self::SOURCE_WEBSITE_FORM => 'Form',
             self::SOURCE_FACEBOOK => 'Messenger',
+            self::SOURCE_WHATSAPP => 'WhatsApp',
             default => ucfirst((string) $this->source),
         };
     }

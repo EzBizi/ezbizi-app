@@ -171,6 +171,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('facebook', 'Messenger'),
     ('instagram', 'Instagram'),
     ('workiz', 'Workiz'),
+    ('whatsapp', 'WhatsApp'),
   ];
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
@@ -194,6 +195,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
+    // WhatsApp: no Material logo either; a chat bubble, like Messenger's.
+    Icons.chat_outlined,
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -1838,6 +1841,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'website_chat' => 'Chat',
   'website_form' => 'Form',
   'workiz' => 'Workiz',
+  'whatsapp' => 'WhatsApp',
   _ => 'Google',
 };
 

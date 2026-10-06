@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import '../phone/recording_playback_bar.dart';
 import '../phone/recording_player.dart';
@@ -27,9 +29,20 @@ import '../phone/recording_player.dart';
 ///    nothing joins them; a near-match rule would credit one person's work to
 ///    another, which is worse than a visible duplicate.
 class ExperimentalCallReport extends StatefulWidget {
-  const ExperimentalCallReport({super.key, required this.api});
+  const ExperimentalCallReport({
+    super.key,
+    required this.api,
+    this.formats = DisplayFormats.fallback,
+    this.now = DateTime.now,
+  });
 
   final ApiClient api;
+
+  /// Which way round a date is written: "Oct 5" or "5 Oct".
+  final DisplayFormats formats;
+
+  /// The clock, so a test can say what today is.
+  final DateTime Function() now;
 
   static const double tableAbove = 900;
 
@@ -38,7 +51,13 @@ class ExperimentalCallReport extends StatefulWidget {
 }
 
 class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
-  DateTime _day = DateTime.now();
+  /// The dates the report covers (UI queue 57). Opens on today, as it did.
+  late DateSpan _span = DateSpan.single(widget.now());
+
+  /// The picker is open: under the bar on a wide screen, as its own page on a
+  /// phone (Jose: "as u recommend", desktop 1 and phone 4).
+  bool _picking = false;
+
   Map<String, dynamic>? _report;
   String? _error;
   bool _loading = true;
@@ -78,10 +97,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _nobodyFilter;
   String? _clientFilter;
 
-  /// Day, week or month (Jose, 2026-10-05: "add options to choose period of
-  /// time"). The server works out the range around `_day`.
-  String _period = 'day';
-
   /// The people table narrowed to one hand-set tag, or everybody.
   String? _tagFilter;
 
@@ -90,6 +105,26 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// Calls whose transcript is unfolded.
   final Set<String> _openTranscripts = {};
+
+  /// Whose AI labels the counts show, and the label the list is narrowed to
+  /// (Jose, 2026-10-06: both Claude and Grok, to compare).
+  String _labeller = 'claude';
+  String? _labelFilter;
+
+  static const _existingLabels = {
+    'complaint': 'Complaint',
+    'reschedule': 'Reschedule',
+    'eta': 'ETA',
+    'billing': 'Billing',
+    'other': 'Other',
+  };
+
+  static const _notBookedLabels = {
+    'price': 'Price',
+    'availability': 'Availability',
+    'other': 'Other',
+    'booked': 'Booked (per AI)',
+  };
 
   static const _newQueue = 'A1 - New Client';
   static const _existingQueue = 'A1 - Existing Client';
@@ -140,20 +175,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _load();
   }
 
-  String get _dayKey =>
-      '${_day.year.toString().padLeft(4, '0')}-'
-      '${_day.month.toString().padLeft(2, '0')}-'
-      '${_day.day.toString().padLeft(2, '0')}';
-
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
+    // Any range, or one date as from = to (the server since Reports'
+    // 2660648c). Weeks, months and the rest are all just dates by now.
     final response = await widget.api.get('/reports/experimental/calls', {
-      'day': _dayKey,
-      'period': _period,
+      'from': _span.fromKey,
+      'to': _span.toKey,
     });
 
     if (!mounted) return;
@@ -168,14 +200,39 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     });
   }
 
-  /// One period back or forward: a day, a week, or a calendar month.
+  DateTime get _today => DateSpan.single(widget.now()).from;
+
+  /// One length back or forward: a day, a week, ten days — or a whole
+  /// calendar month when a month is what is showing, since months are not
+  /// all one length. Never past today.
   void _move(int step) {
+    final span = _span;
+    final today = _today;
+    final monthStart = span.from.day == 1 && span.from.month == span.to.month;
+    final wholeMonth =
+        monthStart &&
+        (span.to == DateTime(span.to.year, span.to.month + 1, 0) || span.to == today);
+
+    var next = wholeMonth
+        ? DateSpan(
+            DateTime(span.from.year, span.from.month + step, 1),
+            DateTime(span.from.year, span.from.month + step + 1, 0),
+          )
+        : span.shift(step);
+    if (next.from.isAfter(today)) return;
+    if (next.to.isAfter(today)) next = DateSpan(next.from, today);
+
     setState(() {
-      _day = switch (_period) {
-        'week' => _day.add(Duration(days: 7 * step)),
-        'month' => DateTime(_day.year, _day.month + step, 1),
-        _ => _day.add(Duration(days: step)),
-      };
+      _span = next;
+      _picking = false;
+    });
+    _load();
+  }
+
+  void _apply(DateSpan span) {
+    setState(() {
+      _span = span;
+      _picking = false;
     });
     _load();
   }
@@ -222,79 +279,93 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _dayBar(context),
-        const SizedBox(height: 12),
-        Expanded(child: _body(context)),
-      ],
+    return LayoutBuilder(
+      builder: (context, box) {
+        final phone = box.maxWidth < 720;
+
+        // On a phone the dates are a page of their own, in place of the
+        // report, with the way back at the top (phone option 4).
+        if (phone && _picking) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Back to the report',
+                    onPressed: () => setState(() => _picking = false),
+                    icon: const Icon(Icons.arrow_back),
+                  ),
+                  Text(
+                    'Dates',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: DateRangePanel(
+                  initial: _span,
+                  today: _today,
+                  formats: widget.formats,
+                  narrow: true,
+                  onApply: _apply,
+                  onCancel: () => setState(() => _picking = false),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _dayBar(context, phone: phone),
+            if (_picking) ...[
+              const SizedBox(height: 8),
+              DateRangePanel(
+                initial: _span,
+                today: _today,
+                formats: widget.formats,
+                onApply: _apply,
+                onCancel: () => setState(() => _picking = false),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Expanded(child: _body(context)),
+          ],
+        );
+      },
     );
   }
 
-  Widget _dayBar(BuildContext context) {
-    final today = DateTime.now();
-    final isToday =
-        _dayKey ==
-        '${today.year.toString().padLeft(4, '0')}-'
-            '${today.month.toString().padLeft(2, '0')}-'
-            '${today.day.toString().padLeft(2, '0')}';
-
-    final todayKey =
-        '${today.year.toString().padLeft(4, '0')}-'
-        '${today.month.toString().padLeft(2, '0')}-'
-        '${today.day.toString().padLeft(2, '0')}';
-    final from = '${_report?['from'] ?? _dayKey}';
-    final to = '${_report?['to'] ?? _dayKey}';
-
-    // A period that already reaches today has no "next".
-    final atToday = isToday || to.compareTo(todayKey) >= 0;
-    final unit = switch (_period) {
-      'week' => 'week',
-      'month' => 'month',
-      _ => 'day',
-    };
+  /// The dates, in words, on the one button that changes them; the arrows
+  /// either side step by the same length. Replaces Day / Week / Month, which
+  /// left "what week is it?" to the reader (Jose, 2026-10-06).
+  Widget _dayBar(BuildContext context, {required bool phone}) {
+    final today = _today;
 
     return Row(
       children: [
         Expanded(
-          child: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SegmentedButton<String>(
-                key: const ValueKey('call-report-period'),
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: 'day', label: Text('Day')),
-                  ButtonSegment(value: 'week', label: Text('Week')),
-                  ButtonSegment(value: 'month', label: Text('Month')),
-                ],
-                selected: {_period},
-                onSelectionChanged: _loading
-                    ? null
-                    : (picked) {
-                        setState(() => _period = picked.first);
-                        _load();
-                      },
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _loading ? null : () => _move(-1),
-                icon: const Icon(Icons.chevron_left),
-                tooltip: 'Previous $unit',
-              ),
-              Text(
-                from == to ? from : '$from – $to',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              // Forward is disabled on today rather than hidden: a control that
-              // vanishes reads as a bug, one that is greyed reads as a boundary.
-              IconButton(
-                onPressed: (_loading || atToday) ? null : () => _move(1),
-                icon: const Icon(Icons.chevron_right),
-                tooltip: 'Next $unit',
-              ),
-            ],
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: DateRangeBar(
+              key: const ValueKey('call-report-period'),
+              span: _span,
+              today: today,
+              formats: widget.formats,
+              open: _picking,
+              expand: phone,
+              onToggle: _loading ? null : () => setState(() => _picking = !_picking),
+              onPrevious: _loading ? null : () => _move(-1),
+              // Forward is disabled on today rather than hidden: a control
+              // that vanishes reads as a bug, one that is greyed reads as a
+              // boundary.
+              onNext: (_loading || !_span.to.isBefore(today)) ? null : () => _move(1),
+            ),
           ),
         ),
         IconButton(
@@ -540,14 +611,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     List<Map<String, dynamic>> calls,
   ) {
     final theme = Theme.of(context);
-    final mine = calls.where((c) => c['queue'] == _existingQueue).toList();
+    final all = calls.where((c) => c['queue'] == _existingQueue).toList();
+    final mine = _byLabel(all);
 
     return _panelBox(context, [
-      Text(
-        'Reasons (Complaint, Reschedule, ETA, Billing, Other) appear here once '
-        'calls are transcribed.',
-        style: theme.textTheme.bodySmall,
-      ),
+      _labelCounts(context, all, _existingLabels),
       const SizedBox(height: 8),
       if (mine.isEmpty)
         Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
@@ -557,6 +625,86 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _transcript(context, call),
         ],
     ]);
+  }
+
+  /// The calls narrowed to the chosen label, from the chosen AI.
+  List<Map<String, dynamic>> _byLabel(List<Map<String, dynamic>> calls) =>
+      _labelFilter == null
+      ? calls
+      : calls.where((c) => _labelOf(c, _labeller) == _labelFilter).toList();
+
+  String? _labelOf(Map<String, dynamic> call, String provider) =>
+      (call['labels'] as Map?)?[provider] as String?;
+
+  /// How many calls each AI put under each reason - "show only numbers" -
+  /// with Claude and Grok switchable so the two can be compared on the same
+  /// calls. Tapping a count narrows the list to those calls.
+  Widget _labelCounts(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+    Map<String, String> labels,
+  ) {
+    final theme = Theme.of(context);
+    final labelled = calls.where((c) => _labelOf(c, _labeller) != null).length;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SegmentedButton<String>(
+          key: const ValueKey('labeller'),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 'claude', label: Text('Claude')),
+            ButtonSegment(value: 'grok', label: Text('Grok')),
+          ],
+          selected: {_labeller},
+          onSelectionChanged: (picked) => setState(() {
+            _labeller = picked.first;
+            _labelFilter = null;
+          }),
+        ),
+        for (final entry in labels.entries)
+          FilterChip(
+            key: ValueKey('label-${entry.key}'),
+            label: Text(
+              '${entry.value} '
+              '${calls.where((c) => _labelOf(c, _labeller) == entry.key).length}',
+            ),
+            selected: _labelFilter == entry.key,
+            onSelected: (on) =>
+                setState(() => _labelFilter = on ? entry.key : null),
+          ),
+        Text(
+          labelled == calls.length
+              ? 'All ${calls.length} read by AI.'
+              : '${calls.length - labelled} of ${calls.length} not read by AI yet.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  /// Both AIs' answer for one call, side by side.
+  Widget _labelLine(BuildContext context, Map<String, dynamic> call) {
+    final claude = _labelOf(call, 'claude');
+    final grok = _labelOf(call, 'grok');
+    if (claude == null && grok == null) return const SizedBox.shrink();
+
+    String name(String? label) => label == null
+        ? '—'
+        : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        'Claude: ${name(claude)} · Grok: ${name(grok)}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
   }
 
   /// A call's words, folded until asked for: whole calls in a list would bury
@@ -586,6 +734,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _labelLine(context, call),
           TextButton(
             key: ValueKey('transcript-$id'),
             onPressed: () => setState(
@@ -624,15 +773,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final history = ((conversions as List?) ?? const [])
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
+    final unbooked = open;
+    final shown = _byLabel(unbooked);
 
     return _panelBox(context, [
-      if (open.isEmpty)
+      _labelCounts(context, unbooked, _notBookedLabels),
+      const SizedBox(height: 8),
+      if (shown.isEmpty)
         Text(
           'Every new-client call was booked.',
           style: theme.textTheme.bodyMedium,
         )
       else
-        for (final call in open)
+        for (final call in shown)
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1123,10 +1276,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Text(
         'Conversion is jobs booked in Workiz divided by new-client calls '
-        'answered, for the same day. It is not the share of a person\'s calls '
-        'that became work: a job can be booked for an existing customer, or '
-        'booked today from a call taken last week. A dash means they answered '
-        'no new-client calls, which is different from converting none.',
+        'answered, over the same dates. It is not the share of a person\'s '
+        'calls that became work: a job can be booked for an existing customer, '
+        'or booked in these dates from a call taken before them. A dash means '
+        'they answered no new-client calls, which is different from converting '
+        'none.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.outline,
         ),
