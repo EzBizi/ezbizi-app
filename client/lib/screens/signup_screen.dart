@@ -136,10 +136,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
     setState(() => _created = true);
 
-    // The same path a login takes. Not persisted, matching the sign-in screen's
-    // default: the token lives in sessionStorage and dies with the tab, which is
-    // the right answer on a machine somebody else also uses. "Keep me signed in"
-    // is a choice offered where signing in happens.
+    // The same path a login takes, not persisted: the token lives in
+    // sessionStorage and dies with the tab. Signup asks no "Keep me signed in"
+    // and the server's signup session is not a remembered one, so keeping its
+    // token would only hold one that signs out when idle anyway. The next
+    // sign-in offers the box, ticked by default since 2026-10-06.
     final signedIn = await widget.session.adoptAuthResponse(response.body);
 
     // Signing in replaces this screen with the app, so there is nothing to do on

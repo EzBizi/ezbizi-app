@@ -49,12 +49,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Whether the session should survive closing the browser.
   ///
-  /// Off by default, and that is the safe default rather than the lazy one: the
-  /// token otherwise lives in sessionStorage and dies with the tab, which is
-  /// right for a shared or public machine. Ticking this moves it to
-  /// localStorage — a real trade the person makes for themselves, not one made
-  /// quietly on their behalf.
-  bool _stayed = false;
+  /// On by default. Jose, 2026-10-06: *"make the keep me logged in toggle when
+  /// logging in activated by default instead of turned off."* Ticked, the token
+  /// is kept in localStorage and the server mints a remembered session (no idle
+  /// sign-out, thirty days at most — SessionLifetime). On a shared or public
+  /// machine the box is still there to untick, and then the token lives in
+  /// sessionStorage and dies with the tab.
+  bool _stayed = true;
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
