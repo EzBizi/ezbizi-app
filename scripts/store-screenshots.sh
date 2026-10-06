@@ -166,7 +166,7 @@ tar -cz \
   --exclude='DerivedData' \
   --exclude='.DS_Store' \
   -C client \
-  VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib ios macos integration_test test_driver \
+  VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib assets ios macos integration_test test_driver \
   | ssh "$MAC" "tar -xz -C ${MAC_PROJECT}"
 
 echo "→ $SET — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
