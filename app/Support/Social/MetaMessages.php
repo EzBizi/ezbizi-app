@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Leads\LeadThread;
+use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -180,6 +181,9 @@ final class MetaMessages
                     : null),
             'connection_id' => $connection->getKey(),
             'source' => $source,
+            // A DM, so its notification reads "Meta Text". Lead-ad forms
+            // (META_FORM) have no producer yet.
+            'lead_type' => LeadNotificationText::META_TEXT,
             'remote_id' => $senderId,
             /*
              * No name, no phone, no email, and that is not a gap to fill later.
