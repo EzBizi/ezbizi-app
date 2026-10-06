@@ -2961,7 +2961,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 56 · Inspection · the Builder, made readable — **out for decision** (`docs/previews/inspection-builder-layouts.html`)
+### 56 · Inspection · the Builder, made readable — **Jose: "go ahead" (2026-10-06) — 1 and 4** — building (`docs/previews/inspection-builder-layouts.html`)
 
 Jose 2026-10-06: *"i think the UI for the builder is pretty much extremely hard to understand and use, it makes
 no sense whatsoever."* Measured causes: a picked question's settings open under the whole list (42 rows down on
