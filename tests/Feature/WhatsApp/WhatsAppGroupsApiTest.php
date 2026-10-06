@@ -53,7 +53,9 @@ class WhatsAppGroupsApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.subject', 'A1 NJ - Daily Performance')
             ->assertJsonFragment(['key' => 'daily:'.$this->t['franchise']->id])
-            ->assertJsonFragment(['key' => 'messages']);
+            ->assertJsonFragment(['key' => 'messages'])
+            ->assertJsonFragment(['id' => $member->id, 'name' => $member->name, 'has_phone' => false])
+            ->assertJsonMissing(['id' => $stranger->id]);
     }
 
     public function test_reading_and_changing_groups_needs_manage(): void
