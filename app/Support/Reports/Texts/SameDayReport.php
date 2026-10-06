@@ -182,15 +182,20 @@ final class SameDayReport
         if ($fresh('workiz_records', self::PAYMENTS_STALE_MINUTES)) {
             $names = DB::table('workiz_team_members')->where('franchise_id', $branch->getKey())->pluck('name', 'remote_id');
 
-            $out['deposits'] = DB::table('workiz_records')->where('franchise_id', $branch->getKey())
+            $out['deposits'] = [];
+            $paid = DB::table('workiz_records')->where('franchise_id', $branch->getKey())
                 ->where('type', 'payment')->whereBetween('starts_at', $day)
-                ->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get()
-                ->mapWithKeys(fn ($r) => [(string) $r->user_remote_id => [
-                    // A payment taken by someone Workiz does not list as team (an office
-                    // user, a removed tech) is still money in: shown, not dropped.
-                    'name' => trim((string) ($names[$r->user_remote_id] ?? 'Not on the Workiz team list')),
-                    'amount' => (float) $r->amount,
-                ]])->all();
+                ->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get();
+
+            foreach ($paid as $r) {
+                // A payment taken by someone Workiz does not list as team (an
+                // office user, a removed tech) is still money in: one row for
+                // all of them, not dropped.
+                $known = isset($names[$r->user_remote_id]) || isset($out['techs'][$r->user_remote_id]);
+                $id = $known ? (string) $r->user_remote_id : 'unlisted';
+                $out['deposits'][$id] ??= ['name' => $known ? trim((string) ($names[$r->user_remote_id] ?? '')) : 'Not on the Workiz team list', 'amount' => 0.0];
+                $out['deposits'][$id]['amount'] += (float) $r->amount;
+            }
         }
 
         return $out;
