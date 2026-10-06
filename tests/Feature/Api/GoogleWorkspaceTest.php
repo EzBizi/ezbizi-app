@@ -726,9 +726,14 @@ class GoogleWorkspaceTest extends TestCase
 
         $probe = new \ReflectionMethod(GoogleWorkspace::class, 'canImpersonate');
         $probe->setAccessible(true);
+
+        // TWICE. Once only proves the probe does not borrow the MAIL cache; a
+        // cache of its own would still pass a single call and lie on the
+        // second -- which is the one that matters, after access was revoked.
+        $probe->invoke(app(GoogleWorkspace::class), self::INFO, [GoogleOAuth::SCOPE_READ]);
         $probe->invoke(app(GoogleWorkspace::class), self::INFO, [GoogleOAuth::SCOPE_READ]);
 
-        $this->assertSame(2, $this->tokenMints(), 'The probe was answered from the cache.');
+        $this->assertSame(3, $this->tokenMints(), 'The probe was answered from a cache.');
     }
 
     public function test_a_company_workspace_is_hidden_from_a_sibling_company(): void
