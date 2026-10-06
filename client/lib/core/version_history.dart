@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0371',
+      date: '6 Oct 2026',
+      items: [
+        'Email: read and unread now follow Gmail both ways. Opening a message or marking it unread changes it in Gmail too, and an opened message no longer turns bold again on the next refresh. It is on for every mailbox; a shared inbox can switch it off in the mailbox settings.',
+        'Leads: a WhatsApp chip, where enquiries from WhatsApp will appear once WhatsApp sends them to Leads.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0370',
       date: '6 Oct 2026',
       items: [
