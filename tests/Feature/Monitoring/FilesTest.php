@@ -179,6 +179,39 @@ class FilesTest extends TestCase
             ->assertJson(['data' => ['status' => 'error', 'error' => 'access_denied']]);
     }
 
+    public function test_the_roots_request_sends_an_empty_path_and_is_accepted(): void
+    {
+        // THE BUG the first real machines hit. The Files screen asks for "This
+        // PC" by POSTing path:'' — the agent reads an empty path as "the
+        // drives". Laravel's `required` rejects an empty string, so the roots
+        // request 422'd before it ever reached the agent, and the viewer showed
+        // "This could not be read" on every machine regardless of build. The
+        // listing tests all used a non-empty path and never caught it.
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
+                'op' => 'list', 'path' => '',
+            ])
+            ->assertOk()
+            ->json('data.request_id');
+
+        $this->assertNotEmpty($requestId);
+
+        // And the empty path travels to the agent as-is, so its reader lists
+        // the drives rather than a named folder.
+        $pulled = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertOk()
+            ->json('requests');
+
+        $this->assertCount(1, $pulled);
+        $this->assertSame('', $pulled[0]['path']);
+    }
+
     // ── read-once pull ───────────────────────────────────────────────
 
     public function test_the_agent_pulls_a_request_only_once(): void
