@@ -372,16 +372,25 @@ class WorkizV2Test extends TestCase
             'franchise_id' => $other->id, 'connection_id' => (string) Str::uuid(), 'remote_id' => 'NYCZ7W',
             'status' => 'Submitted', 'payload' => [], 'synced_at' => now(),
         ]));
+        $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'remote_id' => 'MINE01',
+            'status' => 'Submitted', 'payload' => [], 'synced_at' => now(),
+        ]));
         $file = tempnam(sys_get_temp_dir(), 'wz');
-        file_put_contents($file, "api_NW\nsec_NW\n");
         Http::fake([
             'api.workiz.com/api/v1/api_NW/job/all/*' => Http::response(['flag' => true, 'data' => [['UUID' => 'NYCZ7W']]]),
+            'api.workiz.com/api/v1/api_BOTH/job/all/*' => Http::response(['flag' => true, 'data' => [['UUID' => 'MINE01'], ['UUID' => 'NYCZ7W']]]),
+            'api.workiz.com/api/v1/api_NONE/job/all/*' => Http::response(['flag' => true, 'data' => [['UUID' => 'NOBODY']]]),
             'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
             'api.workiz.com/crm/api/v2/jobs*' => Http::response($this->page([$this->v2Job()])),
         ]);
 
-        $this->artisan('ezbizi:workiz-keep-v1', ['franchise' => $connection->scope_id, '--key-file' => $file])
-            ->expectsOutputToContain("does not read this branch's jobs")->assertFailed();
+        // Another branch's book; a book holding this branch's jobs AND another's; a book with none of this branch's.
+        foreach (['api_NW', 'api_BOTH', 'api_NONE'] as $token) {
+            file_put_contents($file, $token."\nsecret\n");
+            $this->artisan('ezbizi:workiz-keep-v1', ['franchise' => $connection->scope_id, '--key-file' => $file])
+                ->expectsOutputToContain("does not read this branch's jobs")->assertFailed();
+        }
 
         file_put_contents($file, "v2key_MA\nnothing\n");
         $this->artisan('ezbizi:workiz-keep-v1', ['franchise' => $connection->scope_id, '--key-file' => $file])
