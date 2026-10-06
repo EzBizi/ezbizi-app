@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Models\Customer;
 use App\Models\InspectionReport;
 use App\Models\Job;
+use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inspection\LooksLikeJobNumber;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Inspection\InspectionScope;
 use App\Support\Scoping\ViewScope;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -151,6 +153,32 @@ class InspectionReportsController extends Controller
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store',
         ]);
+    }
+
+    /**
+     * The PDF by its signed link (InspectionReport::shareUrl), no session.
+     *
+     * An archived report is not served: archiving is how somebody takes a
+     * link back once it has been pasted somewhere.
+     */
+    public function shared(TenantContext $tenant, string $report): Response
+    {
+        $found = $tenant->runWithoutTenant(fn () => InspectionReport::query()->find($report));
+        abort_if($found === null || $found->archived_at !== null, Response::HTTP_NOT_FOUND);
+
+        $organization = $tenant->runWithoutTenant(fn () => Organization::query()->find($found->organization_id));
+
+        return $tenant->run($organization, function () use ($found) {
+            $pdf = $this->pdf->render($found);
+            $this->audit->log('inspection.downloaded', $found, metadata: ['by' => 'link']);
+
+            return response($pdf, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="'.$this->filename($found).'"',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        });
     }
 
     /**

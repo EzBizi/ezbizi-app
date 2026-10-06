@@ -242,6 +242,20 @@ class InspectionReport extends Model implements CarriesAutomationScope, HoldsPer
         $this->update(['archived_at' => null]);
     }
 
+    /**
+     * A link to this report's PDF that opens without signing in — for places
+     * that cannot sign in to EzBizi, like a Workiz job.
+     *
+     * It does not expire: it is pasted into records people open months later.
+     * Archiving the report is what switches it off (see
+     * InspectionReportsController::shared), and erasure blanks the person in
+     * what it serves, because the PDF is drawn fresh on every open.
+     */
+    public function shareUrl(): string
+    {
+        return \Illuminate\Support\Facades\URL::signedRoute('inspection.report.shared', ['report' => $this->getKey()]);
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();
