@@ -2961,6 +2961,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 58 · Jobs · what Workiz knows about a job — **out for decision** (`docs/previews/jobs-workiz-extras-layouts.html`)
+
+From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
+main): `data.workiz` per job: `fields` [{name, value}] in Workiz's names (71% of recent jobs), `files` [{name, url}]
+(photos, files, inspection-report PDFs; 18% of jobs, ~8 each) for anyone; with Jobs Financials only `currency`,
+`invoices`, `payments`, `estimates` (Workiz's own: Won, Declined, Pending, Archived, Unsent, Approved) and `timesheets`,
+plus the "Pricing" field. Beside the queue-31 money card. Desktop **1** tabs in the job panel (Job with Workiz's
+fields as facts under the status · Money: the card, then invoice and payments as a dated line, estimates, time on
+site · Photos & files: a grid, PDFs listed) (recommended); **2** one panel, folding sections with counts; **3** the
+highlights up top (chips, four photos, money with payments) and "See all from Workiz" as a page. Phone **4**
+(recommended) the same tabs; **5** folding sections; **6** highlights, then a page of the rest. All: Workiz records
+marked read only; no Financials, no Money anything.
+
 ### 57 · Reports · Performance · choosing the dates — **Jose: "as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `8da551c1` (`docs/previews/reports-performance-dates-layouts.html`)
 
 From Reports (`local_a0b9e184…`), Jose 2026-10-06: *"Custom date picker on former experimental / From date to date /
