@@ -19,6 +19,11 @@ class VersionHistory {
       items: [
         'Onboarding: the new hire fills in and signs the direct deposit form and the I-9 in the app, pre-filled from their answers. The employer completes I-9 Section 2. Both print in the contract PDF.',
         'The I-9 is the current USCIS edition (01/20/25). The W-4 was already the 2026 form.',
+        'Inspection › Builder is redesigned around the form itself: screens run down the left, each saying how many questions it asks and when it appears, and a screen\'s questions are cards that say in plain words what each one is.',
+        'Inspection › Builder: click a question and it opens where it is, with its answers, the questions each answer asks next, when it is asked and how it prints. A screen can be shown only when an earlier answer matches.',
+        'Inspection › Builder: a live phone beside the questions shows what each answer reveals as you tap it, and the Map sits behind it.',
+        'Inspection › Builder: changes save as you go, and technicians keep the published version until you press Publish. On a phone, screens are a list, each opens as a page, and a question opens in place.',
+        'Inspection › Builder: the "Look" setting is gone, because it changed nothing.',
       ],
     ),
     VersionRelease(
