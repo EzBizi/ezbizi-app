@@ -16,6 +16,7 @@ use App\Support\Scoping\ViewScope;
 use App\Models\NewsletterAudience;
 use App\Models\Role;
 use App\Models\TimeClockReport;
+use App\Models\WhatsAppGroup;
 use App\Models\SavedReport;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
@@ -101,6 +102,7 @@ class AutomationsController extends Controller
         'message.mark_dealt',
         'email.send',
         'whatsapp.send',
+        'whatsapp.group_send',
 
         // ONE ENTRY, FOUR ACTIONS. This list holds EXECUTION TYPES, not action
         // keys: ActionDefinition derives the type from everything after the
@@ -459,6 +461,13 @@ class AutomationsController extends Controller
                     ->orderBy('name')
                     ->get(['id', 'name'])
                     ->map(fn (TimeClockReport $r) => ['id' => $r->id, 'label' => $r->name])
+                    ->all(),
+
+                // Staff WhatsApp groups a rule can post to, by purpose.
+                'whatsapp_groups' => WhatsAppGroup::query()
+                    ->orderBy('subject')
+                    ->get(['purpose', 'subject'])
+                    ->map(fn (WhatsAppGroup $g) => ['id' => $g->purpose, 'label' => $g->subject ?: $g->purpose])
                     ->all(),
 
                 'reports' => SavedReport::query()
@@ -1941,6 +1950,13 @@ class AutomationsController extends Controller
              * subject - rather than a bespoke form for its own sake.
              */
             $type('whatsapp.send', 'Send a WhatsApp message'),
+            // Free text to a staff WhatsApp group (Jose, 2026-10-06: EzBizi
+            // replaces the Rodrigo bot's alerts). Staff, not customers, so no
+            // template and no 24-hour window to respect.
+            $type('whatsapp.group_send', 'Send to a WhatsApp group', false, [
+                $parameter('group', 'Which group', 'whatsapp_group'),
+                $parameter('message', 'Message', 'rich_text', variables: true),
+            ]),
 
             /*
              * The person comes from a FIELD of the event, not a name typed once
