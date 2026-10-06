@@ -1065,6 +1065,31 @@ void main() {
     expect(find.text('Signed I-9 attached, both sections.'), findsOneWidget);
   });
 
+  // The standard pay terms retire pay basis (2026-10-06): not asked again,
+  // and shown only where an earlier answer is on record.
+  testWidgets('a retired question with no answer is not on the form', (
+    tester,
+  ) async {
+    await _pumpForm(
+      tester,
+      _handler(
+        form: {
+          ..._asEmployer,
+          'fields': [
+            {
+              ..._field('pay_basis', 'Pay basis', 'choice', filledBy: 'employer',
+                  writable: false, options: const ['Hourly', 'Salary']),
+              'retired': true,
+            },
+            _field('hourly_rate', 'Hourly rate', 'number', filledBy: 'employer', writable: true),
+          ],
+        },
+      ),
+    );
+    expect(find.text('Pay basis'), findsNothing);
+    expect(find.text('Hourly rate'), findsOneWidget);
+  });
+
   testWidgets('a county the search cannot find is saved as typed', (
     tester,
   ) async {
