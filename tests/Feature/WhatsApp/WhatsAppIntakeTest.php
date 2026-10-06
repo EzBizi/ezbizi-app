@@ -6,6 +6,7 @@ use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Support\Leads\LeadReplies;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppIntake;
 use App\Support\Social\WhatsAppReplies;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -143,6 +144,20 @@ class WhatsAppIntakeTest extends TestCase
         // A day after their last message WhatsApp no longer allows it.
         $this->travel(25)->hours();
         $this->inTenant($this->t['org'], fn () => $this->assertFalse($channel->canReply($lead)));
+    }
+
+    public function test_switched_off_a_stranger_gets_the_menu_and_nobody_is_told(): void
+    {
+        $leads = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);
+        $this->inTenant($this->t['org'], fn () => app(SettingsResolver::class)
+            ->set('ai_assistance.ask_new_contacts', $this->t['org'], false));
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'menu']], 'wamid.IN1');
+
+        $ids = collect($this->sent[0]['interactive']['action']['sections'])->flatMap(fn ($s) => $s['rows'])->pluck('id');
+        $this->assertNotContains(WhatsAppIntake::LEAD, $ids);
+        $this->assertSame([], $this->titlesFor($leads->id));
+        $this->assertSame(0, DB::table('whatsapp_contacts')->count());
     }
 
     public function test_staff_are_never_asked(): void

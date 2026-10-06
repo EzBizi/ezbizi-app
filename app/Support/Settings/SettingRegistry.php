@@ -1004,6 +1004,16 @@ class SettingRegistry
                 help: 'Find a location searches the sites in Web Management whose Group is this. '
                     .'Empty searches every site.',
             ),
+            new SettingDefinition(
+                key: 'ai_assistance.ask_new_contacts',
+                label: 'Ask new contacts what they need',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'A new WhatsApp contact is asked "I need a service" or "I want to work with you": '
+                    .'a service request becomes a lead, a job request goes to HR. Off, they get the menu.',
+            ),
         ];
     }
 
