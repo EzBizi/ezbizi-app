@@ -69,6 +69,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$page      = null;
         FakeMailboxReader::$detail    = null;
         FakeMailboxReader::$markedAtSource  = [];
+        FakeMailboxReader::$unmarkedAtSource = [];
         FakeMailboxReader::$canMarkAtSource = true;
         FakeMailboxReader::$sourceRefuses   = false;
     }
@@ -1062,13 +1063,14 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
     }
 
-    /** And leaves it alone when the mailbox never asked. */
-    public function test_marking_dealt_leaves_the_service_alone_by_default(): void
+    /** And leaves it alone when somebody switched the mailbox off. */
+    public function test_marking_dealt_leaves_the_service_alone_when_switched_off(): void
     {
         $this->withFakeProvider();
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => false]));
 
         $this->signedInAs($t['admin'])
             ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
@@ -1081,19 +1083,21 @@ class MailboxMessagesApiTest extends TestCase
     // ══ 4a. MARKING READ AT THE MAIL SERVICE ═════════════════════
 
     /**
-     * OFF unless somebody chose it, and off is what every existing mailbox is.
+     * Switched OFF, opening never reaches the mail service.
      *
-     * The default is the whole safety of this feature. Read state at a provider
-     * is ONE GLOBAL FLAG; `message_seen` is per person. On a shared inbox,
-     * collapsing them means Jenny opening a customer's mail hides it from Bob,
-     * who sees "read" in Gmail and leaves it believing it is handled.
+     * The default became ON on 2026-10-06 (Jose: "Sync email read/unread with
+     * gmail"), but the switch stays, and this is what it is FOR: read state at
+     * a provider is ONE GLOBAL FLAG while `message_seen` is per person, so a
+     * shared inbox may need it off -- Jenny opening a customer's mail would
+     * otherwise mark it read for Bob looking at Gmail directly.
      */
-    public function test_opening_a_message_does_not_touch_the_mail_service_by_default(): void
+    public function test_opening_a_message_does_not_touch_the_mail_service_when_switched_off(): void
     {
         $this->withFakeProvider();
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => false]));
 
         FakeMailboxReader::$detail = new MessageDetail(
             summary: $this->summary(),
@@ -1108,7 +1112,7 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame(
             [],
             FakeMailboxReader::$markedAtSource,
-            'A mailbox nobody switched this on for reached out to the mail service.',
+            'A mailbox switched OFF reached out to the mail service.',
         );
     }
 
@@ -1193,10 +1197,129 @@ class MailboxMessagesApiTest extends TestCase
         });
     }
 
-    /** Null, not false: never asked for is not the same as tried and refused. */
-    public function test_at_source_is_null_when_the_mailbox_never_asked(): void
+    /** Null, not false: not asked for is not the same as tried and refused. */
+    public function test_at_source_is_null_when_the_mailbox_is_switched_off(): void
     {
         $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => false]));
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', null);
+    }
+
+    /**
+     * THE DEFAULT, and the case the bug lived in: a mailbox nobody has touched
+     * now carries reading across to the mail service.
+     *
+     * With the old opt-in default the list drew its bold from Gmail's flag
+     * while opening only changed EzBizi's record, so every opened message went
+     * back to unread on the next refresh. Every production mailbox was there.
+     */
+    public function test_a_mailbox_nobody_touched_syncs_reading_by_default(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>A quote request.</p>'),
+        );
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk();
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
+    }
+
+    /**
+     * Jose: "Add mark as unread to emails". The button existed; it changed
+     * only EzBizi's record, so the message went straight back to read.
+     */
+    public function test_marking_unread_reaches_the_mail_service(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', true);
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$unmarkedAtSource);
+        $this->assertSame([], FakeMailboxReader::$markedAtSource, 'Unread must not mark it read.');
+    }
+
+    /** The ticked-row buttons are the same two actions, carried the same way. */
+    public function test_bulk_read_and_unread_reach_the_mail_service(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/bulk", [
+                'action' => 'unseen', 'ids' => ['m-1', 'm-2'],
+            ])->assertOk();
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/bulk", [
+                'action' => 'seen', 'ids' => ['m-3'],
+            ])->assertOk();
+
+        $this->assertSame(['m-1', 'm-2'], FakeMailboxReader::$unmarkedAtSource);
+        $this->assertSame(['m-3'], FakeMailboxReader::$markedAtSource);
+    }
+
+    /**
+     * THE BOUNCE: a change at the service clears the cached list.
+     *
+     * The listing is cached briefly and only trash used to clear it, so after
+     * marking a message read or unread the next list came from the cache --
+     * still drawing the service's OLD flag. Without this, syncing would work
+     * and still look broken for the length of the cache.
+     */
+    public function test_a_read_state_change_clears_the_cached_list(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+        $list = fn () => $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
+            ->assertOk()->json('data.from_cache');
+
+        $list();
+        $this->assertTrue($list(), 'Control: the second list should come from the cache.');
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk();
+
+        $this->assertFalse($list(), 'The list still came from the cache after a read-state change.');
+    }
+
+    /**
+     * A connection that cannot write read state is not asked. Null, not false:
+     * Outlook and IMAP are read-only grants by design, and calling them would
+     * be a refused request on every open of every such inbox.
+     */
+    public function test_a_read_only_connection_is_not_asked(): void
+    {
+        $this->withFakeProvider();
+        FakeMailboxReader::$canMarkAtSource = false;
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
@@ -1205,6 +1328,8 @@ class MailboxMessagesApiTest extends TestCase
             ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
             ->assertOk()
             ->assertJsonPath('data.at_source', null);
+
+        $this->assertSame([], FakeMailboxReader::$markedAtSource);
     }
 
     // ══ 4b. STARTING A CONVERSATION ══════════════════════════════
@@ -1804,6 +1929,9 @@ class FakeMailboxReader implements MailboxReader
     /** @var list<string> */
     public static array $markedAtSource = [];
 
+    /** @var string[] Messages marked UNREAD at the mail service. */
+    public static array $unmarkedAtSource = [];
+
     /** Set to make the provider refuse, so the controller's fallback is exercised. */
     public static bool $sourceRefuses = false;
 
@@ -1819,6 +1947,15 @@ class FakeMailboxReader implements MailboxReader
         }
 
         self::$markedAtSource[] = $messageId;
+    }
+
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        if (self::$sourceRefuses) {
+            throw new CannotChangeMail('The mail service said no.');
+        }
+
+        self::$unmarkedAtSource[] = $messageId;
     }
 
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void

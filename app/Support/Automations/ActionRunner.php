@@ -240,6 +240,7 @@ class ActionRunner
                 'thumbtack' => 'Thumbtack',
                 'website_chat' => 'Website live chat',
                 'website_form' => 'Website form',
+                'whatsapp' => 'WhatsApp',
                 'workiz' => 'Workiz',
             ],
             'status' => [

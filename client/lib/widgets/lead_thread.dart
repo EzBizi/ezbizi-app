@@ -2021,6 +2021,7 @@ String sourceWord(String? source) => switch (source) {
   'instagram' => 'Instagram',
   'website_form' => 'Website form',
   'thumbtack' => 'Thumbtack',
+  'whatsapp' => 'WhatsApp',
   _ => 'Google Ads',
 };
 

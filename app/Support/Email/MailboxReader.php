@@ -176,6 +176,19 @@ interface MailboxReader
     public function markReadAtSource(Mailbox $mailbox, string $messageId): void;
 
     /**
+     * The reverse: mark this message unread at the mail service.
+     *
+     * Same setting, same argument, same caller-checks-the-gate rule as
+     * {@see markReadAtSource}. Without it, "mark as unread" in EzBizi changed
+     * only EzBizi's own record while the list's bold came from the provider's
+     * flag -- so the message went straight back to read on the next refresh.
+     *
+     * @throws CannotChangeMail  when this connection cannot change read state
+     * @throws CannotReadMailbox when the mailbox cannot be opened at all
+     */
+    public function markUnreadAtSource(Mailbox $mailbox, string $messageId): void;
+
+    /**
      * Move this message (and its thread, where the provider groups) to Trash.
      *
      * @throws CannotReadMailbox  when the mailbox cannot be opened at all
