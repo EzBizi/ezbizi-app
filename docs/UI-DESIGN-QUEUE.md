@@ -2973,6 +2973,11 @@ the tab) / Notes from Workiz (fetched when opened, grouped by branch, a failing 
 (recommended); **2** one panel: money first, Workiz notes folded under the customer's own notes; **3** a red line only
 when past due, notes behind a button. Phone **4** (recommended) the tabs; **5** one page; **6** the red line.
 
+Build notes from Customers: always send `?today=` (the reader's local date); `past_due_minor` null means unknown, never
+zero, and leaves the tab plain; the tab is coloured only for past due > 0. "Due" is computed (the lower of Workiz's
+`amountDue` snapshot and invoice minus payments, so it matches Workiz's own screen, not its API), so no "per Workiz"
+wording on it. `money` is a list per currency: draw the first; empty list or null hides the Money tab.
+
 ### 58 · Jobs · what Workiz knows about a job — **Jose: "as recommended" (2026-10-06, relayed verbatim by Jobs) — 1 and 4** — **BUILT** `20c0b4bf` (`docs/previews/jobs-workiz-extras-layouts.html`)
 
 From Jobs (`local_aa58c8ac…`), Jose 2026-10-06: *"take advantage of everything v2 has to offer"*. Server 2f38f4b1 (on
