@@ -101,6 +101,25 @@ class CustomerWorkizNotesTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * Job notes are job content: a reader sees the branches they can open jobs
+     * in, as the customer's money does (Customers, 2026-10-07).
+     */
+    public function test_a_reader_sees_only_the_branches_they_reach(): void
+    {
+        $this->client(1008, 'CL-xzA4NAKqzXW76XQp');
+        $nj = $this->extraFranchise($this->tenant, 'New Jersey');
+        $this->inTenant($this->tenant['org'], fn () => WorkizClient::query()->forceCreate([
+            'organization_id' => $this->tenant['org']->id, 'franchise_id' => $nj->id,
+            'client_id' => 77, 'v2_id' => 'CL-nj77', 'name' => 'Pat Rivera', 'customer_id' => $this->customer->id, 'synced_at' => now(), 'last_seen_at' => now(),
+        ]));
+        $branchOnly = $this->userWithRole($this->tenant, 'Branch office', ['customers.view'], onlyAt: $this->tenant['franchise']);
+        $url = '/api/v1/customers/'.$this->customer->id.'/workiz-notes';
+
+        $this->assertSame([77, 1008], collect($this->signedInAs($this->tenant['admin'])->getJson($url)->assertOk()->json('data'))->pluck('client_id')->sort()->values()->all());
+        $this->assertSame([1008], collect($this->signedInAs($branchOnly)->getJson($url)->assertOk()->json('data'))->pluck('client_id')->all());
+    }
+
     /** Only v2 carries job notes: a branch still on v1 says why rather than claiming there are none. */
     public function test_a_branch_not_on_v2_says_why(): void
     {
