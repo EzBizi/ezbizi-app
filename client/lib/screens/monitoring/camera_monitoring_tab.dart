@@ -385,6 +385,7 @@ class _CameraTile extends StatelessWidget {
       CameraBodyKind.disabled => const _DisabledBody(),
       CameraBodyKind.inlineImage => _InlineViewCard(
         key: ValueKey('camera-inline-$id'),
+        label: label,
         url: url,
       ),
       CameraBodyKind.inlineHls => _InlineHlsCard(
@@ -483,18 +484,115 @@ class _DisabledBody extends StatelessWidget {
 /// import keeps `dart:ui_web`/`package:web` out of non-web builds and `dart:io`
 /// out of the web build.
 class _InlineViewCard extends StatelessWidget {
-  const _InlineViewCard({super.key, required this.url});
+  const _InlineViewCard({super.key, required this.label, required this.url});
 
+  final String label;
   final String url;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     // Inline everywhere now: the web half is the DOM <img>, and the off-web
     // half (camera_view_stub.dart) is a native dart:io MJPEG/snapshot reader.
     // Jose, 2026-10-06: the cameras "should work on the app, not just on web."
+    //
+    // The grid tile is the LIGHT view — a frame every few seconds. Tapping it
+    // opens the same camera as a real live stream (?live=1), full motion, in a
+    // side panel, and the stream is torn down when the panel closes. Jose,
+    // 2026-10-07: "click one of them and then it goes into live mode."
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: CameraImageView(url: url),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CameraImageView(url: url),
+          Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: () => _openLivePanel(context, label, url),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scheme.inverseSurface.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 16,
+                            color: scheme.onInverseSurface,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Live',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: scheme.onInverseSurface),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Add `?live=1` to a camera URL — what the serving bridge reads to switch a
+/// camera from the cheap snapshot feed to a real live stream. Preserves any
+/// query already on the URL.
+String _withLive(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null) return url;
+  final q = Map<String, String>.from(u.queryParameters)..['live'] = '1';
+  return u.replace(queryParameters: q).toString();
+}
+
+Future<void> _openLivePanel(BuildContext context, String label, String url) {
+  return showSidePanel<void>(
+    context,
+    builder: (context) => _LiveViewPanel(label: label, url: _withLive(url)),
+  );
+}
+
+/// The enlarged live view — a side panel (not a full-screen push, not a modal
+/// dialog; the grid stays visible beside it) hosting the same [CameraImageView]
+/// pointed at the `?live=1` URL. Closing the panel drops the stream, which is
+/// what tells the bridge to stop pulling the camera.
+class _LiveViewPanel extends StatelessWidget {
+  const _LiveViewPanel({required this.label, required this.url});
+
+  final String label;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title: label,
+      subtitle: 'Live — full motion while this is open.',
+      width: 760,
+      // The body wants the height for itself (a video fills it); a scroll view
+      // would hand it unbounded height and nothing to fill.
+      scrollable: false,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CameraImageView(url: url),
+      ),
     );
   }
 }
