@@ -198,6 +198,33 @@ void main() {
     );
   });
 
+  // Scheduling: `state` is whatever the website row holds, not always a
+  // postal code, so a state that is not one is shown as written.
+  testWidgets('a state that is not a postal code is shown as written', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const Size(1400, 900),
+      {},
+      locations: [
+        ..._locations,
+        _location('l-9', 'Lakeshore', 'Toronto', ' Ontario ', 'M5V', '(416) 555-0199'),
+      ],
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('locations-state-Ontario')),
+        matching: find.text('Ontario'),
+      ),
+      findsOneWidget,
+    );
+    await _pickState(tester, 'Ontario · 1');
+    expect(find.byKey(const Key('locations-row-l-9')), findsOneWidget);
+    expect(find.byKey(const Key('locations-row-l-1')), findsNothing);
+  });
+
   testWidgets('on a phone each branch can be called from its row', (
     tester,
   ) async {
@@ -364,8 +391,9 @@ Future<void> _pickState(WidgetTester tester, String label) async {
 Future<void> _pump(
   WidgetTester tester,
   Size size,
-  Map<String, Map<String, String>> asked,
-) async {
+  Map<String, Map<String, String>> asked, {
+  List<Map<String, Object?>>? locations,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -376,7 +404,7 @@ Future<void> _pump(
       if (path.endsWith('/me')) return _json({'data': _me});
       if (path.endsWith('/scheduling/locations')) {
         return _json({
-          'data': _locations,
+          'data': locations ?? _locations,
           'meta': {
             'notes': [
               {

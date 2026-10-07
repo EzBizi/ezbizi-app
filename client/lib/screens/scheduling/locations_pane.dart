@@ -540,7 +540,7 @@ class _LocationsPaneState extends State<LocationsPane> {
     final words = _find.text.trim().toLowerCase();
     final shown = [
       for (final l in _locations)
-        if ((_state == null || '${l['state']}' == _state) &&
+        if ((_state == null || '${l['state'] ?? ''}'.trim() == _state) &&
             (words.isEmpty ||
                 '${_name(l)} ${_addressOf(l)} ${l['service_area'] ?? ''}'
                     .toLowerCase()
@@ -565,7 +565,9 @@ class _LocationsPaneState extends State<LocationsPane> {
     return first == null ? null : '${first['id']}';
   }
 
-  /// A state as people say it: "Connecticut", not "CT".
+  /// A state as people say it: "Connecticut", not "CT". The website row's
+  /// own words when they are not a postal code (Scheduling: `state` is not
+  /// guaranteed to be one).
   static String _stateName(String code) => _states[code.toUpperCase()] ?? code;
 
   Widget _directory(BuildContext context, {required bool phone}) {
