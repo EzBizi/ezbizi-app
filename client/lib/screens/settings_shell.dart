@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/ui_strings.dart';
+import '../widgets/api_activity.dart';
 import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
@@ -96,6 +97,23 @@ class _SettingsShellState extends State<SettingsShell> {
           roles.label,
           Icons.badge_outlined,
           () => RolesScreen(api: widget.api, session: widget.session),
+        ),
+      // Everything anybody did with an API key, for administrators (UI queue
+      // 66). After Roles, where the kinds of key are decided; a key's owner
+      // reads their own under Your account.
+      if (me.can('organizations.api_activity.view'))
+        (
+          'api_activity',
+          'API activity',
+          Icons.manage_search_outlined,
+          () => SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ApiActivity(
+              api: widget.api,
+              formats: me.display,
+              everyone: true,
+            ),
+          ),
         ),
     ];
 

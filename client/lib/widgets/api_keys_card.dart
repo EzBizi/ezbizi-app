@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
+import 'api_activity.dart';
 import 'date_range_picker.dart';
 import 'error_note.dart';
+import 'side_panel.dart';
 import 'status_pill.dart';
 
 /// Your account › API keys (UI queue 62).
@@ -65,6 +67,9 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
 
   String? _confirming;
   String? _revoking;
+
+  /// The key whose last few changes are open under it (UI queue 66).
+  String? _activity;
 
   @override
   void initState() {
@@ -528,7 +533,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
       );
     }
 
-    return Padding(
+    final row = Padding(
       key: ValueKey('api-key-$id'),
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -574,6 +579,17 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
               ],
             ),
           ),
+          TextButton.icon(
+            key: ValueKey('api-key-activity-$id'),
+            onPressed: () =>
+                setState(() => _activity = _activity == id ? null : id),
+            iconAlignment: IconAlignment.end,
+            icon: Icon(
+              _activity == id ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+            ),
+            label: const Text('Activity'),
+          ),
           TextButton(
             key: ValueKey('api-key-revoke-$id'),
             onPressed: () => setState(() => _confirming = id),
@@ -581,6 +597,45 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
           ),
         ],
       ),
+    );
+    if (_activity != id) return row;
+
+    // What an AI or a script did with it (Jose, 2026-10-07: "an MCP-API log
+    // to records the actions"): the last few changes, the rest in a panel.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        Container(
+          key: ValueKey('api-key-activity-list-$id'),
+          margin: const EdgeInsets.only(left: 30, bottom: 8),
+          padding: const EdgeInsets.only(left: 10),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: theme.colorScheme.primary, width: 2),
+            ),
+          ),
+          child: ApiActivity(
+            api: widget.api,
+            formats: widget.formats,
+            keyId: id,
+            limit: 3,
+            onShowAll: (_) => showSidePanel<void>(
+              context,
+              builder: (context) => SidePanel(
+                title: '${key['name'] ?? ''}',
+                subtitle: 'Everything done with this key',
+                onClose: () => Navigator.of(context).pop(),
+                child: ApiActivity(
+                  api: widget.api,
+                  formats: widget.formats,
+                  keyId: id,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

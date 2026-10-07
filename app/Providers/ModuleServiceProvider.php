@@ -150,6 +150,11 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('organization', 'Organization'),
                     new TabDefinition('settings', 'Settings'),
                     new TabDefinition('integrations', 'Integrations'),
+                    // Everything anybody did with an API key (UI queue 66; Jose,
+                    // 2026-10-07: "an MCP-API log to records the actions").
+                    // Administrators hold it; the activity endpoint widens to
+                    // the organization for whoever does.
+                    new TabDefinition('api_activity', 'API activity'),
                 ],
                 // SettingsController files every settings event against the
                 // tenant root, whatever level the value was written at, because

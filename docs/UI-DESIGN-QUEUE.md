@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 66 · API activity: what an AI or a script did with a key — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4, without Put it back** (`docs/previews/api-activity-layouts.html`)
+### 66 · API activity: what an AI or a script did with a key — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4, without Put it back** — **BUILT** (client in the commit that marks this; server `8427c94d`) (`docs/previews/api-activity-layouts.html`)
 
 From MCP / API (`local_c0e813e0…`), Jose 2026-10-07: *"we should probably have an MCP-API log to records the
 actions"*, *"add all the logging to the MCP-API from now on"*, *"so changes can be reverted if needed"*. Server on

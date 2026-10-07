@@ -197,7 +197,8 @@
             "tabs": [
                 "Organization",
                 "Settings",
-                "Integrations"
+                "Integrations",
+                "API activity"
             ]
         },
         "phone": {
@@ -438,6 +439,7 @@
         "newsletter.send",
         "newsletter.settings.view",
         "newsletter.view",
+        "organizations.api_activity.view",
         "organizations.edit",
         "organizations.integrations.view",
         "organizations.organization.view",
