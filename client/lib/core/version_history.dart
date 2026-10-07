@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0380',
+      date: '7 Oct 2026',
+      items: [
+        'A1 Leads GBP: phone numbers in the Contact column and on the card now read (513) 390-5722.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0379',
       date: '6 Oct 2026',
       items: [
