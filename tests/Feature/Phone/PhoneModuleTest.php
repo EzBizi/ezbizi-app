@@ -26,7 +26,8 @@ class PhoneModuleTest extends TestCase
         $this->assertNull($module->automationExemptBecause);
         // Plus one view per tab (Jose, 2026-09-29), in the tab bar's order.
         $this->assertSame(
-            ['view', 'edit', 'phone.view', 'users.view', 'records.view', 'reports.view', 'settings.view'],
+            // alerts.view: Communication ▸ Alerts (Jose, 2026-10-07).
+            ['view', 'edit', 'phone.view', 'users.view', 'records.view', 'reports.view', 'alerts.view', 'settings.view'],
             $module->actions,
         );
         $this->assertSame(

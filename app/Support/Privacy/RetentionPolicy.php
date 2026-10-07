@@ -75,9 +75,9 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 26 tables this governs today are `a1leads_review_events`
+     * The 27 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
-     * (created_at), `automation_events` (occurred_at),
+     * (created_at), `alerts` (created_at), `automation_events` (occurred_at),
      * `call_report_conversions` (created_at), `call_report_labels` (created_at),
      * `call_report_transcripts` (created_at),
      * `device_tokens` (last_registered_at),

@@ -71,8 +71,46 @@ class NotificationsController extends Controller
             'data' => $notifications,
             'meta' => [
                 'unread' => (clone $base)->whereNull('read_at')->count(),
+                'alerts' => $this->openAlerts($base),
             ],
         ]);
+    }
+
+    /**
+     * Every alert this person has not dismissed, oldest first — whatever the
+     * page above contains.
+     *
+     * The bell asks for its newest 20, so an alert older than that would never
+     * reach the client to pop up: somebody away over a busy weekend would
+     * simply never see it. Alerts (Communication ▸ Alerts, Jose 2026-10-07)
+     * are the one kind that must be acknowledged, so they ride this same poll
+     * in full rather than costing a second request every sixty seconds.
+     * Oldest first because they queue on screen in the order they were sent.
+     *
+     * @return list<array{id: string, title: string, body: ?string, sender: ?string, created_at: ?string}>
+     */
+    private function openAlerts(\Illuminate\Database\Eloquent\Builder $base): array
+    {
+        $rows = (clone $base)
+            ->where('source', 'alert')
+            ->whereNull('read_at')
+            ->oldest('created_at')
+            ->limit(50)
+            ->get(['id', 'title', 'body', 'subject_type', 'subject_id', 'created_at']);
+
+        $senders = \App\Models\Alert::query()
+            ->whereIn('id', $rows->where('subject_type', \App\Models\Alert::class)->pluck('subject_id'))
+            ->with('sender:id,name')
+            ->get(['id', 'sender_id'])
+            ->keyBy('id');
+
+        return $rows->map(fn (Notification $row) => [
+            'id' => $row->id,
+            'title' => $row->title,
+            'body' => $row->body,
+            'sender' => $senders->get($row->subject_id)?->sender?->name,
+            'created_at' => $row->created_at?->toIso8601String(),
+        ])->values()->all();
     }
 
     /** POST /api/v1/notifications/{notification}/read */
