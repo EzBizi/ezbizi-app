@@ -5,9 +5,8 @@ namespace App\Http\Middleware;
 use App\Http\Controllers\Api\McpController;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\ApiKey;
-use App\Support\Tenancy\TenantContext;
+use App\Support\Http\InternalRequest;
 use Closure;
-use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -54,7 +53,12 @@ class EnforceApiKeyAccess
         $before = $refusal === null ? $this->snapshot($request) : null;
         $response = $refusal ?? $next($request);
 
-        $this->record($request, $token, $response, $before);
+        // And after, so putting it back can tell whether anybody changed it since.
+        $after = $before !== null && $request->method() !== 'DELETE' && $response->isSuccessful()
+            ? $this->snapshot($request)
+            : null;
+
+        $this->record($request, $token, $response, $before, $after);
 
         return $response;
     }
@@ -68,7 +72,7 @@ class EnforceApiKeyAccess
      * row, where the module writes one. The outer POST /mcp is not recorded: each
      * call it dispatches comes back through here with its real path.
      */
-    private function record(Request $request, PersonalAccessToken $token, Response $response, ?string $before): void
+    private function record(Request $request, PersonalAccessToken $token, Response $response, ?string $before, ?string $after): void
     {
         if ($request->is('api/*/mcp') || $request->attributes->get(self::SNAPSHOT)) {
             return;
@@ -83,6 +87,7 @@ class EnforceApiKeyAccess
         $this->audit->log('api_key.request', $token, changes: $write ? array_filter([
             'body' => $this->cap($body),
             'before' => $this->cap($before),
+            'after' => $this->cap($after),
         ]) : [], metadata: [
             'method' => $request->method(),
             'path' => $request->path(),
@@ -109,32 +114,15 @@ class EnforceApiKeyAccess
             return null;
         }
 
-        $get = Request::create('/'.$request->path().($request->getQueryString() ? '?'.$request->getQueryString() : ''), 'GET');
+        $uri = '/'.$request->path().($request->getQueryString() ? '?'.$request->getQueryString() : '');
 
         try {
-            Route::getRoutes()->match($get);
-        } catch (Throwable) {
-            return null;
-        }
-
-        $get->headers->set('Accept', 'application/json');
-        $get->headers->set('Authorization', (string) $request->header('Authorization'));
-        if ($request->hasHeader('X-EzBizi-View')) {
-            $get->headers->set('X-EzBizi-View', (string) $request->header('X-EzBizi-View'));
-        }
-        $get->attributes->set(self::SNAPSHOT, true);
-
-        try {
-            $response = app(TenantContext::class)->run(
-                $request->user()->organization,
-                fn () => app(Kernel::class)->handle($get),
-            );
+            Route::getRoutes()->match(Request::create($uri, 'GET'));
+            $response = InternalRequest::send($request, 'GET', $uri, attributes: [self::SNAPSHOT => true]);
         } catch (Throwable $e) {
             report($e);
 
             return null;
-        } finally {
-            app()->instance('request', $request);
         }
 
         // A GET may echo a secret too; redact it the same way.

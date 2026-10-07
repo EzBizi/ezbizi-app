@@ -6,6 +6,9 @@ use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\ApiKey;
+use App\Support\Auth\ApiKeyRevert;
+use App\Support\Http\InternalRequest;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -99,19 +102,17 @@ class ApiKeysController
     public function activity(Request $request): array
     {
         $user = $request->user();
-        // The Settings › API activity tab's grant; Administrators hold it.
-        $admin = $user->hasPermission('organizations.api_activity.view');
+        $admin = $this->seesEveryone($user);
 
-        $events = AuditEvent::query()
-            ->where('organization_id', $user->organization_id)
-            ->where('action', 'like', 'api_key.%')
-            ->when(! $admin, fn ($q) => $q->where('actor_id', $user->getKey()))
+        $events = $this->visible($user)
             ->when($admin && $request->filled('user_id'), fn ($q) => $q->where('actor_id', $request->string('user_id')))
             ->when($request->filled('key_id'), fn ($q) => $q->where('target_id', (string) $request->integer('key_id')))
             ->when($request->filled('before'), fn ($q) => $q->where('occurred_at', '<', $request->date('before')))
             ->orderByDesc('occurred_at')
             ->limit(200)
             ->get();
+
+        $reverted = $this->revertedAt($events->pluck('id')->all());
 
         return [
             'activity' => $events->map(fn (AuditEvent $e) => [
@@ -128,8 +129,115 @@ class ApiKeysController
                 'sent' => $this->decoded($e->changes['body'] ?? null),
                 // The record as it was just before the change, to put it back.
                 'before' => $this->decoded($e->changes['before'] ?? null),
+                'id' => $e->getKey(),
+                'revertable' => ! isset($reverted[$e->getKey()]) && $this->revertible($e) !== null,
+                'reverted_at' => $reverted[$e->getKey()] ?? null,
             ])->all(),
         ];
+    }
+
+    /**
+     * POST /api-keys/activity/{event}/revert — put a keyed change back.
+     *
+     * Only an allowlisted endpoint (ApiKeyRevert), only the fields the change
+     * sent, and only while the record still reads as the change left it: if
+     * somebody changed it since, reverting would undo their work too, so it
+     * refuses and says so. The write goes out as the person pressing the
+     * button, through every gate they meet — this grants nothing.
+     */
+    public function revert(Request $request, string $event): JsonResponse
+    {
+        $user = $request->user();
+        $e = $this->visible($user)->where('action', 'api_key.request')->findOrFail($event);
+
+        abort_if(
+            AuditEvent::query()->where('organization_id', $user->organization_id)
+                ->where('action', 'api_key.reverted')->where('metadata->event_id', $e->getKey())->exists(),
+            Response::HTTP_CONFLICT,
+            'This change has already been put back.',
+        );
+
+        $plan = $this->revertible($e) ?? abort(
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'This change cannot be put back automatically. What it replaced is shown above, so it can be restored by hand.',
+        );
+        [$strategy, $uri, $sent, $before, $after] = $plan;
+
+        $current = InternalRequest::send($request, 'GET', $uri);
+        abort_unless($current->isSuccessful(), $current->getStatusCode(), 'The record could not be read, so it was left as it is.');
+        abort_if(
+            ApiKeyRevert::extract($strategy, (array) json_decode((string) $current->getContent(), true), $sent)
+                != ApiKeyRevert::extract($strategy, $after, $sent),
+            Response::HTTP_CONFLICT,
+            'This has been changed again since, so putting it back would undo those later changes too. Nothing was changed.',
+        );
+
+        $write = InternalRequest::send($request, $e->metadata['method'], $uri, ApiKeyRevert::body($strategy, $before, $sent));
+        if (! $write->isSuccessful()) {
+            return response()->json(
+                ['message' => 'It could not be put back: '.(json_decode((string) $write->getContent(), true)['message'] ?? 'the save was refused.')],
+                $write->getStatusCode(),
+            );
+        }
+
+        $now = (array) json_decode((string) InternalRequest::send($request, 'GET', $uri)->getContent(), true);
+        $restored = ApiKeyRevert::extract($strategy, $now, $sent) == ApiKeyRevert::extract($strategy, $before, $sent);
+
+        $this->audit->log('api_key.reverted', metadata: [
+            'event_id' => $e->getKey(),
+            'path' => $e->metadata['path'] ?? null,
+            'restored' => $restored,
+        ]);
+
+        return response()->json($restored
+            ? ['message' => 'Put back.', 'reverted' => true]
+            : ['message' => 'Saved, but the record does not read exactly as it did before. Check it.', 'reverted' => false]);
+    }
+
+    /** [strategy, uri, sent, before, after] when this change can be put back, else null. */
+    private function revertible(AuditEvent $e): ?array
+    {
+        $method = $e->metadata['method'] ?? '';
+        $path = (string) ($e->metadata['path'] ?? '');
+        $strategy = ApiKeyRevert::strategyFor($method, $path);
+        $sent = json_decode($e->changes['body'] ?? '', true);
+        $before = json_decode($e->changes['before'] ?? '', true);
+        $after = json_decode($e->changes['after'] ?? '', true);
+
+        if ($strategy === null || ! is_array($sent) || ! is_array($before) || ! is_array($after)
+            || ($e->metadata['status'] ?? 500) >= 300
+            // A secret was blanked in the log; writing "[redacted]" back would destroy it.
+            || in_array('[redacted]', ApiKeyRevert::extract($strategy, $before, $sent), true)) {
+            return null;
+        }
+
+        $query = $e->metadata['query'] ?? null;
+
+        return [$strategy, '/'.$path.($query ? '?'.$query : ''), $sent, $before, $after];
+    }
+
+    /** The Settings › API activity tab's grant; Administrators hold it. */
+    private function seesEveryone(User $user): bool
+    {
+        return $user->hasPermission('organizations.api_activity.view');
+    }
+
+    private function visible(User $user)
+    {
+        return AuditEvent::query()
+            ->where('organization_id', $user->organization_id)
+            ->where('action', 'like', 'api_key.%')
+            ->when(! $this->seesEveryone($user), fn ($q) => $q->where('actor_id', $user->getKey()));
+    }
+
+    /** @return array<string, string> event id => when it was put back */
+    private function revertedAt(array $ids): array
+    {
+        return AuditEvent::query()->where('action', 'api_key.reverted')
+            ->whereIn('metadata->event_id', $ids)
+            ->get()
+            ->mapWithKeys(fn (AuditEvent $r) => [$r->metadata['event_id'] => $r->occurred_at?->toIso8601String()])
+            ->all();
     }
 
     /** Stored as text so a capped body still fits; served as JSON when it parses. */

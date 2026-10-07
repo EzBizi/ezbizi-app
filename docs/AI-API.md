@@ -64,3 +64,14 @@ dispatches are, with their real paths.
 `GET /api/v1/api-keys/activity` (newest first, 200 rows, `before=<iso>` to page,
 `key_id=`): your own keys; an Administrator sees the organization's and may
 filter `user_id=`.
+
+## Put it back
+
+`POST /api/v1/api-keys/activity/{event}/revert` restores a keyed PUT/PATCH on an
+**allowlisted** endpoint (`App\Support\Auth\ApiKeyRevert`: website values,
+customers). Only the fields the change sent; refused (409) when the record no
+longer reads as the change left it (the `after` snapshot) or was already put
+back; refused (422) off the allowlist or when a needed value was redacted. The
+write goes out as the person pressing the button. Activity rows carry `id`,
+`revertable` and `reverted_at`. Add an endpoint to the allowlist only with a test
+that changes a record through a key and puts it back.

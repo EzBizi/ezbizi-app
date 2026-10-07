@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Support\Tenancy\TenantContext;
-use Illuminate\Contracts\Http\Kernel;
+use App\Support\Http\InternalRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,8 +35,6 @@ class McpController
 
     /** Never reachable through call_api: credentials, the platform, and this. */
     private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions'];
-
-    public function __construct(private readonly TenantContext $tenant) {}
 
     public function handle(Request $request): JsonResponse|Response
     {
@@ -164,28 +161,14 @@ class McpController
         $query = is_array($args['query'] ?? null) ? $args['query'] : [];
         $body = is_array($args['body'] ?? null) ? $args['body'] : null;
 
-        $sub = Request::create(
-            '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''),
+        $view = $args['view'] ?? null;
+        $response = InternalRequest::send(
+            $request,
             $method,
-            server: ['REMOTE_ADDR' => $request->ip(), 'HTTP_USER_AGENT' => self::USER_AGENT],
-            content: $body === null ? null : json_encode($body),
+            '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''),
+            $body,
+            headers: ['User-Agent' => self::USER_AGENT] + (is_string($view) && $view !== '' ? ['X-EzBizi-View' => $view] : []),
         );
-        $sub->headers->set('Accept', 'application/json');
-        $sub->headers->set('Content-Type', 'application/json');
-        $sub->headers->set('Authorization', (string) $request->header('Authorization'));
-
-        $view = $args['view'] ?? $request->header('X-EzBizi-View');
-        if (is_string($view) && $view !== '') {
-            $sub->headers->set('X-EzBizi-View', $view);
-        }
-
-        // The inner request's `tenant` middleware forgets the tenant on its way
-        // out; run() puts the outer one back.
-        $response = $this->tenant->run(
-            $request->user()->organization,
-            fn () => app(Kernel::class)->handle($sub),
-        );
-        app()->instance('request', $request);
 
         $status = $response->getStatusCode();
         $text = (string) $response->getContent();
