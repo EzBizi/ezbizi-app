@@ -89,6 +89,8 @@ class LeadNotificationTextTest extends TestCase
             T::missedCallDetails('+13192102005', 'Chicago SEO line', voicemail: true),
         );
         $this->assertSame('(319) 210-2005', T::missedCallDetails('3192102005', null), 'an unnamed number drops out');
+        // Production, 2026-10-07: a withheld caller arrived as from = null.
+        $this->assertSame('Unknown caller - A1 Chimney - Voicemail', T::missedCallDetails(null, 'A1 Chimney - Voicemail'));
     }
 
     public function test_a_lead_type_not_yet_recorded_still_says_something_true(): void

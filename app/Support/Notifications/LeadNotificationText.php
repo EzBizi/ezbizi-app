@@ -162,8 +162,12 @@ final class LeadNotificationText
      */
     public static function missedCallDetails(?string $callerNumber, ?string $ourNumberName, bool $voicemail = false): string
     {
+        // A withheld number is SAID, not dropped: Bar asked for the caller's
+        // number first, and with it missing the line read as if our queue's
+        // name were the caller — measured on production's second event,
+        // "A1 Chimney - Voicemail" with from = null.
         $parts = array_filter(
-            [self::phone($callerNumber), $ourNumberName, $voicemail ? 'left a voicemail' : null],
+            [self::phone($callerNumber) ?? 'Unknown caller', $ourNumberName, $voicemail ? 'left a voicemail' : null],
             fn (?string $part) => $part !== null && trim($part) !== '',
         );
 
