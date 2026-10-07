@@ -20,6 +20,11 @@
                 "Settings"
             ]
         },
+        "api_keys": {
+            "label": "API keys",
+            "parent": null,
+            "tabs": []
+        },
         "audit": {
             "label": "Audit log",
             "parent": null,
@@ -299,6 +304,9 @@
         "ai_assistance.settings.view",
         "ai_assistance.view",
         "ai_assistance.whatsapp_groups.view",
+        "api_keys.delete",
+        "api_keys.edit",
+        "api_keys.view",
         "audit.view",
         "automations.build.view",
         "automations.create",

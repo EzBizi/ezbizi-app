@@ -10,8 +10,9 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * What an API key may not do, whatever its owner may.
  *
- * Read-only keys refuse every write — keyed off the verb, like `subscription`
- * and `verified`, so a new endpoint is covered without anybody listing it.
+ * Viewer keys refuse every write and Editor keys refuse DELETE — keyed off the
+ * verb, like `subscription` and `verified`, so a new endpoint is covered without
+ * anybody listing it.
  * EVERY key refuses the account's own security: a leaked key must not be able
  * to change the password, switch off a second factor, mint more keys or delete
  * the person. Sessions carry no key prefix and pass untouched.
@@ -40,9 +41,27 @@ class EnforceApiKeyAccess
             return $this->refuse('An API key cannot change sign-in security or delete the account. Sign in to EzBizi to do that.', 'api_key_account_security');
         }
 
+        // Its own level, capped by what the owner's role allows TODAY: taking the
+        // api_keys tick away downgrades or stops keys already made.
+        $level = ApiKey::effectiveLevel($token, $request->user());
+
+        if ($level === null) {
+            return $this->refuse('Your role no longer allows API keys. An administrator can allow them in Roles & permissions.', 'api_key_not_allowed');
+        }
+
         // MCP is a POST that only dispatches; each call it makes is checked here again.
-        if (! $request->isMethodSafe() && ! $token->can('*') && ! $request->is('api/*/mcp')) {
-            return $this->refuse('This API key is read-only. Create a key with write access to make changes.', 'api_key_read_only');
+        if ($request->isMethodSafe() || $request->is('api/*/mcp')) {
+            return $next($request);
+        }
+
+        if ($level === 'viewer') {
+            return $this->refuse('This API key can only read. A Viewer key cannot make changes.', 'api_key_read_only');
+        }
+
+        // ponytail: "delete" is the DELETE verb. An endpoint that removes by POST
+        // (deactivate, archive) is an edit here; list it if one ever matters.
+        if ($level === 'editor' && $request->isMethod('DELETE')) {
+            return $this->refuse('This API key can read and edit but not delete. Deleting needs a Full access key.', 'api_key_no_delete');
         }
 
         return $next($request);

@@ -345,6 +345,24 @@ class ModuleServiceProvider extends ServiceProvider
                 // nothing. Back to ROLES_SETTINGS when a screen reads it.
                 rolesGroup: ModuleDefinition::ROLES_OMIT,
             ),
+
+            new ModuleDefinition(
+                key: 'api_keys',
+                label: 'API keys',
+                // Which kind of key a role may make (Jose, 2026-10-07): view =
+                // Viewer (read), edit = Editor (read and edit), delete = Full
+                // access. Checked again on every keyed request, so taking the
+                // tick away downgrades keys already made (EnforceApiKeyAccess).
+                actions: ['view', 'edit', 'delete'],
+                actionLabels: [
+                    'view' => 'Viewer keys (read)',
+                    'edit' => 'Editor keys (read and edit)',
+                    'delete' => 'Full access keys (read, edit and delete)',
+                ],
+                automationExemptBecause: 'API keys are credentials; nothing may create or change them programmatically.',
+                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                sidebar: false,
+            ),
         ];
     }
 
