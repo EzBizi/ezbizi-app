@@ -1,0 +1,257 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scheduling · Locations, made easier to read</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every company, branch, address and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2.plain{margin-top:30px;font-size:15px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pric);outline:2px solid var(--edge)}
+.page{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
+.mh{padding:12px 18px 4px}
+.mh .t{font-size:19px;font-weight:800}
+.mh .s{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;gap:6px;padding:6px 16px 10px;border-bottom:1px solid var(--line)}
+.tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:700;background:var(--paper);color:var(--neu)}
+.tab.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.body{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:12px 16px}
+.row{display:flex;gap:10px;min-height:0}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:26px;font-size:11.5px;padding:0 9px}
+.btn.wide{width:100%}
+.ib{width:28px;height:28px;border-radius:var(--r);display:inline-flex;align-items:center;justify-content:center;color:var(--pri);border:1px solid #c2d3da;font-size:13px;flex:0 0 auto;background:var(--paper)}
+.search{display:flex;align-items:center;gap:8px;height:40px;border:1px solid #b9c7cd;border-radius:var(--r);background:var(--paper);padding:0 12px;color:var(--muted);font-size:13px}
+.search .go{margin-left:auto;color:var(--pri);font-weight:700;font-size:12px}
+.search.hero{height:46px;border:1.5px solid var(--pri);font-size:14px}
+.fld{display:inline-flex;align-items:center;gap:6px;height:32px;border:1px solid #b9c7cd;border-radius:var(--r);background:var(--paper);padding:0 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-info{background:var(--infoc);color:var(--info)} .p-ok{background:var(--okc);color:var(--ok)} .p-neu{background:var(--neuc);color:var(--neu)}
+.co{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tiny{font-size:11px;color:var(--muted)} .muted{color:var(--muted)} .b{font-weight:700}
+/* the list */
+.lst{display:flex;flex-direction:column;overflow:hidden}
+.gh{display:flex;align-items:center;gap:8px;padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--neu);letter-spacing:.03em;background:#f7f9fa;border-top:1px solid var(--line2)}
+.gh .c{color:var(--muted);font-weight:600}
+.li{display:grid;grid-template-columns:minmax(0,1fr) 120px 128px;gap:10px;align-items:center;padding:7px 14px;border-top:1px solid var(--line2);font-size:12.5px}
+.li .nm b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .nm span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .ph{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.li.on{background:var(--pric)}
+.li.on .nm b{color:var(--prid)}
+.det{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.det h3{margin:0;font-size:17px}
+.blk{border-top:1px solid var(--line2);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.blk .k{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.blk .v{display:flex;align-items:center;gap:8px}
+.blk .v .x{flex:1;min-width:0}
+.big{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.note{background:var(--cauc);color:var(--cau);border-radius:var(--r);padding:10px 12px;font-size:12px}
+.note b{display:block;margin-bottom:2px}
+.ans{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px}
+.ans .card{padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.ans .card.first{border:1.5px solid var(--pri)}
+.ans .mi{font-size:18px;font-weight:800;margin-left:auto}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.bc{padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.bc .ph{font-weight:800;font-size:13.5px;font-variant-numeric:tabular-nums}
+.bc.on{border:1.5px solid var(--pri);background:#f4fafc}
+.rail{width:190px;flex:0 0 auto;display:flex;flex-direction:column;overflow:hidden}
+.ri{display:flex;justify-content:space-between;padding:7px 12px;font-size:12.5px;border-top:1px solid var(--line2)}
+.ri.on{background:var(--pric);color:var(--prid);font-weight:700}
+.ri .c{color:var(--muted)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .lab{font-size:12px;font-weight:700}
+.phn{width:340px;height:720px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column}
+.phn .st{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .li{grid-template-columns:minmax(0,1fr) auto}
+</style>
+<div class="wrap">
+
+<h1>Scheduling · Locations, made easier to read</h1>
+<p class="sub">Jose, 2026-10-07, with a screenshot of Scheduling › Locations: <i>"make this page look better"</i>. Today's page works but reads poorly. Every row repeats its company in front of the branch ("A-1 Chimney · A1 Chimney - Denver"). The phone floats far to the right of a sparse row. The state headings are tiny two-letter codes. Twenty-six state chips take two rows. There are two search boxes that look the same but do different things. And the selected branch shows only as blue text, beside a sparse detail card.</p>
+<p class="need"><b>Data:</b> nothing new. Every option keeps every feature: the closest branch to a customer's address (with who serves the ZIP), the whole directory filtered by name or state, and each branch's address, phone, email, area, what it serves, the note for new dispatchers, Check availability, Directions, Copy. <b>In all of them:</b> a row names the branch once with its company as a small label; states read in full ("Connecticut · 8"); the selected row is shaded; the phone sits in its own column; and the detail panel groups each fact with its action: call or copy the number, directions or copy the address.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>The same two panes, tidied: one clear lookup, a tight directory, a detail card that acts <span class="rec">Recommended</span></h2>
+<p class="cap">The address lookup becomes the page's headline: <b>Who serves this address?</b>, a wider box with its button spelled out. The directory below is a tight list: branch name in bold, its company and city small under it, the area and phone in their own columns, and states as full-name section headings. A <b>State</b> dropdown replaces the 26 chips, beside a name filter labelled for what it does. The selected branch is shaded, and its card on the right groups each fact with its action. <b>Why:</b> it is still the page people know, but it reads at a glance, and a dispatcher's two jobs (who serves this address, who do I call) each have one obvious place.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+  <div class="page">
+   <div class="mh"><div class="t">Scheduling</div><div class="s">What you are set up to take, and what is on the calendar.</div></div>
+   <div class="tabs"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span></div>
+   <div class="body">
+    <div class="search hero">🔍 <span>Who serves this address? Type a customer's address or ZIP</span><span class="btn f sm" style="margin-left:auto">Find the closest</span></div>
+    <div class="row" style="flex:1">
+     <div class="card lst" style="flex:1">
+      <div style="display:flex;gap:8px;padding:10px 12px;align-items:center">
+       <div class="search" style="height:32px;flex:1;font-size:12px">⌕ Filter branches by name or city</div>
+       <span class="fld">State: All ▾</span>
+       <span class="tiny">59 branches</span>
+      </div>
+      <div class="li" style="font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;padding-top:4px;padding-bottom:4px"><span>Branch</span><span>Area</span><span style="text-align:right">Phone</span></div>
+      <div class="gh">California <span class="c">· 3</span></div>
+      <div class="li"><div class="nm"><b>Harbor Chimney - Bayview</b><span>HARBOR CHIMNEY · Bayview</span></div><span class="pill p-neu">West › Bay Area</span><span class="ph">(555) 651-3441</span></div>
+      <div class="li"><div class="nm"><b>Crestwood Home - Mission</b><span>CRESTWOOD HOME · Mission</span></div><span class="pill p-neu">West › Bay Area</span><span class="ph">(555) 810-3011</span></div>
+      <div class="gh">Colorado <span class="c">· 1</span></div>
+      <div class="li on"><div class="nm"><b>Harbor Chimney - Pine Ridge</b><span>HARBOR CHIMNEY · Littleton</span></div><span class="pill p-info">Nationwide › Pine Ridge</span><span class="ph">(555) 284-5111</span></div>
+      <div class="gh">Connecticut <span class="c">· 8</span></div>
+      <div class="li"><div class="nm"><b>Harbor Chimney - North Harbor</b><span>HARBOR CHIMNEY · North Harbor</span></div><span class="pill p-neu">Connecticut</span><span class="ph">(555) 315-0608</span></div>
+      <div class="li"><div class="nm"><b>Harbor Chimney - Stoneford</b><span>HARBOR CHIMNEY · Stoneford</span></div><span class="pill p-neu">Connecticut</span><span class="ph">(555) 290-1666</span></div>
+      <div class="li"><div class="nm"><b>Bayline Doors - Danfield</b><span>BAYLINE DOORS · Danfield</span></div><span class="pill p-neu">Connecticut</span><span class="ph">(555) 454-5877</span></div>
+      <div class="li"><div class="nm"><b>Bayline Doors - Hartwell</b><span>BAYLINE DOORS · Hartwell</span></div><span class="pill p-neu">Connecticut</span><span class="ph">(555) 969-2108</span></div>
+     </div>
+     <div class="card det" style="width:380px;flex:0 0 auto">
+      <div><div class="co">Harbor Chimney</div><h3>Harbor Chimney - Pine Ridge</h3><span class="pill p-info">Nationwide › Pine Ridge</span></div>
+      <div class="blk"><span class="k">Phone</span><div class="v"><span class="x big">(555) 284-5111</span><span class="ib" title="Copy">⧉</span></div></div>
+      <div class="blk"><span class="k">Address</span><div class="v"><span class="x">9878 W Belleview Ave, #2357<br>Littleton, CO 80123</span><span class="ib" title="Copy">⧉</span><span class="ib" title="Directions">➚</span></div></div>
+      <div class="blk"><span class="k">Serves</span><div class="v"><span class="x">Nationwide › Pine Ridge</span></div></div>
+      <div class="note"><b>For new dispatchers</b>Ask for the gate code; the office closes at 4 on Fridays.</div>
+      <span class="btn f wide">Check availability</span>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="cap" style="margin-top:12px"><b>After a lookup</b>, three answers sit under the box as they do today: the one that serves the ZIP first, marked, with its miles. The list and card stay below.</p>
+<div class="ans" style="width:1100px">
+ <div class="card first"><div style="display:flex;gap:6px;align-items:center"><span class="pill p-ok">Closest</span><span class="pill p-info">Serves 80123</span><span class="mi">4.2 mi</span></div><b>Harbor Chimney - Pine Ridge</b><span class="tiny">9878 W Belleview Ave, Littleton, CO · (555) 284-5111</span><div style="display:flex;gap:6px;margin-top:4px"><span class="btn f sm">Check availability</span><span class="btn sm">Directions</span><span class="btn sm">Copy phone</span></div></div>
+ <div class="card"><div style="display:flex"><b>Harbor Chimney - Aurora</b><span class="mi" style="font-size:15px">11.8 mi</span></div><span class="tiny">2200 S Parker Rd, Aurora, CO</span></div>
+ <div class="card"><div style="display:flex"><b>Crestwood Home - Boulder</b><span class="mi" style="font-size:15px">27 mi</span></div><span class="tiny">1600 Pearl St, Boulder, CO</span></div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>Branches as cards, by state, with the details in a side panel</h2>
+<p class="cap">The directory becomes a grid of small cards, three across: branch, company, city, the phone in large type, and what it serves. Clicking a card opens its details in a side panel. <b>Why:</b> the phone number, which is what a dispatcher came for, is the biggest thing on each card. The cost is a longer page, and a second click to see an address.</p>
+<div class="win" style="height:560px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i class="on"></i><i></i></div>
+  <div class="page">
+   <div class="tabs" style="padding-top:12px"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span></div>
+   <div class="body">
+    <div class="search hero">🔍 <span>Who serves this address? Type a customer's address or ZIP</span><span class="btn f sm" style="margin-left:auto">Find the closest</span></div>
+    <div style="display:flex;gap:8px;align-items:center"><div class="search" style="height:32px;width:340px;font-size:12px">⌕ Filter branches by name or city</div><span class="fld">State: All ▾</span><span class="tiny">59 branches</span></div>
+    <div class="gh" style="background:none;border:0;padding-left:0">California <span class="c">· 3</span></div>
+    <div class="grid3">
+     <div class="card bc"><span class="co">Harbor Chimney</span><b>Harbor Chimney - Bayview</b><span class="tiny">Bayview · West › Bay Area</span><span class="ph">(555) 651-3441</span></div>
+     <div class="card bc"><span class="co">Crestwood Home</span><b>Crestwood Home - Mission</b><span class="tiny">Mission · West › Bay Area</span><span class="ph">(555) 810-3011</span></div>
+     <div class="card bc"><span class="co">Harbor Chimney</span><b>Harbor Chimney - Sunvale</b><span class="tiny">Sunvale · West › Bay Area</span><span class="ph">(555) 512-0090</span></div>
+    </div>
+    <div class="gh" style="background:none;border:0;padding-left:0">Colorado <span class="c">· 1</span></div>
+    <div class="grid3">
+     <div class="card bc on"><span class="co">Harbor Chimney</span><b>Harbor Chimney - Pine Ridge</b><span class="tiny">Littleton · Nationwide › Pine Ridge</span><span class="ph">(555) 284-5111</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>States down the left, branches in the middle, details on the right</h2>
+<p class="cap">Three columns: a rail of states with their counts (All first), the chosen state's branches as a tight list, and the selected branch's card. <b>Why:</b> with 59 branches across 26 states, picking the state first keeps every list short. The cost is that "all branches" is one click away rather than the starting view.</p>
+<div class="win" style="height:520px">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group</span></div>
+ <div class="shell">
+  <div class="nav"><i></i><i></i><i class="on"></i><i></i></div>
+  <div class="page">
+   <div class="tabs" style="padding-top:12px"><span class="tab">Availability</span><span class="tab">Schedule</span><span class="tab">Overbooking</span><span class="tab on">Locations</span><span class="tab">Settings</span></div>
+   <div class="body">
+    <div class="search hero">🔍 <span>Who serves this address? Type a customer's address or ZIP</span><span class="btn f sm" style="margin-left:auto">Find the closest</span></div>
+    <div class="row" style="flex:1">
+     <div class="card rail"><div class="ri on">All<span class="c">59</span></div><div class="ri">California<span class="c">3</span></div><div class="ri">Colorado<span class="c">1</span></div><div class="ri">Connecticut<span class="c">8</span></div><div class="ri">Delaware<span class="c">1</span></div><div class="ri">Florida<span class="c">1</span></div><div class="ri">Georgia<span class="c">1</span></div><div class="ri">Illinois<span class="c">1</span></div></div>
+     <div class="card lst" style="flex:1">
+      <div style="padding:10px 12px"><div class="search" style="height:32px;font-size:12px">⌕ Filter branches by name or city</div></div>
+      <div class="li"><div class="nm"><b>Harbor Chimney - Bayview</b><span>HARBOR CHIMNEY · Bayview, CA</span></div><span></span><span class="ph">(555) 651-3441</span></div>
+      <div class="li on"><div class="nm"><b>Harbor Chimney - Pine Ridge</b><span>HARBOR CHIMNEY · Littleton, CO</span></div><span></span><span class="ph">(555) 284-5111</span></div>
+      <div class="li"><div class="nm"><b>Harbor Chimney - North Harbor</b><span>HARBOR CHIMNEY · North Harbor, CT</span></div><span></span><span class="ph">(555) 315-0608</span></div>
+     </div>
+     <div class="card det" style="width:330px;flex:0 0 auto">
+      <div><div class="co">Harbor Chimney</div><h3>Harbor Chimney - Pine Ridge</h3></div>
+      <div class="blk"><span class="k">Phone</span><div class="v"><span class="x big">(555) 284-5111</span><span class="ib">⧉</span></div></div>
+      <div class="blk"><span class="k">Address</span><div class="v"><span class="x">9878 W Belleview Ave, Littleton, CO 80123</span><span class="ib">➚</span></div></div>
+      <span class="btn f wide">Check availability</span>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2 class="plain">On a phone</h2>
+<div class="phones">
+ <div class="pcol"><span class="lab">4 · The lookup, then a tight list; a branch opens in place <span class="rec">Recommended</span></span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span class="t">Locations</span></div>
+   <div class="pb">
+    <div class="search hero" style="font-size:12.5px">🔍 Who serves this address?</div>
+    <div style="display:flex;gap:8px"><div class="search" style="height:32px;flex:1;font-size:12px">⌕ Filter</div><span class="fld">All states ▾</span></div>
+    <div class="card lst">
+     <div class="gh">Colorado <span class="c">· 1</span></div>
+     <div class="li on"><div class="nm"><b>Harbor Chimney - Pine Ridge</b><span>Littleton · (555) 284-5111</span></div><span class="ib">☎</span></div>
+     <div class="gh">Connecticut <span class="c">· 8</span></div>
+     <div class="li"><div class="nm"><b>Harbor Chimney - North Harbor</b><span>North Harbor · (555) 315-0608</span></div><span class="ib">☎</span></div>
+     <div class="li"><div class="nm"><b>Harbor Chimney - Stoneford</b><span>Stoneford · (555) 290-1666</span></div><span class="ib">☎</span></div>
+     <div class="li"><div class="nm"><b>Bayline Doors - Danfield</b><span>Danfield · (555) 454-5877</span></div><span class="ib">☎</span></div>
+    </div>
+    <span class="tiny">A row opens its card in place, with Call, Directions and Check availability; ☎ calls straight away.</span>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">5 · Cards by state</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span class="t">Locations</span></div>
+   <div class="pb">
+    <div class="search hero" style="font-size:12.5px">🔍 Who serves this address?</div>
+    <div class="gh" style="background:none;border:0;padding-left:2px">Colorado · 1</div>
+    <div class="card bc"><span class="co">Harbor Chimney</span><b>Harbor Chimney - Pine Ridge</b><span class="tiny">Littleton · Nationwide › Pine Ridge</span><span class="ph">(555) 284-5111</span></div>
+    <div class="gh" style="background:none;border:0;padding-left:2px">Connecticut · 8</div>
+    <div class="card bc"><span class="co">Harbor Chimney</span><b>Harbor Chimney - North Harbor</b><span class="tiny">North Harbor · Connecticut</span><span class="ph">(555) 315-0608</span></div>
+   </div>
+  </div>
+ </div>
+ <div class="pcol"><span class="lab">6 · States first</span>
+  <div class="phn"><div class="st"></div>
+   <div class="ab"><span class="t">Locations</span></div>
+   <div class="pb">
+    <div class="search hero" style="font-size:12.5px">🔍 Who serves this address?</div>
+    <div class="card lst"><div class="ri">California<span class="c">3 ›</span></div><div class="ri">Colorado<span class="c">1 ›</span></div><div class="ri">Connecticut<span class="c">8 ›</span></div><div class="ri">Delaware<span class="c">1 ›</span></div><div class="ri">Florida<span class="c">1 ›</span></div><div class="ri">Georgia<span class="c">1 ›</span></div></div>
+    <span class="tiny">A state opens its branches; a branch opens its card.</span>
+   </div>
+  </div>
+ </div>
+</div>
+</div>

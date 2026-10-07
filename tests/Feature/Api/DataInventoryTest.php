@@ -548,9 +548,11 @@ class DataInventoryTest extends TestCase
                      * purge does not act on, and says so: for an erasable entry
                      * `field` is "a comma-separated list of REAL columns and
                      * nothing else", because that string is what the Anonymiser
-                     * issues an UPDATE against.
+                     * issues an UPDATE against. An erasable key inside a JSON
+                     * column is written `payload->Phone`, which the Anonymiser
+                     * writes through Eloquent; the column is checked the same way.
                      */
-                    $column = strstr($name, '.', true) ?: $name;
+                    $column = preg_split('/\.|->/', $name)[0];
 
                     if (! in_array($column, $columns, true)) {
                         $vanished[] = "{$table}.{$name}";

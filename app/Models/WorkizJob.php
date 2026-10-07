@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\Erasure;
+use App\Support\Privacy\HoldsPersonalData;
+use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
-use App\Support\Privacy\StatesRetention;
 use App\Support\Workiz\WorkizJobAttributes;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,7 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * That split is why two-way sync does not change this rule. An edit made in
  * EzBizi is pushed to WORKIZ and arrives back here on the next sweep, so this
  * table still only ever holds Workiz's answer. It is never the place an edit
- * lives.
+ * lives. The one exception is erasing a customer, which blanks the person on
+ * their jobs and keeps them blank (keepErased).
  */
 #[Fillable([
     'franchise_id', 'connection_id', 'remote_id', 'serial_id', 'client_id',
@@ -32,10 +36,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'booked_at', 'scheduled_for', 'scheduled_end', 'last_status_update',
     'created_by', 'payload', 'synced_at', 'job_id', 'projected',
 ])]
-class WorkizJob extends Model implements StatesRetention
+class WorkizJob extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
     use HasUuids;
+
+    /** What erasing a customer writes as the client's name on their jobs, and how a later read knows. */
+    public const ERASED = 'Removed client';
 
     protected function casts(): array
     {
@@ -78,6 +85,8 @@ class WorkizJob extends Model implements StatesRetention
         if (isset($payload['v2'])) {
             $attributes = self::keepWhatV2CannotSay($connection, $attributes);
         }
+
+        $attributes = self::keepErased($connection, $attributes);
 
         static::query()->updateOrCreate(
             [
@@ -166,11 +175,90 @@ class WorkizJob extends Model implements StatesRetention
         return RetentionPolicy::forever(
             'A mirror of the source system A-1 is migrating off, kept as long as the jobs and '
             .'customers projected from it are kept — deleting the mirror would strand those rows '
-            .'with no provenance for where they came from. The personal data in it (the '
-            .'customer\'s name, contact details and service address, which Workiz carries on '
-            .'every job because it has no separate client record) is erased by erasing the '
-            .'customer it was projected onto: this table holds no person EzBizi does not also '
-            .'hold in `customers`, and `customers` decides about itself.'
+            .'with no provenance for where they came from. Erasing the customer a job was '
+            .'projected onto blanks the person on it, and keeps them blank when Workiz, which '
+            .'still holds them, answers for the job again.'
         );
+    }
+
+    // ── §9 data inventory ────────────────────────────────────────
+
+    public static function personalDataPurpose(): string
+    {
+        return 'Each Workiz job as the branch\'s Workiz answers for it, which the jobs and customers '
+            .'EzBizi shows are projected from. Workiz has no separate client record, so it carries '
+            .'the client\'s name, contact details and address on every job.';
+    }
+
+    /**
+     * Keys inside `payload` are named `payload->Key`, which the Anonymiser
+     * writes through Eloquent's JSON attributes.
+     */
+    public static function personalDataHeld(): array
+    {
+        return [
+            new PersonalDataEntry('payload->FirstName', PersonalDataEntry::IDENTITY,
+                'Who the work is for, as Workiz recorded them. After an erasure it says so, '
+                .'which is how a later read of the job knows to keep the person out.',
+                Erasure::erase(self::ERASED)),
+            new PersonalDataEntry('payload->LastName, payload->Company', PersonalDataEntry::IDENTITY,
+                'Who the work is for, as Workiz recorded them.',
+                Erasure::erase()),
+            new PersonalDataEntry('payload->Email, payload->Phone, payload->PhoneExt, payload->SecondPhone, payload->SecondPhoneExt',
+                PersonalDataEntry::CONTACT,
+                'Arranging the work, and matching the job to a customer EzBizi already holds.',
+                Erasure::erase()),
+            new PersonalDataEntry('address, unit, city, state, postal_code, country, latitude, longitude, '
+                .'payload->Address, payload->Unit, payload->City, payload->State, payload->PostalCode, '
+                .'payload->Country, payload->Latitude, payload->Longitude',
+                PersonalDataEntry::CONTACT,
+                'Where the work happens, usually a home.',
+                Erasure::erase()),
+            new PersonalDataEntry('payload->JobNotes, payload->Notes, payload->Attachments', PersonalDataEntry::CONTENT,
+                'The job\'s description, the notes staff leave on it and links to its photos, '
+                .'which can say anything about the person and their home.',
+                Erasure::erase()),
+        ];
+    }
+
+    /**
+     * The mirrored jobs of the customer's jobs.
+     *
+     * ponytail: the job link reaches every mirrored row (49,687 of 49,687 on
+     * 2026-10-07); a row landed and not yet projected in the minute of a purge
+     * is missed.
+     */
+    public static function personalDataAbout(Model $subject): ?Builder
+    {
+        return $subject instanceof Customer
+            ? static::query()->whereIn('job_id', Job::withTrashed()->where('customer_id', $subject->getKey())->select('id'))
+            : null;
+    }
+
+    /**
+     * A job whose client was erased stays erased when Workiz answers for it
+     * again: Workiz still holds the person, and every read would copy them
+     * back. The job itself -- status, dates, money -- still follows Workiz.
+     */
+    private static function keepErased(SocialConnection $connection, array $attributes): array
+    {
+        $erased = static::query()->where('franchise_id', $connection->scope_id)
+            ->where('remote_id', $attributes['remote_id'])->where('payload->FirstName', self::ERASED)->exists();
+
+        if (! $erased) {
+            return $attributes;
+        }
+
+        foreach (self::personalDataHeld() as $entry) {
+            foreach ($entry->erasure->disposition === Erasure::ERASE ? $entry->columns() : [] as $column) {
+                if (str_starts_with($column, 'payload->')) {
+                    $attributes['payload'][substr($column, strlen('payload->'))] = $entry->erasure->standIn;
+                } else {
+                    $attributes[$column] = $entry->erasure->standIn;
+                }
+            }
+        }
+
+        return $attributes;
     }
 }

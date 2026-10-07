@@ -644,8 +644,10 @@ class PersonalDataPurgeTest extends TestCase
                 }
 
                 foreach ($entry->columns() as $column) {
+                    // `payload->Phone` is a key inside the JSON column
+                    // `payload`; the column is what the schema can answer for.
                     $this->assertTrue(
-                        Schema::hasColumn($table, $column),
+                        Schema::hasColumn($table, strstr($column, '->', true) ?: $column),
                         "{$class} says erasure blanks {$table}.{$column}, and there is no "
                         .'such column — so the purge would silently erase nothing.',
                     );
