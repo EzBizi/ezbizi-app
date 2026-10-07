@@ -3142,7 +3142,7 @@ rows; **3** a comparison table. Phone **4** (recommended) – **6**. Needs from 
 on the page (it shows the organization's, "A1-Group", where the customer knows "A-1 Chimney"), and an optional
 one-line plan `description`.
 
-### 53 · Dashboard · templates a person can apply — **out for decision** (`docs/previews/dashboard-templates-layouts.html`)
+### 53 · Dashboard · templates a person can apply — **Jose: "did we ever add the recommended layouts ? so users can click on them and it changes the layout of their dashboard that being order and size of widgets and modes" (2026-10-07, relayed verbatim by Dashboard) — 1 and 4** — built, with Dashboard for review (`docs/previews/dashboard-templates-layouts.html`)
 
 Jose, 2026-10-05, to the Dashboard module: *"also make some recommended layouts, like templates a user can
 apply"*. Server on main (`90ea5d42`): `GET /dashboard/catalogue` → `templates` [{key, label, description,
@@ -3152,6 +3152,11 @@ layout is a PUT of `[]`. Desktop **1** a Templates button in Customize opening a
 a miniature drawn from its sizes, Use this layout), applied at once with an Undo bar instead of a confirm
 (recommended); **2** template chips under the Customize bar, same Undo; **3** five cards first in Customize, asked
 inside the card. Phone **4** (recommended) – **6** the same three.
+
+Build notes: templates now set modes too (Dashboard's 88cd5af2): entries {key, size, presentation?, hidden}, a Small
+box naming no mode and keeping its stored one, so the glances are sent exactly as the server built them. Undo PUTs the
+layout as it was (every box's order, size, mode, options, hidden). On a phone the Customize bar's tools take a line of
+their own: beside the words they squeezed them five lines tall and pushed the boxes off a 375×700 screen.
 
 ### 52 · Customers · Memberships: Dashboard, Members, Settings — **Jose: "go with ur recommended options as usual" — 1 and 4** — **BUILT, on main with its routes** (merge `4b293c53`; price fix `64a1ccbc`) (`docs/previews/customers-memberships-layouts.html`)
 
