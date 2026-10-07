@@ -272,6 +272,11 @@ final class RingCentralCallLog
             'started_at' => $record['startTime'] ?? null,
             'from' => $record['from']['phoneNumber'] ?? null,
 
+            // Our number they dialled. RingCentral gives no name for it here,
+            // and its number list (/account/~/phone-number) refuses this app
+            // (403, no ReadAccounts permission, measured 2026-10-07).
+            'to_number' => $record['to']['phoneNumber'] ?? null,
+
             // The carrier's CNAM, or - on a tracking number - a label A-1 wrote
             // that names the market and the source ("MKE - SEO - A1 - New
             // Client"). Kept verbatim; nothing here parses it.

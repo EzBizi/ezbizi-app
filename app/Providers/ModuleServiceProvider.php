@@ -3841,6 +3841,18 @@ class ModuleServiceProvider extends ServiceProvider
                  * than about these three keys: it stops being true the day
                  * anything external is stored in a resource the builder offers.
                  */
+                triggers: [
+                    // Bar, 2026-10-07: a notification "whenever we're receiving a
+                    // missed call from the report". ezbizi:watch-missed-calls.
+                    new TriggerDefinition(
+                        key: 'reports.call.missed',
+                        label: 'A call in the call report was missed',
+                        description: 'A call to one of the company\'s RingCentral lines reached nobody: '
+                            .'missed, or left in voicemail. Spam that sat in the phone menu is not '
+                            .'one. It carries the caller\'s number, the line they rang and the company.',
+                        isRaised: true,
+                    ),
+                ],
                 tabs: [
                     new TabDefinition('library', 'Reports'),
                     // Labels renamed by Jose, 2026-10-06; the keys (and so the
