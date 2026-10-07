@@ -611,6 +611,15 @@ class Anonymiser
      */
     private function isNullable(string $table, string $column): bool
     {
+        // A key inside a JSON column, `payload->Phone`, written through
+        // Eloquent's JSON attributes: the column has to exist, and the key can
+        // always hold null.
+        if (str_contains($column, '->')) {
+            $this->isNullable($table, strstr($column, '->', true));
+
+            return true;
+        }
+
         if (! isset($this->nullability[$table])) {
             $this->nullability[$table] = collect(Schema::getColumns($table))
                 ->mapWithKeys(fn (array $c) => [$c['name'] => (bool) $c['nullable']])
