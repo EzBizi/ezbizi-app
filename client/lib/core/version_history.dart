@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0382',
+      date: '7 Oct 2026',
+      items: [
+        'Customers › Notes from Workiz now shows the notes staff left on the customer\'s jobs, each under its job number.',
+        'Roles & permissions: a new API keys row decides which keys each role may make: Viewer (read), Editor (read and edit) or Full access (also delete). Only administrators have it until you tick it. Taking a tick away narrows keys already made, straight away. Your account › API keys asks which kind to make.',
+        'Scheduling › Locations is easier to read: "Who serves this address?" at the top, branches grouped by state with one State picker, and Copy and Directions beside each number and address.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0381',
       date: '7 Oct 2026',
       items: [
