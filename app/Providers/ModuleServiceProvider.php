@@ -3841,6 +3841,9 @@ class ModuleServiceProvider extends ServiceProvider
                  * than about these three keys: it stops being true the day
                  * anything external is stored in a resource the builder offers.
                  */
+                // A RingCentral call is no EzBizi record and sits in no franchise:
+                // the event is the organization's, and its rule names who hears.
+                emits: [Organization::class],
                 triggers: [
                     // Bar, 2026-10-07: a notification "whenever we're receiving a
                     // missed call from the report". ezbizi:watch-missed-calls.
