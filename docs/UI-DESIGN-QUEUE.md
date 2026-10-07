@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 64 · Scheduling · Locations, made easier to read — **waiting for Jose** (sent 2026-10-07; 10-minute rule) (`docs/previews/scheduling-locations-look-layouts.html`)
+### 64 · Scheduling · Locations, made easier to read — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4** — **BUILT** `128e95ac` (`docs/previews/scheduling-locations-look-layouts.html`)
 
 Jose 2026-10-07, to me, with a screenshot of Scheduling › Locations (queue 49's build): *"make this page look better"*.
 What reads poorly today: every row repeats its company before the branch; the phone floats far right of a sparse row;
