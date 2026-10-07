@@ -39,7 +39,7 @@ class DashboardController extends Controller
         return [
             // Recommended layouts, built for this person's reach; applying one
             // is a PUT of its glances (DashboardTemplates).
-            'templates' => DashboardTemplates::forReach(array_map(fn (Glance $g) => $g->key(), $glances)),
+            'templates' => DashboardTemplates::forReach($glances),
             'glances' => array_map(fn (Glance $g) => [
                 'key' => $g->key(),
                 'label' => $g->label(),
@@ -175,8 +175,8 @@ class DashboardController extends Controller
             // An entry WITHOUT size, hidden or presentation means "unchanged",
             // not "reset": every build that predates sizes, and the HR tab's
             // chip, save {key, presentation} on a reorder, and must not undo a
-            // size or a hide made on a newer build; a template carries sizes
-            // and no chart types, and must not reset anybody's charts. Only a
+            // size or a hide made on a newer build; a template names no chart
+            // type for a Small box, and must not reset that one. Only a
             // present value replaces the stored one.
             $stored = [];
             foreach (is_array($preferences['dashboard.glances'] ?? null) ? $preferences['dashboard.glances'] : [] as $old) {

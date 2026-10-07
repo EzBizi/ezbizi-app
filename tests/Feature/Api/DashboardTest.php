@@ -939,20 +939,25 @@ class DashboardTest extends TestCase
 
         $this->assertSame(['owner'], array_column($templates, 'key'));
         $this->assertSame([
-            ['key' => 'jobs', 'size' => 'large', 'hidden' => false],
+            ['key' => 'jobs', 'size' => 'large', 'presentation' => 'pie', 'hidden' => false],
             ['key' => 'hr', 'size' => 'small', 'hidden' => false],
         ], $templates[0]['glances']);
     }
 
     /**
-     * Applying a template is a plain layout save: the named boxes in order
-     * and sized, the rest hidden (so "Add a box" can bring them back), and
-     * nobody's chart choice reset, because a template carries no chart types.
+     * Applying a template is a plain layout save: the named boxes in order,
+     * sized and drawn as the template says (Jose, 2026-10-07: "order and size
+     * of widgets and modes"), the rest hidden so "Add a box" can bring them
+     * back. A Small box gets no mode from the template, so its stored one
+     * stays.
      */
-    public function test_applying_a_template_sizes_orders_hides_and_keeps_charts(): void
+    public function test_applying_a_template_sizes_orders_hides_and_sets_modes(): void
     {
         $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'jobs', 'presentation' => 'bar']],
+            'glances' => [
+                ['key' => 'jobs', 'presentation' => 'pie'],
+                ['key' => 'customers', 'presentation' => 'bar'],
+            ],
         ])->assertOk();
 
         $office = collect($this->as($this->alpha['admin'])->getJson('/api/v1/dashboard/catalogue')->json('templates'))
@@ -963,7 +968,10 @@ class DashboardTest extends TestCase
         $this->assertSame('jobs', $glances->first()['key'], 'the template order');
         $jobs = $glances->firstWhere('key', 'jobs');
         $this->assertSame('large', $jobs['size']);
-        $this->assertSame('bar', $jobs['presentation'], 'the chart chosen before the template');
+        $this->assertSame('bar', $jobs['presentation'], 'Office draws jobs as bars, over the pie chosen before');
+        $customers = $glances->firstWhere('key', 'customers');
+        $this->assertSame('small', $customers['size']);
+        $this->assertSame('bar', $customers['presentation'], 'small in Office, so the chart chosen before stays');
         $this->assertTrue($glances->firstWhere('key', 'hr')['hidden'], 'not in Office, so hidden');
         $this->assertFalse($glances->firstWhere('key', 'phone')['hidden']);
     }
