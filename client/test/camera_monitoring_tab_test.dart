@@ -23,11 +23,12 @@ import 'package:http/testing.dart';
 /// both sides of the distinction, asserted separately.
 ///
 /// `kIsWeb` is false under `flutter test` (it runs on the VM, not in a
-/// browser), so every tile here — including `mjpeg`/`snapshot` — renders its
-/// non-web "open in browser" card rather than the real inline `<img>`. That
-/// card is still visibly different from the `hls`/`rtsp` deep-link card (see
+/// browser), so `mjpeg`/`snapshot` tiles render the native dart:io MJPEG
+/// reader (camera_view_stub.dart), fed a fake frame below. That inline view is
+/// still visibly different from the `hls`/`rtsp` deep-link card (see
 /// camera_monitoring_tab.dart's `_InlineViewCard` vs `_DeepLinkCard`), which
-/// is what the distinguishing-tile test actually exercises.
+/// is what the distinguishing-tile test actually exercises. Tapping an inline
+/// tile opens the live view (?live=1) in a side panel — see the tap test.
 void main() {
   // Off-web (flutter test runs on the VM), an mjpeg/snapshot tile now renders
   // the native MJPEG reader, which opens an HttpClient. Feed it a fake frame so
@@ -304,6 +305,29 @@ void main() {
         ),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'tapping an inline camera tile opens the live view in a side panel',
+    (tester) async {
+      await _pumpTab(tester, cameras: [_mjpegCamera]);
+
+      // No live panel until the tile is tapped.
+      expect(find.text('Live — full motion while this is open.'), findsNothing);
+
+      await tester.tap(
+        find.byKey(ValueKey('camera-inline-${_mjpegCamera['id']}')),
+      );
+      await tester.pumpAndSettle();
+
+      // The panel is open, titled for the camera and marked live. Jose,
+      // 2026-10-07: "click one of them and then it goes into live mode."
+      expect(
+        find.text('Live — full motion while this is open.'),
+        findsOneWidget,
+      );
+      expect(find.text(_mjpegCamera['label'] as String), findsWidgets);
     },
   );
 
