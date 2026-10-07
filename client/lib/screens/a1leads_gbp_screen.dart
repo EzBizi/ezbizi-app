@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/search_picker.dart';
@@ -534,6 +535,9 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// sends EzBizi (24 September: 0 of 387), so the phone of the customer A1
   /// Leads MATCHED stands in - the same customer the panel names. The matched
   /// customer carries no email.
+  ///
+  /// A US phone reads (513) 390-5722 (Rodrigo, 6 October: "make the contacts
+  /// ... friendlier").
   static List<String> _contactLines(Map<String, dynamic> review) {
     final card = (review['board'] as Map?)?.cast<String, dynamic>();
     final contact = (card?['contact'] as Map?) ?? const {};
@@ -547,7 +551,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         customer['email'],
         contact['email'],
       ])
-        if (value is String && value.trim().isNotEmpty) value.trim(),
+        if (value is String && value.trim().isNotEmpty) gbpContactText(value.trim()),
     }.toList();
   }
 
@@ -2243,4 +2247,17 @@ class _ReportDialogState extends State<_ReportDialog> {
       ],
     );
   }
+}
+
+/// A US number in the shapes A1 Leads sends it - ten digits, eleven with the
+/// leading 1, or +1 and ten - written as A1 Tools does, (513) 390-5722.
+/// Anything else (an email, an extension, a number from another country) is
+/// shown exactly as it came; the app's own formatter decides what is a valid
+/// US number.
+@visibleForTesting
+String gbpContactText(String line) {
+  final digits = RegExp(r'^(?:\+?1)?(\d{10})$').firstMatch(line)?.group(1);
+  if (digits == null) return line;
+  final pretty = formatPhoneNumber('+1$digits');
+  return pretty.startsWith('+1 ') ? pretty.substring(3) : line;
 }
