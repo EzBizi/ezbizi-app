@@ -281,4 +281,81 @@ class ApiKeysAndMcpTest extends TestCase
         }
         $this->assertStringContainsString('mail.example.test', $row);
     }
+
+    /** The keyed change's activity row, read as the given person. */
+    private function lastChange($viewer): array
+    {
+        $this->app['auth']->forgetGuards();
+
+        return collect($this->signedInAs($viewer)->getJson('/api/v1/api-keys/activity')->assertOk()->json('activity'))
+            ->first(fn ($r) => $r['action'] === 'api_key.request' && $r['method'] !== 'GET');
+    }
+
+    public function test_a_website_text_changed_by_a_key_can_be_put_back(): void
+    {
+        $t = $this->provisionTenant();
+        $site = $this->signedInAs($t['admin'])->postJson('/api/v1/web/sites', [
+            'company_id' => $t['company']->id, 'host' => 'a-1chimney.com',
+        ])->assertCreated()->json('data.id');
+        $values = "/api/v1/web/sites/{$site}/values";
+        $this->signedInAs($t['admin'])->putJson($values, ['path' => '/about-us', 'values' => ['phone' => '555-0100']])->assertOk();
+
+        $key = $this->keyFor($t['admin'], 'write');
+        $this->callApi($key, ['method' => 'PUT', 'path' => "web/sites/{$site}/values", 'body' => ['path' => '/about-us', 'values' => ['phone' => '555-0999']]]);
+
+        $row = $this->lastChange($t['admin']);
+        $this->assertTrue($row['revertable']);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")
+            ->assertOk()->assertJsonPath('reverted', true);
+        $this->assertSame('555-0100', $this->signedInAs($t['admin'])->getJson($values)->json('data.pages./about-us.phone'));
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")->assertStatus(409);
+        $this->assertFalse($this->lastChange($t['admin'])['revertable']);
+    }
+
+    public function test_a_change_edited_again_since_is_not_put_back(): void
+    {
+        $t = $this->provisionTenant();
+        $customer = $this->signedInAs($t['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $t['franchise']->id, 'name' => 'Original Name',
+        ])->assertCreated()->json('data.id');
+
+        $key = $this->keyFor($t['admin'], 'write');
+        $this->withToken($key)->patchJson("/api/v1/customers/{$customer}", ['name' => 'AI Name'])->assertOk();
+        $row = $this->lastChange($t['admin']);
+        $this->assertTrue($row['revertable']);
+
+        $this->signedInAs($t['admin'])->patchJson("/api/v1/customers/{$customer}", ['name' => 'Person Fixed It'])->assertOk();
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")->assertStatus(409);
+        $this->assertSame('Person Fixed It', $this->signedInAs($t['admin'])->getJson("/api/v1/customers/{$customer}")->json('data.name'));
+    }
+
+    public function test_a_customer_changed_by_a_key_can_be_put_back(): void
+    {
+        $t = $this->provisionTenant();
+        $customer = $this->signedInAs($t['admin'])->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $t['franchise']->id, 'name' => 'Original Name',
+        ])->assertCreated()->json('data.id');
+
+        $key = $this->keyFor($t['admin'], 'write');
+        $this->withToken($key)->patchJson("/api/v1/customers/{$customer}", ['name' => 'AI Name'])->assertOk();
+
+        $row = $this->lastChange($t['admin']);
+        $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")
+            ->assertOk()->assertJsonPath('reverted', true);
+        $this->assertSame('Original Name', $this->signedInAs($t['admin'])->getJson("/api/v1/customers/{$customer}")->json('data.name'));
+    }
+
+    public function test_a_change_outside_the_allowlist_offers_no_put_back(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin'], 'write');
+        $this->withToken($key)->patchJson('/api/v1/me/preferences', ['preferences' => ['appearance.theme' => 'dark']])->assertOk();
+
+        $row = $this->lastChange($t['admin']);
+        $this->assertFalse($row['revertable']);
+        $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")->assertStatus(422);
+    }
 }
