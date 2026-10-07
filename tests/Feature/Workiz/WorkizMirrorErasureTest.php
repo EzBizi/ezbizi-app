@@ -105,4 +105,16 @@ class WorkizMirrorErasureTest extends TestCase
         $this->assertNull($row->address);
         $this->assertSame('Done', $p['Status'], 'the job itself still follows Workiz');
     }
+
+    /** A v1 read (the history import) sets the address columns itself; they stay empty too. */
+    public function test_a_later_v1_read_does_not_copy_the_address_back(): void
+    {
+        app(Anonymiser::class)->purge($this->customer);
+        $v1 = WorkizV2::job(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-NYCZ7W']));
+        unset($v1['v2']);
+        $this->inTenant($this->tenant['org'], fn () => WorkizJob::land($this->connection, $v1));
+
+        $row = $this->mirrored('NYCZ7W');
+        $this->assertSame([null, null, null, WorkizJob::ERASED], [$row->address, $row->city, $row->payload['Address'] ?? null, $row->payload['FirstName']]);
+    }
 }
