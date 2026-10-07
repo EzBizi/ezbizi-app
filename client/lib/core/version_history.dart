@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0386',
+      date: '7 Oct 2026',
+      items: [
+        'Automations: missed calls and voicemails on the company\'s RingCentral lines can now trigger notifications.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0385',
       date: '7 Oct 2026',
       items: [
