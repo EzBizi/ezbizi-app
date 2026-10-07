@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0383',
+      date: '7 Oct 2026',
+      items: [
+        'Monitoring: camera feeds now show the full wide view instead of a cropped slice.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0382',
       date: '7 Oct 2026',
       items: [
