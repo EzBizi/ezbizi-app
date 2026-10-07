@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0381',
+      date: '7 Oct 2026',
+      items: [
+        'Monitoring: click a camera to watch it live, full motion, on the app and the web.',
+        'Dashboard: Customize now offers Templates, recommended layouts for a kind of work. One click rearranges your boxes (which show, their order, size and chart), and Undo puts your own layout back.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0380',
       date: '7 Oct 2026',
       items: [
