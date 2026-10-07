@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AuditEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\Concerns\BuildsTenants;
@@ -210,5 +211,55 @@ class ApiKeysAndMcpTest extends TestCase
         $this->inTenant($t['org'], fn () => $user->role->syncPermissionKeys(['customers.view']));
         $this->app['auth']->forgetGuards();
         $this->assertSame('api_key_not_allowed', $this->level($key, 'GET', '/api/v1/me'));
+    }
+
+    public function test_every_keyed_call_is_recorded_and_the_mcp_wrapper_is_not(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin'], 'write');
+
+        $this->callApi($key, ['method' => 'PATCH', 'path' => 'me/preferences', 'body' => ['preferences' => ['appearance.theme' => 'dark']]]);
+        $this->withToken($key)->getJson('/api/v1/me')->assertOk();
+        $this->withToken($key)->postJson('/api/v1/me/password', [])->assertForbidden();
+
+        $this->app['auth']->forgetGuards();
+        $rows = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity')->assertOk()->json('activity');
+        $requests = array_values(array_filter($rows, fn ($r) => $r['action'] === 'api_key.request'));
+
+        $this->assertSame(
+            [['POST', 'api/v1/me/password', 403, 'api'], ['GET', 'api/v1/me', 200, 'api'], ['PATCH', 'api/v1/me/preferences', 200, 'mcp']],
+            array_map(fn ($r) => [$r['method'], $r['path'], $r['status'], $r['via']], $requests),
+        );
+        $this->assertSame(['preferences' => ['appearance.theme' => 'dark']], $requests[2]['sent']);
+        $this->assertNull($requests[1]['sent']);
+
+        // What the record looked like before the change, for putting it back.
+        $event = AuditEvent::query()->where('action', 'api_key.request')->where('metadata->method', 'PATCH')->sole();
+        $before = json_decode($event->changes['before'], true);
+        $after = $this->signedInAs($t['admin'])->getJson('/api/v1/me/preferences')->json();
+        $this->assertNotSame('dark', data_get($before, 'data.appearance.theme.value', data_get($before, 'data.appearance.theme')));
+        $this->assertNotEquals($after, $before);
+    }
+
+    public function test_activity_is_your_own_unless_you_are_an_administrator(): void
+    {
+        $t = $this->provisionTenant();
+        $staff = $this->userWithRole($t, 'Staff', ['api_keys.view']);
+        $adminKey = $this->keyFor($t['admin']);
+        $staffKey = $this->keyFor($staff);
+
+        $this->withToken($adminKey)->getJson('/api/v1/me')->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($staffKey)->getJson('/api/v1/me')->assertOk();
+        $this->app['auth']->forgetGuards();
+
+        $mine = $this->signedInAs($staff)->getJson('/api/v1/api-keys/activity')->json('activity');
+        $this->assertSame([$staff->getKey()], array_values(array_unique(array_column($mine, 'user_id'))));
+
+        $all = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity')->json('activity');
+        $this->assertEqualsCanonicalizing([$staff->getKey(), $t['admin']->getKey()], array_values(array_unique(array_column($all, 'user_id'))));
+
+        $one = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?user_id='.$staff->getKey())->json('activity');
+        $this->assertSame([$staff->getKey()], array_values(array_unique(array_column($one, 'user_id'))));
     }
 }

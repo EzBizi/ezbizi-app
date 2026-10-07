@@ -51,3 +51,16 @@ webhook**. Signed (`X-EzBizi-Signature` = HMAC-SHA256 of `timestamp.body`,
 `X-EzBizi-Timestamp`), SSRF-guarded, retried on 5xx/timeouts
 (`App\Support\Automations\OutboundWebhook`). The builder takes the URL only;
 a signing secret is set through the API.
+
+## Activity log (every keyed call)
+
+`EnforceApiKeyAccess` writes an `api_key.request` audit row for every call a key
+makes, refused ones included: method, path, query, status, `via` (`mcp` or
+`api`), level, IP. A write also keeps what was **sent** and, for PUT/PATCH/DELETE,
+**before**: the GET of the same path, taken as the same person just before the
+change, so it can be put back. The outer `POST /mcp` is not logged; the calls it
+dispatches are, with their real paths.
+
+`GET /api/v1/api-keys/activity` (newest first, 200 rows, `before=<iso>` to page,
+`key_id=`): your own keys; an Administrator sees the organization's and may
+filter `user_id=`.
