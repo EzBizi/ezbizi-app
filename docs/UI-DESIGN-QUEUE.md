@@ -2965,6 +2965,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 64 · Scheduling · Locations, made easier to read — **waiting for Jose** (sent 2026-10-07; 10-minute rule) (`docs/previews/scheduling-locations-look-layouts.html`)
+
+Jose 2026-10-07, to me, with a screenshot of Scheduling › Locations (queue 49's build): *"make this page look better"*.
+What reads poorly today: every row repeats its company before the branch; the phone floats far right of a sparse row;
+state headings are tiny two-letter codes; 26 state chips take two rows; two search boxes look alike and do different
+things; the selected branch is only blue text; the detail card is sparse. Nothing new on the server. Desktop **1** the
+same two panes tidied: the lookup as the headline ("Who serves this address?"), a tight list (branch bold, company and
+city small, area and phone columns, full state names as headings, a State dropdown), the selected row shaded, and a
+detail card grouping each fact with its action (recommended); **2** branches as cards by state, details in a side
+panel; **3** states down the left, branches in the middle, details on the right. Phone **4** (recommended) the lookup,
+a tight list with a call button per row, a branch opened in place; **5** cards; **6** states first.
+
 ### 63 · Marketing · QR code stats — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06) — 1 and 4** — **BUILT** `814c7db8` (server `93dd2f00`) (`docs/previews/marketing-qr-stats-layouts.html`)
 
 Jose 2026-10-06, via the desk: *"Also wonder if we can add stats to each QR Code to see how many people used it"*.
