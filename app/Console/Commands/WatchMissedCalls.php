@@ -54,7 +54,9 @@ class WatchMissedCalls extends Command
         $now = CarbonImmutable::now((string) config('app.timezone'));
         $raised = 0;
 
-        foreach ($log->forPeriod($now->startOfDay(), $now) as $call) {
+        // From FRESH_MINUTES ago, not from midnight: a call at 23:59 is still
+        // read by the run at 00:01. Yesterday then comes from its day cache.
+        foreach ($log->forPeriod($now->subMinutes(self::FRESH_MINUTES), $now) as $call) {
             if ($call['answered_by'] !== null
                 || ! in_array($call['result'], ['Missed', 'Voicemail'], true)
                 || $call['id'] === null

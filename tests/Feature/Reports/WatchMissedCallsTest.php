@@ -62,13 +62,39 @@ class WatchMissedCallsTest extends TestCase
         ], $events);
     }
 
-    private function rc(string $id, string $result, string $queue, string $utc, bool $answered = false): array
+    public function test_a_call_just_before_midnight_is_read_after_it(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York']);
+        $tenant = $this->provisionTenant('Alpha');
+
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/call-log*' => fn ($request) => Http::response(['records' => str_starts_with((string) $request['dateFrom'], '2026-10-07')
+                ? [$this->rc('late', 'Missed', 'A1 - New Client', '03:59', day: '2026-10-08')]
+                : [], 'paging' => ['page' => 1]]),
+        ]);
+
+        $this->artisan('ezbizi:watch-missed-calls', ['--organization' => $tenant['org']->id])->assertSuccessful();
+
+        $this->assertSame(['late'], AutomationEvent::withoutGlobalScopes()->where('event_key', 'reports.call.missed')
+            ->get()->map(fn ($e) => $e->payload['call_id'])->all());
+    }
+
+    private function rc(string $id, string $result, string $queue, string $utc, bool $answered = false, string $day = '2026-10-07'): array
     {
         return [
             'id' => $id,
             'direction' => 'Inbound',
             'result' => $result,
-            'startTime' => "2026-10-07T{$utc}:00Z",
+            'startTime' => "{$day}T{$utc}:00Z",
             'from' => ['phoneNumber' => '+12125551212', 'name' => 'CALLER'],
             'to' => ['phoneNumber' => '+15550009999'],
             'legs' => array_values(array_filter([
