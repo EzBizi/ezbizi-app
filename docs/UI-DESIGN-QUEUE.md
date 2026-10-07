@@ -3142,7 +3142,7 @@ rows; **3** a comparison table. Phone **4** (recommended) – **6**. Needs from 
 on the page (it shows the organization's, "A1-Group", where the customer knows "A-1 Chimney"), and an optional
 one-line plan `description`.
 
-### 53 · Dashboard · templates a person can apply — **Jose: "did we ever add the recommended layouts ? so users can click on them and it changes the layout of their dashboard that being order and size of widgets and modes" (2026-10-07, relayed verbatim by Dashboard) — 1 and 4** — built, with Dashboard for review (`docs/previews/dashboard-templates-layouts.html`)
+### 53 · Dashboard · templates a person can apply — **Jose: "did we ever add the recommended layouts ? so users can click on them and it changes the layout of their dashboard that being order and size of widgets and modes" (2026-10-07, relayed verbatim by Dashboard) — 1 and 4** — **BUILT** `58c09545` (`docs/previews/dashboard-templates-layouts.html`)
 
 Jose, 2026-10-05, to the Dashboard module: *"also make some recommended layouts, like templates a user can
 apply"*. Server on main (`90ea5d42`): `GET /dashboard/catalogue` → `templates` [{key, label, description,
