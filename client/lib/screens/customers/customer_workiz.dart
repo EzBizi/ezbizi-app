@@ -178,9 +178,10 @@ class CustomerMoneyCard extends StatelessWidget {
   }
 }
 
-/// The notes Workiz keeps on the client, one group per branch's Workiz
-/// account. Asked for when this is first drawn — the tab is opened — and not
-/// before, because each one is a live call to Workiz.
+/// The notes staff leave on this customer's Workiz jobs, one group per
+/// branch, each note under the job it was left on (A-1 keeps its notes on
+/// jobs, not clients: Customers, 2026-10-07). They are read from EzBizi's copy
+/// of each job, so Workiz is not asked; fetched when the tab is opened.
 class WorkizNotes extends StatefulWidget {
   const WorkizNotes({
     super.key,
@@ -247,10 +248,7 @@ class _WorkizNotesState extends State<WorkizNotes> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(width: 12),
-            Text(
-              'Asking Workiz for its notes…',
-              style: theme.textTheme.bodyMedium,
-            ),
+            Text('Loading the notes…', style: theme.textTheme.bodyMedium),
           ],
         ),
       );
@@ -296,50 +294,68 @@ class _WorkizNotesState extends State<WorkizNotes> {
               child: Text('No notes here.', style: theme.textTheme.bodySmall),
             )
           else
-            for (final note in (_clients[i]['notes'] as List))
-              if (note is Map) _note(context, Map<String, dynamic>.from(note)),
+            for (final (job, notes) in _byJob(
+              _clients[i]['notes'] as List,
+            )) ...[
+              _jobHeading(context, job),
+              for (final note in notes) _note(context, note),
+            ],
         ],
       ],
     );
   }
 
-  /// Why a branch shows no notes, under its name. Workiz failing to answer
-  /// is a red line with Try again; the rest — no connection, not on its v2
-  /// key, not matched yet — is the server's sentence, plain, since trying
-  /// again changes nothing (Customers, 2026-10-06). The server says which:
-  /// `retry`.
-  Widget _notesError(BuildContext context, Map<String, dynamic> client) {
-    final theme = Theme.of(context);
-    final key = ValueKey('workiz-notes-error-${client['client_id']}');
-    final said = '${client['error']}';
-
-    if (client['retry'] != true) {
-      return Padding(
-        key: key,
+  /// Why a branch shows no notes, under its name: the server's sentence (no
+  /// Workiz connection, or not on its v2 key), plain, since nothing here can
+  /// change it.
+  Widget _notesError(BuildContext context, Map<String, dynamic> client) =>
+      Padding(
+        key: ValueKey('workiz-notes-error-${client['client_id']}'),
         padding: const EdgeInsets.only(top: 4),
-        child: Text(said, style: theme.textTheme.bodySmall),
+        child: Text(
+          '${client['error']}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       );
-    }
 
-    final bad = ToneColours.of(context, Tone.bad);
-    return Container(
-      key: key,
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: bad.fill,
-        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Workiz did not answer: $said',
-              style: theme.textTheme.bodySmall?.copyWith(color: bad.ink),
-            ),
-          ),
-          TextButton(onPressed: _load, child: const Text('Try again')),
-        ],
+  /// A branch's notes under the job each was left on, in the order the
+  /// server sends them (newest first), so the job with the latest note leads.
+  static List<(Map<String, dynamic>, List<Map<String, dynamic>>)> _byJob(
+    List raw,
+  ) {
+    final groups =
+        <String, (Map<String, dynamic>, List<Map<String, dynamic>>)>{};
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final note = Map<String, dynamic>.from(item);
+      final job = note['job'] is Map
+          ? Map<String, dynamic>.from(note['job'] as Map)
+          : <String, dynamic>{};
+      final key = '${job['id'] ?? job['workiz_number'] ?? ''}';
+      groups
+          .putIfAbsent(key, () => (job, <Map<String, dynamic>>[]))
+          .$2
+          .add(note);
+    }
+    return groups.values.toList();
+  }
+
+  /// The job a group of notes was left on: EzBizi's number and Workiz's.
+  Widget _jobHeading(BuildContext context, Map<String, dynamic> job) {
+    final theme = Theme.of(context);
+    final words = [
+      if (job['number'] != null) '${job['number']}',
+      if (job['workiz_number'] != null) 'Workiz #${job['workiz_number']}',
+    ];
+
+    return Padding(
+      key: ValueKey('workiz-notes-job-${job['id'] ?? job['workiz_number']}'),
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        words.isEmpty ? 'A Workiz job' : words.join(' · '),
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
