@@ -15,6 +15,11 @@ import 'status_pill.dart';
 /// this card. The key itself is shown ONCE — only its hash is stored — so it
 /// stays on the page until its owner says it is copied, never in a layer a
 /// stray click could close.
+///
+/// Three kinds of key (Jose, 2026-10-07: "Viewer Read / Editor Read and edit
+/// / Full Access Read edit and delete"), and the person's role decides which
+/// they may make: "i should be able to decide on roles and permissions what
+/// sort of api keys can create".
 class ApiKeysCard extends StatefulWidget {
   const ApiKeysCard({
     super.key,
@@ -48,8 +53,12 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
   String? _saveError;
   final _name = TextEditingController();
 
-  /// Read only until somebody chooses otherwise: the safer of the two.
-  String _access = 'read';
+  /// Viewer until somebody chooses otherwise: the safest kind, and one every
+  /// role that allows keys at all allows.
+  String _level = 'viewer';
+
+  /// The kinds this person's role lets them make; none means no keys at all.
+  List<String> _allowed = _levels;
 
   /// The key just made, until its owner says it is copied.
   Map<String, dynamic>? _made;
@@ -86,6 +95,11 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
         for (final row in (response.body['api_keys'] as List? ?? const []))
           if (row is Map) Map<String, dynamic>.from(row),
       ];
+      final allowed = response.body['allowed_levels'] as List? ?? _levels;
+      _allowed = [
+        for (final level in _levels)
+          if (allowed.contains(level)) level,
+      ];
     });
   }
 
@@ -96,7 +110,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
     });
     final response = await widget.api.post(_path, {
       'name': _name.text.trim(),
-      'access': _access,
+      'level': _level,
     });
     if (!mounted) return;
     if (!response.ok) {
@@ -112,12 +126,13 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
       _making = false;
       _made = made;
       _name.clear();
-      _access = 'read';
+      _level = 'viewer';
       _keys = [
         {
           'id': made['id'],
           'name': made['name'],
-          'access': made['access'],
+          'level': made['level'],
+          'effective_level': made['level'],
           'last_used_at': null,
           'created_at': DateTime.now().toUtc().toIso8601String(),
         },
@@ -170,7 +185,10 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                 Expanded(
                   child: Text('API keys', style: theme.textTheme.titleMedium),
                 ),
-                if (!_making && !_loading && _error == null)
+                if (!_making &&
+                    !_loading &&
+                    _error == null &&
+                    _allowed.isNotEmpty)
                   FilledButton.icon(
                     key: const Key('api-key-new'),
                     onPressed: () => setState(() => _making = true),
@@ -199,6 +217,15 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                 ),
               ),
             ] else ...[
+              if (_allowed.isEmpty) ...[
+                Text(
+                  'Your role does not allow API keys. An administrator can '
+                  'allow them in Roles & permissions.',
+                  key: const Key('api-key-none-allowed'),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+              ],
               if (_made case final made?) ...[
                 _shownOnce(context, made),
                 const SizedBox(height: 12),
@@ -238,34 +265,29 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
         LayoutBuilder(
           builder: (context, box) {
             final choices = [
-              _choice(
-                context,
-                'read',
-                'Read only',
-                'Looks things up and never changes anything',
-              ),
-              _choice(
-                context,
-                'write',
-                'Can make changes',
-                'Creates, edits and deletes, as you can',
-              ),
+              for (final level in _levels) _choice(context, level),
             ];
             // Side by side where they fit, the house rule for a short
             // choice; one over the other on a phone.
-            if (box.maxWidth < 420) {
+            if (box.maxWidth < 560) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [choices[0], const SizedBox(height: 8), choices[1]],
+                children: [
+                  for (final (i, choice) in choices.indexed) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    choice,
+                  ],
+                ],
               );
             }
             return IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: choices[0]),
-                  const SizedBox(width: 8),
-                  Expanded(child: choices[1]),
+                  for (final (i, choice) in choices.indexed) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    Expanded(child: choice),
+                  ],
                 ],
               ),
             );
@@ -291,7 +313,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                       _making = false;
                       _saveError = null;
                       _name.clear();
-                      _access = 'read';
+                      _level = 'viewer';
                     }),
               child: const Text('Cancel'),
             ),
@@ -301,18 +323,25 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
     );
   }
 
-  Widget _choice(
-    BuildContext context,
-    String value,
-    String title,
-    String detail,
-  ) {
+  /// One kind of key. A kind the role does not allow is still shown, greyed,
+  /// with why, so nobody is left wondering where Full access went.
+  Widget _choice(BuildContext context, String value) {
     final theme = Theme.of(context);
-    final on = _access == value;
+    final allowed = _allowed.contains(value);
+    final on = _level == value;
     final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
+    final muted = allowed ? null : theme.disabledColor;
+    final detail = !allowed
+        ? 'Your role does not allow this kind'
+        : switch (value) {
+            'viewer' => 'Reads only. Never changes anything.',
+            'editor' => 'Reads and edits. Never deletes.',
+            _ => 'Reads, edits and deletes, as you can.',
+          };
 
     return Semantics(
       selected: on,
+      enabled: allowed,
       button: true,
       child: Material(
         color: on ? theme.colorScheme.primaryContainer : Colors.transparent,
@@ -323,9 +352,9 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
           ),
         ),
         child: InkWell(
-          key: ValueKey('api-key-access-$value'),
+          key: ValueKey('api-key-level-$value'),
           borderRadius: radius,
-          onTap: () => setState(() => _access = value),
+          onTap: allowed ? () => setState(() => _level = value) : null,
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Row(
@@ -336,7 +365,7 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                       ? Icons.radio_button_checked
                       : Icons.radio_button_unchecked,
                   size: 18,
-                  color: on ? theme.colorScheme.primary : null,
+                  color: on ? theme.colorScheme.primary : muted,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -344,12 +373,18 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        _levelLabel(value),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: muted,
                         ),
                       ),
-                      Text(detail, style: theme.textTheme.bodySmall),
+                      Text(
+                        detail,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -446,7 +481,16 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
   Widget _key(BuildContext context, Map<String, dynamic> key) {
     final theme = Theme.of(context);
     final id = '${key['id']}';
-    final write = key['access'] == 'write';
+    final level = '${key['level']}';
+    // What the key can do today: the role may have been narrowed since it
+    // was made, and the server checks every keyed request against it.
+    final effective = key['effective_level'] as String?;
+    final narrowed = effective == null
+        ? 'Your role no longer allows API keys, so this key is refused '
+              'everywhere.'
+        : _levels.indexOf(effective) < _levels.indexOf(level)
+        ? 'Your role now limits this key to ${_levelLabel(effective)}.'
+        : null;
     final bad = ToneColours.of(context, Tone.bad);
 
     if (_confirming == id) {
@@ -502,8 +546,12 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                   children: [
                     Text('${key['name'] ?? ''}'),
                     StatusPill(
-                      write ? 'Can make changes' : 'Read only',
-                      tone: write ? Tone.caution : Tone.neutral,
+                      _levelLabel(level),
+                      tone: switch (level) {
+                        'full' => Tone.caution,
+                        'editor' => Tone.info,
+                        _ => Tone.neutral,
+                      },
                     ),
                   ],
                 ),
@@ -514,6 +562,15 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
                   ].where((part) => part.isNotEmpty).join(' · '),
                   style: theme.textTheme.bodySmall,
                 ),
+                if (narrowed != null)
+                  Text(
+                    narrowed,
+                    key: ValueKey('api-key-narrowed-$id'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ToneColours.of(context, Tone.caution).ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -549,6 +606,17 @@ class _ApiKeysCardState extends State<ApiKeysCard> {
     return 'made ${dayWords(at, today, widget.formats, weekday: false)}';
   }
 }
+
+/// The kinds of key, weakest first, as the server names them.
+const _levels = ['viewer', 'editor', 'full'];
+
+/// A kind of key in the words Roles & permissions uses.
+String _levelLabel(String level) => switch (level) {
+  'viewer' => 'Viewer',
+  'editor' => 'Editor',
+  'full' => 'Full access',
+  _ => level,
+};
 
 /// Where an AI reaches EzBizi's MCP server: the API this app itself talks to.
 String mcpUrl() {

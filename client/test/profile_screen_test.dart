@@ -198,7 +198,8 @@ Future<void> _pump(WidgetTester tester, {required Size size}) async {
             {
               'id': 3,
               'name': 'Weekly numbers script',
-              'access': 'read',
+              'level': 'viewer',
+              'effective_level': 'viewer',
               'last_used_at': null,
               'created_at': '2026-10-02T15:00:00Z',
             },

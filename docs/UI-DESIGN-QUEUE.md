@@ -3012,6 +3012,14 @@ under `data`. The setup line uses the API this app talks to (`API_BASE`, else th
 outside the tree until MCP / API's 76311094 merged: ClientCallsRealRoutesTest reds every session's PHP gate while a
 client path is not a route on main.
 
+**Three kinds of key (2026-10-07), built directly in the same card.** Jose, relayed by MCP / API: *"Viewer Read /
+Editor Read and edit / Full Access Read edit and delete"* and *"i should be able to decide on roles and permissions
+what sort of api keys can create"*. Server `e23e125c`: each key gains `level` and `effective_level` (lower when the
+role was narrowed since; null when it allows no keys now), the list gains `allowed_levels` (every kind up to the
+role's strongest `api_keys.*` tick, so Viewer always comes first), and POST takes `level`. The two tiles became three,
+Viewer by default and again after each key or Cancel. A kind the role does not allow is still drawn, greyed, saying so;
+a role that allows none gets one sentence and no New API key; a narrowed key says what it can do now.
+
 ### 61 · AI Assistance · WhatsApp groups — **Jose: "go ahead as u recommend" (2026-10-06) — 1 and 4** — **BUILT** `afd43bbd` (`docs/previews/ai-assistance-whatsapp-groups-layouts.html`)
 
 From Meta / WhatsApp (`local_8111908f…`): Jose 2026-10-06 replaces the Rodrigo bot's WhatsApp reports with new EzBizi
