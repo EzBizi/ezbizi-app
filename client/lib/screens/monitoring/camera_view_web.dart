@@ -56,7 +56,10 @@ class _CameraImageState extends State<_CameraImage> {
       img.style
         ..setProperty('width', '100%')
         ..setProperty('height', '100%')
-        ..setProperty('object-fit', 'cover');
+        // contain, not cover: these are wide cameras, and cover crops a wide
+        // frame to fill a taller box — the whole feed must show. Jose,
+        // 2026-10-07.
+        ..setProperty('object-fit', 'contain');
       return img;
     });
   }

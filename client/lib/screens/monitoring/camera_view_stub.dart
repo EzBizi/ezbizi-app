@@ -68,6 +68,38 @@ Stream<List<int>> _defaultOpen(String url) async* {
   return (frames, tail);
 }
 
+/// The width/height of a JPEG, read from its SOF (start-of-frame) marker, or
+/// null if there is no complete SOF in [bytes]. Cheap — it walks the segment
+/// headers, it does not decode pixels. Public for the unit test.
+double? jpegAspect(Uint8List bytes) {
+  var i = 2; // skip the FFD8 SOI
+  while (i + 8 < bytes.length) { // need bytes[i+8] for a SOF's width low byte
+    if (bytes[i] != 0xFF) {
+      i++;
+      continue;
+    }
+    final marker = bytes[i + 1];
+    // SOF0..SOF15 carry the dimensions, except the DHT/DAC/RSTn markers in
+    // that range (C4 = DHT, C8 = JPG, CC = DAC) which do not.
+    final isSof = marker >= 0xC0 &&
+        marker <= 0xCF &&
+        marker != 0xC4 &&
+        marker != 0xC8 &&
+        marker != 0xCC;
+    if (isSof) {
+      final h = (bytes[i + 5] << 8) | bytes[i + 6];
+      final w = (bytes[i + 7] << 8) | bytes[i + 8];
+      if (w <= 0 || h <= 0) return null;
+      return w / h;
+    }
+    // Any other marker segment carries a 2-byte length; skip over it.
+    final len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) return null;
+    i += 2 + len;
+  }
+  return null;
+}
+
 class _MjpegView extends StatefulWidget {
   const _MjpegView({required this.url, this.open});
 
@@ -80,6 +112,7 @@ class _MjpegView extends StatefulWidget {
 
 class _MjpegViewState extends State<_MjpegView> {
   Uint8List? _frame;
+  double? _aspect; // width / height of the stream, learned from the first frame
   bool _error = false;
   StreamSubscription<List<int>>? _sub;
   Timer? _reconnect;
@@ -134,9 +167,14 @@ class _MjpegViewState extends State<_MjpegView> {
     if (tail.isNotEmpty) _buf.add(tail);
     if (frames.isEmpty) return;
     // Only the newest frame matters for a live tile.
+    final newest = frames.last;
+    // Learn the camera's real aspect ratio once (it does not change), so the
+    // view can show the WHOLE wide frame instead of cropping it to fill.
+    final aspect = _aspect == null ? jpegAspect(newest) : null;
     if (!_disposed && mounted) {
       setState(() {
-        _frame = frames.last;
+        _frame = newest;
+        if (aspect != null) _aspect = aspect;
         _error = false;
       });
     }
@@ -182,30 +220,38 @@ class _MjpegViewState extends State<_MjpegView> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final child = _frame != null
-        ? Image.memory(
-            _frame!,
-            gaplessPlayback: true, // no flash between frames
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            // A corrupt frame must not crash the tile; show the offline mark
-            // and let the next frame recover.
-            errorBuilder: (_, _, _) => Center(
-              child: Icon(Icons.videocam_off_outlined,
-                  color: scheme.onSurfaceVariant),
-            ),
-          )
-        : Center(
-            child: _error
-                ? Icon(Icons.videocam_off_outlined,
-                    color: scheme.onSurfaceVariant)
-                : const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-          );
+    Widget child;
+    if (_frame != null) {
+      // contain, not cover: these are wide cameras, and cover crops a wide
+      // frame to fill a taller tile. Wrapped in the stream's real aspect ratio
+      // (once known) so the whole feed shows at the largest size that fits,
+      // instead of floating in a tall letterbox. Jose, 2026-10-07.
+      Widget image = Image.memory(
+        _frame!,
+        gaplessPlayback: true, // no flash between frames
+        fit: BoxFit.contain,
+        // A corrupt frame must not crash the tile; show the offline mark
+        // and let the next frame recover.
+        errorBuilder: (_, _, _) => Center(
+          child: Icon(Icons.videocam_off_outlined,
+              color: scheme.onSurfaceVariant),
+        ),
+      );
+      if (_aspect != null) {
+        image = AspectRatio(aspectRatio: _aspect!, child: image);
+      }
+      child = Center(child: image);
+    } else {
+      child = Center(
+        child: _error
+            ? Icon(Icons.videocam_off_outlined, color: scheme.onSurfaceVariant)
+            : const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+      );
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
