@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\ApiKey;
@@ -85,6 +86,56 @@ class ApiKeysController
         $this->audit->log('api_key.revoked', $token, metadata: ['name' => $token->name]);
 
         return response()->noContent();
+    }
+
+    /**
+     * GET /api-keys/activity — what keys did, newest first.
+     *
+     * Your own keys; a holder of `organizations.api_activity.view` (the Settings ›
+     * API activity tab; every Administrator) sees the organization's and may
+     * narrow it with `user_id`. Read from the audit trail that
+     * EnforceApiKeyAccess writes, so it cannot disagree with it.
+     */
+    public function activity(Request $request): array
+    {
+        $user = $request->user();
+        // The Settings › API activity tab's grant; Administrators hold it.
+        $admin = $user->hasPermission('organizations.api_activity.view');
+
+        $events = AuditEvent::query()
+            ->where('organization_id', $user->organization_id)
+            ->where('action', 'like', 'api_key.%')
+            ->when(! $admin, fn ($q) => $q->where('actor_id', $user->getKey()))
+            ->when($admin && $request->filled('user_id'), fn ($q) => $q->where('actor_id', $request->string('user_id')))
+            ->when($request->filled('key_id'), fn ($q) => $q->where('target_id', (string) $request->integer('key_id')))
+            ->when($request->filled('before'), fn ($q) => $q->where('occurred_at', '<', $request->date('before')))
+            ->orderByDesc('occurred_at')
+            ->limit(200)
+            ->get();
+
+        return [
+            'activity' => $events->map(fn (AuditEvent $e) => [
+                'at' => $e->occurred_at?->toIso8601String(),
+                'action' => $e->action,
+                'who' => $e->actor_label,
+                'user_id' => $e->actor_id,
+                'key_id' => $e->target_id,
+                'key_name' => $e->target_label,
+                'method' => $e->metadata['method'] ?? null,
+                'path' => $e->metadata['path'] ?? null,
+                'status' => $e->metadata['status'] ?? null,
+                'via' => $e->metadata['via'] ?? null,
+                'sent' => $this->decoded($e->changes['body'] ?? null),
+                // The record as it was just before the change, to put it back.
+                'before' => $this->decoded($e->changes['before'] ?? null),
+            ])->all(),
+        ];
+    }
+
+    /** Stored as text so a capped body still fits; served as JSON when it parses. */
+    private function decoded(?string $text): mixed
+    {
+        return $text === null ? null : (json_decode($text, true) ?? $text);
     }
 
     /** Every level up to the strongest this person's role allows. */

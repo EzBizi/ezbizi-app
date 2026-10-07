@@ -2725,6 +2725,7 @@ Route::prefix('v1')
         Route::get('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'index']);
         Route::post('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'store']);
         Route::delete('me/api-keys/{id}', [\App\Http\Controllers\Api\ApiKeysController::class, 'destroy'])->whereNumber('id');
+        Route::get('api-keys/activity', [\App\Http\Controllers\Api\ApiKeysController::class, 'activity']);
         Route::post('mcp', [\App\Http\Controllers\Api\McpController::class, 'handle'])->middleware('throttle:120,1');
 
         // ── Deleting your own account ────────────────────────────

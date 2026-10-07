@@ -2,10 +2,17 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\Api\McpController;
+use App\Support\Audit\AuditLogger;
 use App\Support\Auth\ApiKey;
+use App\Support\Tenancy\TenantContext;
 use Closure;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * What an API key may not do, whatever its owner may.
@@ -19,6 +26,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnforceApiKeyAccess
 {
+    private const MAX_BODY = 200000;
+
+    /** Marks the internal GET that snapshots a record, so it is not logged as the key's own read. */
+    private const SNAPSHOT = 'api_key.snapshot';
+
     private const ACCOUNT_SECURITY = [
         'api/*/me/password',
         'api/*/me/totp', 'api/*/me/totp/*',
@@ -28,6 +40,8 @@ class EnforceApiKeyAccess
         'api/*/me/api-keys', 'api/*/me/api-keys/*',
     ];
 
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         $token = $request->user()?->currentAccessToken();
@@ -36,6 +50,111 @@ class EnforceApiKeyAccess
             return $next($request);
         }
 
+        $refusal = $this->refusal($request, $token);
+        $before = $refusal === null ? $this->snapshot($request) : null;
+        $response = $refusal ?? $next($request);
+
+        $this->record($request, $token, $response, $before);
+
+        return $response;
+    }
+
+    /**
+     * Every call a key makes, refused ones included (Jose, 2026-10-07: "we should
+     * probably have an MCP-API log to record the actions"). Into the audit trail,
+     * which is append-only, so a key cannot tidy away what it did.
+     *
+     * A write keeps what was SENT. What it replaced is the module's own audit
+     * row, where the module writes one. The outer POST /mcp is not recorded: each
+     * call it dispatches comes back through here with its real path.
+     */
+    private function record(Request $request, PersonalAccessToken $token, Response $response, ?string $before): void
+    {
+        if ($request->is('api/*/mcp') || $request->attributes->get(self::SNAPSHOT)) {
+            return;
+        }
+
+        $write = ! $request->isMethodSafe();
+        // Redacted BEFORE encoding: the logger's own redaction walks arrays, and a
+        // JSON string is opaque to it, so a key PUTting a Workiz token or an SMTP
+        // password would otherwise be kept in the clear (deploy desk review).
+        $body = $write ? $this->encode($request->all()) : null;
+
+        $this->audit->log('api_key.request', $token, changes: $write ? array_filter([
+            'body' => $this->cap($body),
+            'before' => $this->cap($before),
+        ]) : [], metadata: [
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'query' => $request->getQueryString(),
+            'status' => $response->getStatusCode(),
+            'via' => $request->userAgent() === McpController::USER_AGENT ? 'mcp' : 'api',
+            'level' => ApiKey::levelOf($token),
+            'ip' => $request->ip(),
+        ]);
+    }
+
+    /**
+     * What the record looked like before a change, so it can be put back (Jose,
+     * 2026-10-07: "so changes can be reverted if needed").
+     *
+     * The GET of the same path, asked as the same person in the same view —
+     * `PUT customers/7` is preceded by `GET customers/7`, `PUT web/sites/x/values`
+     * by `GET web/sites/x/values`. A create has nothing before it, and a write
+     * with no GET twin keeps only what was sent.
+     */
+    private function snapshot(Request $request): ?string
+    {
+        if (! in_array($request->method(), ['PUT', 'PATCH', 'DELETE'], true)) {
+            return null;
+        }
+
+        $get = Request::create('/'.$request->path().($request->getQueryString() ? '?'.$request->getQueryString() : ''), 'GET');
+
+        try {
+            Route::getRoutes()->match($get);
+        } catch (Throwable) {
+            return null;
+        }
+
+        $get->headers->set('Accept', 'application/json');
+        $get->headers->set('Authorization', (string) $request->header('Authorization'));
+        if ($request->hasHeader('X-EzBizi-View')) {
+            $get->headers->set('X-EzBizi-View', (string) $request->header('X-EzBizi-View'));
+        }
+        $get->attributes->set(self::SNAPSHOT, true);
+
+        try {
+            $response = app(TenantContext::class)->run(
+                $request->user()->organization,
+                fn () => app(Kernel::class)->handle($get),
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        } finally {
+            app()->instance('request', $request);
+        }
+
+        // A GET may echo a secret too; redact it the same way.
+        return $response->isSuccessful() ? $this->encode(json_decode((string) $response->getContent(), true)) : null;
+    }
+
+    private function encode(mixed $data): ?string
+    {
+        return is_array($data)
+            ? json_encode($this->audit->redact($data), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : null;
+    }
+
+    private function cap(?string $text): ?string
+    {
+        return $text === null || strlen($text) <= self::MAX_BODY ? $text : substr($text, 0, self::MAX_BODY).'…';
+    }
+
+    private function refusal(Request $request, PersonalAccessToken $token): ?Response
+    {
         if (! $request->isMethodSafe()
             && ($request->is(...self::ACCOUNT_SECURITY) || $request->is('api/*/me') && $request->isMethod('DELETE'))) {
             return $this->refuse('An API key cannot change sign-in security or delete the account. Sign in to EzBizi to do that.', 'api_key_account_security');
@@ -51,7 +170,7 @@ class EnforceApiKeyAccess
 
         // MCP is a POST that only dispatches; each call it makes is checked here again.
         if ($request->isMethodSafe() || $request->is('api/*/mcp')) {
-            return $next($request);
+            return null;
         }
 
         if ($level === 'viewer') {
@@ -64,7 +183,7 @@ class EnforceApiKeyAccess
             return $this->refuse('This API key can read and edit but not delete. Deleting needs a Full access key.', 'api_key_no_delete');
         }
 
-        return $next($request);
+        return null;
     }
 
     private function refuse(string $message, string $code): Response

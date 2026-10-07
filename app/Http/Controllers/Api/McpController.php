@@ -27,6 +27,9 @@ use Throwable;
  */
 class McpController
 {
+    /** Marks the calls MCP dispatches, so the activity log can say so. */
+    public const USER_AGENT = 'EzBizi-MCP/1.0';
+
     private const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
     private const MAX_BODY_CHARS = 100_000;
@@ -164,7 +167,7 @@ class McpController
         $sub = Request::create(
             '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''),
             $method,
-            server: ['REMOTE_ADDR' => $request->ip(), 'HTTP_USER_AGENT' => 'EzBizi-MCP/1.0'],
+            server: ['REMOTE_ADDR' => $request->ip(), 'HTTP_USER_AGENT' => self::USER_AGENT],
             content: $body === null ? null : json_encode($body),
         );
         $sub->headers->set('Accept', 'application/json');
