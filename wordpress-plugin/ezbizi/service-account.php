@@ -64,6 +64,14 @@ function ezbizi_service_capabilities() {
         'edit_pages'           => true,
         'edit_published_pages' => true,
         'publish_pages'        => true,
+        /*
+         * Pages and posts somebody else wrote. The SEO Helper saves a search
+         * title on /about-us, which the site's owner authored, and WordPress
+         * answered 403 without these (MCP/API, 2026-10-07: "WordPress returns
+         * 403 to EzBizi's SEO editor"). Editing, still never deleting.
+         */
+        'edit_others_pages'    => true,
+        'edit_others_posts'    => true,
         'delete_posts'         => false,
         'delete_pages'         => false,
     );
@@ -265,6 +273,13 @@ function ezbizi_service_reconcile($payload) {
     }
 
     if ($payload['service_account']['linked']) {
+        // A plugin update that changes the role reaches sites already paired:
+        // re-applied once per version, not on every read.
+        if (get_option('ezbizi_service_role_version') !== EZBIZI_VERSION) {
+            ezbizi_service_role();
+            update_option('ezbizi_service_role_version', EZBIZI_VERSION, false);
+        }
+
         return;
     }
 

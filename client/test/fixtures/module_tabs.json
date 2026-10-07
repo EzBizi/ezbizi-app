@@ -208,6 +208,7 @@
                 "Users",
                 "Records",
                 "Reports",
+                "Alerts",
                 "Settings"
             ]
         },
@@ -442,6 +443,7 @@
         "organizations.organization.view",
         "organizations.settings.view",
         "organizations.view",
+        "phone.alerts.view",
         "phone.edit",
         "phone.phone.view",
         "phone.records.view",

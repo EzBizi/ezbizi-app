@@ -860,6 +860,17 @@ $GLOBALS['tr'] = [];
 ezbizi_fetch();
 check('the credential survives', count($GLOBALS['app_passwords']), 1);
 
+// MCP/API, 2026-10-07: the SEO Helper got 403 on pages somebody else wrote.
+// A site paired before the role grew must gain the new rights on its next read.
+$role = get_role(EZBIZI_SERVICE_ROLE);
+unset($role->caps['edit_others_pages'], $role->caps['edit_others_posts']);
+delete_option('ezbizi_service_role_version');
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($body)];
+$GLOBALS['tr'] = [];
+ezbizi_fetch();
+check('an already-paired site gains edit_others_pages', ! empty(get_role(EZBIZI_SERVICE_ROLE)->caps['edit_others_pages']), true);
+check('and edit_others_posts', ! empty(get_role(EZBIZI_SERVICE_ROLE)->caps['edit_others_posts']), true);
+
 echo PHP_EOL . "The widgets are dressed by EzBizi, not by the shortcode" . PHP_EOL;
 reset_site();
 $GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];

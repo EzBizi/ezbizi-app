@@ -1942,6 +1942,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('users', 'Users'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('reports', 'Reports'),
+                    // Jose, 2026-10-07: alerts to chosen people, a pop-up they
+                    // dismiss. phone.alerts.view is also who may SEND one.
+                    new TabDefinition('alerts', 'Alerts'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 triggers: [

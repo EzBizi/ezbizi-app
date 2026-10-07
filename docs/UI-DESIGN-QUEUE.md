@@ -2965,6 +2965,38 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 66 · API activity: what an AI or a script did with a key — **sent to Jose 2026-10-07, recommended 1 and 4** (`docs/previews/api-activity-layouts.html`)
+
+From MCP / API (`local_c0e813e0…`), Jose 2026-10-07: *"we should probably have an MCP-API log to records the
+actions"*, *"add all the logging to the MCP-API from now on"*, *"so changes can be reverted if needed"*. Server on
+`session/ai-api`, not on main: `GET /api-keys/activity` {activity:[{at, action, who, user_id, key_id, key_name, method,
+path, status, via mcp|api, sent, before}]}, newest first, 200 a page (`before=<iso>`), `key_id=`; owners see their own
+keys, administrators the organization and `user_id=`. Desktop **1** an Activity link per key in the API keys card
+(last few, "Show all") plus Settings › **API activity** after Roles & permissions: one table, Person / Key / Changes
+only, a change opens to Field · Before · Set to, with **Put it back** (needs a server action) (recommended); **2** a
+side panel per key, by day, and the same panel per person for administrators; **3** an API activity card under API
+keys and the same table in Settings. Phone **4** (recommended) rows by day, a change opens in the tab; **5** rows open
+in place; **6** per key only. All: Read / Created / Changed / Deleted rather than verbs; Changes only on by default.
+
+### 65 · Communication · Alerts that pop up until dismissed — **Jose: "2" (2026-10-07), so 2 and its phone match 5** (`docs/previews/communication-alerts-layouts.html`)
+
+From the Deployment Lead (`local_072bee23…`), for Jose: send alerts to specific users. Verbatim: *"This sort of
+alert notifications should be a pop up on the screen, that they can dismiss"*. Notifications builds the server (send,
+the sent list with who dismissed, a person's open alerts, dismiss); Phone owns the Communication tab (a new **Alerts**
+TabDefinition); UI/UX builds the screens. Desktop **1** a card in the top-right corner over whatever they are doing,
+stacked, until Dismiss; the Alerts tab writes on the left and tracks the sent ones on the right with "Dismissed by N
+of M" (recommended); **2** the middle of the screen over a dimmed app, the only blocking layer in the app, written in
+the side panel; **3** an amber strip across the top of the page, one column to write and track. Phone **4** (recommended)
+the card drops in at the top, the tab lists the sent ones and New alert opens the form in the tab; **5** the middle of
+a dimmed screen; **6** a strip under the top bar. All: arrives with the bell's minute check (and on coming back to the
+app); waits for a closed app; dismissed on one device is dismissed on all; stays in the bell's list afterwards. Left
+out on purpose: whole roles or branches at once, urgency, scheduling, replies.
+
+**Jose chose the blocking layer knowingly:** option 2's caption said it stops whatever they were doing and would be the
+app's first layer that blocks the screen. It is drawn in the shell (an overlay with a barrier), not `showDialog`, so
+theme_conventions_test's "no new modal dialogs" still holds for every other screen; this one is his ruling, by name.
+Notifications had started a MaterialBanner (layout 3) in the bell; asked them to leave the client to UI/UX.
+
 ### 64 · Scheduling · Locations, made easier to read — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4** — **BUILT** `128e95ac` (`docs/previews/scheduling-locations-look-layouts.html`)
 
 Jose 2026-10-07, to me, with a screenshot of Scheduling › Locations (queue 49's build): *"make this page look better"*.

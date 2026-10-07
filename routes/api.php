@@ -2779,6 +2779,12 @@ Route::prefix('v1')
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
 
+        // Alerts: one person to chosen colleagues (Communication ▸ Alerts).
+        // Gated in the controller on phone.alerts.view, the tab's own key.
+        Route::get('alerts/recipients', [\App\Http\Controllers\Api\AlertsController::class, 'recipients']);
+        Route::get('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'index']);
+        Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
+
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);
         Route::patch('settings/{key}', [SettingsController::class, 'update']);
