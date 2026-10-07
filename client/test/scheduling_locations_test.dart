@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/locations_pane.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -18,14 +19,13 @@ void main() {
     final asked = <String, Map<String, String>>{};
     await _pump(tester, const Size(1400, 900), asked);
 
-    // The directory: every branch, by state, with the state chips.
+    // The directory: every branch, by state, with one State picker (UI queue
+    // 64; it was 26 chips).
     expect(find.byKey(const Key('locations-row-l-3')), findsOneWidget);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'IL 1'));
-    await tester.pumpAndSettle();
+    await _pickState(tester, 'Illinois · 1');
     expect(find.byKey(const Key('locations-row-l-1')), findsNothing);
     expect(find.byKey(const Key('locations-row-l-3')), findsOneWidget);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'All 3'));
-    await tester.pumpAndSettle();
+    await _pickState(tester, 'All states · 3');
 
     await tester.enterText(
       find.byKey(const Key('locations-lookup')),
@@ -74,16 +74,19 @@ void main() {
     final asked = <String, Map<String, String>>{};
     await _pump(tester, const Size(390, 844), asked);
 
-    expect(find.byKey(const Key('locations-row-l-1')), findsNothing);
+    // The lookup first, the list under it (UI queue 64, phone 4).
+    expect(
+      tester.getTopLeft(find.byKey(const Key('locations-lookup'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('locations-row-l-1'))).dy,
+      ),
+    );
     await tester.enterText(find.byKey(const Key('locations-lookup')), '44139');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('locations-answer-l-2')), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Call'), findsOneWidget);
 
-    await tester.ensureVisible(find.byKey(const Key('locations-all')));
-    await tester.tap(find.byKey(const Key('locations-all')));
-    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('locations-row-l-3')));
     await tester.tap(find.byKey(const Key('locations-row-l-3')));
     await tester.pumpAndSettle();
@@ -93,6 +96,127 @@ void main() {
     await tester.tap(find.byKey(const Key('locations-back')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('locations-lookup')), findsOneWidget);
+  });
+
+  // ── UI queue 64: made easier to read (Jose: "make this page look better") ──
+
+  testWidgets('a row names the branch once, with its company and city small '
+      'under it, and states read in full', (tester) async {
+    await _pump(tester, const Size(1400, 900), {});
+
+    final row = find.byKey(const Key('locations-row-l-1'));
+    expect(
+      find.descendant(of: row, matching: find.text('Cleveland')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.text('HARBOR CHIMNEY · Warrensville Heights'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('(216) 555-0142')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Harbor Chimney · Cleveland'), findsNothing);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('locations-state-OH')),
+        matching: find.text('Ohio'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('locations-count')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('locations-count'))).data,
+      '3 branches',
+    );
+  });
+
+  testWidgets('the chosen branch is shaded, and its card acts on each fact', (
+    tester,
+  ) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(tester, const Size(1400, 900), {});
+
+    Color? shade(String id) => tester
+        .widget<Material>(
+          find
+              .ancestor(
+                of: find.byKey(Key('locations-row-$id')),
+                matching: find.byType(Material),
+              )
+              .first,
+        )
+        .color;
+    // Before any pick, the card shows the first branch listed (Illinois
+    // before Ohio), and that is the row shaded.
+    expect(find.byKey(const Key('locations-detail-l-3')), findsOneWidget);
+    expect(shade('l-3'), isNot(Colors.transparent));
+    expect(shade('l-1'), Colors.transparent);
+
+    await tester.tap(find.byKey(const Key('locations-row-l-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('locations-detail-l-1')), findsOneWidget);
+    expect(shade('l-1'), isNot(Colors.transparent));
+    expect(shade('l-3'), Colors.transparent);
+
+    await tester.tap(find.byKey(const Key('locations-row-l-3')));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('locations-detail-l-3'));
+    await tester.tap(
+      find.descendant(of: card, matching: find.byTooltip('Copy the phone number')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: card, matching: find.byTooltip('Copy the address')),
+    );
+    await tester.pumpAndSettle();
+    expect(copied, ['(312) 555-0133', '1 Main St, Chicago, IL 60642']);
+    expect(
+      find.descendant(of: card, matching: find.byTooltip('Directions')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('on a phone each branch can be called from its row', (
+    tester,
+  ) async {
+    await _pump(tester, const Size(390, 844), {});
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('locations-row-l-2')),
+        matching: find.byTooltip('Call Akron'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('locations-row-l-2')),
+        matching: find.text('Akron · (330) 555-0177'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets("Settings keeps each company's note for new dispatchers", (
@@ -228,6 +352,13 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+Future<void> _pickState(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const Key('locations-state')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(

@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'availability_pane.dart';
@@ -53,8 +54,7 @@ class _LocationsPaneState extends State<LocationsPane> {
   String? _selectedId;
   String? _state;
 
-  /// On a phone: the whole list, and one branch opened in place.
-  bool _showAll = false;
+  /// On a phone: one branch opened in place.
   bool _opened = false;
 
   @override
@@ -234,40 +234,61 @@ class _LocationsPaneState extends State<LocationsPane> {
 
   // ── the parts both use ───────────────────────────────────────────
 
-  Widget _lookupBox(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: TextField(
-          key: const Key('locations-lookup'),
-          controller: _address,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _lookup(),
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search),
-            hintText: "A customer's address or ZIP",
-            border: const OutlineInputBorder(),
-            suffixIcon: _looking
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+  /// The page's first question, as its headline (UI queue 64): who serves
+  /// this address. The button says what it does rather than an arrow.
+  Widget _lookupBox(BuildContext context, {required bool phone}) {
+    final theme = Theme.of(context);
+    final edge = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            key: const Key('locations-lookup'),
+            controller: _address,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _lookup(),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: phone
+                  ? 'Who serves this address?'
+                  : "Who serves this address? Type a customer's address or ZIP",
+              border: edge,
+              enabledBorder: edge,
+              suffixIcon: _looking
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : phone
+                  ? IconButton(
+                      tooltip: 'Find the closest',
+                      icon: const Icon(Icons.arrow_forward),
+                      onPressed: _lookup,
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: FilledButton(
+                        onPressed: _lookup,
+                        child: const Text('Find the closest'),
+                      ),
                     ),
-                  )
-                : IconButton(
-                    tooltip: 'Find the closest',
-                    icon: const Icon(Icons.arrow_forward),
-                    onPressed: _lookup,
-                  ),
+            ),
           ),
         ),
-      ),
-      if (_result != null) ...[
-        const SizedBox(width: 8),
-        OutlinedButton(onPressed: _clear, child: const Text('Clear')),
+        if (_result != null) ...[
+          const SizedBox(width: 8),
+          OutlinedButton(onPressed: _clear, child: const Text('Clear')),
+        ],
       ],
-    ],
-  );
+    );
+  }
 
   Widget _answerCard(
     BuildContext context,
@@ -324,8 +345,10 @@ class _LocationsPaneState extends State<LocationsPane> {
           ),
           const SizedBox(height: 4),
           Text(
-            first ? _name(l) : '${l['name'] ?? ''}',
-            style: theme.textTheme.titleSmall,
+            '${l['name'] ?? ''}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -398,74 +421,121 @@ class _LocationsPaneState extends State<LocationsPane> {
     );
   }
 
-  Widget _detail(BuildContext context, Map<String, dynamic> l) {
+  /// One branch: who it is, then each fact with what can be done with it
+  /// (UI queue 64) — the number with Copy (and Call on a phone), the address
+  /// with Copy and Directions — and availability as the one big button.
+  Widget _detail(
+    BuildContext context,
+    Map<String, dynamic> l, {
+    bool phone = false,
+  }) {
     final theme = Theme.of(context);
     final tel = '${l['phone'] ?? ''}'.trim();
     final email = '${l['email'] ?? ''}'.trim();
     final serves = '${l['service_area'] ?? ''}'.trim();
     final area = '${(l['area'] as Map?)?['name'] ?? ''}'.trim();
-    Widget line(String label, Widget value) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
+    final company = '${(l['company'] as Map?)?['name'] ?? ''}'.trim();
+    final small = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.6,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    Widget block(
+      String label,
+      Widget value, [
+      List<Widget> actions = const [],
+    ]) => Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: 10),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 80,
-            child: Text(label, style: theme.textTheme.bodySmall),
+          Text(label.toUpperCase(), style: small),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Expanded(child: value),
+              ...actions,
+            ],
           ),
-          Expanded(child: value),
         ],
       ),
     );
+
+    Widget action(String tooltip, IconData icon, VoidCallback onPressed) =>
+        IconButton(
+          tooltip: tooltip,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(icon, size: 20),
+          onPressed: onPressed,
+        );
 
     return Column(
       key: Key('locations-detail-${l['id']}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: Text(_name(l), style: theme.textTheme.titleMedium)),
-            if (area.isNotEmpty) StatusPill(area, tone: Tone.info),
-          ],
+        if (company.isNotEmpty) Text(company.toUpperCase(), style: small),
+        Text(
+          '${l['name'] ?? ''}',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        const SizedBox(height: 10),
-        line('Address', SelectableText(_addressOf(l))),
+        if (area.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(area, tone: Tone.info),
+          ),
+        ],
         if (tel.isNotEmpty)
-          line(
+          block(
             'Phone',
             SelectableText(
               tel,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
+            [
+              if (phone) action('Call $tel', Icons.call, () => _call(tel)),
+              action(
+                'Copy the phone number',
+                Icons.copy,
+                () => _copy(tel, 'Phone number'),
+              ),
+            ],
           ),
-        if (email.isNotEmpty) line('Email', SelectableText(email)),
-        if (serves.isNotEmpty) line('Serves', Text(serves)),
-        const SizedBox(height: 6),
+        if (email.isNotEmpty)
+          block('Email', SelectableText(email), [
+            action('Copy the email', Icons.copy, () => _copy(email, 'Email')),
+          ]),
+        block('Address', SelectableText(_addressOf(l)), [
+          action(
+            'Copy the address',
+            Icons.copy,
+            () => _copy(_addressOf(l), 'Address'),
+          ),
+          action('Directions', Icons.directions_outlined, () => _directions(l)),
+        ]),
+        if (serves.isNotEmpty) block('Serves', Text(serves)),
+        const SizedBox(height: 14),
         _note(context, l),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton(
-              onPressed: () => _availability(l),
-              child: const Text('Check availability'),
-            ),
-            OutlinedButton(
-              onPressed: () => _directions(l),
-              child: const Text('Directions'),
-            ),
-            OutlinedButton(
-              onPressed: () => _copy(_addressOf(l), 'Address'),
-              child: const Text('Copy address'),
-            ),
-          ],
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: () => _availability(l),
+          icon: const Icon(Icons.event_available_outlined),
+          label: const Text('Check availability'),
         ),
       ],
     );
   }
 
-  /// The branches the search and the state chip leave, by state.
+  /// The branches the search and the state leave, by state.
   Map<String, List<Map<String, dynamic>>> get _grouped {
     final words = _find.text.trim().toLowerCase();
     final shown = [
@@ -482,9 +552,21 @@ class _LocationsPaneState extends State<LocationsPane> {
       (out['${l['state'] ?? ''}'.trim()] ??= []).add(l);
     }
     return Map.fromEntries(
-      out.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+      out.entries.toList()
+        ..sort((a, b) => _stateName(a.key).compareTo(_stateName(b.key))),
     );
   }
+
+  /// The branch the card shows, shaded in the list: the one chosen, or
+  /// until then the first the list shows.
+  String? get _shownId {
+    if (_selectedId != null) return _selectedId;
+    final first = _grouped.values.expand((rows) => rows).firstOrNull;
+    return first == null ? null : '${first['id']}';
+  }
+
+  /// A state as people say it: "Connecticut", not "CT".
+  static String _stateName(String code) => _states[code.toUpperCase()] ?? code;
 
   Widget _directory(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
@@ -494,45 +576,88 @@ class _LocationsPaneState extends State<LocationsPane> {
       if (s.isNotEmpty) states[s] = (states[s] ?? 0) + 1;
     }
     final grouped = _grouped;
+    final shown = grouped.values.fold<int>(0, (n, rows) => n + rows.length);
+    final quiet = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.6,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: phone ? MainAxisSize.min : MainAxisSize.max,
       children: [
         Padding(
-          padding: const EdgeInsets.all(10),
-          child: TextField(
-            key: const Key('locations-find'),
-            controller: _find,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Find a branch',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('locations-find'),
+                  controller: _find,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.filter_list),
+                    hintText: phone
+                        ? 'Filter'
+                        : 'Filter branches by name or city',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              // One picker for the states, where 26 chips took two rows.
+              if (states.length > 1) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: phone ? 140 : 220,
+                  child: SearchPickerField<String>(
+                    key: const Key('locations-state'),
+                    value: _state ?? '',
+                    isDense: true,
+                    options: [
+                      SearchOption(
+                        value: '',
+                        label: 'All states · ${_locations.length}',
+                      ),
+                      for (final MapEntry(key: s, value: n)
+                          in (states.entries.toList()..sort(
+                            (a, b) =>
+                                _stateName(a.key).compareTo(_stateName(b.key)),
+                          )))
+                        SearchOption(value: s, label: '${_stateName(s)} · $n'),
+                    ],
+                    onChanged: (value) => setState(
+                      () => _state = value == null || value.isEmpty
+                          ? null
+                          : value,
+                    ),
+                  ),
+                ),
+              ],
+              if (!phone) ...[
+                const SizedBox(width: 10),
+                Text(
+                  '$shown ${shown == 1 ? 'branch' : 'branches'}',
+                  key: const Key('locations-count'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ],
           ),
         ),
-        if (states.length > 1)
+        if (!phone && grouped.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: Row(
               children: [
-                ChoiceChip(
-                  label: Text('All ${_locations.length}'),
-                  selected: _state == null,
-                  onSelected: (_) => setState(() => _state = null),
+                Expanded(flex: 5, child: Text('BRANCH', style: quiet)),
+                const SizedBox(width: 10),
+                Expanded(flex: 3, child: Text('SERVES', style: quiet)),
+                SizedBox(
+                  width: 130,
+                  child: Text('PHONE', style: quiet, textAlign: TextAlign.end),
                 ),
-                for (final MapEntry(key: s, value: n)
-                    in (states.entries.toList()
-                      ..sort((a, b) => a.key.compareTo(b.key))))
-                  ChoiceChip(
-                    label: Text('$s $n'),
-                    selected: _state == s,
-                    onSelected: (on) => setState(() => _state = on ? s : null),
-                  ),
               ],
             ),
           ),
@@ -554,47 +679,130 @@ class _LocationsPaneState extends State<LocationsPane> {
               for (final MapEntry(key: state, value: rows)
                   in grouped.entries) ...[
                 if (state.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                    child: Text(
-                      state.toUpperCase(),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                for (final l in rows)
-                  ListTile(
-                    key: Key('locations-row-${l['id']}'),
-                    dense: true,
-                    selected: !phone && '${l['id']}' == _selectedId,
-                    title: Text(_name(l)),
-                    subtitle: Text(
-                      [
-                        '${l['city'] ?? ''}'.trim(),
-                        if ('${l['service_area'] ?? ''}'.trim().isNotEmpty)
-                          'serves ${l['service_area']}',
-                      ].where((s) => s.isNotEmpty).join(' · '),
-                    ),
-                    trailing: phone
-                        ? const Icon(Icons.chevron_right)
-                        : Text(
-                            '${l['phone'] ?? ''}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                  Container(
+                    key: Key('locations-state-$state'),
+                    color: theme.colorScheme.surfaceContainerLow,
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+                    child: Row(
+                      children: [
+                        Text(
+                          _stateName(state),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
-                    onTap: () => setState(() {
-                      _selectedId = '${l['id']}';
-                      _opened = phone;
-                    }),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '· ${rows.length}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
+                for (final l in rows) _row(context, l, phone: phone),
               ],
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// One branch on a line: its name once, its company and city small under
+  /// it, then what it serves and its phone in columns of their own; on a
+  /// phone, the number under the name and a button that calls it.
+  Widget _row(
+    BuildContext context,
+    Map<String, dynamic> l, {
+    required bool phone,
+  }) {
+    final theme = Theme.of(context);
+    final selected = !phone && '${l['id']}' == _shownId;
+    final tel = '${l['phone'] ?? ''}'.trim();
+    final company = '${(l['company'] as Map?)?['name'] ?? ''}'.trim();
+    final city = '${l['city'] ?? ''}'.trim();
+    final serves = '${l['service_area'] ?? ''}'.trim();
+
+    final name = Text(
+      '${l['name'] ?? ''}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: selected ? theme.colorScheme.onPrimaryContainer : null,
+      ),
+    );
+    final under = Text(
+      [
+        if (!phone && company.isNotEmpty) company.toUpperCase(),
+        if (city.isNotEmpty) city,
+        if (phone && tel.isNotEmpty) tel,
+      ].join(' · '),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall,
+    );
+
+    return Material(
+      color: selected ? theme.colorScheme.primaryContainer : Colors.transparent,
+      child: InkWell(
+        key: Key('locations-row-${l['id']}'),
+        onTap: () => setState(() {
+          _selectedId = '${l['id']}';
+          _opened = phone;
+        }),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(14, 8, phone ? 4 : 14, 8),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: EzBiziTheme.edge(context).withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [name, under],
+                ),
+              ),
+              if (phone) ...[
+                if (tel.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Call ${l['name'] ?? ''}',
+                    icon: const Icon(Icons.call_outlined),
+                    onPressed: () => _call(tel),
+                  ),
+              ] else ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    serves,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                SizedBox(
+                  width: 130,
+                  child: Text(
+                    tel,
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -615,15 +823,14 @@ class _LocationsPaneState extends State<LocationsPane> {
 
   Widget _desk(BuildContext context) {
     final answers = _answers;
-    final selected =
-        _byId(_selectedId) ?? (_locations.isEmpty ? null : _locations.first);
+    final selected = _byId(_shownId);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _lookupBox(context),
+          _lookupBox(context, phone: false),
           if (_lookupError != null) ...[
             const SizedBox(height: 8),
             ErrorNote(_lookupError!),
@@ -662,7 +869,7 @@ class _LocationsPaneState extends State<LocationsPane> {
                 SizedBox(
                   width: 380,
                   child: _card(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(16),
                     child: selected == null
                         ? const Text('Pick a branch to see it here.')
                         : SingleChildScrollView(
@@ -700,7 +907,7 @@ class _LocationsPaneState extends State<LocationsPane> {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 12),
-            child: _detail(context, opened),
+            child: _detail(context, opened, phone: true),
           ),
         ],
       );
@@ -712,7 +919,7 @@ class _LocationsPaneState extends State<LocationsPane> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        _lookupBox(context),
+        _lookupBox(context, phone: true),
         if (_lookupError != null) ...[
           const SizedBox(height: 8),
           ErrorNote(_lookupError!),
@@ -752,20 +959,68 @@ class _LocationsPaneState extends State<LocationsPane> {
           _note(context, best.$1),
         ],
         const SizedBox(height: 12),
-        _card(
-          child: _showAll
-              ? _directory(context, phone: true)
-              : ListTile(
-                  key: const Key('locations-all'),
-                  title: Text('All ${_locations.length} branches'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => setState(() => _showAll = true),
-                ),
-        ),
+        // The list right under the lookup (phone option 4): the filter and
+        // the state picker make 59 branches short.
+        _card(child: _directory(context, phone: true)),
       ],
     );
   }
 }
+
+/// The states and districts, by their postal codes.
+const _states = <String, String>{
+  'AL': 'Alabama',
+  'AK': 'Alaska',
+  'AZ': 'Arizona',
+  'AR': 'Arkansas',
+  'CA': 'California',
+  'CO': 'Colorado',
+  'CT': 'Connecticut',
+  'DE': 'Delaware',
+  'DC': 'District of Columbia',
+  'FL': 'Florida',
+  'GA': 'Georgia',
+  'HI': 'Hawaii',
+  'ID': 'Idaho',
+  'IL': 'Illinois',
+  'IN': 'Indiana',
+  'IA': 'Iowa',
+  'KS': 'Kansas',
+  'KY': 'Kentucky',
+  'LA': 'Louisiana',
+  'ME': 'Maine',
+  'MD': 'Maryland',
+  'MA': 'Massachusetts',
+  'MI': 'Michigan',
+  'MN': 'Minnesota',
+  'MS': 'Mississippi',
+  'MO': 'Missouri',
+  'MT': 'Montana',
+  'NE': 'Nebraska',
+  'NV': 'Nevada',
+  'NH': 'New Hampshire',
+  'NJ': 'New Jersey',
+  'NM': 'New Mexico',
+  'NY': 'New York',
+  'NC': 'North Carolina',
+  'ND': 'North Dakota',
+  'OH': 'Ohio',
+  'OK': 'Oklahoma',
+  'OR': 'Oregon',
+  'PA': 'Pennsylvania',
+  'RI': 'Rhode Island',
+  'SC': 'South Carolina',
+  'SD': 'South Dakota',
+  'TN': 'Tennessee',
+  'TX': 'Texas',
+  'UT': 'Utah',
+  'VT': 'Vermont',
+  'VA': 'Virginia',
+  'WA': 'Washington',
+  'WV': 'West Virginia',
+  'WI': 'Wisconsin',
+  'WY': 'Wyoming',
+};
 
 /// Scheduling › Settings › Locations: each company's note for new
 /// dispatchers (UI queue 49), shown with its branches on the Locations tab.
