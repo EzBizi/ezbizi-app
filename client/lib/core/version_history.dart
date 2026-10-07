@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0385',
+      date: '7 Oct 2026',
+      items: [
+        'You can now see everything an AI or a script did with an API key. In Your account › API keys, each key has an Activity link showing its last few changes, with the rest one click away. Administrators get Settings › API activity: everyone\'s activity, filtered by person and key, with reads hidden unless you ask for them. Each change opens to show every field the way it was and the way it was set, and a deletion shows what was deleted, so a change can be put back by hand.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0384',
       date: '7 Oct 2026',
       items: [
