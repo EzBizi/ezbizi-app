@@ -9,7 +9,9 @@ import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/dashboard_grid.dart';
+import '../widgets/dashboard_templates.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 
 /// The dashboard: one box per reachable module, one period for the page.
@@ -51,6 +53,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Whether the boxes show their arranging controls.
   bool _customizing = false;
+
+  /// A whole layout just applied (a template, or the standard one): what to
+  /// say about it, and the layout it replaced, for Undo.
+  ({String said, List<Map<String, dynamic>> before})? _applied;
 
   /// Whether the server stores a size per box. Until it does there is nothing
   /// to switch, and sending one would be a key it never reads back.
@@ -223,6 +229,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) await _load();
   }
 
+  /// The recommended layouts (UI queue 53, Jose: 1 and 4), applied at once
+  /// with Undo on the dashboard rather than behind an "are you sure".
+  Future<void> _openTemplates() async {
+    final choice = await showSidePanel<DashboardTemplateChoice>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Templates',
+        child: DashboardTemplatesPanel(api: widget.api),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    final template = choice.template;
+    // As the server sent them: a Small box names no mode and keeps its own.
+    final glances = template == null
+        ? const <Map<String, dynamic>>[]
+        : glancesOf(template);
+    final hidden = glances.where((glance) => glance['hidden'] == true).length;
+
+    await _replaceLayout(
+      glances,
+      said: template == null
+          ? 'Back to the standard layout.'
+          : 'Using ${template['label']}. '
+                '${hidden == 1 ? '1 box is' : '$hidden boxes are'} hidden; '
+                'Add a box brings any of them back.',
+    );
+  }
+
+  /// Save a whole layout at once, keeping the one it replaces for Undo. The
+  /// standard layout is an empty save.
+  Future<void> _replaceLayout(
+    List<Map<String, dynamic>> glances, {
+    required String said,
+  }) async {
+    final before = [for (final glance in _glances) _entryFor(glance)];
+    final response = await widget.api.put('/dashboard/layout', {
+      'glances': glances,
+    });
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
+      return;
+    }
+
+    setState(() => _applied = (said: said, before: before));
+    await _load();
+  }
+
+  /// Put back the layout a template replaced, every box as it was.
+  Future<void> _undoLayout() async {
+    final applied = _applied;
+    if (applied == null) return;
+
+    setState(() => _applied = null);
+    final response = await widget.api.put('/dashboard/layout', {
+      'glances': applied.before,
+    });
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
+    }
+    await _load();
+  }
+
   Future<void> _setPeriod(String period) async {
     if (period == _period) return;
 
@@ -386,6 +463,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         children: [
           if (_customizing) _arrangeBar(context) else _periodRow(context),
+          if (_applied case final applied?) ...[
+            const SizedBox(height: 12),
+            _appliedBar(context, applied.said),
+          ],
           const SizedBox(height: 16),
           // Every box hidden is a dashboard somebody emptied, not one with
           // nothing to say: it says how to bring a box back.
@@ -438,6 +519,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// What Customize looks like: what to do, and the way out.
   Widget _arrangeBar(BuildContext context) {
     final theme = Theme.of(context);
+    final words = Text(
+      switch ((_sized, _hideable)) {
+        (true, true) => 'Drag a box to move it, pick its size, or hide it.',
+        (true, false) => 'Drag a box to move it, or pick its size.',
+        (false, true) => 'Drag a box to move it, or hide it.',
+        (false, false) => 'Drag a box to move it.',
+      },
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onPrimaryContainer,
+      ),
+    );
+    final tools = [
+      TextButton.icon(
+        key: const Key('dashboard-templates'),
+        onPressed: _openTemplates,
+        icon: const Icon(Icons.view_quilt_outlined),
+        label: const Text('Templates'),
+      ),
+      if (_glances.any((glance) => glance['hidden'] == true))
+        TextButton.icon(
+          onPressed: _addBox,
+          icon: const Icon(Icons.add),
+          label: const Text('Add a box'),
+        ),
+    ];
+    final done = FilledButton(
+      onPressed: () => setState(() => _customizing = false),
+      child: const Text('Done'),
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
@@ -445,32 +555,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
+      // A phone puts Templates and Add a box on a line of their own: beside
+      // the words they left them a sliver, and the bar grew five lines tall,
+      // pushing the boxes it is about off the screen.
+      child: MediaQuery.sizeOf(context).width < 600
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [Expanded(child: words), done]),
+                Wrap(spacing: 4, children: tools),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: words),
+                for (final tool in tools) ...[tool, const SizedBox(width: 4)],
+                done,
+              ],
+            ),
+    );
+  }
+
+  /// What a template just did, with the way back.
+  Widget _appliedBar(BuildContext context, String said) {
+    final theme = Theme.of(context);
+    final info = ToneColours.of(context, Tone.info);
+
+    return Container(
+      key: const Key('dashboard-template-applied'),
+      padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: info.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              switch ((_sized, _hideable)) {
-                (true, true) => 'Drag a box to move it, pick its size, or hide it.',
-                (true, false) => 'Drag a box to move it, or pick its size.',
-                (false, true) => 'Drag a box to move it, or hide it.',
-                (false, false) => 'Drag a box to move it.',
-              },
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
+              said,
+              style: theme.textTheme.bodyMedium?.copyWith(color: info.ink),
             ),
           ),
-          if (_glances.any((glance) => glance['hidden'] == true)) ...[
-            TextButton.icon(
-              onPressed: _addBox,
-              icon: const Icon(Icons.add),
-              label: const Text('Add a box'),
-            ),
-            const SizedBox(width: 4),
-          ],
-          FilledButton(
-            onPressed: () => setState(() => _customizing = false),
-            child: const Text('Done'),
+          TextButton(
+            key: const Key('dashboard-template-undo'),
+            onPressed: _undoLayout,
+            child: const Text('Undo'),
+          ),
+          IconButton(
+            tooltip: 'Dismiss',
+            onPressed: () => setState(() => _applied = null),
+            icon: const Icon(Icons.close, size: 18),
           ),
         ],
       ),
