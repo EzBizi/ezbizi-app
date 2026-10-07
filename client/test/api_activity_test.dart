@@ -33,6 +33,7 @@ void main() {
     expect(verbs(), contains('Deleted'));
     expect(verbs(), contains('Refused'));
     expect(verbs(), isNot(contains('Read')));
+    expect(verbs(), contains('Put back'));
     expect(find.text('Dana Reyes'), findsWidgets);
 
     await tester.tap(find.byKey(const Key('api-activity-changes')));
@@ -175,17 +176,103 @@ void main() {
     expect(find.text('Everything done with this key'), findsOneWidget);
     expect(server.asked.last['key_id'], '7');
   });
+
+  // Jose, asked whether he wanted one-click revert: "Sure" (2026-10-07).
+  testWidgets('Put it back only where the server can, answered in place', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server, const Size(1300, 900), everyone: true);
+
+    await tester.tap(find.byKey(const ValueKey('api-activity-row-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('api-activity-revert')));
+    await tester.pumpAndSettle();
+
+    expect(server.reverted, ['/api/v1/api-keys/activity/ev-1/revert']);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('api-activity-said'))).data,
+      'Put back.',
+    );
+    expect(find.byKey(const Key('api-activity-revert')), findsNothing);
+    expect(find.textContaining('Put back '), findsOneWidget);
+
+    // A delete is not one the server can put back.
+    await tester.tap(find.byKey(const ValueKey('api-activity-row-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('api-activity-held')), findsOneWidget);
+    expect(find.byKey(const Key('api-activity-revert')), findsNothing);
+  });
+
+  testWidgets('one not put back exactly says to check it', (tester) async {
+    await _pump(
+      tester,
+      _Server(revert: 'inexact'),
+      const Size(1300, 900),
+      everyone: true,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('api-activity-row-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('api-activity-revert')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Text>(find.byKey(const Key('api-activity-said'))).data,
+      'Saved, but the record does not read exactly as it did before. Check '
+      'it.',
+    );
+  });
+
+  testWidgets('a refusal for good says why and takes the button away', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _Server(revert: 'conflict'),
+      const Size(1300, 900),
+      everyone: true,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('api-activity-row-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('api-activity-revert')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('It has changed since, so nothing was put back.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('api-activity-revert')), findsNothing);
+    expect(find.textContaining('Put back '), findsNothing);
+  });
+
+  testWidgets('one already put back says so, with no button', (tester) async {
+    await _pump(tester, _Server(), const Size(1300, 900), everyone: true);
+
+    await tester.tap(find.byKey(const ValueKey('api-activity-row-5')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Put back '), findsOneWidget);
+    expect(find.byKey(const Key('api-activity-revert')), findsNothing);
+  });
 }
 
 class _Server {
-  _Server({this.full = false});
+  _Server({this.full = false, this.revert = 'ok'});
 
   /// A full page of 200, so there may be older rows.
   final bool full;
+
+  /// How a put-back answers: ok, inexact or conflict.
+  final String revert;
   final List<Map<String, String>> asked = [];
+  final List<String> reverted = [];
 
   static final _rows = [
     {
+      'id': 'ev-1',
+      'revertable': true,
+      'reverted_at': null,
       'at': '2026-10-07T17:42:00Z',
       'action': 'api_key.request',
       'who': 'Dana Reyes',
@@ -265,6 +352,9 @@ class _Server {
       'before': null,
     },
     {
+      'id': 'ev-6',
+      'revertable': true,
+      'reverted_at': '2026-10-06T21:00:00Z',
       'at': '2026-10-06T20:00:00Z',
       'action': 'api_key.request',
       'who': 'Dana Reyes',
@@ -292,10 +382,40 @@ class _Server {
       'sent': {'text': 'Chimney cap photographed.'},
       'before': null,
     },
+    {
+      'id': 'ev-8',
+      'at': '2026-10-06T18:00:00Z',
+      'action': 'api_key.reverted',
+      'who': 'Marco Silva',
+      'user_id': 'u-2',
+      'key_id': 3,
+      'key_name': 'Weekly numbers script',
+      'method': 'PUT',
+      'path': '/api/v1/customers/C-2040',
+      'status': 200,
+      'via': 'api',
+      'sent': null,
+      'before': null,
+    },
   ];
 
   Future<http.Response> handle(http.Request request) async {
     final path = request.url.path;
+    if (request.method == 'POST' && path.endsWith('/revert')) {
+      reverted.add(path);
+      return switch (revert) {
+        'inexact' => _json({
+          'reverted': false,
+          'message':
+              'Saved, but the record does not read exactly as it did before. '
+              'Check it.',
+        }),
+        'conflict' => _json({
+          'message': 'It has changed since, so nothing was put back.',
+        }, 409),
+        _ => _json({'message': 'Put back.', 'reverted': true}),
+      };
+    }
     if (path.endsWith('/api-keys/activity')) {
       asked.add(request.url.queryParameters);
       final key = request.url.queryParameters['key_id'];

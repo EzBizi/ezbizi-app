@@ -16,7 +16,9 @@ import 'status_pill.dart';
 /// actions", "so changes can be reverted if needed". Every keyed request is
 /// recorded by the server; this reads it as Read, Created, Changed or Deleted,
 /// and a change opens to each field before and after, so it can be put back
-/// by hand. One-click revert was left out: a generic replay can half-apply.
+/// by hand. Where the server can put one back safely (it says `revertable`),
+/// Put it back does it in one click: Jose, asked whether he wanted that,
+/// "Sure" (2026-10-07). Its answer is shown in place, never in a dialog.
 ///
 /// Three places use it: the last few changes under a key in Your account
 /// ([limit]), that key's whole history in a side panel, and Settings › API
@@ -70,6 +72,10 @@ class _ApiActivityState extends State<ApiActivity> {
 
   /// The row opened, by its place in [_rows].
   int? _open;
+
+  /// The row being put back, and what the server said about each one tried.
+  int? _reverting;
+  final _said = <int, (String, Tone)>{};
 
   @override
   void initState() {
@@ -125,7 +131,7 @@ class _ApiActivityState extends State<ApiActivity> {
     return LayoutBuilder(
       builder: (context, box) {
         final wide = box.maxWidth >= 700;
-        if (!wide && _open != null) return _page1(context, _rows[_open!]);
+        if (!wide && _open != null) return _page1(context, _open!);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -350,7 +356,7 @@ class _ApiActivityState extends State<ApiActivity> {
                   ]),
                 ),
               ),
-              if (_open == i) _detail(context, row),
+              if (_open == i) _detail(context, i, row),
             ],
           ],
         ),
@@ -412,8 +418,9 @@ class _ApiActivityState extends State<ApiActivity> {
   }
 
   /// Narrow: one change, in the list's place.
-  Widget _page1(BuildContext context, Map<String, dynamic> row) {
+  Widget _page1(BuildContext context, int i) {
     final theme = Theme.of(context);
+    final row = _rows[i];
     return Column(
       key: const Key('api-activity-detail'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -443,13 +450,13 @@ class _ApiActivityState extends State<ApiActivity> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
-        _detail(context, row),
+        _detail(context, i, row),
       ],
     );
   }
 
   /// Each field the way it was and the way it was set.
-  Widget _detail(BuildContext context, Map<String, dynamic> row) {
+  Widget _detail(BuildContext context, int i, Map<String, dynamic> row) {
     final theme = Theme.of(context);
     final sent = row['sent'];
     // The server keeps the GET's whole answer, and most routes answer
@@ -542,24 +549,89 @@ class _ApiActivityState extends State<ApiActivity> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           body,
-          if (sent != null) ...[
+          if (_said[i] case (final text, final tone)) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton(
-                key: const Key('api-activity-copy'),
-                onPressed: () => _copy(
-                  sent is String
-                      ? sent
-                      : const JsonEncoder.withIndent('  ').convert(sent),
-                ),
-                child: const Text('Copy what was sent'),
+            Text(
+              text,
+              key: const Key('api-activity-said'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ToneColours.of(context, tone).ink,
+                fontWeight: FontWeight.w700,
               ),
+            ),
+          ],
+          if (sent != null || row['revertable'] == true) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (sent != null)
+                  OutlinedButton(
+                    key: const Key('api-activity-copy'),
+                    onPressed: () => _copy(
+                      sent is String
+                          ? sent
+                          : const JsonEncoder.withIndent('  ').convert(sent),
+                    ),
+                    child: const Text('Copy what was sent'),
+                  ),
+                if (row['reverted_at'] != null)
+                  StatusPill(
+                    'Put back ${formatListStamp(row['reverted_at'], '', formats: widget.formats)}',
+                    tone: Tone.ok,
+                  )
+                else if (row['revertable'] == true)
+                  FilledButton.icon(
+                    key: const Key('api-activity-revert'),
+                    onPressed: _reverting == null ? () => _revert(i) : null,
+                    icon: const Icon(Icons.undo, size: 18),
+                    label: Text(
+                      _reverting == i ? 'Putting it back…' : 'Put it back',
+                    ),
+                  ),
+              ],
             ),
           ],
         ],
       ),
     );
+  }
+
+  /// One click, the server's answer in place. Done, or refused for good (put
+  /// back already, changed since, not revertable), the button goes; any other
+  /// refusal leaves it to try again.
+  Future<void> _revert(int i) async {
+    setState(() {
+      _reverting = i;
+      _said.remove(i);
+    });
+    final response = await widget.api.post(
+      '$_path/${_rows[i]['id']}/revert',
+      {},
+    );
+    if (!mounted) return;
+    setState(() {
+      _reverting = null;
+      final message = '${response.body['message'] ?? ''}';
+      if (response.ok) {
+        final exact = response.body['reverted'] == true;
+        _said[i] = (
+          message.isEmpty ? 'Put back.' : message,
+          exact ? Tone.ok : Tone.caution,
+        );
+        _rows[i] = {
+          ..._rows[i],
+          'reverted_at': DateTime.now().toUtc().toIso8601String(),
+        };
+      } else {
+        _said[i] = (response.reason, Tone.bad);
+        if (response.statusCode == 409 || response.statusCode == 422) {
+          _rows[i] = {..._rows[i], 'revertable': false};
+        }
+      }
+    });
   }
 
   Future<void> _copy(String text) async {
@@ -629,6 +701,7 @@ class _ApiActivityState extends State<ApiActivity> {
 String verbOf(Map<String, dynamic> row) => switch (row['action']) {
   'api_key.created' => 'Key made',
   'api_key.revoked' => 'Key revoked',
+  'api_key.reverted' => 'Put back',
   _ => switch ('${row['method'] ?? ''}'.toUpperCase()) {
     'GET' || 'HEAD' => 'Read',
     'POST' => 'Created',
