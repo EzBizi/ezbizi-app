@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'phone/alerts_tab.dart';
 import 'phone/phone_tab.dart';
 import 'phone/records_tab.dart';
 import 'phone/reports_tab.dart';
@@ -66,6 +67,14 @@ class _PhoneScreenState extends State<PhoneScreen> {
       'Reports',
       Icons.insights_outlined,
       () => ReportsTab(api: widget.api, session: widget.session),
+    ),
+    (
+      // Jose, 2026-10-07: alerts to chosen people, a pop-up they dismiss.
+      // Same order as the TabDefinition list in ModuleServiceProvider.
+      'alerts',
+      'Alerts',
+      Icons.campaign_outlined,
+      () => AlertsTab(api: widget.api, formats: widget.session.me!.display),
     ),
     (
       'settings',

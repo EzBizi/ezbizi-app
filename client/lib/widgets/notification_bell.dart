@@ -7,6 +7,7 @@ import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
+import 'alert_popup.dart';
 import 'side_panel.dart';
 import 'tag.dart';
 
@@ -209,6 +210,30 @@ class _NotificationBellState extends State<NotificationBell>
     });
 
     unawaited(_announce(arrived));
+    if (response.ok) {
+      _raiseAlerts((response.body['meta'] as Map<String, dynamic>?)?['alerts']);
+    }
+  }
+
+  /// Alerts from Communication › Alerts (UI queue 65): in the middle of the
+  /// screen until dismissed, one after another.
+  ///
+  /// Jose, 2026-10-07: "This sort of alert notifications should be a pop up on
+  /// the screen, that they can dismiss", and of the drawn layouts, "2". Read
+  /// from meta.alerts, every unread one, so an alert older than this page of
+  /// notifications, sent while its person was signed out, still meets them.
+  late final _popups = AlertPopups(widget.api, onDismissed: _refresh);
+
+  void _raiseAlerts(Object? open) {
+    if (!mounted || open is! List) return;
+    _popups.show(
+      context,
+      [
+        for (final alert in open)
+          if (alert is Map) Map<String, dynamic>.from(alert),
+      ],
+      formats: widget.session?.me?.display ?? DisplayFormats.fallback,
+    );
   }
 
   /// The unread ones this widget has not already accounted for.

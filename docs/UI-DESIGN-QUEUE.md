@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 66 · API activity: what an AI or a script did with a key — **sent to Jose 2026-10-07, recommended 1 and 4** (`docs/previews/api-activity-layouts.html`)
+### 66 · API activity: what an AI or a script did with a key — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4, without Put it back** (`docs/previews/api-activity-layouts.html`)
 
 From MCP / API (`local_c0e813e0…`), Jose 2026-10-07: *"we should probably have an MCP-API log to records the
 actions"*, *"add all the logging to the MCP-API from now on"*, *"so changes can be reverted if needed"*. Server on
@@ -2978,7 +2978,12 @@ side panel per key, by day, and the same panel per person for administrators; **
 keys and the same table in Settings. Phone **4** (recommended) rows by day, a change opens in the tab; **5** rows open
 in place; **6** per key only. All: Read / Created / Changed / Deleted rather than verbs; Changes only on by default.
 
-### 65 · Communication · Alerts that pop up until dismissed — **Jose: "2" (2026-10-07), so 2 and its phone match 5** (`docs/previews/communication-alerts-layouts.html`)
+**Put it back is out (MCP / API, 2026-10-07):** a generic replay sends a GET's shape to a PUT and can half-apply where
+the two differ, which is worse than restoring by hand from the before-and-after. One-click revert would be per-endpoint
+work, its own job if Jose asks. `sent` and `before` are JSON objects (a body over 200 KB stays a string). The Settings
+tab is `organizations.api_activity.view`; its TabDefinition ships in UI/UX's client pin, with the screen.
+
+### 65 · Communication · Alerts that pop up until dismissed — **Jose: "2" (2026-10-07), so 2 and its phone match 5** — **BUILT** (client in the commit that marks this; server `e1355871`, pinned together) (`docs/previews/communication-alerts-layouts.html`)
 
 From the Deployment Lead (`local_072bee23…`), for Jose: send alerts to specific users. Verbatim: *"This sort of
 alert notifications should be a pop up on the screen, that they can dismiss"*. Notifications builds the server (send,

@@ -291,6 +291,45 @@ void main() {
     // above, this would pass just as well if pop-ups had stopped working.
     expect(await _popUpsAfterAnArrival(tester, alerts: false), isEmpty);
   });
+
+  // UI queue 65, Jose: "2". Every unread alert, from meta.alerts, pops up in
+  // the middle of the screen until it is dismissed.
+  testWidgets('an alert older than the page still pops up, until dismissed', (
+    tester,
+  ) async {
+    final open = [
+      {
+        'id': 'a1',
+        'title': 'Storm coming in: finish outdoor jobs by 3 PM.',
+        'body': 'From Dana Reyes',
+        'sender': 'Dana Reyes',
+        'created_at': '2026-10-07T12:00:00+00:00',
+      },
+    ];
+    final posted = <String>[];
+    await _pumpAlerts(tester, open: open, posted: posted);
+
+    // On screen without anybody opening the bell, though the page of
+    // notifications itself holds none of it.
+    expect(find.byKey(const Key('alert-popup')), findsOneWidget);
+    expect(
+      find.text('Storm coming in: finish outdoor jobs by 3 PM.'),
+      findsOneWidget,
+    );
+    expect(find.text('Alert from Dana Reyes'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('alert-dismiss')));
+    await tester.pumpAndSettle();
+
+    expect(posted, ['/api/v1/notifications/a1/read']);
+    expect(find.byKey(const Key('alert-popup')), findsNothing);
+  });
+
+  testWidgets('no open alert, no pop-up (the control)', (tester) async {
+    await _pumpAlerts(tester, open: [], posted: []);
+
+    expect(find.byKey(const Key('alert-popup')), findsNothing);
+  });
 }
 
 /// A bell with a signed-in session, whose list answers [items] on each fetch.
@@ -390,6 +429,44 @@ Future<List<String>> _popUpsAfterAnArrival(
 }
 
 /// One notification in the list, and a spy for where a tap sends you.
+/// A bell whose server lists [open] under meta.alerts, and forgets one once it
+/// is marked read.
+Future<void> _pumpAlerts(
+  WidgetTester tester, {
+  required List<Map<String, dynamic>> open,
+  required List<String> posted,
+}) async {
+  final api = ApiClient(
+    client: MockClient((request) async {
+      if (request.method == 'POST') {
+        posted.add(request.url.path);
+        open.removeWhere(
+          (alert) => request.url.path.endsWith('/${alert['id']}/read'),
+        );
+        return _json({'data': {}});
+      }
+
+      return _json({
+        'data': <Map<String, dynamic>>[],
+        'meta': {'unread': open.length, 'alerts': open},
+      });
+    }),
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        appBar: AppBar(
+          actions: [NotificationBell(api: api, onOpenModule: (_, _, _) {})],
+        ),
+      ),
+    ),
+  );
+
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpWithItem(
   WidgetTester tester, {
   required Map<String, dynamic> item,
