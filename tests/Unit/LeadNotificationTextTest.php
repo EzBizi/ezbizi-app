@@ -79,6 +79,18 @@ class LeadNotificationTextTest extends TestCase
         $this->assertSame('Can you come Friday?', T::clip('Can you come Friday?', 55), 'short replies untouched');
     }
 
+    public function test_a_missed_call_reads_as_jose_chose(): void
+    {
+        $this->assertSame('Missed call - A-1 Chimney', T::missedCallHeadline('A-1 Chimney'));
+        $this->assertSame('Missed call', T::missedCallHeadline(null), 'no company is never a guessed one');
+        $this->assertSame('(319) 210-2005 - Chicago SEO line', T::missedCallDetails('+13192102005', 'Chicago SEO line'));
+        $this->assertSame(
+            '(319) 210-2005 - Chicago SEO line - left a voicemail',
+            T::missedCallDetails('+13192102005', 'Chicago SEO line', voicemail: true),
+        );
+        $this->assertSame('(319) 210-2005', T::missedCallDetails('3192102005', null), 'an unnamed number drops out');
+    }
+
     public function test_a_lead_type_not_yet_recorded_still_says_something_true(): void
     {
         // Meta and Workiz do not record lead_type yet; until they do, the
