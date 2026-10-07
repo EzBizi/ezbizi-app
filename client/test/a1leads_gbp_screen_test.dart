@@ -320,7 +320,7 @@ void main() {
         findsOneWidget, reason: 'the table carries the job line');
 
     await _board(tester);
-    expect(find.textContaining('+15555550101'), findsOneWidget);
+    expect(find.textContaining('(555) 555-0101'), findsOneWidget);
     expect(find.text('Open in Workiz'), findsOneWidget);
     expect(find.text('1 update'), findsOneWidget);
     expect(find.textContaining('Called, left voicemail.'), findsNothing, reason: 'folded until opened');
@@ -755,7 +755,7 @@ void main() {
     await _pump(tester, _handler(total: 3, withCustomer: true));
 
     expect(find.text('CONTACT'), findsOneWidget);
-    expect(find.text('+15555550101'), findsOneWidget, reason: 'from the matched customer');
+    expect(find.text('(555) 555-0101'), findsOneWidget, reason: 'from the matched customer');
     expect(find.textContaining('does not send customer phone or email'), findsNothing);
   });
 
@@ -769,12 +769,24 @@ void main() {
     expect(find.text('Matched: Christopher Beard'), findsOneWidget);
     expect(find.text('Workiz OH · Job #600024076 · 2026-07-02 08:00:00 · Team: ms chimney'), findsOneWidget,
         reason: 'a team is not written as a technician');
-    expect(find.text('5133905722'), findsOneWidget);
+    expect(find.text('(513) 390-5722'), findsOneWidget);
     expect(find.text('christopher@example.com'), findsOneWidget);
 
     await _board(tester);
     expect(find.textContaining('matched by hand'), findsOneWidget);
     expect(find.text('Open in Workiz'), findsOneWidget);
+  });
+
+  /// Rodrigo, 6 October: "make the contacts in the contact column in a1leads
+  /// gbp format friendlier '(123) 456-6789'".
+  test('a US phone in any shape A1 Leads sends reads (513) 390-5722', () {
+    for (final shape in ['5133905722', '15133905722', '+15133905722']) {
+      expect(gbpContactText(shape), '(513) 390-5722', reason: shape);
+    }
+    // Not a US number, or not a number: shown as it came.
+    for (final other in ['+442071838750', '+2035550142', '0123456789', '555-0101', 'christopher@example.com']) {
+      expect(gbpContactText(other), other, reason: other);
+    }
   });
 
   /// Nothing matching the filters is a different sentence from nothing at all.
