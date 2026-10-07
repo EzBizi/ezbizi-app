@@ -75,7 +75,10 @@ class EnforceApiKeyAccess
         }
 
         $write = ! $request->isMethodSafe();
-        $body = $write ? json_encode($request->except(['password', 'password_confirmation']), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+        // Redacted BEFORE encoding: the logger's own redaction walks arrays, and a
+        // JSON string is opaque to it, so a key PUTting a Workiz token or an SMTP
+        // password would otherwise be kept in the clear (deploy desk review).
+        $body = $write ? $this->encode($request->all()) : null;
 
         $this->audit->log('api_key.request', $token, changes: $write ? array_filter([
             'body' => $this->cap($body),
@@ -134,7 +137,15 @@ class EnforceApiKeyAccess
             app()->instance('request', $request);
         }
 
-        return $response->isSuccessful() ? (string) $response->getContent() : null;
+        // A GET may echo a secret too; redact it the same way.
+        return $response->isSuccessful() ? $this->encode(json_decode((string) $response->getContent(), true)) : null;
+    }
+
+    private function encode(mixed $data): ?string
+    {
+        return is_array($data)
+            ? json_encode($this->audit->redact($data), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : null;
     }
 
     private function cap(?string $text): ?string

@@ -262,4 +262,23 @@ class ApiKeysAndMcpTest extends TestCase
         $one = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?user_id='.$staff->getKey())->json('activity');
         $this->assertSame([$staff->getKey()], array_values(array_unique(array_column($one, 'user_id'))));
     }
+
+    public function test_secrets_a_key_sends_are_never_logged(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin'], 'write');
+
+        $this->withToken($key)->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['appearance.theme' => 'dark'],
+            'smtp' => ['host' => 'mail.example.test', 'password' => 'hunter2-nested'],
+            'api_token' => 'wk-live-123', 'auth_secret' => 'sek-456', 'current_password' => 'old-pass-789',
+        ]);
+
+        $row = json_encode(AuditEvent::query()->where('action', 'api_key.request')->sole()->changes);
+
+        foreach (['hunter2-nested', 'wk-live-123', 'sek-456', 'old-pass-789'] as $secret) {
+            $this->assertStringNotContainsString($secret, $row);
+        }
+        $this->assertStringContainsString('mail.example.test', $row);
+    }
 }
