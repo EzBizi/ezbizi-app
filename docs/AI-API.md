@@ -6,14 +6,20 @@ session does not already have.
 
 ## API keys
 
-`GET/POST/DELETE /api/v1/me/api-keys` — `POST {"name": "Claude", "access": "read"|"write"}`
-returns the key once. A key is a Sanctum token carrying the `api-key` ability
-(`App\Support\Auth\ApiKey`), set server-side, never from the client's device name:
+`GET/POST/DELETE /api/v1/me/api-keys` — `POST {"name": "Claude", "level": "viewer"|"editor"|"full"}`
+returns the key once (installed clients may still send `access: read|write`; write = full).
+A key is a Sanctum token carrying the `api-key` ability plus `read`, `edit` or `*`
+(`App\Support\Auth\ApiKey`), set server-side, never from the client's device name.
+
+Which level a person may make is their role's grant (Roles & permissions → API keys):
+`api_keys.view` = Viewer (read), `api_keys.edit` = Editor (read and edit, no DELETE),
+`api_keys.delete` = Full access. Checked again on every keyed request, so narrowing the
+role downgrades or stops keys already made. Administrators hold all three.
 
 - never idles out (`SlideIdleWindow` skips it); lives until revoked, or until a
   password reset / staff reset deletes all the person's tokens;
 - not listed or revoked as a session (`ProfileController`);
-- `read` keys refuse every non-GET (`EnforceApiKeyAccess`);
+- Viewer keys refuse every non-GET, Editor keys refuse DELETE (`EnforceApiKeyAccess`);
 - **no** key may change password, 2FA, SMS codes, sessions, API keys, or delete
   the account.
 

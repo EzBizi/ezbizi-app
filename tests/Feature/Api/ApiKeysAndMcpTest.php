@@ -132,8 +132,8 @@ class ApiKeysAndMcpTest extends TestCase
     public function test_mcp_calls_meet_the_owners_permissions(): void
     {
         $t = $this->provisionTenant();
-        $can = $this->keyFor($this->userWithRole($t, 'Fleet', ['fleet_management.general.view']));
-        $cannot = $this->keyFor($this->userWithRole($t, 'Nothing', []));
+        $can = $this->keyFor($this->userWithRole($t, 'Fleet', ['fleet_management.general.view', 'api_keys.view']));
+        $cannot = $this->keyFor($this->userWithRole($t, 'Nothing', ['api_keys.view']));
 
         $this->assertFalse($this->callApi($can, ['method' => 'GET', 'path' => 'vehicles/summary'])['isError']);
 
@@ -157,5 +157,58 @@ class ApiKeysAndMcpTest extends TestCase
 
         $me = $this->callApi($key, ['method' => 'GET', 'path' => 'me']);
         $this->assertStringStartsWith('HTTP 200', $me['content'][0]['text']);
+    }
+
+    private function level(string $key, string $method, string $path): ?string
+    {
+        return $this->withToken($key)->json($method, $path, [])->json('code');
+    }
+
+    public function test_the_role_decides_which_kind_of_key_a_person_may_make(): void
+    {
+        $t = $this->provisionTenant();
+
+        $none = $this->userWithRole($t, 'None', ['customers.view']);
+        $this->signedInAs($none)->postJson('/api/v1/me/api-keys', ['name' => 'x', 'level' => 'viewer'])->assertForbidden();
+        $this->signedInAs($none)->getJson('/api/v1/me/api-keys')->assertJsonPath('allowed_levels', []);
+
+        $viewer = $this->userWithRole($t, 'Viewer', ['api_keys.view']);
+        $this->signedInAs($viewer)->postJson('/api/v1/me/api-keys', ['name' => 'x', 'level' => 'viewer'])->assertCreated();
+        $this->signedInAs($viewer)->postJson('/api/v1/me/api-keys', ['name' => 'x', 'level' => 'editor'])->assertForbidden();
+        // An installed client asking for the old "write" asks for Full access.
+        $this->signedInAs($viewer)->postJson('/api/v1/me/api-keys', ['name' => 'x', 'access' => 'write'])->assertForbidden();
+
+        $editor = $this->userWithRole($t, 'Editor', ['api_keys.edit']);
+        $this->signedInAs($editor)->getJson('/api/v1/me/api-keys')->assertJsonPath('allowed_levels', ['viewer', 'editor']);
+        $this->signedInAs($editor)->postJson('/api/v1/me/api-keys', ['name' => 'x', 'level' => 'full'])->assertForbidden();
+    }
+
+    public function test_an_editor_key_edits_but_cannot_delete(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/me/api-keys', ['name' => 'Ed', 'level' => 'editor'])
+            ->assertCreated()->assertJsonPath('level', 'editor')->json('key');
+        $this->app['auth']->forgetGuards();
+
+        $this->assertNotContains($this->level($key, 'PATCH', '/api/v1/me/preferences'), ['api_key_read_only', 'api_key_no_delete']);
+        $this->assertSame('api_key_no_delete', $this->level($key, 'DELETE', '/api/v1/me/signature'));
+    }
+
+    public function test_narrowing_the_role_narrows_keys_already_made(): void
+    {
+        $t = $this->provisionTenant();
+        $user = $this->userWithRole($t, 'Full', ['api_keys.delete']);
+        $key = $this->keyFor($user, 'write');
+
+        $this->assertNotSame('api_key_no_delete', $this->level($key, 'DELETE', '/api/v1/me/signature'));
+
+        $this->inTenant($t['org'], fn () => $user->role->syncPermissionKeys(['api_keys.view']));
+        $this->app['auth']->forgetGuards();
+        $this->assertSame('api_key_read_only', $this->level($key, 'DELETE', '/api/v1/me/signature'));
+
+        $this->inTenant($t['org'], fn () => $user->role->syncPermissionKeys(['customers.view']));
+        $this->app['auth']->forgetGuards();
+        $this->assertSame('api_key_not_allowed', $this->level($key, 'GET', '/api/v1/me'));
     }
 }
