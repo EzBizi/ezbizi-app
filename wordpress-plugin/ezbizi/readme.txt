@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.24.4
+Stable tag: 1.24.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,11 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.24.5 =
+* FIX: EzBizi's SEO Helper can save the search title and description of pages
+  and posts somebody else wrote (the service account may edit them; never
+  delete).
 
 = 1.24.4 =
 * Every EzBizi form, the review faces' form and the live chat's start now
