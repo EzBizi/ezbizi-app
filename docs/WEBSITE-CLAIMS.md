@@ -2529,3 +2529,33 @@ in-app I-9 and direct deposit, QR stats, Memberships.
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
 `resultCount` 1, version 0.0.0347.
+
+## 2026-10-07: ten releases, nothing on the site went false
+
+**Production is `0.0.0387` at `71578003`** (`/download/windows.json`), which is
+`main`. All seven pages, `robots.txt` and `sitemap.xml` are byte-identical to
+`www/`. No new inbox item addressed to this role; no desk asked
+(`send_message` is unavailable to a scheduled run).
+
+**Walked `d6f7b986..71578003` (65 commits) against the load-bearing table;
+nothing moved:** `config/services.php`, manifest, `Info.plist`,
+`pubspec.yaml`, `SettingRegistry`, `Publishers`, `app/Services/Ads`,
+`Reports/Tagging`, Monitoring `FilesController` and the SMS strings are
+untouched; no new outbound host in `app/`; no new runtime permission request.
+The one migration is `alerts` (Communication ▸ Alerts: sender, message,
+timestamp). The "live camera view" in `0.0.0381` is the existing
+user-entered-URL camera viewer (since `775dd8af`, 2026-09-01), not a new
+processor.
+
+**Deliberately unpublished:** Communication alerts, RingCentral missed-call
+notifications, API key activity log, Dashboard Templates, camera live view,
+plus everything held on 10-06.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version **0.0.0363** (was 0.0.0347);
+WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
