@@ -115,6 +115,14 @@ final class WorkizV2
                 'Name' => trim((string) ($field['fieldName'] ?? '')),
                 'Value' => $field['value'] ?? null,
             ], array_filter($job['customFields'] ?? [], 'is_array'))),
+            // v2 only: the notes staff leave on the job, which the list
+            // carries as well as a single read (Connecticut, 2026-10-07).
+            'Notes' => array_values(array_map(fn (array $note) => [
+                'id' => $note['id'] ?? null,
+                'Note' => $note['note'] ?? null,
+                'TechName' => $note['techName'] ?? null,
+                'Timestamp' => $note['timestamp'] ?? null,
+            ], array_filter($job['notes'] ?? [], 'is_array'))),
             'v2' => array_filter([
                 'id' => $job['id'] ?? null,
                 'client_id' => $client['clientId'] ?? null,

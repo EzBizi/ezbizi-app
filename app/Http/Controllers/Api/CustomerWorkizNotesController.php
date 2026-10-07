@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
+use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizClient;
+use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Http\JsonResponse;
@@ -12,10 +14,11 @@ use Illuminate\Http\JsonResponse;
 /**
  * GET /api/v1/customers/{customer}/workiz-notes
  *
- * The notes each branch's Workiz holds about this customer, read live (Jose,
- * 2026-10-06, via Customers). Free text about a person, so never copied into
- * EzBizi: every request asks Workiz, with the branch's own key. A branch that
- * cannot answer says why for its client, and the others still answer.
+ * The notes staff leave on this customer's Workiz jobs, per Workiz client
+ * (Customers, 2026-10-07). A-1 keeps its notes on jobs: client notes were
+ * empty on every one of 213 clients read, and CT job 200022994 holds one.
+ * Each job's notes arrive with it whenever the sync reads it, so the page asks
+ * Workiz nothing. Only v2 carries them, and a branch still on v1 says so.
  */
 class CustomerWorkizNotesController extends Controller
 {
@@ -38,7 +41,6 @@ class CustomerWorkizNotesController extends Controller
             $error = match (true) {
                 $connection === null => 'This branch has no Workiz connection.',
                 ! WorkizV2::uses($connection) => 'This branch is not on its Workiz v2 key.',
-                $client->v2_id === null => 'Not matched to Workiz yet.',
                 default => null,
             };
 
@@ -46,16 +48,18 @@ class CustomerWorkizNotesController extends Controller
                 return $answer + ['error' => $error];
             }
 
-            $read = WorkizV2::send($connection, 'GET', '/clients/'.rawurlencode($client->v2_id).'/notes', ['page' => 1, 'pageSize' => 100], 10);
+            $jobs = WorkizJob::query()->where('franchise_id', $client->franchise_id)->where('client_id', $client->client_id)
+                ->get(['job_id', 'serial_id', 'payload']);
+            $numbers = Job::query()->whereIn('id', $jobs->pluck('job_id')->filter())->pluck('number', 'id');
 
-            // Only Workiz's own refusal or silence can change on a second try;
-            // the reasons above cannot (UI/UX, 2026-10-06).
-            if ($read['refused'] !== null) {
-                return $answer + ['error' => $read['refused'], 'retry' => true];
-            }
-
-            $answer['notes'] = collect($read['data']['data'] ?? [])->filter(fn ($note) => is_array($note))
-                ->map(fn (array $note) => ['text' => (string) ($note['note'] ?? ''), 'created_at' => $note['createdAt'] ?? null, 'author' => $note['techName'] ?? null])
+            $answer['notes'] = $jobs->flatMap(fn (WorkizJob $job) => collect($job->payload['Notes'] ?? [])
+                ->filter(fn ($note) => is_array($note))
+                ->map(fn (array $note) => [
+                    'text' => (string) ($note['Note'] ?? ''),
+                    'created_at' => $note['Timestamp'] ?? null,
+                    'author' => $note['TechName'] ?? null,
+                    'job' => ['id' => $job->job_id, 'number' => $numbers[$job->job_id] ?? null, 'workiz_number' => $job->serial_id === null ? null : (int) $job->serial_id],
+                ]))
                 ->sortByDesc('created_at')->values()->all();
 
             return $answer;
