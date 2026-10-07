@@ -35,7 +35,9 @@ final class PersonalDataEntry
          * For an entry the purge acts on this is a comma-separated list of REAL
          * columns and nothing else, because that list is what the Anonymiser
          * reads: there is no second declaration of the columns, so prose here
-         * would be prose the purge tries to UPDATE.
+         * would be prose the purge tries to UPDATE. A key inside a JSON column
+         * is named `column->Key` (WorkizJob's `payload->Phone`), which Eloquent
+         * writes as that key alone.
          * PersonalDataPurgeTest::test_every_erasable_entry_names_columns_that_exist
          * checks every erasable entry against the live schema, which is what
          * keeps that true after the next edit rather than at the moment of

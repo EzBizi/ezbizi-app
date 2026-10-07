@@ -3,6 +3,7 @@
 namespace Tests\Feature\Workiz;
 
 use App\Models\Customer;
+use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
@@ -15,9 +16,9 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * A customer's Workiz client notes, read live (Jose via Customers,
- * 2026-10-06). Shapes as the v2 spec documents them: a client is CL-…, a
- * note {id, note, pin, techName, createdAt}.
+ * The notes on a customer's Workiz jobs (Customers, 2026-10-07), and the
+ * client-id sweep. A job note is {id, techName, note, timestamp}, measured
+ * on CT 200022994; a client is CL-….
  */
 class CustomerWorkizNotesTest extends TestCase
 {
@@ -58,42 +59,81 @@ class CustomerWorkizNotesTest extends TestCase
         ]));
     }
 
-    public function test_it_reads_the_notes_live_newest_first(): void
+    /** A job in the fixture's shape, landed as the sync lands it, and linked to an EzBizi job numbered $number. */
+    private function job(string $uuid, int $serial, int $client, array $notes, string $number): Job
     {
-        $this->client(3909, 'CL-Bk90obeWmD8zme13');
-        Http::fake(['api.workiz.com/crm/api/v2/clients/CL-Bk90obeWmD8zme13/notes*' => Http::response(['hasMore' => false, 'data' => [
-            ['id' => 'NT-1', 'note' => 'Dog in the yard', 'pin' => false, 'techName' => 'Ana Ruiz', 'createdAt' => '2026-03-01 09:00:00'],
-            ['id' => 'NT-2', 'note' => 'Gate code 4411', 'pin' => true, 'techName' => 'Bo Lin', 'createdAt' => '2026-09-01 09:00:00'],
-        ]])]);
+        return $this->inTenant($this->tenant['org'], function () use ($uuid, $serial, $client, $notes, $number) {
+            $fixture = require base_path('tests/Fixtures/workiz/v2_job.php');
+            WorkizJob::land(SocialConnection::query()->sole(), WorkizV2::job(array_replace($fixture, [
+                'id' => 'JOB-'.$uuid, 'uuid' => $uuid, 'serialId' => $serial, 'notes' => $notes,
+                'clientInfo' => array_replace($fixture['clientInfo'], ['serialId' => $client]),
+            ])));
+            $job = Job::create(['franchise_id' => $this->tenant['franchise']->id, 'customer_id' => $this->customer->id, 'number' => $number, 'title' => 'Sweep', 'status' => 'scheduled']);
+            WorkizJob::query()->where('remote_id', $uuid)->update(['job_id' => $job->id]);
+
+            return $job;
+        });
+    }
+
+    /**
+     * Customers, 2026-10-07: A-1's notes are on jobs (CT 200022994 holds one;
+     * client notes were empty on every client read). They arrive with each
+     * job the sync reads, so the page asks Workiz nothing.
+     */
+    public function test_it_lists_the_notes_on_the_customers_jobs_newest_first(): void
+    {
+        $this->client(1008, 'CL-xzA4NAKqzXW76XQp');
+        $older = $this->job('AAA111', 11008, 1008, [['id' => 'JNT-1', 'techName' => 'Ana Ruiz', 'note' => 'Dog in the yard', 'timestamp' => '2026-03-01 09:00:00']], 'J-1');
+        $newer = $this->job('BBB222', 11009, 1008, [['id' => 'JNT-2', 'techName' => 'Bo Lin', 'note' => 'Gate code 4411', 'timestamp' => '2026-09-01 09:00:00']], 'J-2');
+        $this->job('CCC333', 11010, 2000, [['id' => 'JNT-3', 'techName' => 'Cy Ode', 'note' => 'Another client', 'timestamp' => '2026-09-02 09:00:00']], 'J-3');
+        Http::fake();
 
         $this->signedInAs($this->tenant['admin'])->getJson('/api/v1/customers/'.$this->customer->id.'/workiz-notes')
             ->assertOk()
             ->assertExactJson(['data' => [[
-                'client_id' => 3909,
+                'client_id' => 1008,
                 'franchise' => ['id' => $this->tenant['franchise']->id, 'name' => $this->tenant['franchise']->name],
                 'notes' => [
-                    ['text' => 'Gate code 4411', 'created_at' => '2026-09-01 09:00:00', 'author' => 'Bo Lin'],
-                    ['text' => 'Dog in the yard', 'created_at' => '2026-03-01 09:00:00', 'author' => 'Ana Ruiz'],
+                    ['text' => 'Gate code 4411', 'created_at' => '2026-09-01 09:00:00', 'author' => 'Bo Lin', 'job' => ['id' => $newer->id, 'number' => 'J-2', 'workiz_number' => 11009]],
+                    ['text' => 'Dog in the yard', 'created_at' => '2026-03-01 09:00:00', 'author' => 'Ana Ruiz', 'job' => ['id' => $older->id, 'number' => 'J-1', 'workiz_number' => 11008]],
                 ],
             ]]]);
-        Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer v2key_CT'));
+        Http::assertNothingSent();
     }
 
-    /** One client Workiz cannot answer for, or not matched yet, says why; the page is not a 500. */
-    public function test_a_client_that_cannot_be_read_says_why_and_the_others_still_answer(): void
+    /**
+     * Job notes are job content: a reader sees the branches they can open jobs
+     * in, as the customer's money does (Customers, 2026-10-07).
+     */
+    public function test_a_reader_sees_only_the_branches_they_reach(): void
     {
-        $this->client(3909, 'CL-Bk90obeWmD8zme13');
-        $this->client(4100, null);
-        Http::fake(['api.workiz.com/*' => Http::response(['message' => 'Too Many Requests', 'statusCode' => 429], 429)]);
+        $this->client(1008, 'CL-xzA4NAKqzXW76XQp');
+        $nj = $this->extraFranchise($this->tenant, 'New Jersey');
+        $this->inTenant($this->tenant['org'], fn () => WorkizClient::query()->forceCreate([
+            'organization_id' => $this->tenant['org']->id, 'franchise_id' => $nj->id,
+            'client_id' => 77, 'v2_id' => 'CL-nj77', 'name' => 'Pat Rivera', 'customer_id' => $this->customer->id, 'synced_at' => now(), 'last_seen_at' => now(),
+        ]));
+        $branchOnly = $this->userWithRole($this->tenant, 'Branch office', ['customers.view'], onlyAt: $this->tenant['franchise']);
+        $url = '/api/v1/customers/'.$this->customer->id.'/workiz-notes';
 
-        $rows = collect($this->signedInAs($this->tenant['admin'])->getJson('/api/v1/customers/'.$this->customer->id.'/workiz-notes')
-            ->assertOk()->json('data'))->keyBy('client_id');
+        $this->assertSame([77, 1008], collect($this->signedInAs($this->tenant['admin'])->getJson($url)->assertOk()->json('data'))->pluck('client_id')->sort()->values()->all());
+        $this->assertSame([1008], collect($this->signedInAs($branchOnly)->getJson($url)->assertOk()->json('data'))->pluck('client_id')->all());
+    }
 
-        // Only Workiz's own refusal is worth trying again.
-        $this->assertSame(['Too Many Requests', true], [$rows[3909]['error'], $rows[3909]['retry'] ?? null]);
-        $this->assertSame('Not matched to Workiz yet.', $rows[4100]['error']);
-        $this->assertArrayNotHasKey('retry', $rows[4100]);
-        Http::assertSentCount(1);
+    /** Only v2 carries job notes: a branch still on v1 says why rather than claiming there are none. */
+    public function test_a_branch_not_on_v2_says_why(): void
+    {
+        $this->client(1008, 'CL-xzA4NAKqzXW76XQp');
+        $this->job('AAA111', 11008, 1008, [['id' => 'JNT-1', 'techName' => 'Ana Ruiz', 'note' => 'Dog in the yard', 'timestamp' => '2026-03-01 09:00:00']], 'J-1');
+        $this->inTenant($this->tenant['org'], function () {
+            $c = SocialConnection::query()->sole();
+            $c->connect(['api_token' => 'v1token_CT', 'auth_secret' => 'v1secret_CT']);
+            $c->save();
+        });
+
+        $row = $this->signedInAs($this->tenant['admin'])->getJson('/api/v1/customers/'.$this->customer->id.'/workiz-notes')->assertOk()->json('data.0');
+
+        $this->assertSame(['This branch is not on its Workiz v2 key.', []], [$row['error'] ?? null, $row['notes']]);
     }
 
     public function test_it_is_behind_viewing_the_customer(): void
