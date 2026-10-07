@@ -2965,6 +2965,20 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 65 · Communication · Alerts that pop up until dismissed — **sent to Jose 2026-10-07, recommended 1 and 4** (`docs/previews/communication-alerts-layouts.html`)
+
+From the Deployment Lead (`local_072bee23…`), for Jose: send alerts to specific users. Verbatim: *"This sort of
+alert notifications should be a pop up on the screen, that they can dismiss"*. Notifications builds the server (send,
+the sent list with who dismissed, a person's open alerts, dismiss); Phone owns the Communication tab (a new **Alerts**
+TabDefinition); UI/UX builds the screens. Desktop **1** a card in the top-right corner over whatever they are doing,
+stacked, until Dismiss; the Alerts tab writes on the left and tracks the sent ones on the right with "Dismissed by N
+of M" (recommended); **2** the middle of the screen over a dimmed app, the only blocking layer in the app, written in
+the side panel; **3** an amber strip across the top of the page, one column to write and track. Phone **4** (recommended)
+the card drops in at the top, the tab lists the sent ones and New alert opens the form in the tab; **5** the middle of
+a dimmed screen; **6** a strip under the top bar. All: arrives with the bell's minute check (and on coming back to the
+app); waits for a closed app; dismissed on one device is dismissed on all; stays in the bell's list afterwards. Left
+out on purpose: whole roles or branches at once, urgency, scheduling, replies.
+
 ### 64 · Scheduling · Locations, made easier to read — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4** — **BUILT** `128e95ac` (`docs/previews/scheduling-locations-look-layouts.html`)
 
 Jose 2026-10-07, to me, with a screenshot of Scheduling › Locations (queue 49's build): *"make this page look better"*.
