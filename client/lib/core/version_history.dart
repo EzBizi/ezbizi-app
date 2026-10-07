@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0384',
+      date: '7 Oct 2026',
+      items: [
+        'Communication has a new Alerts tab. Send chosen people an alert, and it pops up in the middle of their screen, over everything, until they press Dismiss. Several arrive one after another, and one sent while they were away is waiting when they come back. The tab lists the alerts you sent, each with who has dismissed it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0383',
       date: '7 Oct 2026',
       items: [
