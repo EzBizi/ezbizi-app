@@ -44,6 +44,24 @@ void main() {
     });
   });
 
+  group('jpegAspect', () {
+    test('reads width/height from the SOF0 marker', () {
+      // FFD8 SOI, then SOF0: FF C0, len 00 11, precision 08, height 0x0438
+      // (1080), width 0x0780 (1920) — a 16:9 frame.
+      final jpeg = Uint8List.fromList([
+        0xFF, 0xD8,
+        0xFF, 0xC0, 0x00, 0x11, 0x08, 0x04, 0x38, 0x07, 0x80,
+      ]);
+      final aspect = jpegAspect(jpeg);
+      expect(aspect, isNotNull);
+      expect(aspect!, closeTo(1920 / 1080, 0.0001));
+    });
+
+    test('returns null when there is no SOF (the synthetic test frame)', () {
+      expect(jpegAspect(_frame(1)), isNull);
+    });
+  });
+
   testWidgets('renders a frame pushed on the injected stream', (tester) async {
     final controller = StreamController<List<int>>();
     addTearDown(controller.close);
