@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/open_destination.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/connect_account.dart';
@@ -62,6 +64,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     required this.providerLabel,
     required this.connections,
     this.connectWhere,
+    this.connectModule,
     this.connectForms,
     this.canName = false,
     this.onChanged,
@@ -87,6 +90,10 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// this screen points rather than duplicating the panel. Null for the
   /// reporting sources, which connect here — see [connectForms].
   final String? connectWhere;
+
+  /// The module [connectWhere] names, so the sentence can carry a button that
+  /// opens it rather than a path written as text (UI review, 2026-10-08).
+  final String? connectModule;
 
   /// The connect form, for the providers whose only home is Integrations.
   final List<Widget> Function()? connectForms;
@@ -139,7 +146,9 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     final me = widget.session.me;
     final rows = widget.connections;
 
-    final organization = rows.where((c) => c.scopeType == 'organization').toList();
+    final organization = rows
+        .where((c) => c.scopeType == 'organization')
+        .toList();
 
     final groups = <(String, List<IntegrationConnection>)>[
       if (organization.isNotEmpty)
@@ -240,6 +249,20 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     await widget.onChanged?.call();
   }
 
+  /// "Open Marketing" beside a sentence naming it, or null when there is
+  /// nowhere to open (outside the shell, or a provider that connects here).
+  Widget? _openModule(BuildContext context) {
+    final open = OpenDestination.of(context);
+    final module = widget.connectModule;
+    if (open == null || module == null) return null;
+
+    return TextButton(
+      key: ValueKey('open:$module'),
+      onPressed: () => open(module),
+      child: Text('Open ${widget.connectWhere!.split(' › ').first}'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -248,106 +271,108 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-          /*
+        /*
            * THE HEADER IS IN THE BODY, because this pane is in the body.
            *
            * An `AppBar` belongs to a `Scaffold` and a `Scaffold` belongs to a
            * route; drawing either here is what put this pane over the whole
            * window. The back control is a row like any other.
            */
-          Row(
-            children: [
-              IconButton(
-                key: const ValueKey('integration-back'),
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back to integrations',
-                onPressed: widget.onBack,
+        Row(
+          children: [
+            IconButton(
+              key: const ValueKey('integration-back'),
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back to integrations',
+              onPressed: widget.onBack,
+            ),
+            const SizedBox(width: 4),
+            SocialNetworkMark(network: widget.provider, size: 22),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                widget.providerLabel,
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(width: 4),
-              SocialNetworkMark(network: widget.provider, size: 22),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text(
-                  widget.providerLabel,
-                  style: theme.textTheme.titleMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_error != null) ...[
+          DashboardNote(_error!),
+          const SizedBox(height: 12),
+        ],
+
+        if (groups.isEmpty)
+          DashboardCard(
+            title: widget.providerLabel,
+            icon: Icons.link_off_outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DashboardNote(
+                  widget.connectWhere == null
+                      ? 'Nothing connected here yet.'
+                      : 'Nothing connected here yet. Connect it in '
+                            '${widget.connectWhere}.',
                 ),
-              ),
-            ],
+                ?_openModule(context),
+              ],
+            ),
+          ),
+
+        for (final (heading, rows) in groups) ...[
+          DashboardCard(
+            title: heading,
+            icon: Icons.account_tree_outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final row in rows)
+                  ListTile(
+                    key: ValueKey('connection:${row.id}'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: SocialNetworkMark(network: row.provider, size: 24),
+                    title: Text(
+                      row.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // `appadTMQltMGmGrse` tells nobody anything, so a named
+                    // connection leads with its name and still shows the id
+                    // underneath — that is what identifies it to the provider
+                    // when something is wrong.
+                    subtitle: Text(
+                      [
+                        if (row.beneath != null) row.beneath!,
+                        if (!row.connected) row.statusReason ?? 'Not working',
+                      ].join(' · '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: row.connected
+                            ? theme.colorScheme.onSurfaceVariant
+                            : theme.colorScheme.error,
+                      ),
+                    ),
+                    trailing: widget.canName
+                        ? IconButton(
+                            tooltip: 'Name this connection',
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            onPressed: () => _rename(row),
+                          )
+                        : null,
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
-          if (_error != null) ...[
-            DashboardNote(_error!),
-            const SizedBox(height: 12),
-          ],
+        ],
 
-          if (groups.isEmpty)
-            DashboardCard(
-              title: widget.providerLabel,
-              icon: Icons.link_off_outlined,
-              child: DashboardNote(
-                widget.connectWhere == null
-                    ? 'Nothing connected here yet.'
-                    : 'Nothing connected here yet. Connect it in '
-                          '${widget.connectWhere}.',
-              ),
-            ),
-
-          for (final (heading, rows) in groups) ...[
-            DashboardCard(
-              title: heading,
-              icon: Icons.account_tree_outlined,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final row in rows)
-                    ListTile(
-                      key: ValueKey('connection:${row.id}'),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: SocialNetworkMark(
-                        network: row.provider,
-                        size: 24,
-                      ),
-                      title: Text(
-                        row.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      // `appadTMQltMGmGrse` tells nobody anything, so a named
-                      // connection leads with its name and still shows the id
-                      // underneath — that is what identifies it to the provider
-                      // when something is wrong.
-                      subtitle: Text(
-                        [
-                          if (row.beneath != null) row.beneath!,
-                          if (!row.connected)
-                            row.statusReason ?? 'Not working',
-                        ].join(' · '),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: row.connected
-                              ? theme.colorScheme.onSurfaceVariant
-                              : theme.colorScheme.error,
-                        ),
-                      ),
-                      trailing: widget.canName
-                          ? IconButton(
-                              tooltip: 'Name this connection',
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              onPressed: () => _rename(row),
-                            )
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          /*
+        /*
            * CONNECTING HAPPENS HERE (Jose, 2026-09-23).
            *
            * "The point of the Integration tab by itself is to be able to
@@ -360,13 +385,13 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
            * the module's own screen is still where connecting is explained,
            * and somebody who wants the explanation should be able to find it.
            */
-          DashboardCard(
-            title: 'Connect another',
-            icon: Icons.add_link,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                /*
+        DashboardCard(
+          title: 'Connect another',
+          icon: Icons.add_link,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              /*
                  * THE FORM IS ITS OWN GATE, and is asked FIRST.
                  *
                  * `_formsFor` in the grid already decides who may see each
@@ -378,24 +403,24 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                  * construction — measured, it hid a form the first gate had
                  * already allowed.
                  */
-                if (widget.connectForms != null)
-                  ...widget.connectForms!()
-                else if (!widget.mayConnect)
-                  DashboardNote(
-                    'Somebody who can manage ${widget.connectWhere ?? 'this'} '
-                    'needs to connect a ${widget.providerLabel} account.',
-                  )
-                else if (widget.connectsBy == 'sign_in' &&
-                    widget.startPath != null)
-                  ConnectAccount(
-                    key: ValueKey('connect:${widget.provider}'),
-                    api: widget.api,
-                    label: widget.providerLabel,
-                    startPath: widget.startPath!,
-                    onConnected: () async => widget.onChanged?.call(),
-                  )
-                else
-                  /*
+              if (widget.connectForms != null)
+                ...widget.connectForms!()
+              else if (!widget.mayConnect)
+                DashboardNote(
+                  'Somebody who can manage ${widget.connectWhere ?? 'this'} '
+                  'needs to connect a ${widget.providerLabel} account.',
+                )
+              else if (widget.connectsBy == 'sign_in' &&
+                  widget.startPath != null)
+                ConnectAccount(
+                  key: ValueKey('connect:${widget.provider}'),
+                  api: widget.api,
+                  label: widget.providerLabel,
+                  startPath: widget.startPath!,
+                  onConnected: () async => widget.onChanged?.call(),
+                )
+              else
+                /*
                    * NO CONTROL, AND THE REASON RATHER THAN A DEAD BUTTON.
                    *
                    * Mailchimp connects by api_key and has no endpoint to post
@@ -405,24 +430,28 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                    * here would be a control with nowhere to send what somebody
                    * typed.
                    */
-                  DashboardNote(
-                    widget.connectWhere == null
-                        ? 'This one cannot be connected from here yet.'
-                        : 'Connect a ${widget.providerLabel} account in '
-                              '${widget.connectWhere}.',
-                  ),
+                DashboardNote(
+                  widget.connectWhere == null
+                      ? 'This one cannot be connected from here yet.'
+                      : 'Connect a ${widget.providerLabel} account in '
+                            '${widget.connectWhere}.',
+                ),
+              if (!widget.mayConnect ||
+                  widget.connectsBy != 'sign_in' ||
+                  widget.startPath == null)
+                ?_openModule(context),
 
-                if (widget.mayConnect && widget.connectWhere != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '${widget.connectWhere} is where connecting one is '
-                    'explained, and where it can also be done.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
+              if (widget.mayConnect && widget.connectWhere != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '${widget.connectWhere} is where connecting one is '
+                  'explained, and where it can also be done.',
+                  style: theme.textTheme.bodySmall,
+                ),
               ],
-            ),
+            ],
           ),
+        ),
       ],
     );
   }

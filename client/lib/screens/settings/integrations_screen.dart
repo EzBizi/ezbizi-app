@@ -216,6 +216,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         providerLabel: _label(open),
         connections: byProvider[open] ?? const [],
         connectWhere: _whereFor(open),
+        connectModule: switch (_familyOf(open)) {
+          'mailing' => 'newsletter',
+          'social' => 'marketing',
+          'leads' => 'leads',
+          _ => null,
+        },
         connectForms: _formsFor(open),
         connectsBy: _catalogue[open]?['connects_by'] as String?,
         startPath: _catalogue[open]?['start_path'] as String?,

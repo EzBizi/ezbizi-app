@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/settings/integrations_screen.dart';
+import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -129,6 +130,28 @@ void main() {
     expect(find.textContaining('Connect and disconnect under'), findsNothing);
   });
 
+  testWidgets('a module named as the place to connect is a button to it', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    await _pump(tester, openDestination: opened.add);
+
+    // Mailchimp connects in Newsletter, and this person may not connect it.
+    await _open(tester, 'mailchimp');
+    await tester.tap(find.byKey(const ValueKey('open:newsletter')));
+
+    expect(opened, ['newsletter']);
+  });
+
+  testWidgets('and no button outside the shell, where it could open nothing', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _open(tester, 'mailchimp');
+
+    expect(find.byKey(const ValueKey('open:newsletter')), findsNothing);
+  });
+
   testWidgets('a connection whose scope this view cannot name is still shown', (
     tester,
   ) async {
@@ -164,7 +187,10 @@ Future<void> _open(WidgetTester tester, String provider) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  void Function(String id)? openDestination,
+}) async {
   tester.view.physicalSize = const Size(1280, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -225,7 +251,14 @@ Future<void> _pump(WidgetTester tester) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: openDestination == null
+            ? IntegrationsScreen(api: api, session: session)
+            : OpenDestination(
+                open: openDestination,
+                child: IntegrationsScreen(api: api, session: session),
+              ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
