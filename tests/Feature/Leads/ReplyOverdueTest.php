@@ -106,6 +106,23 @@ class ReplyOverdueTest extends TestCase
         $this->assertSame('Can you come Tuesday?', $this->raised()[0]->payload['after']['preview']);
     }
 
+    /** The Overdue chip (Jose, 2026-10-08): exactly the rows the list paints red. */
+    public function test_the_overdue_filter_matches_the_red_mark(): void
+    {
+        $this->lead('a', 'MESSAGE', '2026-09-28T14:45:00Z');
+        $this->lead('fresh', 'MESSAGE', '2026-09-28T14:55:00Z');
+        $this->lead('answered', 'MESSAGE', '2026-09-28T14:40:00Z', LeadConversation::FROM_ADVERTISER);
+        $this->lead('booked', 'MESSAGE', '2026-09-28T14:40:00Z', 'CONSUMER', Lead::STATUS_BOOKED);
+        $this->lead('call', 'PHONE_CALL', '2026-09-28T14:40:00Z');
+
+        $all = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/leads')->json('data'));
+        $red = $all->where('reply_overdue', true)->pluck('contact_name')->all();
+        $filtered = array_column($this->getJson('/api/v1/leads?overdue=1')->assertOk()->json('data'), 'contact_name');
+
+        $this->assertSame(['Customer a'], $red, 'the control: one red row');
+        $this->assertSame($red, $filtered);
+    }
+
     public function test_a_waiting_customer_is_raised_once_and_marked_on_the_list(): void
     {
         $waiting = $this->lead('a', 'MESSAGE', '2026-09-28T14:45:00Z');

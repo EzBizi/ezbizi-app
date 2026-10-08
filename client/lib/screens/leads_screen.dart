@@ -115,6 +115,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Unread + Starred means both, because "starred things I have not read"
   /// is the combination somebody actually wants and "either" cannot say it.
   bool _unread = false;
+
+  /// Only the red, overdue rows (Jose, 2026-10-08).
+  bool _overdue = false;
   bool _starred = false;
 
   /// The source chip, as the API spells it. Null is every source.
@@ -383,6 +386,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_status.isNotEmpty) 'status': _status,
     if (_unreplied) 'unreplied': '1',
     if (_unread) 'unread': '1',
+    if (_overdue) 'overdue': '1',
     if (_starred) 'starred': '1',
     'source': ?_source,
     'sources': ?_allSources,
@@ -881,6 +885,19 @@ class _LeadsScreenState extends State<LeadsScreen> {
           onSelected: (on) => _setFilters(unreplied: on),
         ),
         FilterChip(
+          key: const ValueKey('filter-overdue'),
+          avatar: Icon(
+            Icons.warning_amber_rounded,
+            size: 16,
+            color: theme.colorScheme.error,
+          ),
+          label: const Text('Overdue'),
+          showCheckmark: false,
+          selected: _overdue,
+          visualDensity: VisualDensity.compact,
+          onSelected: (on) => _setFilters(overdue: on),
+        ),
+        FilterChip(
           key: const ValueKey('filter-starred'),
           label: const Text('Starred'),
           selected: _starred,
@@ -1213,17 +1230,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 
-  void _setFilters({bool? unread, bool? unreplied, bool? starred}) {
+  void _setFilters({
+    bool? unread,
+    bool? unreplied,
+    bool? starred,
+    bool? overdue,
+  }) {
     final next = (
       unread ?? _unread,
       unreplied ?? _unreplied,
       starred ?? _starred,
+      overdue ?? _overdue,
     );
-    if (next == (_unread, _unreplied, _starred)) return;
+    if (next == (_unread, _unreplied, _starred, _overdue)) return;
     setState(() {
       _unread = next.$1;
       _unreplied = next.$2;
       _starred = next.$3;
+      _overdue = next.$4;
     });
     _load();
   }

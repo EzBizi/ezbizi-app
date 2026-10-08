@@ -283,6 +283,19 @@ class LeadsController extends Controller
                 });
         }
 
+        // The red ones only (Jose, 2026-10-08): Lead::replyOverdue() in SQL.
+        // canReply() is the channel's, so its two column rules are restated:
+        // a Google lead must be a text, and a connected source must still be.
+        if ($request->boolean('overdue')) {
+            $query->where('leads.status', Lead::STATUS_NEW)
+                ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
+                ->where('leads.last_contact_at', '<=', now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES))
+                ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
+                    ->orWhere('leads.lead_type', 'MESSAGE'))
+                ->where(fn ($q) => $q->whereNotIn('leads.source', Lead::SOURCES_VIA_CONNECTION)
+                    ->orWhereNotNull('leads.connection_id'));
+        }
+
         if ($request->boolean('unread')) {
             $query->where(function ($q) {
                 $q->whereNull('leads.read_at')
