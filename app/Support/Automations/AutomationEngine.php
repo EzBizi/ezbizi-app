@@ -103,7 +103,11 @@ class AutomationEngine
                         ->where('is_active', true)->whereNull('disabled_at')->whereNotNull('active_version_id')
                         ->get()->filter(fn (Automation $a) => $a->coversScope(
                             $scope['type'], $scope['id'], companyChain: $scope['company_chain'],
-                        ))->pluck('active_version_id')->values()->all();
+                        // A rule switched on acts from then on: a backlog, or an
+                        // event that waited out an outage, is not texted to a
+                        // customer by a rule that was off when it happened.
+                        ) && ($a->activated_at === null || ! $event->occurred_at->lt($a->activated_at)))
+                        ->pluck('active_version_id')->values()->all();
                     // Freeze the selected versions before the first side effect.
                     $event->forceFill(['version_ids' => $ids])->save();
                 }

@@ -39,9 +39,21 @@ class Automation extends Model implements CarriesAutomationScope
         return [
             'is_active'   => 'boolean',
             'disabled_at' => 'datetime',
+            'activated_at' => 'datetime',
             'schedule'    => 'array',
             'next_run_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Every way of switching a rule on stamps when, so the engine can
+        // leave alone what happened before it (see AutomationEngine).
+        static::saving(function (Automation $a) {
+            if ($a->is_active && $a->isDirty('is_active')) {
+                $a->activated_at = now();
+            }
+        });
     }
 
     /** A rule that runs on a clock rather than on something happening (§5.5). */

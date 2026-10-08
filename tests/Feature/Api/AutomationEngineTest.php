@@ -392,6 +392,35 @@ class AutomationEngineTest extends TestCase
         $this->assertSame('A job', $this->inTenant(fn () => Job::find($job)->title));
     }
 
+    /**
+     * Jose, 2026-10-08: the job-done text goes out "from now", never to the
+     * Done jobs that were waiting when it was switched on.
+     */
+    public function test_a_rule_switched_on_ignores_what_happened_while_it_was_off(): void
+    {
+        $rule = $this->automation('job.status_changed',
+            ['all' => [['field' => 'status', 'op' => 'changed_to', 'value' => 'completed']]],
+            [['type' => 'update_field', 'field' => 'title', 'value' => 'Thanked']],
+        );
+        $this->inTenant(fn () => $rule->forceFill(['is_active' => false])->save());
+
+        [, $job] = $this->makeJob();
+        $this->drain();
+        $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => 'completed'])->assertOk();
+
+        // Switched on a minute later, before the sweep reaches the event.
+        $this->travel(1)->minutes();
+        $this->inTenant(fn () => $rule->forceFill(['is_active' => true])->save());
+        $this->drain();
+        $this->assertSame('A job', $this->inTenant(fn () => Job::find($job)->title));
+
+        $this->travel(1)->minutes();
+        $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => 'in_progress'])->assertOk();
+        $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => 'completed'])->assertOk();
+        $this->drain();
+        $this->assertSame('Thanked', $this->inTenant(fn () => Job::find($job)->title), 'a change after it was switched on still acts');
+    }
+
     public function test_nested_any_and_all_evaluate_as_written(): void
     {
         $this->automation('job.status_changed',
