@@ -1,0 +1,261 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Get the apps</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.qr{width:112px;height:112px;flex:0 0 auto;background:
+ conic-gradient(from 90deg at 30% 30%,#060808 25%,transparent 0) 0 0/22px 22px,
+ linear-gradient(#060808 0 0) 8px 8px/26px 26px no-repeat,linear-gradient(#060808 0 0) 78px 8px/26px 26px no-repeat,linear-gradient(#060808 0 0) 8px 78px/26px 26px no-repeat,#fff;
+ border:6px solid #fff;outline:1px solid var(--line);border-radius:8px}
+.qr.sm{width:84px;height:84px;background-size:16px 16px,20px 20px,20px 20px,20px 20px;background-position:0 0,6px 6px,58px 6px,6px 58px}
+.store{display:inline-flex;align-items:center;gap:6px;background:#060808;color:#fff;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;white-space:nowrap}
+.store small{display:block;font-size:8.5px;font-weight:500;opacity:.8;line-height:1}
+.promo{background:linear-gradient(120deg,#e6f3f8,#fff 70%);border:1px solid var(--edge);border-radius:var(--r);padding:14px 16px;display:flex;gap:16px;align-items:center}
+.promo h3{margin:0 0 4px;font-size:16px}
+.promo p{margin:0;color:var(--muted);font-size:12.5px}
+.menu{position:absolute;top:44px;right:12px;width:240px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.16);padding:6px 0;font-size:12.5px}
+.menu div{padding:8px 14px;display:flex;gap:10px;align-items:center}
+.menu .on{background:var(--pric);font-weight:700}
+.top .ico{font-size:15px;color:var(--neu);position:relative}
+.top .ico .dot{position:absolute;top:-2px;right:-4px;width:8px;height:8px;border-radius:50%;background:#d23b3b}
+.sbn{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f1f3f5;border-bottom:1px solid var(--line);font-size:11.5px}
+.sbn .ai{width:34px;height:34px;border-radius:8px;background:var(--pri);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:11px}
+.sbn b{display:block;font-size:12px}
+.full{position:absolute;inset:0;background:var(--paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px;text-align:center}
+.full .ai{width:64px;height:64px;border-radius:16px;background:var(--pri);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px}
+</style>
+<div class="wrap">
+
+<h1>Letting people know there's an app</h1>
+<p class="sub">Jose, 2026-10-08: <i>"Feel like we need a way to promote the app as well, so people who are using the web or desktop know there's an app, something seamless, any ideas."</i> The phone apps are on the App Store and Google Play, and the computer apps are at ezbizi.com/download. The person who most needs telling is someone who has <b>never signed in on a phone</b>. The app already knows that, because every sign-in records its device.</p>
+<p class="need"><b>In every option:</b> the QR code opens one link, <code>ezbizi.com/app</code>, which sends an iPhone to the App Store, an Android to Google Play and a computer to the download page. Nobody has to pick. A "No thanks" is remembered for that person, on every device. Nobody who already uses the phone app is ever asked. <b>Small server asks:</b> tell the phone app's sign-ins apart from a phone browser's (the app sends its own header), and the <code>/app</code> link on the website. <b>Text me the link</b> (in 1) sends the store link to the mobile number on the person's own profile, from the company's EzBizi number.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2><span class="n">1</span>Once, on the Dashboard, for people with no phone app; after that, "Get the apps" in the account menu <span class="rec">Recommended</span></h2>
+<p class="cap"><b>The nudge:</b> someone who has never signed in on the phone app sees one card at the top of their Dashboard. It has a QR code to scan, "Text me the link", and "No thanks", which hides it for good. It never comes back once they install. <b>Always there:</b> <b>Get the apps</b> in the menu under their name opens the side panel: the phone app's QR and store buttons, and on a browser, the computer app for this machine. <b>Why:</b> it asks the right people once, in the place they look first, and asks nobody twice.</p>
+<div class="win" style="height:520px">
+  <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span><span class="bell">🔔</span><span class="av">DR</span></div>
+  <div class="shell">
+    <div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="page">
+      <div class="t">Dashboard</div>
+      <div class="promo">
+        <div class="qr"></div>
+        <div style="flex:1">
+          <h3>EzBizi on your phone</h3>
+          <p>Jobs, calls and alerts in your pocket, with notifications even when EzBizi isn't open. Scan with your phone's camera to install.</p>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><span class="store"> <span><small>Download on the</small>App Store</span></span><span class="store">▶ <span><small>Get it on</small>Google Play</span></span><span class="btn sm">📱 Text me the link</span></div>
+        </div>
+        <span class="btn t sm" style="align-self:flex-start">No thanks ✕</span>
+      </div>
+      <div class="cols"><div class="card" style="flex:1;height:200px"><span class="tiny b">TODAY'S JOBS</span></div><div class="card" style="flex:1;height:200px"><span class="tiny b">CALLS</span></div><div class="card" style="flex:1;height:200px"><span class="tiny b">MISSED</span></div></div>
+    </div>
+  </div>
+</div>
+<div class="lab">Later, any time: the menu under their name › Get the apps</div>
+<div class="win" style="height:520px">
+  <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span><span class="bell">🔔</span><span class="av">DR</span></div>
+  <div class="shell">
+    <div class="nav"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="page"><div class="t">Dashboard</div></div>
+    <div class="panel-scrim"></div>
+    <div class="panel">
+      <div class="phd"><b>Get the apps</b><span class="sp"></span><span class="muted">✕</span></div>
+      <div class="pbd">
+        <span class="tiny b">ON YOUR PHONE</span>
+        <div style="display:flex;gap:14px;align-items:center"><div class="qr"></div><div style="display:flex;flex-direction:column;gap:8px"><span class="tiny">Scan with your phone's camera.</span><span class="store"> <span><small>Download on the</small>App Store</span></span><span class="store">▶ <span><small>Get it on</small>Google Play</span></span><span class="btn sm">📱 Text me the link</span></div></div>
+        <span class="tiny b" style="margin-top:8px">ON THIS COMPUTER</span>
+        <div class="card" style="gap:6px"><b>EzBizi for Windows</b><span class="tiny">Opens on its own, with notifications and a taskbar icon. Same account, nothing to set up.</span><span class="btn f sm" style="align-self:flex-start">Download for Windows</span></div>
+        <span class="tiny">Also for Mac, on the Mac App Store.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2><span class="n">2</span>A phone icon in the top bar, beside the bell, with a dot until opened</h2>
+<p class="cap">Always visible to everyone without the phone app. The red dot goes once they open it. It opens the same "Get the apps" panel as in 1. <b>Why:</b> always one click away and never in the way. But a dot people haven't asked for is easy to learn to ignore, and nothing ever asks them directly.</p>
+<div class="win" style="height:300px">
+  <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span><span class="sp"></span><span class="ico">📱<span class="dot"></span></span><span class="bell" style="margin-left:0">🔔</span><span class="av">DR</span></div>
+  <div class="shell">
+    <div class="nav"><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="page"><div class="t">Dashboard</div><div class="cols"><div class="card" style="flex:1;height:150px"></div><div class="card" style="flex:1;height:150px"></div></div></div>
+    <div class="menu" style="width:300px;padding:12px;display:flex;gap:12px;align-items:center"><div class="qr sm" style="padding:0"></div><div style="padding:0;display:block"><b>EzBizi on your phone</b><br><span class="tiny">Scan to install. Notifications even when this is closed.</span><br><span class="btn t sm" style="padding:0;margin-top:4px">More ways to get it →</span></div></div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2><span class="n">3</span>A strip across the top after signing in on a browser</h2>
+<p class="cap">On the web, right after signing in: "EzBizi is also an app, on your phone and on Windows or Mac", with Get the apps and ✕. It comes back after a month if they dismiss it and still have no app. <b>Why:</b> it reaches every browser user, including people who would install the computer app. But it is the most like an ad, and a strip at the top is also how the app warns that the computer is being remotely controlled.</p>
+<div class="win" style="height:280px">
+  <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span><span class="bell">🔔</span><span class="av">DR</span></div>
+  <div class="shell">
+    <div class="nav"><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="page">
+      <div class="strip" style="background:var(--pric);border-color:var(--edge);color:var(--prid)"><span>📱💻</span><span class="msg" style="color:var(--prid)">EzBizi is also an app: on your phone, and on Windows or Mac.</span><span class="btn f sm">Get the apps</span><span class="muted">✕</span></div>
+      <div class="t">Dashboard</div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── phones ───────────────────────────── -->
+<h2><span class="n">4</span>Phone browser: a slim "Open in the app" banner on top <span class="rec">Recommended</span></h2>
+<p class="cap">On an iPhone, Safari draws Apple's own Smart App Banner, which Apple keeps up to date and shows "Open" if the app is already installed. That takes one line in the web page. On Android, a banner that looks the same, with one button: it opens the app if it is installed and Google Play if not. Its ✕ is remembered. <b>Why:</b> people already know this banner from other sites. It takes no room from the page and costs one tap.</p>
+<div class="phones">
+  <div class="pcol"><span class="pl">iPhone, Safari (Apple draws it)</span>
+    <div class="phn"><div class="sb"></div>
+      <div class="sbn"><span class="muted">✕</span><span class="ai">Ez</span><span style="flex:1"><b>EzBizi</b><span class="tiny">Free on the App Store</span></span><span class="btn f sm" style="border-radius:999px">View</span></div>
+      <div class="ab"><span>☰</span><span class="t">Dashboard</span></div>
+      <div class="pb"><div class="card" style="height:120px"></div><div class="card" style="height:120px"></div></div>
+    </div>
+  </div>
+  <div class="pcol"><span class="pl">Android, Chrome (EzBizi draws it)</span>
+    <div class="phn"><div class="sb"></div>
+      <div class="sbn" style="background:var(--paper)"><span class="muted">✕</span><span class="ai">Ez</span><span style="flex:1"><b>EzBizi app</b><span class="tiny">Faster, with notifications</span></span><span class="btn f sm">Open</span></div>
+      <div class="ab"><span>☰</span><span class="t">Dashboard</span></div>
+      <div class="pb"><div class="card" style="height:120px"></div><div class="card" style="height:120px"></div></div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="n">5</span>Phone browser: one full screen after signing in</h2>
+<p class="cap">Once, right after signing in on a phone's browser: the app's icon, <b>Continue in the app</b> and <b>Stay in the browser</b>. <b>Why:</b> nobody can miss it. But it stands between someone and the thing they came to do, which is why most people dislike it on other sites.</p>
+<div class="phones">
+  <div class="pcol">
+    <div class="phn"><div class="sb"></div>
+      <div class="full"><div class="ai">Ez</div><b style="font-size:18px">EzBizi works best in the app</b><span class="tiny">Notifications, calls and the field map, faster.</span><span class="btn f" style="width:220px">Continue in the app</span><span class="btn t">Stay in the browser</span></div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="n">6</span>Phone browser: a card at the top of the Dashboard</h2>
+<p class="cap">The same card as option 1, made for a phone: <b>Get the app</b> goes straight to the right store, with no QR code since they are already on their phone. <b>Why:</b> it matches option 1, but it only reaches people who open the Dashboard.</p>
+<div class="phones">
+  <div class="pcol">
+    <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Dashboard</span></div>
+      <div class="pb">
+        <div class="promo" style="flex-direction:column;align-items:stretch;gap:8px"><div style="display:flex;justify-content:space-between"><h3>Get the EzBizi app</h3><span class="muted">✕</span></div><p>Faster, with notifications even when it's closed.</p><span class="btn f">Get the app</span></div>
+        <div class="card" style="height:120px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="need" style="margin-top:40px"><b>Left out on purpose:</b> emails or texts nobody asked for, a banner inside the apps themselves, and pop-ups that block the screen. The one nudge in 1 and 4 is the whole campaign.</p>
+</div>

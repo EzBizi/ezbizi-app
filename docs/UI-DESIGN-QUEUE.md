@@ -2965,6 +2965,20 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 67 · Letting web and computer users know there's an app — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/app-promotion-layouts.html`)
+
+Jose, 2026-10-08: *"Feel like we need a way to promote the app as well, so people who are using the web or desktop
+know there's an app, something seamless, any ideas."* Phone apps: App Store id6805979795, Google Play
+`com.ezbizi.app`; computer apps at ezbizi.com/download. Desktop **1** once, on the Dashboard, for people who have
+never signed in on the phone app: a card with a QR code, the store buttons, Text me the link and No thanks; always
+afterwards, **Get the apps** in the menu under their name opens the side panel (phone QR, and on a browser the
+computer app) (recommended); **2** a phone icon beside the bell with a dot until opened; **3** a strip after signing in
+on a browser, back after a month. Phone **4** (recommended) a slim Open-in-the-app banner in a phone's browser: Apple's
+own Smart App Banner on an iPhone (one meta tag), EzBizi's look-alike on Android (an intent link: the app if
+installed, Google Play if not); **5** one full screen after signing in; **6** a Dashboard card. All: the QR opens
+`ezbizi.com/app`, which picks the store by device; No thanks is remembered per person; nobody with the phone app is
+asked. Server asks: tell the phone app's sign-ins from a phone browser's; the website's `/app` link.
+
 ### 66 · API activity: what an AI or a script did with a key — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4, without Put it back** — **BUILT** (client in the commit that marks this; server `8427c94d`) (`docs/previews/api-activity-layouts.html`)
 
 From MCP / API (`local_c0e813e0…`), Jose 2026-10-07: *"we should probably have an MCP-API log to records the
