@@ -54,6 +54,11 @@ void main() {
 
     expect(label.overlaps(hint), isFalse, reason: 'The label sits on the hint.');
     expect(label.bottom, lessThanOrEqualTo(hint.top), reason: 'The label is not above the hint.');
+
+    // A dropdown's arrow, not a search box's magnifier (UI review,
+    // 2026-10-08: every picker read as a search field).
+    expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsNothing);
   });
 
   /// TWO BODIES, ONE TEN TIMES THE OTHER, MUST DRAW THE SAME HEIGHT.

@@ -158,10 +158,13 @@ class SearchPickerField<T> extends StatelessWidget {
           border: border,
           isDense: isDense,
           enabled: enabled,
+          // A dropdown's arrow, not a magnifier: the field opens a list to
+          // pick from, and a magnifier made every one of them read as a
+          // search box (UI review, 2026-10-08). The search is inside the list
+          // once it is long enough to need one.
           suffixIcon: Icon(
-            Icons.search,
-            size: 18,
-            color: scheme.onSurfaceVariant,
+            Icons.arrow_drop_down,
+            color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,
           ),
         ),
         // Empty only when there is no hint either. An empty decorator draws
