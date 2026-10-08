@@ -31,7 +31,7 @@ class Automation extends Model implements CarriesAutomationScope
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id', 'name', 'description',
         'trigger_key', 'is_active', 'active_version_id', 'created_by',
-        'schedule', 'next_run_at',
+        'schedule', 'next_run_at', 'delay_minutes',
     ];
 
     protected function casts(): array
@@ -40,6 +40,7 @@ class Automation extends Model implements CarriesAutomationScope
             'is_active'   => 'boolean',
             'disabled_at' => 'datetime',
             'activated_at' => 'datetime',
+            'delay_minutes' => 'integer',
             'schedule'    => 'array',
             'next_run_at' => 'datetime',
         ];

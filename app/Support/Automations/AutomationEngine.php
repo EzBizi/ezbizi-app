@@ -112,11 +112,19 @@ class AutomationEngine
                     $event->forceFill(['version_ids' => $ids])->save();
                 }
                 $acted = 0;
+                $dueAt = null;
                 foreach ($event->version_ids as $versionId) {
                     $version = AutomationVersion::query()->find($versionId);
                     $automation = $version ? Automation::query()->find($version->automation_id) : null;
                     if ($automation === null || ! $automation->is_active || $automation->disabled_at !== null) {
                         $this->finishPending($event, 'Stopped: the automation was disabled or removed.', $versionId);
+                        continue;
+                    }
+                    // A rule with a wait comes back for this event when it is due;
+                    // the others act now, and a redelivery cannot run them twice.
+                    $due = $event->occurred_at->copy()->addMinutes((int) $automation->delay_minutes);
+                    if ($due->isFuture()) {
+                        $dueAt = $dueAt === null || $due->lt($dueAt) ? $due : $dueAt;
                         continue;
                     }
                     if ($this->runOne($automation, $version, $event, $subject)) {
@@ -126,7 +134,12 @@ class AutomationEngine
                 $runs = AutomationRun::query()->where('event_id', $event->id)->get();
                 $pending = $runs->contains(fn ($r) => $r->status === AutomationRun::MATCHED);
                 $failed = $runs->first(fn ($r) => $r->status === AutomationRun::FAILED);
-                $event->forceFill($pending ? [
+                $event->forceFill($dueAt !== null ? [
+                    'available_at' => $dueAt,
+                    'queued_at' => null,
+                    // The visit is not a failed try: it does not spend the budget.
+                    'attempts' => $event->attempts - 1,
+                ] : ($pending ? [
                     'available_at' => now()->addSeconds([10, 60, 300, 900][min(max($event->attempts - 1, 0), 3)]),
                     'queued_at' => null,
                     'last_error' => 'A transient webhook failure is waiting for retry.',
@@ -134,7 +147,7 @@ class AutomationEngine
                     'delivered_at' => now(),
                     'failed_at' => $failed ? now() : null,
                     'last_error' => $failed?->error,
-                ])->save();
+                ]))->save();
                 return $acted;
             } finally {
                 AutomationEvent::query()->whereKey($event->id)->where('processing_token', $event->processing_token ?? $token)

@@ -1093,6 +1093,7 @@ class AutomationsController extends Controller
                 'is_active' => false,
                 'created_by' => $request->user()->getKey(),
                 'schedule' => $input['schedule'] ?? null,
+                'delay_minutes' => $input['delay_minutes'] ?? null,
                 /*
                  * The first occurrence is computed at SAVE, not at first sweep.
                  *
@@ -1158,6 +1159,7 @@ class AutomationsController extends Controller
                 'is_active' => false,
                 'created_by' => $request->user()->getKey(),
                 'schedule' => $automation->schedule,
+                'delay_minutes' => $automation->delay_minutes,
                 'next_run_at' => $automation->schedule !== null
                     ? (new AutomationSchedule($automation->schedule))->nextAfter(now())
                     : null,
@@ -1199,7 +1201,7 @@ class AutomationsController extends Controller
 
         DB::transaction(function () use ($automation, $input, $request) {
             $automation->fill(array_intersect_key($input, array_flip([
-                'name', 'description', 'scope_type', 'scope_id',
+                'name', 'description', 'scope_type', 'scope_id', 'delay_minutes',
             ])));
 
             /*
@@ -1513,6 +1515,7 @@ class AutomationsController extends Controller
             // clock trigger is meaningless without one. Both halves are checked
             // below rather than here, because the rule is about the PAIR.
             'schedule' => ['nullable', 'array'],
+            'delay_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
             // 'company' is accepted because the engine resolves it (see
             // AutomationEngine::scopeOf). It previously validated as legal
             // and then could never match anything, which is worse than
@@ -2307,6 +2310,7 @@ class AutomationsController extends Controller
             // timezone") and hid the control that could fix it (Jose, 2026-09-28:
             // "can't save for some reason").
             'schedule' => $automation->schedule,
+            'delay_minutes' => $automation->delay_minutes,
             'next_run_at' => $automation->next_run_at?->toIso8601String(),
         ];
 

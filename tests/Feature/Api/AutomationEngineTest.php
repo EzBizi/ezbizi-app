@@ -421,6 +421,34 @@ class AutomationEngineTest extends TestCase
         $this->assertSame('Thanked', $this->inTenant(fn () => Job::find($job)->title), 'a change after it was switched on still acts');
     }
 
+    /**
+     * Jose, 2026-10-08: the membership text after a happy review waits "about
+     * 10 mins so we dont interrupt their review process". A rule with a wait
+     * holds; the others on the same event act at once.
+     */
+    public function test_a_rule_with_a_wait_acts_when_it_is_due_and_the_others_do_not_wait(): void
+    {
+        $later = $this->automation('job.status_changed', null, [['type' => 'update_field', 'field' => 'title', 'value' => 'Later']]);
+        $this->inTenant(fn () => $later->forceFill(['delay_minutes' => 10])->save());
+        $this->automation('job.status_changed', null, [['type' => 'update_field', 'field' => 'description', 'value' => 'Now']]);
+
+        [, $job] = $this->makeJob();
+        $this->drain();
+        $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => 'in_progress'])->assertOk();
+        $this->drain();
+
+        $this->assertSame('Now', $this->inTenant(fn () => Job::find($job)->description));
+        $this->assertSame('A job', $this->inTenant(fn () => Job::find($job)->title), 'the waiting rule has not acted yet');
+
+        $this->travel(9)->minutes();
+        $this->drain();
+        $this->assertSame('A job', $this->inTenant(fn () => Job::find($job)->title));
+
+        $this->travel(2)->minutes();
+        $this->drain();
+        $this->assertSame('Later', $this->inTenant(fn () => Job::find($job)->title));
+    }
+
     public function test_nested_any_and_all_evaluate_as_written(): void
     {
         $this->automation('job.status_changed',
