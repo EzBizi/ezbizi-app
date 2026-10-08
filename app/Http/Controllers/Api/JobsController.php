@@ -128,6 +128,24 @@ class JobsController extends Controller
         $midnight = $today === null ? null : $today.' 00:00:00';
 
         /*
+         * "Done", for a job with no date: one of its organization's or company's
+         * earned statuses, the one setting that says the work is finished. An
+         * undated job is work still to arrange UNLESS it is done (Jose's UI
+         * review, 2026-10-08: "34 upcoming" held completed jobs while Past read
+         * 0). Nothing names "cancelled", so an undated cancelled job stays
+         * upcoming. Grouped by list, since companies may differ.
+         */
+        $earned = $reachable->groupBy(fn ($id) => json_encode(EarnedStatuses::for(Franchise::findOrFail($id))));
+        $done = function ($q) use ($earned) {
+            $q->whereRaw('1 = 0');
+            foreach ($earned as $list => $ids) {
+                if (json_decode($list) !== []) {
+                    $q->orWhere(fn ($w) => $w->whereIn('franchise_id', $ids->all())->whereIn('status', json_decode($list)));
+                }
+            }
+        };
+
+        /*
          * Every filter, with the status, the window and the Where pair
          * (franchise, service area) each OPTIONAL.
          *
@@ -137,7 +155,7 @@ class JobsController extends Controller
          * lit one. The Upcoming/Past counts do the same for the window, and the
          * Where picker's unplaced count for the Where pair.
          */
-        $filtered = function (?string $status, string $window, bool $where = true, bool $withMoney = true) use ($request, $reachable, $midnight, $today) {
+        $filtered = function (?string $status, string $window, bool $where = true, bool $withMoney = true) use ($request, $reachable, $midnight, $today, $done) {
             return Job::query()
                 // The roll-up, and the boundary. whereIn on an empty list matches
                 // nothing, which is the correct answer for a user with no
@@ -172,11 +190,15 @@ class JobsController extends Controller
                     });
                 })
                 // A job with no date yet is work still to arrange, so it is
-                // upcoming — never past, which would file it with the finished.
+                // upcoming, unless it is done ($done above): then it is past.
                 ->when($window === 'upcoming', fn ($q) => $q->where(
-                    fn ($w) => $w->where('scheduled_for', '>=', $midnight)->orWhereNull('scheduled_for'),
+                    fn ($w) => $w->where('scheduled_for', '>=', $midnight)
+                        ->orWhere(fn ($u) => $u->whereNull('scheduled_for')->whereNot($done)),
                 ))
-                ->when($window === 'past', fn ($q) => $q->where('scheduled_for', '<', $midnight));
+                ->when($window === 'past', fn ($q) => $q->where(
+                    fn ($w) => $w->where('scheduled_for', '<', $midnight)
+                        ->orWhere(fn ($u) => $u->whereNull('scheduled_for')->where($done)),
+                ));
         };
 
         $status = $request->query('status');

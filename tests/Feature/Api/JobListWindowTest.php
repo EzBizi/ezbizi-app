@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -49,6 +50,27 @@ class JobListWindowTest extends TestCase
 
         // The undated job is not "past": it is work nobody has placed yet.
         $this->assertSame(['Yesterday', 'Last week'], $titles);
+    }
+
+    /**
+     * An undated job is work still to arrange, unless it is done. Jose's UI
+     * review, 2026-10-08: "34 upcoming" held completed jobs under "Not
+     * scheduled" while Past read 0. Done is the organization's own earned
+     * statuses, the one setting that says so; with none set, nothing can.
+     */
+    public function test_an_undated_job_that_is_done_is_past_not_upcoming(): void
+    {
+        $alpha = $this->fourJobs();
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)
+            ->set('jobs.earned_statuses', $alpha['org'], ['completed']));
+        $this->job('Done, never dated', null, 'completed');
+
+        $upcoming = $this->getJson('/api/v1/jobs?when=upcoming&today='.self::TODAY)->assertOk();
+        $this->assertSame(['Today, early', 'Tomorrow', 'Not dated yet'], $upcoming->json('data.*.title'));
+        $this->assertSame(['upcoming' => 3, 'past' => 2], $upcoming->json('meta.when_counts'));
+
+        $this->assertContains('Done, never dated',
+            $this->getJson('/api/v1/jobs?when=past&today='.self::TODAY)->json('data.*.title'));
     }
 
     public function test_each_count_leaves_out_its_own_filter_and_keeps_the_rest(): void
