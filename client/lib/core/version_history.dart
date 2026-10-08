@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Website forms and chat now show a "verify you are human" box (Cloudflare Turnstile) on top of the existing robot check.',
         'Websites can take online bookings: customers pick a day and arrival window from your real availability, and dispatchers approve them in Leads › Online Booking. Website forms now ask for the ZIP code.',
+        'Automations: a notification with a long message no longer fails; its title is shortened and the full text is underneath.',
       ],
     ),
     VersionRelease(
