@@ -1038,8 +1038,9 @@ void main() {
     expect(find.text('Call'), findsOneWidget);
     expect(
       find.text('Chat'),
-      findsNWidgets(2),
-      reason: 'the rail\'s tab and one badge, not a second badge',
+      findsNWidgets(3),
+      reason:
+          'the rail\'s tab, the In All toggle and one badge, not a second badge',
     );
   });
 

@@ -162,6 +162,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
     return shown.isEmpty ? '-' : shown.join(',');
   }
 
+  /// "LS" spelled out, for the rail's tooltips (UI review 2026-10-08).
+  static const _fullNames = {
+    'ls_call': 'Google Local Services calls',
+    'ls_text': 'Google Local Services texts',
+    'ls_booking': 'Google Local Services bookings',
+    'website_booking': 'Online bookings from the website',
+  };
+
   static const _sourceChips = <(String, String)>[
     // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
     // takes these as a source and narrows Local Services by lead type.
@@ -719,7 +727,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
         side: BorderSide.none,
         padding: const EdgeInsets.symmetric(vertical: 6),
         labelPadding: EdgeInsets.zero,
-        tooltip: failing ? '$label is not delivering right now' : null,
+        tooltip: failing
+            ? '$label is not delivering right now'
+            : _fullNames[key],
         onSelected: (_) => _setSource(key),
         label: SizedBox(
           width: 70,
@@ -743,7 +753,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               const SizedBox(height: 4),
               Text(
                 label,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.labelSmall?.copyWith(
@@ -945,7 +955,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
             visualDensity: VisualDensity.compact,
             labelPadding: EdgeInsets.zero,
             padding: const EdgeInsets.all(4),
-            label: Icon(s.$3, size: 16),
+            // Named, not just drawn: eleven bare icons on a phone said
+            // nothing (UI review 2026-10-08).
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(s.$3, size: 16),
+                const SizedBox(width: 4),
+                Text(s.$2, style: theme.textTheme.labelSmall),
+              ],
+            ),
             selected: !_allLeftOut.contains(s.$1),
             onSelected: (on) {
               setState(
@@ -1432,6 +1451,30 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _choosingSource = false;
   });
 
+  String? get _sourceLabel => _source == null
+      ? null
+      : _sourceChips.where((c) => c.$1 == _source).firstOrNull?.$2;
+
+  /// Why the list is empty, in words that point somewhere (UI review
+  /// 2026-10-08): All can be empty while LS Call has leads, because LS Call
+  /// is left out of All.
+  String get _emptyWhy {
+    final hidden = _source != null
+        ? const <String>[]
+        : [
+            for (final s in _visibleSources)
+              if (_allLeftOut.contains(s.$1) && (_unreadBySource[s.$1] ?? 0) > 0)
+                s.$2,
+          ];
+    return [
+      'Nothing here matches the filters above.',
+      if (hidden.isNotEmpty)
+        '${hidden.join(' and ')} ${hidden.length == 1 ? 'is' : 'are'} left out '
+            'of All - open ${hidden.length == 1 ? 'its tab' : 'their tabs'} on the left.',
+      'Fetch checks for new ones now.',
+    ].join(' ');
+  }
+
   /// Two different nothings, and they must not read the same.
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
@@ -1451,7 +1494,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 12),
             Text(
               connected
-                  ? 'No enquiries yet'
+                  ? (_sourceLabel == null
+                        ? 'No enquiries yet'
+                        : 'No $_sourceLabel enquiries yet')
                   : 'No advertising account connected',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
@@ -1459,8 +1504,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 8),
             Text(
               connected
-                  ? 'Nothing has come in through the connected account for the '
-                        'filters above. Fetch new checks again straight away.'
+                  ? _emptyWhy
                   : 'Leads arrive from a Google Ads account this organization '
                         'connects itself. Until one is connected there is '
                         'nothing to show here — this is not a quiet week.',
