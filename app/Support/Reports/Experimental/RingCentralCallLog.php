@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RuntimeException;
+use Throwable;
 
 /**
  * One day of calls from RingCentral (TEMPORARY — see config/experimental_reports.php).
@@ -272,9 +273,7 @@ final class RingCentralCallLog
             'started_at' => $record['startTime'] ?? null,
             'from' => $record['from']['phoneNumber'] ?? null,
 
-            // Our number they dialled. RingCentral gives no name for it here,
-            // and its number list (/account/~/phone-number) refuses this app
-            // (403, no ReadAccounts permission, measured 2026-10-07).
+            // Our number they dialled. Its name is in numberNames(), not here.
             'to_number' => $record['to']['phoneNumber'] ?? null,
 
             // The carrier's CNAM, or - on a tracking number - a label A-1 wrote
@@ -363,6 +362,54 @@ final class RingCentralCallLog
             // gives a player that silently will not play.
             'type' => $response->header('Content-Type') ?: 'audio/mpeg',
         ];
+    }
+
+    /**
+     * Our numbers' names as A-1 labelled them in RingCentral ("DFW - LS Ads"),
+     * by number. Needs ReadAccounts, granted 2026-10-08; 212 of 259 numbers
+     * carry one. Cached a day: labels change by hand, rarely. A failure is
+     * reported and reads as no names, so a missed call still gets announced.
+     *
+     * @return array<string, string>
+     */
+    public function numberNames(): array
+    {
+        if (is_array($cached = Cache::get('ringcentral-number-names'))) {
+            return $cached;
+        }
+
+        $server = rtrim((string) config('experimental_reports.ringcentral.server'), '/');
+        $names = [];
+
+        try {
+            for ($page = 1; $page <= 10; $page++) {
+                $response = Http::withToken($this->token())->acceptJson()
+                    ->get($server.'/restapi/v1.0/account/~/phone-number', ['perPage' => 1000, 'page' => $page]);
+
+                if (! $response->successful()) {
+                    throw new RuntimeException('RingCentral refused the number list ('.$response->status().').');
+                }
+
+                foreach ($response->json('records') ?? [] as $number) {
+                    if (! empty($number['label']) && ! empty($number['phoneNumber'])) {
+                        $names[(string) $number['phoneNumber']] = trim((string) $number['label']);
+                    }
+                }
+
+                if (empty($response->json('navigation.nextPage.uri'))) {
+                    break;
+                }
+            }
+        } catch (Throwable $e) {
+            // Not cached: the next run asks again.
+            report($e);
+
+            return [];
+        }
+
+        Cache::put('ringcentral-number-names', $names, now()->addDay());
+
+        return $names;
     }
 
     /**

@@ -52,6 +52,7 @@ class WatchMissedCalls extends Command
         }
 
         $now = CarbonImmutable::now((string) config('app.timezone'));
+        $names = null;
         $raised = 0;
 
         // From FRESH_MINUTES ago, not from midnight: a call at 23:59 is still
@@ -67,17 +68,18 @@ class WatchMissedCalls extends Command
             }
 
             $company = $this->company($call['queue']);
+            // RingCentral's label for the number they dialled; the queue when it has none.
+            $names ??= $log->numberNames();
+            $line = $names[$call['to_number']] ?? $call['queue'];
 
             $tenant->run($organization, fn () => $events->emit('reports.call.missed', null, [
                 'headline' => LeadNotificationText::missedCallHeadline($company),
-                'details' => LeadNotificationText::missedCallDetails($call['from'], $call['queue'], voicemail: $call['result'] === 'Voicemail'),
+                'details' => LeadNotificationText::missedCallDetails($call['from'], $line, voicemail: $call['result'] === 'Voicemail'),
                 'call_id' => $call['id'],
                 'started_at' => $call['started_at'],
                 'from' => $call['from'],
                 'to_number' => $call['to_number'],
-                // ponytail: the queue stands in for our number's name until
-                // the RingCentral app is granted ReadAccounts.
-                'to_name' => $call['queue'],
+                'to_name' => $line,
                 'queue' => $call['queue'],
                 'company' => $company,
                 'result' => $call['result'],
