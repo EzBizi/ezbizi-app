@@ -20,6 +20,7 @@ class VersionHistory {
         'Thank-you review links now open the reviews page of the location that did the job, with that location\'s own Google review link.',
         'The "verify you are human" check now covers the websites connected today too.',
         'Review page: the Join button and the faces now work when opened from a customer website link.',
+        'Fixes online booking requests and the chat\'s "typing…" indicator being blocked by browsers.',
       ],
     ),
     VersionRelease(
