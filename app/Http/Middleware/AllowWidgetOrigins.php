@@ -59,6 +59,11 @@ final class AllowWidgetOrigins
         // customer token proves who, like the site key above.
         'api/v1/web/review',
         'api/v1/web/membership/join',
+        // The chat's "typing" signal (Bearer token) and the booking widget's
+        // request (JSON): both preflight, and were refused without this.
+        'api/v1/web/chat/*/typing',
+        'api/v1/web/booking',
+        'api/v1/web/booking/days',
     ];
 
     public function handle(Request $request, Closure $next): Response
