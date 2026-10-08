@@ -413,14 +413,17 @@ class _PersonRow extends StatelessWidget {
                     'Since ${fieldClock(since)} · ${fieldSpan(DateTime.now().difference(since))}',
                     style: muted,
                   ),
-                Text(
-                  [
-                    if (seen != null) 'Seen ${fieldAgo(seen)}',
-                    if (speed is num && speed > 0) '$speed mph',
-                    '${person['distance_mi'] ?? 0} mi',
-                  ].join(' · '),
-                  style: muted,
-                ),
+                if (seen == null)
+                  Text('Has not reported yet', style: muted)
+                else
+                  Text(
+                    [
+                      'Seen ${fieldAgo(seen)}',
+                      if (speed is num && speed > 0) '$speed mph',
+                      '${person['distance_mi'] ?? 0} mi',
+                    ].join(' · '),
+                    style: muted,
+                  ),
                 if (job != null)
                   Text(
                     'At ${job['title'] ?? job['number'] ?? 'a job'}',

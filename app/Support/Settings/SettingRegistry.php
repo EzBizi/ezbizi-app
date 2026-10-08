@@ -1127,10 +1127,19 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'field.arrival_radius_m',
-                label: 'Arrived within, metres',
+                // Both units in every label (UI review, 2026-10-08: "metres"
+                // under Imperial units). Stored in metres, as the maths is.
+                label: 'Arrived within',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 150,
                 options: [50, 100, 150, 250, 500],
+                optionLabels: [
+                    '50' => '160 ft (50 m)',
+                    '100' => '330 ft (100 m)',
+                    '150' => '490 ft (150 m)',
+                    '250' => '820 ft (250 m)',
+                    '500' => '1,640 ft (500 m)',
+                ],
                 editPermission: 'field.manage',
                 help: 'How close to a job’s address counts as arrived. Leaving is one and a half times this.',
             ),

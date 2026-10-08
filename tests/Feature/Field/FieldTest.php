@@ -90,6 +90,13 @@ class FieldTest extends TestCase
         });
     }
 
+    /** The manager's map row for one person; the tenant's administrator is tracked too, so rows are found by id. */
+    private function mapRow(User $person): ?array
+    {
+        return collect($this->signedInAs($this->manager)->getJson('/api/v1/field/map')->assertOk()->json('data'))
+            ->firstWhere('user.id', $person->id);
+    }
+
     private function send(array ...$points)
     {
         return $this->signedInAs($this->tech)->postJson('/api/v1/field/locations', ['points' => $points]);
@@ -262,8 +269,7 @@ class FieldTest extends TestCase
 
         $this->signedInAs($local)->getJson('/api/v1/field/map')->assertOk()->assertJsonCount(0, 'data');
         $this->signedInAs($local)->getJson("/api/v1/field/map?user_id={$tech->id}&date=2026-09-25")->assertNotFound();
-        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')->assertOk()
-            ->assertJsonPath('data.0.user.id', $tech->id);
+        $this->assertNotNull($this->mapRow($tech));
     }
 
     public function test_the_trail_returns_the_day_in_order(): void
@@ -376,6 +382,15 @@ class FieldTest extends TestCase
         $this->assertContains(['featureType' => 'poi', 'stylers' => [['visibility' => 'off']]], $sent[0]);
     }
 
+    public function test_a_tracked_person_who_never_reported_is_listed_without_a_position(): void
+    {
+        $row = $this->mapRow($this->tech);
+        $this->assertNotNull($row);
+        $this->assertNull($row['lat']);
+        $this->assertNull($row['last_seen_at']);
+        $this->assertFalse($row['fresh']);
+    }
+
     public function test_the_map_list_says_since_when_how_far_and_how_fast(): void
     {
         $this->mode('always');
@@ -384,12 +399,11 @@ class FieldTest extends TestCase
             ['lat' => 40.1, 'lng' => -75.0, 'recorded_at' => '2026-09-25T13:00:00Z', 'speed_mps' => 13.4],
         );
 
-        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')
-            ->assertOk()
-            ->assertJsonPath('data.0.since', '2026-09-25T12:00:00Z')
-            // 0.1 degree of latitude is 11.1 km, 6.9 miles.
-            ->assertJsonPath('data.0.distance_mi', 6.9)
-            ->assertJsonPath('data.0.speed_mph', 30);
+        $row = $this->mapRow($this->tech);
+        $this->assertSame('2026-09-25T12:00:00Z', $row['since']);
+        // 0.1 degree of latitude is 11.1 km, 6.9 miles.
+        $this->assertSame(6.9, $row['distance_mi']);
+        $this->assertSame(30, $row['speed_mph']);
     }
 
     public function test_the_phone_describes_itself_and_the_map_says_so(): void
@@ -401,12 +415,11 @@ class FieldTest extends TestCase
                 'os_version' => '15', 'device_model' => 'Samsung SM-S918U', 'app_version' => '0.0.0330'],
         ])->assertJsonPath('data.kept', 1);
 
-        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')
-            ->assertOk()
-            ->assertJsonPath('data.0.device.battery_pct', 41)
-            ->assertJsonPath('data.0.device.charging', true)
-            ->assertJsonPath('data.0.device.model', 'Samsung SM-S918U')
-            ->assertJsonPath('data.0.device.app_version', '0.0.0330');
+        $device = $this->mapRow($this->tech)['device'];
+        $this->assertSame(41, $device['battery_pct']);
+        $this->assertTrue($device['charging']);
+        $this->assertSame('Samsung SM-S918U', $device['model']);
+        $this->assertSame('0.0.0330', $device['app_version']);
     }
 
     public function test_jobs_on_the_map_need_the_jobs_grant_and_come_with_their_place(): void
