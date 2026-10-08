@@ -80,6 +80,21 @@ class PushSender
      */
     private const ANDROID_CHANNEL = 'ezbizi_notifications';
 
+    /**
+     * The channel for what should interrupt: alerts, new leads, missed calls.
+     *
+     * IMPORTANCE_HIGH (heads-up banner and sound) where the default channel is
+     * IMPORTANCE_DEFAULT. Jose, 2026-10-08, on the importance decision: "why
+     * tomorrow, do it now" — HIGH for alerts, calls and new leads, DEFAULT for
+     * the rest. A SEPARATE channel rather than raising the old one because
+     * Android never lets an app raise a channel's importance once it exists,
+     * and every handset that has run EzBizi already has the old one.
+     *
+     * Same duplication rule as above: MainActivity.kt creates this id natively
+     * with these exact values. Change one, change both.
+     */
+    public const ANDROID_URGENT_CHANNEL = 'ezbizi_urgent';
+
     public function __construct(private readonly ApnsSender $apns) {}
 
     /**
@@ -131,7 +146,7 @@ class PushSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body): int
+    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false): int
     {
         if ($devices->isEmpty()) {
             return 0;
@@ -170,7 +185,7 @@ class PushSender
         }
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $accessToken, $title, $body)) {
+            if ($this->deliver($device, $accessToken, $title, $body, $urgent)) {
                 $sent++;
             }
         }
@@ -190,7 +205,7 @@ class PushSender
      * arrives keeps the table honest without a sweep that would have to
      * re-derive what the API just said out loud.
      */
-    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body): bool
+    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body, bool $urgent = false): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -202,7 +217,7 @@ class PushSender
                             'title' => $title,
                             'body' => $body,
                         ]),
-                        'android' => ['notification' => ['channel_id' => self::ANDROID_CHANNEL]],
+                        'android' => ['notification' => ['channel_id' => $urgent ? self::ANDROID_URGENT_CHANNEL : self::ANDROID_CHANNEL]],
                     ],
                 ]);
         } catch (ConnectionException $exception) {

@@ -67,8 +67,20 @@ class MainActivity : FlutterActivity() {
         channel.description =
             "Assignments, mentions, reminders and alerts from EzBizi."
 
+        // What should interrupt: alerts, new leads, missed calls. HIGH, so a
+        // heads-up banner and sound. A second channel rather than raising the
+        // one above, because Android never lets an app raise an existing
+        // channel's importance (Jose, 2026-10-08: "do it now"). The server
+        // names it per push — PushSender::ANDROID_URGENT_CHANNEL, same values.
+        val urgent = NotificationChannel(
+            "ezbizi_urgent",
+            "EzBizi urgent",
+            NotificationManager.IMPORTANCE_HIGH,
+        )
+        urgent.description = "Alerts, new leads and missed calls."
+
         getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(channel)
+            ?.createNotificationChannels(listOf(channel, urgent))
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

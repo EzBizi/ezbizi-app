@@ -158,6 +158,46 @@ class NotificationPushTest extends TestCase
             && $request['message']['token'] === 'token-muted-phone');
     }
 
+    /**
+     * Alerts, new leads and missed calls interrupt; everything else does not.
+     *
+     * Jose, 2026-10-08: HIGH importance for alerts, calls and new leads,
+     * DEFAULT for the rest. The system notification is the control — same
+     * person, same handset, same request — so this cannot pass by sending
+     * everything on the urgent channel.
+     */
+    public function test_alerts_and_new_leads_use_the_urgent_channel_and_the_rest_do_not(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Alpha');
+        $this->device($tenant, $tenant['admin']->id, 'token-phone');
+
+        $this->inTenant($tenant['org'], function () use ($tenant): void {
+            $lead = \App\Models\AutomationEvent::create([
+                'organization_id' => $tenant['org']->id, 'event_key' => 'lead.received',
+                'payload' => [], 'occurred_at' => now(), 'available_at' => now(),
+            ]);
+
+            $this->dispatcher()->dispatch('An alert', onlyTo: $tenant['admin'], source: 'alert');
+            $this->dispatcher()->dispatch('New lead', onlyTo: $tenant['admin'], source: 'automation', eventId: $lead->id);
+            $this->dispatcher()->dispatch('Trial ends tomorrow', onlyTo: $tenant['admin'], source: 'system');
+        });
+
+        $channelOf = fn (string $title) => collect(Http::recorded())
+            ->map(fn ($pair) => $pair[0])
+            ->first(fn ($request) => str_contains($request->url(), 'messages:send')
+                && $request['message']['notification']['title'] === $title)['message']['android']['notification']['channel_id'];
+
+        $this->assertSame('ezbizi_urgent', $channelOf('An alert'));
+        $this->assertSame('ezbizi_urgent', $channelOf('New lead'));
+        $this->assertSame('ezbizi_notifications', $channelOf('Trial ends tomorrow'));
+    }
+
     public function test_one_person_with_two_handsets_is_one_person_told(): void
     {
         Http::fake([

@@ -212,7 +212,7 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
-        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope);
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $this->isUrgent($source, $eventId));
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.
@@ -251,7 +251,32 @@ class NotificationDispatcher
      * @param  Collection<int, User>  $recipients
      * @return int recipients reached on at least one device
      */
-    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope): int
+    /**
+     * Should this push interrupt — heads-up banner and sound on Android?
+     *
+     * Jose, 2026-10-08: HIGH importance for alerts, calls and new leads,
+     * DEFAULT for the rest. Alerts are known by source. Leads and missed calls
+     * arrive through rules (source `automation`, the same as every other rule),
+     * so they are known by the event that raised them.
+     */
+    private function isUrgent(string $source, ?string $eventId): bool
+    {
+        if ($source === 'alert') {
+            return true;
+        }
+
+        if ($eventId === null) {
+            return false;
+        }
+
+        return in_array(
+            \App\Models\AutomationEvent::query()->whereKey($eventId)->value('event_key'),
+            ['lead.received', 'reports.call.missed', 'phone.call.missed'],
+            true,
+        );
+    }
+
+    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope, bool $urgent = false): int
     {
         if (! $this->channelOn('notifications.push_enabled', $scope) || ! $this->push->configured()) {
             return 0;
@@ -267,7 +292,7 @@ class NotificationDispatcher
 
         $reached = $devices
             ->groupBy('user_id')
-            ->filter(fn (Collection $forOnePerson) => $this->push->send($forOnePerson, $title, $body) > 0)
+            ->filter(fn (Collection $forOnePerson) => $this->push->send($forOnePerson, $title, $body, $urgent) > 0)
             ->count();
 
         return $reached;
