@@ -10,6 +10,7 @@ import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/screens/profile_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
 import 'package:ezbizi_client/widgets/module_page_header.dart';
+import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -362,6 +363,38 @@ void main() {
     expect(find.byType(SettingsShell), findsOneWidget);
     expect(address.path, '/settings');
     expect(find.text('Organization'), findsOneWidget);
+  });
+
+  /// An empty state's "Open Settings" (UI review, 2026-10-08). A child module
+  /// opens inside its parent, as its typed URL does.
+  testWidgets('a screen can send someone to another destination', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    final address = Address(path: '/dashboard');
+    await _pumpShell(
+      tester,
+      modules: [
+        _module('dashboard', 'Dashboard'),
+        _module('marketing', 'Marketing'),
+        _module('web_management', 'Web Management', parent: 'marketing'),
+      ],
+      address: address,
+    );
+    final open = OpenDestination.of(
+      tester.element(find.byType(DashboardScreen)),
+    )!;
+
+    open('settings');
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsShell), findsOneWidget);
+    expect(address.path, '/settings');
+
+    open('web_management');
+    await tester.pumpAndSettle();
+    expect(find.byType(MarketingScreen), findsOneWidget);
+    expect(address.path, '/marketing');
   });
 
   testWidgets('Settings and Your account have paths of their own', (

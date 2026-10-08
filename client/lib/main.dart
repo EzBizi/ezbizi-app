@@ -30,6 +30,7 @@ import 'screens/lock_screen.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/get_the_apps.dart';
+import 'widgets/open_destination.dart';
 import 'widgets/side_panel.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
@@ -828,6 +829,17 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(_heartbeat.enter(id));
   });
 
+  /// Another screen sending someone here ([OpenDestination]): read the id the
+  /// way a typed URL is read, so a child module opens inside its parent.
+  void _open(String id) {
+    setState(() {
+      _leadsOpen = null;
+      _apply(Address.pathOf(id));
+    });
+    widget.address?.push(_pathFor(_rail, _selected));
+    if (_selected case final shown?) unawaited(_heartbeat.enter(shown));
+  }
+
   /// "Your account" is reached from the avatar, not from a rail, so it has no
   /// id of its own.
   void _showProfile() => setState(() {
@@ -1147,7 +1159,7 @@ class _HomeShellState extends State<HomeShell> {
         : 'account';
     _syncShown(Address.pathOf(shownId));
 
-    return Scaffold(
+    final shell = Scaffold(
       key: _scaffoldKey,
       // The top bar belongs to the CHROME, not to the page.
       //
@@ -1895,6 +1907,7 @@ class _HomeShellState extends State<HomeShell> {
                   widget.session.setPreference('navigation.order', order),
             ),
     );
+    return OpenDestination(open: _open, child: shell);
   }
 
   /// Android's Back on a phone: the drawer if it is open, else the ← of the
