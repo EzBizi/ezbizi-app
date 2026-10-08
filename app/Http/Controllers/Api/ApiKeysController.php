@@ -109,6 +109,8 @@ class ApiKeysController
             ->when($request->filled('key_id'), fn ($q) => $q->where('target_id', (string) $request->integer('key_id')))
             ->when($request->filled('before'), fn ($q) => $q->where('occurred_at', '<', $request->date('before')))
             ->orderByDesc('occurred_at')
+            // occurred_at is whole seconds; the UUIDv7 id breaks ties in call order.
+            ->orderByDesc('id')
             ->limit(200)
             ->get();
 
