@@ -86,6 +86,8 @@ class MembershipsPublicController extends Controller
                 'source'              => $verified ? 'review_link' : 'asked',
                 'verified'            => $verified,
                 'site'                => $site->host,
+                // The job the link was sent for, when it was a job's link.
+                'job_id'              => $verified ? CustomerLinks::jobId($input['c'] ?? null) : null,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
             ]]);
         });

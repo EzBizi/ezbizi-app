@@ -4,6 +4,7 @@ namespace Tests\Feature\Memberships;
 
 use App\Models\AutomationEvent;
 use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\WebSite;
@@ -20,7 +21,9 @@ class MembershipsPublicTest extends TestCase
     use RefreshDatabase;
 
     private array $t;
+
     private WebSite $site;
+
     private Customer $customer;
 
     protected function setUp(): void
@@ -62,6 +65,29 @@ class MembershipsPublicTest extends TestCase
         $this->assertSame($this->customer->id, $event->subject_id);
         $this->assertTrue($event->payload['after']['verified']);
         $this->assertStringContainsString('/memberships/join/', $event->payload['after']['membership_join_url']);
+    }
+
+    /** Jose, 2026-10-08: the job's thank-you text links its own franchise's reviews page, unique and expiring. */
+    public function test_a_jobs_review_link_names_the_job_and_expires(): void
+    {
+        [$link, $job] = $this->inTenant($this->t['org'], function () {
+            $job = Job::create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $this->customer->id,
+                'number' => 'J-1', 'title' => 'Sweep', 'status' => 'done', 'currency' => 'USD']);
+
+            return [$job->review_link, $job];
+        });
+        $this->assertStringStartsWith('https://chimney.test/reviews/?c=', $link);
+        $this->assertStringNotContainsString('201', $link);
+        $this->assertStringNotContainsString('marta', strtolower($link));
+        parse_str(parse_url($link, PHP_URL_QUERY), $q);
+
+        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'c' => $q['c']])->assertOk();
+        $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->first();
+        $this->assertSame($this->customer->id, $event->subject_id);
+        $this->assertSame($job->id, $event->payload['after']['job_id']);
+
+        $this->travel(CustomerLinks::REVIEW_DAYS + 1)->days();
+        $this->assertNull(CustomerLinks::customerId($q['c']));
     }
 
     public function test_a_forged_token_matches_nobody_and_the_answer_is_the_same(): void

@@ -341,14 +341,32 @@ class Job extends Model implements StatesRetention
     }
 
     /**
+     * Words a message on a job can use that no job payload carries (see
+     * Lead::automationMessageFields). `{{company_name}}` is the company of the
+     * franchise that did the job, e.g. "A-1 Chimney" for "Nationwide".
+     *
+     * @return list<string>
+     */
+    public static function automationMessageFields(): array
+    {
+        return ['company_name', 'review_link'];
+    }
+
+    public function getCompanyNameAttribute(): string
+    {
+        return (string) ($this->franchise?->company?->name ?? '');
+    }
+
+    /**
      * `{{ review_link }}` on a job's automation: the customer's own reviews
      * link (Memberships, 2026-10-05), so the thank-you after a job lets the
-     * review faces know who smiled.
+     * review faces know who smiled. The site is the one for the franchise that
+     * did the job, and the token names the job too, expiring (Jose, 2026-10-08).
      */
     public function getReviewLinkAttribute(): ?string
     {
         $customer = Customer::query()->find($this->customer_id);
 
-        return $customer === null ? null : \App\Support\Memberships\CustomerLinks::reviewLink($customer);
+        return $customer === null ? null : \App\Support\Memberships\CustomerLinks::jobReviewLink($customer, $this);
     }
 }

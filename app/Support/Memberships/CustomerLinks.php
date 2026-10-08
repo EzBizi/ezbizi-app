@@ -4,6 +4,7 @@ namespace App\Support\Memberships;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use Illuminate\Support\Facades\URL;
@@ -20,6 +21,9 @@ final class CustomerLinks
 {
     public const JOIN_DAYS = 60;
 
+    /** How long a job's review link works (Jose, 2026-10-08: "a unique one"). */
+    public const REVIEW_DAYS = 90;
+
     public static function token(Customer $customer): string
     {
         $id = (string) $customer->getKey();
@@ -27,15 +31,51 @@ final class CustomerLinks
         return $id.'.'.self::mac($id);
     }
 
-    /** The customer id a token names, or null when it was not made here. */
+    /**
+     * A job's token: the customer, the job and when it stops working, signed.
+     * Ids only, never the phone, email or ZIP; the server looks those up.
+     */
+    public static function jobToken(Customer $customer, Job $job): string
+    {
+        $body = $customer->getKey().'.'.$job->getKey().'.'.now()->addDays(self::REVIEW_DAYS)->timestamp;
+
+        return $body.'.'.self::mac($body);
+    }
+
+    /** The customer id a token names, or null when it was not made here or has expired. */
     public static function customerId(?string $token): ?string
+    {
+        return self::parts($token)[0] ?? null;
+    }
+
+    /** The job a job token names, or null (a customer-only token names none). */
+    public static function jobId(?string $token): ?string
+    {
+        return self::parts($token)[1] ?? null;
+    }
+
+    /** @return array{0: string, 1: ?string}|null */
+    private static function parts(?string $token): ?array
     {
         if (! is_string($token) || ! str_contains($token, '.')) {
             return null;
         }
-        [$id, $mac] = explode('.', $token, 2);
+        $pieces = explode('.', $token);
+        $mac = array_pop($pieces);
+        $body = implode('.', $pieces);
 
-        return hash_equals(self::mac($id), $mac) ? $id : null;
+        if (! hash_equals(self::mac($body), $mac)) {
+            return null;
+        }
+
+        // customer.mac (a customer's own link), or customer.job.expires.mac.
+        if (count($pieces) === 1) {
+            return [$pieces[0], null];
+        }
+
+        return count($pieces) === 3 && ctype_digit($pieces[2]) && (int) $pieces[2] >= now()->timestamp
+            ? [$pieces[0], $pieces[1]]
+            : null;
     }
 
     public static function reviewLink(Customer $customer): ?string
@@ -44,6 +84,15 @@ final class CustomerLinks
 
         return $link === null ? null
             : $link.(str_contains($link, '?') ? '&' : '?').'c='.rawurlencode(self::token($customer));
+    }
+
+    /** The reviews page of the site for the franchise that did the job, with the job's token. */
+    public static function jobReviewLink(Customer $customer, Job $job): ?string
+    {
+        $link = self::siteValue($customer, 'review_link', $job->franchise_id);
+
+        return $link === null ? null
+            : $link.(str_contains($link, '?') ? '&' : '?').'c='.rawurlencode(self::jobToken($customer, $job));
     }
 
     public static function joinUrl(Customer $customer): string
@@ -56,10 +105,10 @@ final class CustomerLinks
         return self::siteValue($customer, 'google_review_link');
     }
 
-    /** The customer's franchise's site, else its company's, else any site of the organization. */
-    private static function siteValue(Customer $customer, string $key): ?string
+    /** The franchise's site (the job's, else the customer's), else its company's, else any site of the organization. */
+    private static function siteValue(Customer $customer, string $key, ?string $franchiseId = null): ?string
     {
-        $franchise = Franchise::query()->find($customer->owning_franchise_id);
+        $franchise = Franchise::query()->find($franchiseId ?? $customer->owning_franchise_id);
         $sites = WebSite::query()
             ->orderByRaw('franchise_id = ? desc', [$franchise?->getKey()])
             ->orderByRaw('company_id = ? desc', [$franchise?->company_id])
