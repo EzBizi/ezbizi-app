@@ -1085,6 +1085,10 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' .ezb-go{display:block;width:100%;background:' . $accent . ';color:' . $on . ';border:0;border-radius:10px;padding:14px;font:inherit;font-weight:700;font-size:16px;cursor:pointer}'
         . $s . ' .ezb-go[disabled]{opacity:.6}'
         . $s . ' .ezb-note{text-align:center;font-size:13px;margin:10px 0 0;min-height:1em}'
+        // A theme's own input and button styles must not reach in (a-1chimney.com's are dark and uppercase).
+        . $s . ' input{background:#fff!important;color:#183a33!important}'
+        . $s . ' button{text-transform:none!important;letter-spacing:normal!important;box-shadow:none!important;font-family:inherit}'
+        . $s . ' .ezb-back{border:0!important;background:none!important}'
         . $s . ' .ezb-done{text-align:center;padding:20px 0}'
         . '@media (max-width:600px){' . $s . ' .ezb-body{padding:18px 16px 24px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}}'
         . '</style>'
