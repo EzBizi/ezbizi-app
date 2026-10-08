@@ -25,6 +25,9 @@ class VersionHistory {
         'Communication: the Users tab no longer calls itself Team; Settings › Connection says No account instead of a contradicting Uses the organization; an empty Dial has an Open Settings button.',
         'Jobs: a job with no date that is already done now shows under Past, not Upcoming.',
         'Jobs: the Money and Due columns appear only when a job on the list has money, so Title and Where get the room. The Estimates empty list has a New estimate button.',
+        'Reports: clearer wording where a button is off or RingCentral isn\'t connected.',
+        'Google Ads: with only one account, it loads straight away, and the search no longer says "Search 1 accounts".',
+        'Field: the Map now lists every tracked person, including anyone who hasn\'t reported yet, so its count matches the Dashboard. The status banner says whether your location is being shared right now. The arrival distance shows feet and metres. The Dashboard tiles are now all the same size.',
       ],
     ),
     VersionRelease(
