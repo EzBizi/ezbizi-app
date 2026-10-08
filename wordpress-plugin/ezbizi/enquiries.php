@@ -1069,7 +1069,9 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' .ezb-top{background:' . $accent . ';color:' . $on . ';text-align:center;font-size:26px;font-weight:700;padding:22px 16px}'
         // One fixed size for every step (Jose, 2026-10-08: "it needs to have a
         // fixed size"); a step taller than the card scrolls inside it.
-        . $s . ' .ezb-body{padding:24px 40px 32px;height:600px;box-sizing:border-box;overflow-y:auto}'
+        . $s . ' .ezb-body{padding:24px 40px 32px;height:600px;box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column}'
+        // A short step sits in the middle of the fixed card, not at its top.
+        . $s . ' .ezb-body>[data-step]{margin-top:auto;margin-bottom:auto;flex:0 0 auto}'
         . $s . ' .ezb-back{background:none;border:0;color:' . $accent . ';cursor:pointer;padding:0;margin:0 0 8px;font-size:14px}'
         . $s . ' .ezb-head{text-align:center;padding:10px 0 12px;margin:0 0 14px;border-bottom:1px solid ' . $line . '}'
         . $s . ' .ezb-head small{color:' . $accent . ';font-size:11px;vertical-align:middle;margin-right:6px}'
