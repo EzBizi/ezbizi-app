@@ -29,6 +29,21 @@ void main() {
     expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
+  /// Jose's UI review, 2026-10-08: the empty Dial named Settings and gave no
+  /// way there.
+  testWidgets('an empty Dial opens Settings from its own button', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Open Settings'));
+
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Settings')).selected,
+      isTrue,
+    );
+  });
+
   /// Jose, 2026-09-29: Communication had View and Edit only, "which means
   /// everyone can view the settings". A role now sees the tabs it holds.
   testWidgets('only the granted Communication tabs are drawn', (tester) async {
@@ -2067,6 +2082,9 @@ void main() {
         findsOneWidget,
         reason: 'a company with no account anywhere read as inheriting one',
       );
+      // Jose's UI review, 2026-10-08: the chip said the opposite of the line.
+      expect(find.text('Uses the organization'), findsNothing);
+      expect(find.text('No account'), findsWidgets);
       expect(
         find.textContaining("use the organization's connection above"),
         findsNothing,

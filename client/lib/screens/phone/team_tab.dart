@@ -187,7 +187,7 @@ class _TeamTabState extends State<TeamTab> {
     final unsaved = _unsaved;
 
     return SettingsPane(
-      title: 'Team',
+      title: 'Users',
       subtitle: 'Who each person is on the phone: the extension that reaches '
           'them, and the number they call out from.',
       error: _error,
@@ -210,8 +210,8 @@ class _TeamTabState extends State<TeamTab> {
           title: 'Calling out',
           children: [
             Text(
-              'Whoever has no number here calls out from whichever line the '
-              'Call tab has selected — which is the first line on the account '
+              'Whoever has no number here calls out from whichever line '
+              'Phone › Dial has selected — which is the first line on the account '
               'unless somebody changes it. So without an assignment, everybody '
               'appears to customers as the same number, and every callback '
               'lands on whoever answers that line.',

@@ -795,7 +795,12 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
         ],
       ),
       row == null
-          ? const SizedBox.shrink()
+          ? Text(
+              place.type == 'company' && _organizationConnected
+                  ? "The organization's"
+                  : '—',
+              style: small,
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -814,9 +819,11 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       // A company with no account of its own is not broken and must not read
       // as an empty slot - it is inheriting, which is the ordinary case.
       row == null
-          ? (place.type == 'company'
+          ? (place.type != 'company'
+                ? const StatusPill('No account', tone: Tone.caution)
+                : _organizationConnected
                 ? const StatusPill('Uses the organization')
-                : const SizedBox.shrink())
+                : const StatusPill('No account', tone: Tone.caution))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -871,6 +878,11 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// depending on where somebody happens to be standing.
   ///
   /// Permission is now its own line on the card. This says only where calls go.
+  /// Whether the organization has an account for companies to inherit.
+  bool get _organizationConnected =>
+      _connectionFor(_places.firstWhere((p) => p.type == 'organization')) !=
+      null;
+
   String _usesLine(_Place place, _Connection? row) {
     if (place.type == 'organization') {
       return 'Numbers held at the organization use this.';
@@ -882,10 +894,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     // "uses the organization's connection above" with no organization
     // connection is a sentence pointing at nothing, and it would read as
     // working to somebody whose calls reach no account at all.
-    return _connectionFor(
-              _places.firstWhere((p) => p.type == 'organization'),
-            ) ==
-            null
+    return !_organizationConnected
         ? 'No phone account yet, so calls to this company reach nobody.'
         : "This company's numbers use the organization's connection above.";
   }

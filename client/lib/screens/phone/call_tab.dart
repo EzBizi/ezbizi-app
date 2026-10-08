@@ -36,6 +36,7 @@ class CallTab extends StatefulWidget {
     this.service,
     this.view = CallView.dial,
     this.initialNumber,
+    this.onOpenSettings,
   });
 
   final ApiClient api;
@@ -49,6 +50,9 @@ class CallTab extends StatefulWidget {
 
   /// Typed into the pad on open - a lead's Call button (Jose, 2026-09-30).
   final String? initialNumber;
+
+  /// Opens Communication › Settings, for the empty state's button.
+  final VoidCallback? onOpenSettings;
 
   static const double splitAbove = 600;
 
@@ -1024,14 +1028,27 @@ class _CallTabState extends State<CallTab> {
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  (widget.session.me?.can('phone.edit') ?? false)
-                      ? 'No phone lines yet. Add one in Settings.'
-                      : 'No line has been given to your role yet. An '
-                            'administrator can grant one in Communication '
-                            'settings.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      (widget.session.me?.can('phone.edit') ?? false)
+                          ? 'No phone lines yet. Add one in Settings.'
+                          : 'No line has been given to your role yet. An '
+                                'administrator can grant one in Communication '
+                                'settings.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if ((widget.session.me?.can('phone.edit') ?? false) &&
+                        widget.onOpenSettings != null) ...[
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: widget.onOpenSettings,
+                        child: const Text('Open Settings'),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             )

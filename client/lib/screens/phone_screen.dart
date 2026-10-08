@@ -44,7 +44,11 @@ class _PhoneScreenState extends State<PhoneScreen> {
       'phone',
       'Phone',
       Icons.phone_outlined,
-      () => PhoneTab(api: widget.api, session: widget.session),
+      () => PhoneTab(
+        api: widget.api,
+        session: widget.session,
+        onOpenSettings: () => setState(() => _tab = 'settings'),
+      ),
     ),
     (
       // Users, not Team. This tab assigns extensions and outbound lines to

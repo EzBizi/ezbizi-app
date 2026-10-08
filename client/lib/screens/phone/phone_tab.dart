@@ -21,10 +21,18 @@ import 'voicemails_pane.dart';
 /// two controls for one thing, and a heading that stops being true the moment
 /// somebody presses the chip.
 class PhoneTab extends StatefulWidget {
-  const PhoneTab({super.key, required this.api, required this.session});
+  const PhoneTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.onOpenSettings,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Opens Communication › Settings, for Dial's empty state.
+  final VoidCallback? onOpenSettings;
 
   @override
   State<PhoneTab> createState() => _PhoneTabState();
@@ -119,6 +127,7 @@ class _PhoneTabState extends State<PhoneTab> {
                 api: widget.api,
                 session: widget.session,
                 view: _section == 1 ? CallView.team : CallView.dial,
+                onOpenSettings: widget.onOpenSettings,
               ),
               RecordsTab(
                 api: widget.api,
