@@ -20,3 +20,7 @@ hours-by-place strip keeps its pills. If you add a row inside a tab, give it a l
 Pass an icon, a bold title, one sentence, and a button label with `onAction`. Pass `onAction` only to someone allowed
 to take the step, and put who can in `otherwise`. On a phone the button spans the width. Replace your own empty
 sentence with it when you next touch that screen. Copy is yours, layout questions come to UI/UX.
+
+**When the next step is in another module** (289522c9): `OpenDestination.of(context)?.call('settings')` opens it.
+The id can be a module key, `settings`, `suggestions` or `account`. It returns null outside the shell, so leave the
+button out then. It lands on the destination only, so name the tab in your sentence ("Open Settings, then Numbers").
