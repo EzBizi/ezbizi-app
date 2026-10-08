@@ -104,9 +104,47 @@ class MembershipsPublicController extends Controller
     public function join(Request $request, string $customer): HttpResponse
     {
         return $this->asCustomer($customer, function (Customer $c) use ($request) {
-            $plan = MembershipPlan::query()->where('is_active', true)->find($request->input('plan'));
-            if ($plan === null || $this->current($c) !== null) {
-                return $this->page($c);
+            $this->enroll($c, $request->input('plan'));
+
+            return $this->page($c);
+        });
+    }
+
+    /**
+     * The review page's offer (Jose, 2026-10-08: the job-done thank-you links
+     * to the faces page, which offers the membership too). The page knows the
+     * customer by the link's token; an unknown token gets the same shape,
+     * empty, so the answer says nothing about who is a customer.
+     */
+    public function offer(Request $request): JsonResponse
+    {
+        return $this->asWebCustomer($request, fn (?Customer $c) => [
+            'member' => $c ? $this->memberJson($this->current($c)) : null,
+            'plans'  => $c ? $this->plansJson() : [],
+        ]);
+    }
+
+    /** One tap on the review page: joins the plan for a year from today, once. */
+    public function offerJoin(Request $request): JsonResponse
+    {
+        $request->validate(['plan_id' => ['required', 'string', 'max:64']]);
+
+        return $this->asWebCustomer($request, fn (?Customer $c) => [
+            'member' => $c ? $this->memberJson($this->enroll($c, $request->input('plan_id'))) : null,
+        ]);
+    }
+
+    /** One year from today on an active plan, unless they already have a live year. Twice is once. */
+    private function enroll(Customer $c, mixed $planId): ?Membership
+    {
+        $plan = is_string($planId) ? MembershipPlan::query()->where('is_active', true)->find($planId) : null;
+
+        return DB::transaction(function () use ($c, $plan) {
+            // Locked so a double tap cannot make two years.
+            Customer::query()->lockForUpdate()->find($c->getKey());
+
+            if (($current = $this->current($c)) !== null || $plan === null) {
+                return $current;
             }
 
             $starts = CarbonImmutable::today();
@@ -121,8 +159,48 @@ class MembershipsPublicController extends Controller
             $this->audit->log('membership.created', $membership, metadata: ['by' => 'customer']);
             $this->events->emit('membership.created', $membership, ['after' => MembershipsController::payload($membership)]);
 
-            return $this->page($c);
+            return $membership;
         });
+    }
+
+    private function asWebCustomer(Request $request, \Closure $then): JsonResponse
+    {
+        $request->validate(['key' => ['required', 'string', 'max:100'], 'c' => ['nullable', 'string', 'max:120']]);
+        $headers = ['Access-Control-Allow-Origin' => '*', 'Cache-Control' => 'no-store'];
+
+        $site = $this->tenant->runWithoutTenant(fn () => WebSite::query()->where('public_key', $request->input('key'))->first());
+        if ($site === null) {
+            return response()->json(['message' => 'That key is not valid.'], Response::HTTP_NOT_FOUND)->withHeaders($headers);
+        }
+        $organization = $this->tenant->runWithoutTenant(fn () => Organization::query()->find($site->organization_id));
+
+        return response()->json($this->tenant->run($organization, function () use ($request, $then) {
+            $id = CustomerLinks::customerId($request->input('c'));
+
+            return $then($id ? Customer::query()->find($id) : null);
+        }))->withHeaders($headers);
+    }
+
+    private function memberJson(?Membership $m): ?array
+    {
+        if ($m === null) {
+            return null;
+        }
+        $m->loadMissing(['plan', 'visitJob']);
+
+        return [
+            'plan_name' => $m->plan?->name,
+            'ends_on'   => $m->ends_on->toDateString(),
+            'status'    => $m->state(),
+            'visit_on'  => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
+        ];
+    }
+
+    private function plansJson(): array
+    {
+        return MembershipPlan::query()->where('is_active', true)->orderBy('price_minor')->get()
+            ->map(fn (MembershipPlan $p) => $p->only(['id', 'name', 'description', 'billing', 'price_minor', 'currency']))
+            ->all();
     }
 
     /**
