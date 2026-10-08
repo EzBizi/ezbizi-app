@@ -206,4 +206,16 @@ class MembershipsPublicTest extends TestCase
             ->assertSee($this->t['company']->name)
             ->assertDontSee($this->t['org']->name.' yearly maintenance');
     }
+
+    public function test_membership_link_is_short_reused_and_forwards_to_the_join_page(): void
+    {
+        $link = $this->inTenant($this->t['org'], fn () => $this->customer->membership_link);
+        $this->assertMatchesRegularExpression('#/api/m/[A-Za-z0-9]{7}$#', $link);
+        $this->assertSame($link, $this->inTenant($this->t['org'], fn () => $this->customer->membership_link), 'Reused, not one per message.');
+
+        $target = $this->get(parse_url($link, PHP_URL_PATH))->assertRedirect()->headers->get('Location');
+        $this->get($target)->assertOk()->assertSee('Yearly sweep');
+
+        $this->get('/api/m/zzzzzzz')->assertNotFound();
+    }
 }

@@ -569,6 +569,12 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
+// {{ membership_link }}: app.ezbizi.com/api/m/<code>, under /api because nginx
+// sends only /api and /q/ to Laravel.
+Route::get('m/{code}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'shortJoin'])
+    ->where('code', '[A-Za-z0-9]{7}')
+    ->middleware('throttle:60,1')
+    ->name('memberships.short');
 // The review page's membership offer (2026-10-08), by the link's customer token.
 Route::get('v1/web/membership', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offer'])
     ->middleware('throttle:web-enquiry');

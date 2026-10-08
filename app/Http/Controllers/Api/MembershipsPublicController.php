@@ -95,6 +95,17 @@ class MembershipsPublicController extends Controller
         return response()->json(['ok' => true])->withHeaders($headers);
     }
 
+    /** `{{ membership_link }}`: a short code forwards to the signed join page. */
+    public function shortJoin(string $code): \Illuminate\Http\RedirectResponse
+    {
+        $row = $this->tenant->runWithoutTenant(fn () => \App\Models\ReviewCode::query()->withoutGlobalScopes()
+            ->whereKey($code)->whereNull('job_id')->where('expires_at', '>=', now())->first());
+        $customer = $row ? $this->tenant->runWithoutTenant(fn () => Customer::query()->withoutGlobalScopes()->find($row->customer_id)) : null;
+        abort_if($customer === null, Response::HTTP_NOT_FOUND);
+
+        return redirect()->away(CustomerLinks::joinUrl($customer));
+    }
+
     /** The sign-up page the offer links to. Signed, so the link is the permission. */
     public function joinPage(string $customer): HttpResponse
     {
