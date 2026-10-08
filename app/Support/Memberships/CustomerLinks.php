@@ -5,9 +5,11 @@ namespace App\Support\Memberships;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\ReviewCode;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 /**
  * The links a customer is sent for the membership program (Jose, 2026-10-05).
@@ -57,6 +59,13 @@ final class CustomerLinks
     /** @return array{0: string, 1: ?string}|null */
     private static function parts(?string $token): ?array
     {
+        // The short link's code (Jose, 2026-10-08): looked up, not signed.
+        if (is_string($token) && preg_match('/^[A-Za-z0-9]{7}$/', $token) === 1) {
+            $code = ReviewCode::query()->whereKey($token)->where('expires_at', '>=', now())->first();
+
+            return $code === null ? null : [(string) $code->customer_id, $code->job_id === null ? null : (string) $code->job_id];
+        }
+
         if (! is_string($token) || ! str_contains($token, '.')) {
             return null;
         }
@@ -90,9 +99,32 @@ final class CustomerLinks
     public static function jobReviewLink(Customer $customer, Job $job): ?string
     {
         $link = self::siteValue($customer, 'review_link', $job->franchise_id, $job->service_area_id);
+        $parts = $link === null ? false : parse_url($link);
 
-        return $link === null ? null
-            : $link.(str_contains($link, '?') ? '&' : '?').'c='.rawurlencode(self::jobToken($customer, $job));
+        // https://ma.a-1chimney.com/r/Ab3xK9m: the site's /r/ forwards to its
+        // reviews page with the code (Jose, 2026-10-08: ~40 characters, not ~140).
+        return ! is_array($parts) || ! isset($parts['host']) ? null
+            : ($parts['scheme'] ?? 'https').'://'.$parts['host'].'/r/'.self::code($customer, $job);
+    }
+
+    /** A job's short code: the one already sent while it has a month left, else a new random one. */
+    public static function code(Customer $customer, Job $job): string
+    {
+        $existing = ReviewCode::query()->where('customer_id', $customer->getKey())->where('job_id', $job->getKey())
+            ->where('expires_at', '>', now()->addDays(30))->value('code');
+
+        if (is_string($existing)) {
+            return $existing;
+        }
+
+        do {
+            $code = Str::random(7);
+        } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
+
+        ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => $job->getKey(),
+            'expires_at' => now()->addDays(self::REVIEW_DAYS)]);
+
+        return $code;
     }
 
     public static function joinUrl(Customer $customer): string
