@@ -127,6 +127,29 @@ final class CustomerLinks
         return $code;
     }
 
+    /**
+     * `{{ membership_link }}`: a short link to the one-tap join page for a
+     * text message (Jose, 2026-10-08: the thank-you after a happy review
+     * offers the plan ~10 minutes later). https://app.ezbizi.com/api/m/<code>;
+     * a review_codes row with no job, reused while it has a month left.
+     */
+    public static function joinLink(Customer $customer): string
+    {
+        $code = ReviewCode::query()->where('customer_id', $customer->getKey())->whereNull('job_id')
+            ->where('expires_at', '>', now()->addDays(30))->value('code');
+
+        if (! is_string($code)) {
+            do {
+                $code = Str::random(7);
+            } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
+
+            ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => null,
+                'expires_at' => now()->addDays(self::JOIN_DAYS)]);
+        }
+
+        return url('/api/m/'.$code);
+    }
+
     public static function joinUrl(Customer $customer): string
     {
         return URL::temporarySignedRoute('memberships.join', now()->addDays(self::JOIN_DAYS), ['customer' => $customer->getKey()]);

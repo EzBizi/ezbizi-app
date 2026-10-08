@@ -282,6 +282,12 @@ class Customer extends Model implements HoldsPersonalData
         return \App\Support\Memberships\CustomerLinks::reviewLink($this);
     }
 
+    /** `{{ membership_link }}`: the same page by a short link, for a text message. */
+    public function getMembershipLinkAttribute(): string
+    {
+        return \App\Support\Memberships\CustomerLinks::joinLink($this);
+    }
+
     public function getMembershipJoinUrlAttribute(): string
     {
         return \App\Support\Memberships\CustomerLinks::joinUrl($this);
