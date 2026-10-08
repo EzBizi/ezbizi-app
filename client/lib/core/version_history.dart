@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0388',
+      date: '8 Oct 2026',
+      items: [
+        'Get the apps: on a computer, people who have never used the phone app see one Dashboard card with a QR code and the App Store and Google Play buttons. No thanks hides it for good, on every device. The menu under your name now has Get the apps, and on a phone\'s browser a small banner offers the app.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0387',
       date: '7 Oct 2026',
       items: [
