@@ -392,6 +392,13 @@ class ActionRunner
             ];
         }
 
+        // A thank-you whose review link is missing (the job's franchise has no
+        // site with one set) is skipped, not sent with a hole (Web, 2026-10-08).
+        if ($subject !== null && $subject->getAttribute('review_link') === null
+            && preg_match('/\{\{\s*review_link\s*\}\}/i', json_encode($action))) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: there is no review link for this job.'];
+        }
+
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject),
