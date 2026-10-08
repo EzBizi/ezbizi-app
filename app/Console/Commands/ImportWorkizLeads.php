@@ -21,9 +21,8 @@ use Illuminate\Support\Facades\Log;
  * ── Two rulings from Jose shape every decision in this file ──────
  *
  * **"we don't need the past stuff, just start from now"** (2026-09-23). So
- * there is no backfill. The first run against a branch imports NOTHING and
- * simply establishes where "now" was; everything after that date is imported on
- * later runs. A-1's thirty-one thousand historical rows stay in Workiz, where
+ * there is no backfill. A branch imports what was made from that day, or from
+ * when it connected if later (STARTED); nothing before is asked for. A-1's thirty-one thousand historical rows stay in Workiz, where
  * they already are.
  *
  * **"whatever you build must not put us in a dependency state."** Nothing here
@@ -48,6 +47,9 @@ use Illuminate\Support\Facades\Log;
  */
 class ImportWorkizLeads extends Command
 {
+    /** Jose, 2026-09-23: "just start from now". */
+    public const STARTED = '2026-09-23 00:00:00';
+
     protected $signature = 'ezbizi:import-workiz-leads
                             {--connection= : one connection id, rather than every connected branch}
                             {--limit=1000 : how many rows to ask Workiz for per branch}';
@@ -140,9 +142,9 @@ class ImportWorkizLeads extends Command
          * describes, and re-running is harmless because the upsert is on the
          * unique key.
          *
-         * With no rows yet this is the FIRST run, and Jose's "start from now"
-         * makes that case explicit: the watermark is this moment, so nothing
-         * historical is asked for at all. Not a filter applied after fetching
+         * With no rows yet, Jose's "start from now" is the watermark: STARTED,
+         * or when the branch connected, so nothing historical is asked for at
+         * all. Not a filter applied after fetching
          * thirty-one thousand rows — they are never requested.
          */
         $watermark = Lead::query()
@@ -150,7 +152,12 @@ class ImportWorkizLeads extends Command
             ->where('source', Lead::SOURCE_WORKIZ)
             ->max('received_at');
 
-        $since = $watermark !== null ? Carbon::parse($watermark) : now();
+        // "Now" is when Jose said it (2026-09-23), or when the branch connected
+        // if later. Each run's own now moved every minute, so a branch with no
+        // lead yet skipped every lead as older than the run (New Jersey's
+        // 2026-10-07 enquiry, found 2026-10-08).
+        $since = $watermark !== null ? Carbon::parse($watermark)
+            : Carbon::parse(self::STARTED, 'UTC')->max($connection->created_at ?? now());
 
         $result = $reader->raw(
             $connection,
