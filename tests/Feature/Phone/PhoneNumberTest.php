@@ -330,6 +330,43 @@ class PhoneNumberTest extends TestCase
         $this->inTenant($t['org'], fn () => $this->assertSame(0, PhoneNumber::query()->count()));
     }
 
+    /**
+     * Removing a number held on another account (A-1's approved toll-free on
+     * the platform parent) only stops EzBizi using it; releasing it would
+     * destroy the toll-free verification.
+     */
+    public function test_removing_a_number_held_elsewhere_does_not_release_it(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor held', ['phone.view', 'phone.edit']);
+
+        $number = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+            ]);
+
+            return PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'twilio_sid' => 'PNdddddddddddddddddddddddddddddddd',
+                'account_sid' => 'ACpppppppppppppppppppppppppppppppp',
+                'e164' => '+18555550304',
+            ]);
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        $this->signedInAs($editor)
+            ->deleteJson('/api/v1/phone/numbers/'.$number->id)
+            ->assertOk();
+
+        $this->assertNotContains('releaseIncoming', array_column($gateway->calls, 'method'));
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, PhoneNumber::query()->count()));
+    }
+
     public function test_buying_requires_phone_edit(): void
     {
         $t = $this->provisionTenant();

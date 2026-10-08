@@ -471,9 +471,12 @@ final class FakeTwilioGateway implements TwilioGateway
         $this->record(__FUNCTION__, [$connection->id, $callSid]);
     }
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
     {
-        $this->record(__FUNCTION__, [$connection->id, $from, $to, $body]);
+        $this->record(__FUNCTION__, array_merge(
+            [$connection->id, $from, $to, $body],
+            $accountSid === null ? [] : [$accountSid],
+        ));
 
         if ($this->failSendMessageWith !== null) {
             throw new RuntimeException($this->failSendMessageWith);

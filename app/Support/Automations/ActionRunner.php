@@ -2,82 +2,82 @@
 
 namespace App\Support\Automations;
 
+use App\Mail\AutomationMessage;
 use App\Mail\InspectionReportMail;
-use App\Models\Automation;
 use App\Models\A1LeadsReviewEvent;
-use App\Services\A1Leads\A1LeadsGbpReplies;
-use App\Models\TimeClockReport;
-use App\Support\TimeClock\TimeClockReports;
-use App\Support\Modules\ModuleRegistry;
-use App\Support\Social\WhatsAppGroups;
+use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\Company;
+use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
-use App\Models\WorkizJob;
-use App\Support\Workiz\WorkizJobWriter;
+use App\Models\InventoryItem;
+use App\Models\Invitation;
 use App\Models\Job;
 use App\Models\Lead;
-use App\Support\Reports\SendSavedReport;
-use App\Models\SavedReport;
-use App\Support\Leads\LeadReplies;
-use App\Models\Invitation;
-use App\Support\Hr\CannotActOnInvitation;
-use App\Support\Hr\InvitationActions;
-use App\Support\Fleet\CannotAssignVehicle;
-use App\Support\Fleet\VehicleAssignments;
-use App\Support\Access\AdministratorFloor;
-use App\Support\Social\WhatsAppCloud;
-use Illuminate\Support\Facades\Cache;
-use App\Models\Company;
-use App\Mail\AutomationMessage;
-use App\Support\Inventory\InventoryItemStatus;
-use App\Support\Inventory\InventoryUnit;
-use App\Support\Fleet\VehicleFuelType;
-use App\Support\Fleet\VehicleBodyType;
-use App\Models\InventoryItem;
 use App\Models\Mailbox;
+use App\Models\NewsletterAudience;
+use App\Models\NewsletterUnsubscribe;
+use App\Models\Onboarding;
 use App\Models\Organization;
 use App\Models\PhoneCall;
+use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
-use App\Models\TrainingAssignment;
 use App\Models\Review;
 use App\Models\ReviewReply;
-use App\Models\Contract;
-use App\Models\Onboarding;
-use App\Models\NewsletterUnsubscribe;
-use App\Models\NewsletterAudience;
-use App\Models\SocialConnection;
-use App\Support\Newsletter\MailchimpClient;
-use App\Support\Newsletter\NewsletterSendFailed;
-use App\Support\Social\SocialProvider;
 use App\Models\Role;
-use App\Support\Customers\ReassignCustomerOwner;
-use Illuminate\Support\Facades\Gate;
+use App\Models\SavedReport;
+use App\Models\SocialConnection;
+use App\Models\TimeClockReport;
+use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\WorkizJob;
+use App\Services\A1Leads\A1LeadsGbpReplies;
+use App\Support\Access\AdministratorFloor;
 use App\Support\Audit\AuditLogger;
+use App\Support\Customers\ReassignCustomerOwner;
 use App\Support\Email\DealtState;
+use App\Support\Fleet\CannotAssignVehicle;
+use App\Support\Fleet\VehicleAssignments;
+use App\Support\Fleet\VehicleBodyType;
+use App\Support\Fleet\VehicleFuelType;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
+use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\LeadReplies;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailTransport;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Newsletter\MailchimpClient;
+use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Phone\SmsCompliance;
+use App\Support\Phone\TwilioGateway;
+use App\Support\Reports\SendSavedReport;
 use App\Support\Scoping\ViewScope;
+use App\Support\Social\SocialProvider;
+use App\Support\Social\WhatsAppCloud;
+use App\Support\Social\WhatsAppGroups;
 use App\Support\TimeClock\TimeClock;
+use App\Support\TimeClock\TimeClockReports;
 use App\Support\Training\AssignmentWriter;
+use App\Support\Workiz\WorkizJobWriter;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use App\Models\PhoneMessage;
-use App\Support\Phone\SmsCompliance;
-use App\Support\Phone\TwilioGateway;
 
 /**
  * Performing one action from an automation (plan §5.5).
@@ -400,7 +400,7 @@ class ActionRunner
         }
 
         return match ($type) {
-            'update_field' => $this->updateField($action, $event, $subject),
+            'update_field' =>$this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
             'notify' => $this->notify($action, $event, $subject),
@@ -658,7 +658,6 @@ class ActionRunner
     private function emailInspectionReport(array $action, ?Model $subject, ?Automation $automation): array
     {
         $type = 'inspection_report.email';
-
 
         if (! $subject instanceof InspectionReport) {
             return [
@@ -1792,7 +1791,7 @@ class ActionRunner
         }
 
         try {
-            $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body);
+            $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
             // Twilio's own sentence, because a code we have never seen still
             // explains itself and a rewrite of it does not.
@@ -3061,8 +3060,8 @@ class ActionRunner
             // "Customer Waiting Warning" off. Cut with an ellipsis; the full
             // text goes in the body, ahead of any second line.
             if (mb_strlen($title) > 255) {
-                $details = trim($title."
-".$details);
+                $details = trim($title.'
+'.$details);
                 $title = mb_substr($title, 0, 254).'…';
             }
 

@@ -1049,7 +1049,9 @@ class NumbersController extends Controller
 
         $connection = $this->resolver->forNumber($number) ?? $number->connection;
 
-        if ($connection !== null && filled($number->twilio_sid)) {
+        // A number held on another account (account_sid) is not EzBizi's to
+        // release: removing it here only stops EzBizi using it.
+        if ($connection !== null && filled($number->twilio_sid) && blank($number->account_sid)) {
             $this->twilio->releaseIncoming($connection, (string) $number->twilio_sid);
         }
 

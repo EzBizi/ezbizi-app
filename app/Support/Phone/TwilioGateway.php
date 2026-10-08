@@ -299,7 +299,11 @@ interface TwilioGateway
      */
     public function queueSizes(PhoneConnection $connection): array;
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array;
+    /**
+     * $accountSid names the account that holds $from when it is not the
+     * connection's (PhoneNumber::account_sid); null sends as the connection.
+     */
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array;
 
     /**
      * @return array{phone_number: string, caller_name: ?string}

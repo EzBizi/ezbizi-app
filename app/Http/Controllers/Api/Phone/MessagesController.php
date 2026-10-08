@@ -130,7 +130,7 @@ class MessagesController extends Controller
         $from = (string) $number->e164;
 
         try {
-            $sent = $this->twilio->sendMessage($connection, $from, $to, $body);
+            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
             $reason = $e->getMessage() !== ''
                 ? $e->getMessage()

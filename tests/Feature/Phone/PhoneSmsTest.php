@@ -362,6 +362,86 @@ class PhoneSmsTest extends TestCase
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: PhoneConnection, 1: PhoneNumber, 2: string}
      */
+    /**
+     * Jose, 2026-10-08: A-1's approved toll-free stays on the platform parent
+     * (a toll-free verification does not survive a move) but texts for A-1.
+     * Twilio only sends a `From` as the account holding it.
+     */
+    public function test_a_number_held_on_another_account_sends_as_that_account(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk held', ['phone.view']);
+
+        $number = $this->inTenant($t['org'], function () use ($t, $desk) {
+            [, $number] = $this->openLine($t, e164: '+18555550100');
+            $number->update(['sms_outbound_allowed' => true, 'account_sid' => 'ACpppppppppppppppppppppppppppppppp']);
+
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $number->id,
+                'role_id' => $desk->role_id,
+            ]);
+
+            return $number->fresh();
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/messages', [
+            'number_id' => $number->id,
+            'to' => '+15553334499',
+            'body' => 'Thanks for having us.',
+        ])->assertCreated();
+
+        $send = collect($gateway->calls)->firstWhere('method', 'sendMessage');
+        $this->assertSame('ACpppppppppppppppppppppppppppppppp', $send['args'][4] ?? null);
+    }
+
+    /**
+     * Replies to a platform-held number are signed with the PARENT's token.
+     * They land on the connection only for its own platform-held numbers; the
+     * same signature naming any other number of the connection is refused.
+     */
+    public function test_a_reply_to_a_platform_held_number_is_accepted_and_no_other_number(): void
+    {
+        config([
+            'services.twilio.platform_account_sid' => 'ACpppppppppppppppppppppppppppppppp',
+            'services.twilio.platform_auth_token' => 'platform-token',
+        ]);
+        $t = $this->provisionTenant();
+
+        $connection = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, $held] = $this->openLine($t, e164: '+18555550101');
+            $held->update(['account_sid' => 'ACpppppppppppppppppppppppppppppppp']);
+            PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035551099',
+            ]);
+
+            return $connection;
+        });
+
+        $url = $this->smsUrl($t['org']->id, $connection->id);
+        $reply = ['AccountSid' => 'ACpppppppppppppppppppppppppppppppp'] + $this->inboundParams(
+            messageSid: 'SMcccccccccccccccccccccccccccccccc',
+            from: '+15557654300',
+            to: '+18555550101',
+            body: 'Thank you!',
+        );
+        $this->signedPost($url, $reply, 'platform-token')->assertOk();
+
+        $other = ['AccountSid' => 'ACpppppppppppppppppppppppppppppppp', 'To' => '+12035551099', 'MessageSid' => 'SMdddddddddddddddddddddddddddddddd'] + $reply;
+        $this->signedPost($url, $other, 'platform-token')->assertForbidden();
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            ['SMcccccccccccccccccccccccccccccccc'],
+            PhoneMessage::query()->pluck('twilio_sid')->all(),
+        ));
+    }
+
     private function openLine(array $tenant, string $e164): array
     {
         $authToken = 'sms-auth-token-'.$e164;

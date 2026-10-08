@@ -641,9 +641,15 @@ final class HttpTwilioGateway implements TwilioGateway
         return $out;
     }
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
     {
-        $message = $this->connectionClient($connection)->messages->create($to, [
+        // A `From` only sends from the account holding it, so a number held
+        // elsewhere in the tree sends as that account, signed by the parent.
+        $client = filled($accountSid)
+            ? $this->platformClientForAccount((string) $accountSid)
+            : $this->connectionClient($connection);
+
+        $message = $client->messages->create($to, [
             'from' => $from,
             'body' => $body,
         ]);

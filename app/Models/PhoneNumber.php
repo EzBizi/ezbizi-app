@@ -64,7 +64,7 @@ class PhoneNumber extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'connection_id', 'scope_type', 'scope_id',
-        'twilio_sid', 'e164', 'label',
+        'twilio_sid', 'account_sid', 'e164', 'label',
         'flow_id', 'hours_schedule_id', 'ring_group_id', 'voicemail_box_id',
         'answer_with', 'answer_user_id',
         'record', 'transcribe',

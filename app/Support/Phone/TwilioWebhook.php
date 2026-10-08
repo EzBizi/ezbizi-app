@@ -42,7 +42,9 @@ final class TwilioWebhook
             $header = $request->header('X-Twilio-Signature');
             $payload = self::signaturePayload($request);
 
-            if (! TwilioSignature::valid($row, $url, $payload, is_string($header) ? $header : null)) {
+            $header = is_string($header) ? $header : null;
+            if (! TwilioSignature::valid($row, $url, $payload, $header)
+                && ! TwilioSignature::heldOnPlatform($row, $url, $payload, $header)) {
                 abort(Status::HTTP_FORBIDDEN, 'This request was not from Twilio.');
             }
 
