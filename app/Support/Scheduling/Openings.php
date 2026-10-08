@@ -75,6 +75,10 @@ use Illuminate\Support\Facades\DB;
  * PLUS appointments asked for on a website's booking widget (Jose,
  * 2026-10-08), pending or approved, until the lead has a job of its own: the
  * job holds the seat from then on, so the two are never counted together.
+ * That hand-off rides `leads.job_id`, which the phone match sets. When it
+ * misses (a second number, somebody booking for someone else) the booking and
+ * the Workiz job both count until the booking's date passes: safe, showing
+ * less room, never more (Scheduling, 2026-10-08). Leads do not soft-delete.
  *
  * ── The franchise's daily limit ─────────────────────────────────
  *
