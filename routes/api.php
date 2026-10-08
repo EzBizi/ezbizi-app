@@ -569,6 +569,11 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
+// The review page's membership offer (2026-10-08), by the link's customer token.
+Route::get('v1/web/membership', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offer'])
+    ->middleware('throttle:web-enquiry');
+Route::post('v1/web/membership/join', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offerJoin'])
+    ->middleware('throttle:web-enquiry');
 Route::get('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'joinPage'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('memberships.join');
