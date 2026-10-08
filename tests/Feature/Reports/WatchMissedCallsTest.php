@@ -37,9 +37,15 @@ class WatchMissedCallsTest extends TestCase
 
         Http::fake([
             '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            // The line's name as A-1 labelled it in RingCentral; the vm call's
+            // number has none, so it falls back to the queue.
+            '*/phone-number*' => Http::response(['records' => [
+                ['phoneNumber' => '+15550009999', 'label' => 'DFW - LS Ads'],
+                ['phoneNumber' => '+15550008888'],
+            ]]),
             '*/call-log*' => Http::response(['records' => [
                 $this->rc('missed', 'Missed', 'A1 - New Client', '18:55'),
-                $this->rc('vm', 'Voicemail', 'Ace Fireplace', '18:50'),
+                $this->rc('vm', 'Voicemail', 'Ace Fireplace', '18:50', to: '+15550008888'),
                 $this->rc('own-line', 'Missed', 'Tiara Maranon', '18:45'),
                 $this->rc('spam', 'Accepted', 'A1 - New Client', '18:55'),
                 $this->rc('blocked', 'Blocked', 'A1 - New Client', '18:55'),
@@ -56,9 +62,9 @@ class WatchMissedCallsTest extends TestCase
             ->sortKeys()->all();
 
         $this->assertSame([
-            'missed' => ['Missed call - A-1 Chimney', '(212) 555-1212 - A1 - New Client', '+15550009999'],
-            'own-line' => ['Missed call', '(212) 555-1212 - Tiara Maranon', '+15550009999'],
-            'vm' => ['Missed call - Ace Fireplace', '(212) 555-1212 - Ace Fireplace - left a voicemail', '+15550009999'],
+            'missed' => ['Missed call - A-1 Chimney', '(212) 555-1212 - DFW - LS Ads', '+15550009999'],
+            'own-line' => ['Missed call', '(212) 555-1212 - DFW - LS Ads', '+15550009999'],
+            'vm' => ['Missed call - Ace Fireplace', '(212) 555-1212 - Ace Fireplace - left a voicemail', '+15550008888'],
         ], $events);
     }
 
@@ -77,6 +83,7 @@ class WatchMissedCallsTest extends TestCase
 
         Http::fake([
             '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/phone-number*' => Http::response(['records' => []]),
             '*/call-log*' => fn ($request) => Http::response(['records' => str_starts_with((string) $request['dateFrom'], '2026-10-07')
                 ? [$this->rc('late', 'Missed', 'A1 - New Client', '03:59', day: '2026-10-08')]
                 : [], 'paging' => ['page' => 1]]),
@@ -88,7 +95,7 @@ class WatchMissedCallsTest extends TestCase
             ->get()->map(fn ($e) => $e->payload['call_id'])->all());
     }
 
-    private function rc(string $id, string $result, string $queue, string $utc, bool $answered = false, string $day = '2026-10-07'): array
+    private function rc(string $id, string $result, string $queue, string $utc, bool $answered = false, string $day = '2026-10-07', string $to = '+15550009999'): array
     {
         return [
             'id' => $id,
@@ -96,7 +103,7 @@ class WatchMissedCallsTest extends TestCase
             'result' => $result,
             'startTime' => "{$day}T{$utc}:00Z",
             'from' => ['phoneNumber' => '+12125551212', 'name' => 'CALLER'],
-            'to' => ['phoneNumber' => '+15550009999'],
+            'to' => ['phoneNumber' => $to],
             'legs' => array_values(array_filter([
                 ['legType' => 'Accept', 'result' => $result, 'to' => ['name' => 'Main - IVR']],
                 ['legType' => 'Accept', 'result' => $result, 'to' => ['name' => $queue]],
