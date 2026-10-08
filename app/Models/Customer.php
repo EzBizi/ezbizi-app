@@ -282,10 +282,19 @@ class Customer extends Model implements HoldsPersonalData
         return \App\Support\Memberships\CustomerLinks::reviewLink($this);
     }
 
-    /** `{{ membership_link }}`: the same page by a short link, for a text message. */
-    public function getMembershipLinkAttribute(): string
+    /**
+     * `{{ membership_link }}`: the same page by a short link, for a text message.
+     * Null for a customer who is already a member, or when no plan is on offer,
+     * so the automation step that names it is skipped (Automations, e63789f8).
+     */
+    public function getMembershipLinkAttribute(): ?string
     {
-        return \App\Support\Memberships\CustomerLinks::joinLink($this);
+        $member = Membership::query()->where('customer_id', $this->getKey())->whereNull('cancelled_at')
+            ->where('ends_on', '>=', now()->toDateString())->exists();
+
+        return $member || ! MembershipPlan::query()->where('is_active', true)->exists()
+            ? null
+            : \App\Support\Memberships\CustomerLinks::joinLink($this);
     }
 
     public function getMembershipJoinUrlAttribute(): string

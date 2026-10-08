@@ -218,4 +218,22 @@ class MembershipsPublicTest extends TestCase
 
         $this->get('/api/m/zzzzzzz')->assertNotFound();
     }
+
+    public function test_membership_link_is_null_for_a_member_or_with_no_plan_on_offer(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            MembershipPlan::query()->update(['is_active' => false]);
+            $this->assertNull($this->customer->fresh()->membership_link, 'Nothing on offer.');
+
+            MembershipPlan::query()->update(['is_active' => true]);
+            $this->assertNotNull($this->customer->fresh()->membership_link);
+
+            Membership::create([
+                'franchise_id' => $this->t['franchise']->id, 'customer_id' => $this->customer->id,
+                'membership_plan_id' => MembershipPlan::query()->value('id'), 'enrollment' => 'new',
+                'starts_on' => now()->toDateString(), 'ends_on' => now()->addYear()->toDateString(),
+            ]);
+            $this->assertNull($this->customer->fresh()->membership_link, 'Already a member.');
+        });
+    }
 }
