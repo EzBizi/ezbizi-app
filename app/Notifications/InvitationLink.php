@@ -101,6 +101,9 @@ class InvitationLink extends Notification
                 'The link works once, and stops working on %s.',
                 $this->invitation->expires_at->toDayDateTimeString(),
             ))
+            // Jose, 2026-10-08: the invitation also points at the apps.
+            ->line('EzBizi works in your browser, and there are apps for your phone and computer: '
+                .'https://www.ezbizi.com/download/')
             // Not "ignore this if it was not you". Somebody who has been invited
             // to a business they have never heard of should say so to that
             // business, and this is the only message that can tell them who to

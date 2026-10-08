@@ -427,6 +427,11 @@ class PlatformMailTest extends TestCase
             InvitationLink::class,
             fn (InvitationLink $n, array $channels, $notifiable) => $notifiable->routes['mail'] === 'newstarter@example.test',
         );
+
+        // Jose, 2026-10-08: the invitation also points the new starter at the apps.
+        $mail = $this->inTenant(fn () => (new InvitationLink($invitation, 'https://app.ezbizi.test/invitations/accept?token=x'))
+            ->toMail(new \Illuminate\Notifications\AnonymousNotifiable));
+        $this->assertStringContainsString('https://www.ezbizi.com/download/', implode(' ', $mail->outroLines));
     }
 
     public function test_a_reply_to_travels_with_the_identity(): void
