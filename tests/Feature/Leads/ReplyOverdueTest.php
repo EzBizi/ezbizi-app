@@ -86,6 +86,26 @@ class ReplyOverdueTest extends TestCase
         $this->assertSame('A customer', $names[$nothing->id]);
     }
 
+    /** 2026-10-08: the warning quoted our own auto reply instead of the customer. */
+    public function test_the_preview_is_what_the_customer_said(): void
+    {
+        $lead = $this->lead('q', 'MESSAGE', '2026-09-28T14:45:00Z');
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            foreach ([['CONSUMER', 'Can you come Tuesday?', '14:40'], ['ADVERTISER', 'Thank you for reaching out!', '14:45']] as $i => [$who, $text, $at]) {
+                LeadConversation::create([
+                    'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => "q{$i}",
+                    'channel' => 'MESSAGE', 'participant' => $who, 'is_automatic' => $who === 'ADVERTISER',
+                    'occurred_at' => Carbon::parse("2026-09-28T{$at}:00Z"), 'text' => $text,
+                ]);
+            }
+            $lead->forceFill(['last_contact_preview' => 'Thank you for reaching out!'])->save();
+        });
+
+        $this->artisan('ezbizi:leads-reply-overdue')->assertSuccessful();
+
+        $this->assertSame('Can you come Tuesday?', $this->raised()[0]->payload['after']['preview']);
+    }
+
     public function test_a_waiting_customer_is_raised_once_and_marked_on_the_list(): void
     {
         $waiting = $this->lead('a', 'MESSAGE', '2026-09-28T14:45:00Z');

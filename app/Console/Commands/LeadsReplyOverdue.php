@@ -7,6 +7,7 @@ use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\LeadThread;
 use App\Support\Notifications\LeadNotificationText;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -64,7 +65,15 @@ class LeadsReplyOverdue extends Command
                                 ?: 'A customer',
                             'phone' => $lead->phone,
                             'minutes_waiting' => (int) $lead->last_contact_at->diffInMinutes(now()),
-                            'preview' => $lead->last_contact_preview,
+                            // What THEY said. last_contact_preview can be our own
+                            // automatic reply, which leaves the lead unanswered
+                            // (2026-10-08: the warning quoted "Thank you for
+                            // reaching out to A-1 Chimney!").
+                            'preview' => (($theirs = $lead->conversations()
+                                ->reorder()
+                                ->where('participant', LeadConversation::FROM_CONSUMER)
+                                ->orderByDesc('occurred_at')
+                                ->first()) ? LeadThread::preview($theirs) : null) ?? $lead->last_contact_preview,
                         ],
                     ]);
                     $raised++;
