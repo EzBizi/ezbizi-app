@@ -175,7 +175,10 @@ var api=" . wp_json_encode(esc_url_raw(rest_url('ezbizi/v1/challenge'))) . ",tsK
 function box(f){if(!tsKey||f.querySelector('.cf-turnstile'))return;
   var d=document.createElement('div');d.className='cf-turnstile';d.setAttribute('data-sitekey',tsKey);d.setAttribute('data-size','flexible');d.style.margin='0 0 12px';d.style.width='100%';
   var s=f.querySelector('.elementor-field-type-submit');(s?s.parentNode:f).insertBefore(d,s);
-  if(window.turnstile)try{turnstile.render(d);}catch(e){}}
+  if(window.turnstile){try{turnstile.render(d);}catch(e){}return;}
+  // Cloudflare's script only on a page that has a form (the /privacy/ page says so).
+  if(!document.getElementById('ezbizi-turnstile-js')){var j=document.createElement('script');j.id='ezbizi-turnstile-js';
+    j.src='https://challenges.cloudflare.com/turnstile/v0/api.js';j.async=true;document.head.appendChild(j);}}
 Array.prototype.forEach.call(document.querySelectorAll('form.elementor-form'),box);
 function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
 function solve(c){var enc=new TextEncoder(),n=0;
@@ -204,7 +207,7 @@ document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
   // Unsolvable here (no network, an old browser): send anyway, so the visitor sees the site's answer, never silence.
   prep(f).then(go,go);
 },true);
-})();</script>" . ($ts === null ? '' : ezbizi_turnstile_script());
+})();</script>";
 }, 20);
 
 /**
