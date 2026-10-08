@@ -133,6 +133,7 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            level: TabLevel.secondary,
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() => _tab = tabs[i].$1),

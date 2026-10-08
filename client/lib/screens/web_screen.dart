@@ -135,6 +135,7 @@ class _WebScreenState extends State<WebScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            level: TabLevel.secondary,
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: (index) => setState(() => _tab = tabs[index].$1),

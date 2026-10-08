@@ -728,9 +728,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Widget line(Widget report, Widget covers, Widget sent, [Widget? end]) =>
         Row(
           children: [
-            Expanded(flex: 4, child: report),
+            // The name and its description get the room: "Covers" and "Sent"
+            // are a few words, and at equal widths the description was cut
+            // off beside them (UI review, 2026-10-08).
+            Expanded(flex: 7, child: report),
             const SizedBox(width: 16),
-            Expanded(flex: 4, child: covers),
+            Expanded(flex: 3, child: covers),
             const SizedBox(width: 16),
             Expanded(flex: 3, child: sent),
             SizedBox(width: 44, child: end),

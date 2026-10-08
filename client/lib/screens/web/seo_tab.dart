@@ -288,6 +288,7 @@ class _SeoTabState extends State<SeoTab> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
             child: TabBarLike(
+              level: TabLevel.tertiary,
               key: const ValueKey('seo-sections'),
               labels: [
                 for (final section in _sections)

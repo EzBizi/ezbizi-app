@@ -252,6 +252,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
+          level: TabLevel.secondary,
           labels: [
             ('Availability', Icons.event_available_outlined),
             ('Schedule', Icons.engineering_outlined),

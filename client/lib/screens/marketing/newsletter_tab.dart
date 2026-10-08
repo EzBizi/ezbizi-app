@@ -452,6 +452,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
+          level: TabLevel.secondary,
           labels: [for (final pane in shown) (pane.$2, pane.$3)],
           selected: shown.indexWhere((p) => p.$1 == current),
           onSelected: (i) => setState(() => _tab = shown[i].$1),

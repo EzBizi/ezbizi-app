@@ -456,6 +456,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       children: [
         ?problem,
         TabBarLike(
+          level: TabLevel.secondary,
           key: const Key('call-report-tabs'),
           labels: [for (final view in views) (view.$2, view.$3)],
           selected: views.indexWhere((view) => view.$1 == _view),

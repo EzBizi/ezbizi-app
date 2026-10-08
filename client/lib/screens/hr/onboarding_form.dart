@@ -1118,6 +1118,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
             column([
               ...head,
               TabBarLike(
+                level: TabLevel.tertiary,
                 key: const Key('onboarding-view'),
                 labels: const [
                   ('Form', Icons.edit_note_outlined),

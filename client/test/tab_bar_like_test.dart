@@ -125,6 +125,49 @@ void main() {
     );
     semantics.dispose();
   });
+
+  /// UI queue 69: a row inside a tab must not look like the row above it.
+  /// Pills there, so none here, and no icon: the icon is what marks the
+  /// module's own row. Still a selectable tab to a finger and a screen reader.
+  for (final level in [TabLevel.secondary, TabLevel.tertiary]) {
+    testWidgets('a $level row is not drawn as pills, and still selects', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      var chosen = -1;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TabBarLike(
+              level: level,
+              labels: const [
+                ('Posts', Icons.article_outlined),
+                ('Accounts', Icons.link),
+              ],
+              selected: 0,
+              onSelected: (i) => chosen = i,
+            ),
+          ),
+        ),
+      );
+
+      // A pill is an outlined chip with an icon; these are neither.
+      final chip = tester.widget<ChoiceChip>(
+        find.widgetWithText(ChoiceChip, 'Posts'),
+      );
+      expect(chip.avatar, isNull);
+      expect(chip.side, BorderSide.none);
+      expect(find.byIcon(Icons.article_outlined), findsNothing);
+
+      await tester.tap(find.text('Accounts'));
+      expect(chosen, 1);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Posts')),
+        isSemantics(isButton: true, isSelected: true),
+      );
+      semantics.dispose();
+    });
+  }
 }
 
 Future<void> _phone(WidgetTester tester) async {

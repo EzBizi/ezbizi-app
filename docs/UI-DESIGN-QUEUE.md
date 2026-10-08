@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 70 · Empty screens: one way to say "nothing here yet" — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/empty-states-layouts.html`)
+### 70 · Empty screens: one way to say "nothing here yet" — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`client/lib/widgets/empty_state.dart`; owners adopt it, inbox 0103) (`docs/previews/empty-states-layouts.html`)
 
 From the full UI review (`docs/UI-AUDIT-2026-10-08.md`, across-the-app item 4): empty screens are drawn about six
 ways, and many name the next step as text. One shared widget: says what goes here, one sentence, and one button
@@ -2973,7 +2973,7 @@ when there is a next step (shown only to who may take it). Desktop **1** centred
 (recommended); **2** a dashed card at the top of the list; **3** one line with a link. Phone **4** (recommended) as 1
 with a full-width button; **5** the card; **6** the line. Modules then adopt it owner by owner.
 
-### 69 · Tabs inside tabs: telling the levels apart — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/nested-tabs-layouts.html`)
+### 69 · Tabs inside tabs: telling the levels apart — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`TabBarLike(level:)`, set on 11 second- and third-row strips) (`docs/previews/nested-tabs-layouts.html`)
 
 From the full UI review (across-the-app item 2): every level of tabs is the same pill, so Marketing's three stacked
 rows, Web Management, Memberships and Scheduling › Settings (whose second row repeats "Availability" and "Schedule")

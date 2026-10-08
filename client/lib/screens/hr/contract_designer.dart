@@ -787,6 +787,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
           children: [
             if (!wide) ...[
               TabBarLike(
+                level: TabLevel.tertiary,
                 labels: const [
                   ('Set it up', Icons.edit_outlined),
                   ('The contract', Icons.description_outlined),

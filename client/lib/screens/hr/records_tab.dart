@@ -853,6 +853,7 @@ class _PersonRecordState extends State<_PersonRecord> {
             Material(
               color: Theme.of(context).colorScheme.surface,
               child: TabBarLike(
+                level: TabLevel.secondary,
                 // Keyed so a test can name THIS strip. The HR screen draws its
                 // own module chips above it, and "Onboarding" is on both.
                 key: _RecordsTabState.sectionsKey,

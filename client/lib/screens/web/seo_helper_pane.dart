@@ -1321,6 +1321,7 @@ class _SeoPageEditorState extends State<_SeoPageEditor> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TabBarLike(
+            level: TabLevel.tertiary,
             key: const Key('seo-check-group'),
             labels: [
               ('SEO · ${toFix(seo)}', Icons.search),
