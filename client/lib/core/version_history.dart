@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0391',
+      date: '8 Oct 2026',
+      items: [
+        'Thank-you review links now open the reviews page of the location that did the job, with that location\'s own Google review link.',
+        'The "verify you are human" check now covers the websites connected today too.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0390',
       date: '8 Oct 2026',
       items: [
