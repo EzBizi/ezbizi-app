@@ -893,6 +893,12 @@ check('a question can wait for another answer', str_contains($form, 'data-if-fie
 check('the CAPTCHA is always on (Jose, 2026-10-06)', str_contains($form, 'captcha=true') && str_contains($form, 'function ezSolve(api)'), true);
 check('the Turnstile box sits in the form (Jose, 2026-10-08)', str_contains($form, 'class="cf-turnstile" data-sitekey="0xTESTSITE"'), true);
 check('and its token goes with the form', str_contains($form, 'if(ts)v.turnstile=ts'), true);
+check('a form with no ZIP question gets one (Jose, 2026-10-08)', str_contains($form, 'name="ZIP code" required'), true);
+check('and the ZIP goes with the enquiry', str_contains($form, 'v.zip=z[0]'), true);
+$booking = $GLOBALS['sc']['ezbizi_booking'](['title' => 'Book Garage Door Service']);
+check('the booking widget draws its title', str_contains($booking, '>Book Garage Door Service<'), true);
+check('it asks the ZIP first and reads the days of that area', str_contains($booking, 'data-step="zip"') && str_contains($booking, "'/api/v1/web/booking/days?key='"), true);
+check('it books behind the robot check and the Turnstile box', str_contains($booking, 'function ezSolve(api)') && str_contains($booking, 'class="cf-turnstile"'), true);
 check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);
@@ -2209,6 +2215,10 @@ check('every answer kept under its question', $sent['fields']['Message'] ?? null
 check('the spam trap is not an answer', array_key_exists('trap', $sent['fields'] ?? []), false);
 check('a bad email is not sent as one', isset(ezbizi_elementor_form_lead(['e' => ['type' => 'email', 'title' => 'Email', 'value' => 'nope']])['email']), false);
 check('an empty form sends nothing', ezbizi_elementor_form_lead(['m' => ['type' => 'text', 'title' => 'Message', 'value' => '']]), null);
+check('an Elementor ZIP question is read as the ZIP', ezbizi_elementor_form_lead(['z' => ['type' => 'text', 'title' => 'Zip Code', 'value' => '06810-1234']])['zip'] ?? null, '06810');
+$_POST['ezbizi_zip'] = '10001';
+check('else the box the plugin added', ezbizi_elementor_form_lead(['m' => ['type' => 'text', 'title' => 'Message', 'value' => 'hi']])['fields']['ZIP code'] ?? null, '10001');
+unset($_POST['ezbizi_zip']);
 $GLOBALS['opt']['ezbizi_token'] = '';
 $GLOBALS['actions']['shutdown'] = [];
 ezbizi_elementor_form_record($record);

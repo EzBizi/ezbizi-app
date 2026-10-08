@@ -8,7 +8,9 @@ use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaSlot;
+use App\Models\WebBooking;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +71,10 @@ use Illuminate\Support\Facades\DB;
  * (Workiz named no area / the retired "Fort Worth"); Indiana gained one whose
  * EzBizi status still says Pending while Workiz says Canceled; the New York
  * and Connecticut rows were two of the unprojected jobs above.
+ *
+ * PLUS appointments asked for on a website's booking widget (Jose,
+ * 2026-10-08), pending or approved, until the lead has a job of its own: the
+ * job holds the seat from then on, so the two are never counted together.
  *
  * ── The franchise's daily limit ─────────────────────────────────
  *
@@ -329,9 +335,15 @@ final class Openings
             ->where('scheduled_for', '<', $end)
             ->get(['scheduled_for', 'status', 'payload']);
 
+        $online = $this->bookings()
+            ->whereIn('web_bookings.service_area_id', $pool->pluck('id'))
+            ->where('web_bookings.date', '>=', $from->toDateString())
+            ->where('web_bookings.date', '<', $to->toDateString())
+            ->get();
+
         $byDay = [];
 
-        foreach ($this->seats($placed->concat($pending)) as $job) {
+        foreach ($this->seats($placed->concat($pending)->concat($online)) as $job) {
             $at = (string) $job->scheduled_for;
             $day = substr($at, 0, 10);
             $time = substr($at, 11, 5);
@@ -376,11 +388,27 @@ final class Openings
                 ->where('franchise_id', $area->franchise_id)
                 ->where('scheduled_for', '>=', $start)
                 ->where('scheduled_for', '<', $end)
-                ->get(['scheduled_for', 'status', 'payload']));
+                ->get(['scheduled_for', 'status', 'payload']))
+            ->concat($this->bookings()
+                ->join('service_areas', 'service_areas.id', '=', 'web_bookings.service_area_id')
+                ->where('service_areas.franchise_id', $area->franchise_id)
+                ->where('web_bookings.date', '>=', $from->toDateString())
+                ->where('web_bookings.date', '<', $to->toDateString())
+                ->get());
 
         return $this->seats($jobs)
             ->countBy(fn ($job) => substr((string) $job->scheduled_for, 0, 10))
             ->all();
+    }
+
+    /** Website bookings still holding a seat, shaped like a job row. */
+    private function bookings(): Builder
+    {
+        return DB::table('web_bookings')
+            ->join('leads', 'leads.id', '=', 'web_bookings.lead_id')
+            ->whereIn('web_bookings.status', WebBooking::HOLDING)
+            ->whereNull('leads.job_id')
+            ->selectRaw("CONCAT(web_bookings.date, ' ', web_bookings.start_time) as scheduled_for, 'booking' as status, NULL as payload");
     }
 
     /** The jobs that hold a seat: not a free status, not an excluded tag. */

@@ -243,6 +243,7 @@ class ActionRunner
                 'thumbtack' => 'Thumbtack',
                 'website_chat' => 'Website live chat',
                 'website_form' => 'Website form',
+                'website_booking' => 'Website online booking',
                 'whatsapp' => 'WhatsApp',
                 'workiz' => 'Workiz',
             ],

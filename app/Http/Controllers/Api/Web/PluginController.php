@@ -75,6 +75,8 @@ class PluginController extends Controller
             'email' => ['nullable', 'email', 'max:191'],
             'phone' => ['nullable', 'string', 'max:40'],
             'page_url' => ['nullable', 'string', 'max:500'],
+            // From the form's ZIP question, or the box the plugin adds (2026-10-08).
+            'zip' => ['nullable', 'string', 'max:20'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -84,6 +86,7 @@ class PluginController extends Controller
                 'name' => $input['name'] ?? null,
                 'email' => $input['email'] ?? null,
                 'phone' => $input['phone'] ?? null,
+                'zip' => $input['zip'] ?? null,
                 'page_url' => $input['page_url'] ?? null,
                 // An Elementor form's own acceptance box says nothing about
                 // marketing, so no consent is recorded from it.

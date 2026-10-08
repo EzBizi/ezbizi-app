@@ -1,0 +1,111 @@
+<?php
+
+namespace Tests\Feature\Web;
+
+use App\Models\Lead;
+use App\Models\ServiceArea;
+use App\Models\ServiceAreaSlot;
+use App\Models\ServiceAreaZip;
+use App\Models\WebBooking;
+use App\Models\WebSite;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * The booking widget (Jose, 2026-10-08): a visitor's ZIP finds its service
+ * area's openings, a request holds its window, and a dispatcher's decline in
+ * Leads ▸ Online Booking gives the window back.
+ */
+class WebBookingTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    public function test_a_booking_holds_its_window_until_it_is_declined(): void
+    {
+        [$site, $tenant] = $this->siteWithArea();
+
+        $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=99999')->assertNotFound();
+
+        $days = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->assertOk()->json('days');
+        $first = $days[0]['date'];
+        $this->assertSame([['start_time' => '08:00', 'end_time' => '11:00']], $days[0]['windows']);
+
+        // No robot check, no booking: a spam run would hold real seats.
+        $this->postJson('/api/v1/web/booking', $this->booking($site, $first))->assertStatus(422);
+
+        $this->postJson('/api/v1/web/booking', $this->booking($site, $first) + ['captcha' => $this->solved()])->assertCreated();
+
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->where('source', Lead::SOURCE_WEBSITE_BOOKING)->sole());
+        $this->assertSame('06810', $lead->postal_code);
+        $this->assertSame($tenant['franchise']->id, $lead->franchise_id);
+
+        // The one seat that day is held: the day is gone, and asking for it again is refused.
+        $again = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->json('days');
+        $this->assertNotSame($first, $again[0]['date']);
+        $this->postJson('/api/v1/web/booking', $this->booking($site, $first) + ['captcha' => $this->solved()])->assertStatus(409);
+
+        $this->signedInAs($tenant['admin'])->getJson("/api/v1/leads/{$lead->id}")
+            ->assertOk()->assertJsonPath('data.booking.status', WebBooking::PENDING)->assertJsonPath('data.booking.start_time', '08:00');
+        $this->signedInAs($tenant['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/decline")
+            ->assertOk()->assertJsonPath('data.status', WebBooking::DECLINED);
+        auth()->forgetGuards();
+
+        $this->assertSame($first, $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->json('days.0.date'));
+    }
+
+    /** Jose, 2026-10-08: forms ask the ZIP too, so Check availability works on their leads. */
+    public function test_a_form_zip_lands_on_the_lead(): void
+    {
+        [$site, $tenant] = $this->siteWithArea();
+
+        $this->postJson('/api/v1/web/form', ['key' => $site->public_key, 'fields' => ['ZIP code' => '06810'], 'zip' => '06810'])->assertCreated();
+
+        $this->assertSame('06810', $this->inTenant($tenant['org'], fn () => Lead::query()->sole()->postal_code));
+    }
+
+    /** @return array{0: WebSite, 1: array} */
+    private function siteWithArea(): array
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $id = $this->signedInAs($tenant['admin'])->postJson('/api/v1/web/sites', [
+            'company_id' => $tenant['company']->getKey(), 'host' => 'a-1chimney.com',
+        ])->assertCreated()->json('data.id');
+        auth()->forgetGuards();
+
+        $site = $this->inTenant($tenant['org'], function () use ($tenant, $id) {
+            $area = ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Fairfield']);
+
+            foreach (range(0, 6) as $weekday) {
+                ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => $weekday,
+                    'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
+            }
+
+            ServiceAreaZip::create(['franchise_id' => $tenant['franchise']->id, 'service_area_id' => $area->id, 'zip' => '06810']);
+
+            return WebSite::findOrFail($id);
+        });
+
+        return [$site, $tenant];
+    }
+
+    private function booking(WebSite $site, string $date): array
+    {
+        return ['key' => $site->public_key, 'zip' => '06810', 'date' => $date, 'start_time' => '08:00',
+            'name' => 'Dana', 'phone' => '203-555-0100', 'address' => '1 Main St, Danbury, CT'];
+    }
+
+    private function solved(): string
+    {
+        $c = $this->getJson('/api/v1/web/form/challenge')->json();
+
+        for ($n = 0; $n <= $c['max']; $n++) {
+            if (hash('sha256', $c['salt'].$n) === $c['challenge']) {
+                return json_encode(['salt' => $c['salt'], 'number' => $n, 'challenge' => $c['challenge'], 'signature' => $c['signature']]);
+            }
+        }
+
+        $this->fail('unsolvable');
+    }
+}

@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Franchise;
 use App\Models\LeadConversation;
+use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\User;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Files\FileStore;
+use App\Support\Scheduling\Openings;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
@@ -17,6 +22,8 @@ use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -228,6 +235,8 @@ class EnquiriesController extends Controller
             'files.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,txt'],
             'captcha' => ['nullable', 'string', 'max:2000'],
             'turnstile' => ['nullable', 'string', 'max:4000'],
+            // The form's ZIP (2026-10-08); the lead keeps it only when it is one.
+            'zip' => ['nullable', 'string', 'max:20'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -260,6 +269,7 @@ class EnquiriesController extends Controller
                 'name' => $input['name'] ?? null,
                 'email' => $input['email'] ?? null,
                 'phone' => $input['phone'] ?? null,
+                'zip' => $input['zip'] ?? null,
                 'page_url' => $input['page_url'] ?? null,
                 'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
                 'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
@@ -298,6 +308,137 @@ class EnquiriesController extends Controller
         abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
 
         return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+    }
+
+    /**
+     * GET /api/v1/web/booking/days?key=&zip= — the booking widget's calendar
+     * (Jose, 2026-10-08): the next open days and arrival windows of the
+     * service area covering the visitor's ZIP, from the same Openings the
+     * dispatchers' Availability tab reads. Only windows with room are offered.
+     */
+    public function bookingDays(Request $request): JsonResponse
+    {
+        $site = $this->siteForKey($request);
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $zip = $request->validate(['zip' => ['required', 'regex:/^[0-9]{5}$/']])['zip'];
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        return $this->tenant->run($organization, function () use ($site, $zip, $organization): JsonResponse {
+            $area = $this->bookingArea($site, $zip);
+
+            return $area === null
+                ? $this->noBooking()
+                : response()->json(['days' => $this->bookingOpen($area, $organization)])->withHeaders($this->browserHeaders());
+        });
+    }
+
+    /** POST /api/v1/web/booking — a visitor asks for a day and window; a dispatcher approves it in Leads. */
+    public function submitBooking(Request $request): JsonResponse
+    {
+        $site = $this->siteForKey($request);
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $input = $request->validate([
+            'zip' => ['required', 'regex:/^[0-9]{5}$/'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'name' => ['required', 'string', 'max:191'],
+            'phone' => ['required', 'string', 'max:40'],
+            'address' => ['required', 'string', 'max:300'],
+            'page_url' => ['nullable', 'string', 'max:500'],
+            'captcha' => ['nullable', 'string', 'max:2000'],
+            'turnstile' => ['nullable', 'string', 'max:4000'],
+        ]);
+
+        // Spam bookings would hold real seats, so the robot check is never off here.
+        if (! FormChallenge::passes($input['captcha'] ?? null)
+            || (Turnstile::required($site) && ! Turnstile::passes($site, $input['turnstile'] ?? null))) {
+            return response()->json(['message' => 'The booking could not confirm you are a person. Please try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
+        }
+
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        return $this->tenant->run($organization, function () use ($site, $input, $organization): JsonResponse {
+            $area = $this->bookingArea($site, $input['zip']);
+
+            if ($area === null) {
+                return $this->noBooking();
+            }
+
+            // One booking at a time per area, so two visitors cannot take the last seat together.
+            return Cache::lock('web-booking:'.($area->shares_with_id ?? $area->id), 10)->block(5, function () use ($site, $area, $input, $organization): JsonResponse {
+                $day = collect($this->bookingOpen($area, $organization))->firstWhere('date', $input['date']);
+                $window = collect($day['windows'] ?? [])->firstWhere('start_time', $input['start_time']);
+
+                if ($window === null) {
+                    return response()->json(['message' => 'That time was just taken. Please pick another.'],
+                        Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
+                }
+
+                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], [
+                    'name' => $input['name'],
+                    'phone' => $input['phone'],
+                    'zip' => $input['zip'],
+                    'page_url' => $input['page_url'] ?? null,
+                ]));
+
+                return response()->json(['received' => true, 'date' => $input['date']] + $window, Response::HTTP_CREATED)
+                    ->withHeaders($this->browserHeaders());
+            });
+        });
+    }
+
+    /** The area covering a ZIP among the site's company's branches, if it takes bookings. */
+    private function bookingArea(WebSite $site, string $zip): ?ServiceArea
+    {
+        $franchises = Franchise::query()->where('company_id', $site->company_id)->pluck('id');
+        $area = ServiceAreaZip::query()->whereIn('franchise_id', $franchises)->where('zip', $zip)->first()?->serviceArea;
+
+        return $area !== null && Openings::hasCapacity($area) ? $area : null;
+    }
+
+    /**
+     * The next 12 days with a window that has room, as the widget draws them.
+     * ponytail: looks 60 days ahead; an area booked solid past that offers nothing.
+     *
+     * @return list<array{date: string, windows: list<array{start_time: string, end_time: string}>}>
+     */
+    private function bookingOpen(ServiceArea $area, mixed $organization): array
+    {
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $organization));
+        $open = [];
+
+        foreach (app(Openings::class)->days($area, $from, 60) as $day) {
+            $windows = array_values(array_map(
+                fn (array $w) => ['start_time' => $w['start_time'], 'end_time' => $w['end_time']],
+                array_filter($day['windows'], fn (array $w) => $w['remaining'] > 0),
+            ));
+
+            if ($windows !== []) {
+                $open[] = ['date' => $day['date'], 'windows' => $windows];
+            }
+
+            if (count($open) === 12) {
+                break;
+            }
+        }
+
+        return $open;
+    }
+
+    /** An honest unknown: not "we don't serve you", just not bookable online. */
+    private function noBooking(): JsonResponse
+    {
+        return response()->json(['message' => 'Online booking is not available for that ZIP code yet. Please call us.'],
+            Response::HTTP_NOT_FOUND)->withHeaders($this->browserHeaders());
     }
 
     /** GET /api/v1/web/form/challenge — the puzzle a CAPTCHA'd form solves first. */

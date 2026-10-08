@@ -77,6 +77,7 @@ final class LeadNotificationText
             'thumbtack' => 'Thumbtack',
             'website_chat' => 'Live Chat',
             'website_form' => 'Website Form',
+            'website_booking' => 'Online Booking',
             'facebook', 'instagram' => match ($type) {
                 self::META_TEXT => 'Meta Text',
                 self::META_FORM => 'Meta Form',

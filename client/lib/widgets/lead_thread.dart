@@ -141,6 +141,9 @@ class _LeadThreadState extends State<LeadThread> {
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
 
+  /// A website booking's day and window, and where it stands (Jose, 2026-10-08).
+  Map<String, dynamic>? _booking;
+
   /// Everybody else with this lead open right now (LeadPresence), refreshed
   /// with every re-read of the lead.
   List<String> _viewers = const [];
@@ -371,6 +374,7 @@ class _LeadThreadState extends State<LeadThread> {
           .cast<Map<String, dynamic>>();
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
+      _booking = data['booking'] as Map<String, dynamic>?;
       _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
       _visitorTyping = data['visitor_typing'] == true;
       _matches = List<Map<String, dynamic>>.from(
@@ -674,6 +678,7 @@ class _LeadThreadState extends State<LeadThread> {
                           ),
                         ),
                       if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
+                      if (_booking != null) _bookingBlock(theme),
                       if (!narrow || _showDetails) ...[
                         if (_details != null) _detailsBlock(theme, lead),
                         _noteBlock(theme, lead),
@@ -1403,6 +1408,72 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// The day and arrival window somebody asked for on the website's booking
+  /// widget, with Approve and Decline while it waits (Leads > Online Booking,
+  /// Jose 2026-10-08). Approving keeps the window held until the job is
+  /// booked; declining gives it back. Neither one messages the customer.
+  Widget _bookingBlock(ThemeData theme) {
+    final b = _booking!;
+    final status = '${b['status']}';
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final date = DateTime.tryParse('${b['date']}');
+    String hm(Object? t) {
+      final parts = '$t'.split(':');
+      final h = int.tryParse(parts.first) ?? 0;
+      return '${h % 12 == 0 ? 12 : h % 12}:${parts.length > 1 ? parts[1] : '00'} ${h < 12 ? 'AM' : 'PM'}';
+    }
+
+    final when = [
+      if (date != null) '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}',
+      '${hm(b['start_time'])} - ${hm(b['end_time'])}',
+    ].join(' · ');
+    final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
+
+    return Padding(
+      key: const ValueKey('lead-booking'),
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Icon(Icons.event_available_outlined, size: 18, color: theme.colorScheme.primary),
+          Text('Requested: $when', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+          if (status == 'pending') ...[
+            FilledButton(
+              key: const ValueKey('booking-approve'),
+              onPressed: () => _decideBooking('approve'),
+              child: const Text('Approve'),
+            ),
+            OutlinedButton(
+              key: const ValueKey('booking-decline'),
+              onPressed: () => _decideBooking('decline'),
+              child: const Text('Decline'),
+            ),
+          ] else
+            Text(
+              '${status == 'approved' ? 'Approved' : 'Declined'}$by',
+              key: const ValueKey('booking-status'),
+              style: theme.textTheme.bodySmall,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _decideBooking(String decision) async {
+    final response = await widget.api.post('/leads/${widget.lead['id']}/booking/$decision', const {});
+    if (!mounted) return;
+    if (response.ok && response.data is Map) {
+      setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+    }
+  }
+
   /// The account it came through, Google's own status, and what the customer
   /// told us about themselves - with a way to check availability for the ZIP
   /// without leaving Leads (Jose, 2026-09-28).
@@ -2020,6 +2091,7 @@ String sourceWord(String? source) => switch (source) {
   'facebook' => 'Facebook Messenger',
   'instagram' => 'Instagram',
   'website_form' => 'Website form',
+  'website_booking' => 'Online booking',
   'thumbtack' => 'Thumbtack',
   'whatsapp' => 'WhatsApp',
   _ => 'Google Ads',

@@ -126,7 +126,47 @@ add_action('elementor_pro/forms/validation', function ($record, $handler) {
         $handler->add_error('ezbizi_pow', $message);
         $handler->add_error_message($message);
     }
+
+    // The ZIP box the plugin adds where a form has none (Jose, 2026-10-08).
+    $fields = is_object($record) && method_exists($record, 'get') ? (array) $record->get('fields') : null;
+
+    if ($fields !== null && ! ezbizi_elementor_has_zip($fields) && ezbizi_elementor_zip($fields) === '') {
+        $message = __('Please enter your 5-digit ZIP code.', 'ezbizi');
+        $handler->add_error('ezbizi_zip', $message);
+        $handler->add_error_message($message);
+    }
 }, 5, 2);
+
+/** Whether the form asks for a ZIP itself, so the plugin adds none. */
+function ezbizi_elementor_has_zip(array $fields) {
+    foreach ($fields as $id => $field) {
+        if (preg_match('/zip|postal/i', (isset($field['title']) ? (string) $field['title'] : '') . ' ' . $id)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * The visitor's 5-digit ZIP: from the form's own ZIP question, else the box
+ * the plugin added, else ''. So a lead lands ready for Check availability.
+ */
+function ezbizi_elementor_zip(array $fields) {
+    foreach ($fields as $id => $field) {
+        $value = isset($field['value']) && ! is_array($field['value']) ? (string) $field['value'] : '';
+
+        if (preg_match('/zip|postal/i', (isset($field['title']) ? (string) $field['title'] : '') . ' ' . $id)
+            && preg_match('/\b(\d{5})\b/', $value, $m)) {
+            return $m[1];
+        }
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification -- Elementor verified the form
+    $posted = isset($_POST['ezbizi_zip']) ? trim((string) wp_unslash($_POST['ezbizi_zip'])) : '';
+
+    return preg_match('/^\d{5}$/', $posted) ? $posted : '';
+}
 
 /**
  * The Turnstile box's token, checked with Cloudflare. True where EzBizi has no
@@ -179,7 +219,14 @@ function box(f){if(!tsKey||f.querySelector('.cf-turnstile'))return;
   // Cloudflare's script only on a page that has a form (the /privacy/ page says so).
   if(!document.getElementById('ezbizi-turnstile-js')){var j=document.createElement('script');j.id='ezbizi-turnstile-js';
     j.src='https://challenges.cloudflare.com/turnstile/v0/api.js';j.async=true;document.head.appendChild(j);}}
-Array.prototype.forEach.call(document.querySelectorAll('form.elementor-form'),box);
+// A ZIP box above the button where the form asks for none (Jose, 2026-10-08), so every lead can be checked against availability.
+function zip(f){if(f.querySelector('[name=ezbizi_zip]'))return;
+  if(Array.prototype.some.call(f.querySelectorAll('label,input,select,textarea'),function(e){return /zip|postal/i.test((e.tagName==='LABEL'?e.textContent:'')+' '+(e.name||'')+' '+(e.placeholder||''));}))return;
+  var g=document.createElement('div');g.className='elementor-field-type-text elementor-field-group elementor-column elementor-col-100';
+  var i=document.createElement('input');i.type='text';i.name='ezbizi_zip';i.required=true;i.pattern='[0-9]{5}';i.maxLength=5;i.inputMode='numeric';i.autocomplete='postal-code';
+  i.placeholder=" . wp_json_encode(__('ZIP code', 'ezbizi')) . ";i.setAttribute('aria-label',i.placeholder);i.className='elementor-field elementor-size-sm elementor-field-textual';
+  g.appendChild(i);var s=f.querySelector('.elementor-field-type-submit');(s?s.parentNode:f).insertBefore(g,s);}
+Array.prototype.forEach.call(document.querySelectorAll('form.elementor-form'),function(f){zip(f);box(f);});
 function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
 function solve(c){var enc=new TextEncoder(),n=0;
   function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
@@ -193,7 +240,7 @@ function prep(f){if(f._ezPow)return f._ezPow;
     var i=f.querySelector('input[name=ezbizi_pow]');if(!i){i=document.createElement('input');i.type='hidden';i.name='ezbizi_pow';f.appendChild(i);}i.value=a;});
   f._ezPow.catch(function(){f._ezPow=null;});return f._ezPow;}
 function form(e){return e.target&&e.target.closest?e.target.closest('form.elementor-form'):null;}
-document.addEventListener('focusin',function(e){var f=form(e);if(f){box(f);prep(f);}},true);
+document.addEventListener('focusin',function(e){var f=form(e);if(f){zip(f);box(f);prep(f);}},true);
 document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
   var i=f.querySelector('input[name=ezbizi_pow]');
   // An answer is spent by one submission; the next one solves again.
@@ -294,6 +341,16 @@ function ezbizi_elementor_form_lead(array $fields) {
 
     if (! isset($out['name']) && ($first !== '' || $last !== '')) {
         $out['name'] = mb_substr(trim($first . ' ' . $last), 0, 191);
+    }
+
+    $zip = ezbizi_elementor_zip($fields);
+
+    if ($zip !== '') {
+        $out['zip'] = $zip;
+
+        if (! ezbizi_elementor_has_zip($fields) && count($out['fields']) < 40) {
+            $out['fields']['ZIP code'] = $zip;
+        }
     }
 
     return array_filter($out['fields'], 'strlen') === array() ? null : $out;

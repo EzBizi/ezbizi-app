@@ -555,6 +555,15 @@ Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
 
+// The booking widget (Jose, 2026-10-08): open days for a ZIP, then a request a dispatcher approves.
+Route::get('v1/web/booking/days', [WebEnquiriesController::class, 'bookingDays'])
+    ->middleware('throttle:web-chat-poll')
+    ->name('web.booking.days');
+
+Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.booking.submit');
+
 // Membership program, customer side (spec 2026-10-05). The review faces say who
 // smiled by the site's public key; the join page's signed link is its permission.
 Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
@@ -912,6 +921,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
+        Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         /*

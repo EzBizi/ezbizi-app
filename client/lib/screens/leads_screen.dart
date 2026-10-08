@@ -168,6 +168,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
+    ('website_booking', 'Online Booking'),
     ('facebook', 'Messenger'),
     ('instagram', 'Instagram'),
     ('workiz', 'Workiz'),
@@ -186,6 +187,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
+    Icons.event_available, // the website's booking widget (2026-10-08)
     // Messenger and Instagram have no Material glyph of their own, and a
     // wrong-brand icon reads worse than a generic one. These say "a message"
     // and "a photo account" rather than pretending to be the logos.
@@ -1084,7 +1086,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ? 'No Thumbtack account connected'
           : '$n Thumbtack ${n == 1 ? 'business' : 'businesses'}';
     }
-    if (key == 'website_chat' || key == 'website_form') {
+    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking') {
       return 'From your websites';
     }
     return null;
@@ -1840,6 +1842,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
+  'website_booking' => 'Online Booking',
   'workiz' => 'Workiz',
   'whatsapp' => 'WhatsApp',
   _ => 'Google',

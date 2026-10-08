@@ -2,15 +2,18 @@
 
 namespace App\Support\Web;
 
+use App\Jobs\DeliverAutomationEvent;
+use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\ServiceArea;
+use App\Models\WebBooking;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
-use App\Jobs\DeliverAutomationEvent;
-use App\Models\AutomationEvent;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -278,6 +281,52 @@ final class WebsiteEnquiries
         ]);
 
         return $lead;
+    }
+
+    /**
+     * An appointment asked for on the booking widget: a lead in Leads ▸ Online
+     * Booking whose first message is the request, and the WebBooking row that
+     * holds the window's seat until a dispatcher decides.
+     *
+     * @param  array{name?: ?string, phone?: ?string, zip?: ?string, page_url?: ?string}  $visitor
+     */
+    public function submitBooking(WebSite $site, ServiceArea $area, string $date, array $window, string $address, array $visitor): WebBooking
+    {
+        $remoteId = 'booking_'.Str::uuid()->toString();
+        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
+
+        // The area knows the branch better than the site does.
+        if ($lead->franchise_id === null && $area->franchise_id !== null) {
+            $lead->forceFill(['franchise_id' => $area->franchise_id])->save();
+        }
+
+        $when = CarbonImmutable::parse($date);
+        $fmt = fn (string $t) => CarbonImmutable::parse($date.' '.$t)->format('g:i A');
+
+        $this->thread->store($lead, $remoteId, [
+            'channel' => self::CHANNEL_FORM,
+            'participant' => LeadConversation::FROM_CONSUMER,
+            'occurred_at' => now(),
+            'text' => implode("\n", [
+                'Requested: '.$when->format('l, F j').', '.$fmt($window['start_time']).' - '.$fmt($window['end_time']),
+                'Name: '.($visitor['name'] ?? ''),
+                'Phone: '.($visitor['phone'] ?? ''),
+                'Address: '.$address,
+                'ZIP: '.($visitor['zip'] ?? ''),
+            ]),
+        ]);
+
+        $this->thread->refresh($lead);
+
+        return WebBooking::create([
+            'site_id' => $site->getKey(),
+            'lead_id' => $lead->getKey(),
+            'service_area_id' => $area->getKey(),
+            'date' => $date,
+            'start_time' => $window['start_time'],
+            'end_time' => $window['end_time'],
+            'status' => WebBooking::PENDING,
+        ]);
     }
 
     /**

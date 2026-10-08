@@ -2461,6 +2461,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
+                    // Appointments asked for on a website's booking widget (Jose, 2026-10-08).
+                    new TabDefinition('website_booking', 'Online Booking'),
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),

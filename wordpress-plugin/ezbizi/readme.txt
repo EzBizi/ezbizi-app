@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.25.1
+Stable tag: 1.26.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,13 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.0 =
+* NEW: [ezbizi_booking title="..."], an appointment widget: ZIP, day, arrival
+  window, details. Real openings from Scheduling; requests wait in Leads >
+  Online Booking for a dispatcher. Robot check and Turnstile box.
+* NEW: Every EzBizi and Elementor form asks for a ZIP code when it has no
+  ZIP question of its own, so leads can be checked against availability.
 
 = 1.25.1 =
 * FIX: Cloudflare's Turnstile script loads only on pages with an Elementor

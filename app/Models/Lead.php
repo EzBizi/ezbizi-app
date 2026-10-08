@@ -59,6 +59,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_WEBSITE_FORM = 'website_form';
 
     /**
+     * An appointment asked for on a website's booking widget (Jose,
+     * 2026-10-08), waiting for a dispatcher to approve it. Its day and window
+     * are a WebBooking row; written by App\Support\Web\WebsiteEnquiries.
+     */
+    public const SOURCE_WEBSITE_BOOKING = 'website_booking';
+
+    /**
      * A WhatsApp contact who tapped "I need a service" (Jose, 2026-10-06),
      * written by App\Support\Social\WhatsAppIntake. No connection_id, so it is
      * not in SOURCES_VIA_CONNECTION.
@@ -155,6 +162,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_THUMBTACK,
         self::SOURCE_WEBSITE_CHAT,
         self::SOURCE_WEBSITE_FORM,
+        self::SOURCE_WEBSITE_BOOKING,
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WHATSAPP,
@@ -255,6 +263,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_THUMBTACK,
         self::SOURCE_WEBSITE_CHAT,
         self::SOURCE_WEBSITE_FORM,
+        self::SOURCE_WEBSITE_BOOKING,
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WORKIZ,
@@ -741,6 +750,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             self::SOURCE_LOCAL_SERVICES => 'Local Services',
             self::SOURCE_WEBSITE_CHAT => 'Chat',
             self::SOURCE_WEBSITE_FORM => 'Form',
+            self::SOURCE_WEBSITE_BOOKING => 'Online Booking',
             self::SOURCE_FACEBOOK => 'Messenger',
             self::SOURCE_WHATSAPP => 'WhatsApp',
             default => ucfirst((string) $this->source),

@@ -92,6 +92,34 @@ void main() {
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
   });
 
+  /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.
+  testWidgets('a website booking shows its window and can be approved', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-11',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+      },
+    );
+
+    expect(
+      find.text('Requested: Sunday, Oct 11 · 8:00 AM - 11:00 AM'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('booking-approve')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('booking-approve')), findsNothing);
+    expect(find.text('Approved by Mia'), findsOneWidget);
+  });
+
   /// Jose, 2026-09-30: chimney prices went to a garage-door lead. The header
   /// tags the company the lead belongs to.
   testWidgets('the header tags the company the lead belongs to', (
@@ -908,6 +936,7 @@ Future<void> _pump(
   Map<String, dynamic>? company,
   String? source,
   bool visitorTyping = false,
+  Map<String, dynamic>? booking,
 }) async {
   _sent.clear();
   _typingPosts.clear();
@@ -956,6 +985,17 @@ Future<void> _pump(
         );
       }
 
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/booking/approve')) {
+        return http.Response(
+          jsonEncode({
+            'data': {...?booking, 'status': 'approved', 'decided_by': 'Mia'},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
         _typingPosts.add(request.url.path);
         return http.Response('{}', 200, headers: {'content-type': 'application/json'});
@@ -982,6 +1022,7 @@ Future<void> _pump(
               'details': details,
               'viewers': viewers,
               'visitor_typing': visitorTyping,
+              'booking': booking,
               'reply_templates': templates,
               'conversations': conversations ?? [
                 {

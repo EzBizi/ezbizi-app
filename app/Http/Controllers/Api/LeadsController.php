@@ -3,33 +3,37 @@
 namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\SyncLeads;
+use App\Models\AdsAccountState;
+use App\Models\AuditEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
-use App\Models\AdsAccountState;
-use App\Models\AuditEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
+use App\Models\User;
+use App\Models\WebBooking;
+use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Services\Leads\CallTranscripts;
 use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
-use App\Support\Scoping\ViewScope;
 use App\Support\Scheduling\Openings;
+use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\ChatPeople;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -73,7 +77,7 @@ class LeadsController extends Controller
      * and the Leads dashboard (LeadDashboardController), so the two cannot
      * count different leads.
      */
-    public static function scopeToReader(\Illuminate\Database\Eloquent\Builder $query, \App\Models\User $user): \Illuminate\Database\Eloquent\Builder
+    public static function scopeToReader(Builder $query, User $user): Builder
     {
         $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
         $companyIds = $user->reachableCompanies()->pluck('id')->all();
@@ -415,9 +419,13 @@ class LeadsController extends Controller
                 (string) ($e->changes['conversation_id'] ?? '') => trim((string) preg_replace('/\s*<[^>]*>$/', '', (string) $e->actor_label)),
             ]);
 
+        // The day and window a website booking asked for, and where it stands (Jose, 2026-10-08).
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->first();
+        $data['booking'] = $booking === null ? null : $this->presentBooking($booking);
+
         $conversations = $lead->conversations;
         // A website visitor typing right now, shown under the thread (Jose, 2026-10-01).
-        $data['visitor_typing'] = \App\Support\Web\ChatPeople::isVisitorTyping((string) $lead->getKey());
+        $data['visitor_typing'] = ChatPeople::isVisitorTyping((string) $lead->getKey());
         $data['conversations'] = $conversations
             ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null))
             ->values()
@@ -623,6 +631,42 @@ class LeadsController extends Controller
             ->orderBy('name')
             ->limit(3)
             ->get();
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/booking/{approve|decline}
+     *
+     * A dispatcher's answer to a website booking (Leads ▸ Online Booking).
+     * Approved keeps the window's seat until the lead has a job; declined
+     * gives it back at once. Either way the customer is called, not texted:
+     * nothing here sends them anything.
+     */
+    public function decideBooking(Request $request, Lead $lead, string $decision): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+
+        $booking->forceFill([
+            'status' => $decision === 'approve' ? WebBooking::APPROVED : WebBooking::DECLINED,
+            'decided_by' => $request->user()->getKey(),
+            'decided_at' => now(),
+        ])->save();
+
+        return response()->json(['data' => $this->presentBooking($booking)]);
+    }
+
+    /** @return array<string, mixed> */
+    private function presentBooking(WebBooking $booking): array
+    {
+        return [
+            'date' => $booking->date->toDateString(),
+            'start_time' => substr((string) $booking->start_time, 0, 5),
+            'end_time' => substr((string) $booking->end_time, 0, 5),
+            'status' => $booking->status,
+            'decided_at' => $booking->decided_at?->toIso8601String(),
+            'decided_by' => $booking->decided_by === null ? null : User::query()->whereKey($booking->decided_by)->value('name'),
+        ];
     }
 
     /**
@@ -894,7 +938,7 @@ class LeadsController extends Controller
     public function typing(Request $request, Lead $lead): JsonResponse
     {
         $this->authorize('update', $lead);
-        \App\Support\Web\ChatPeople::agentTyping((string) $lead->getKey(), $request->user());
+        ChatPeople::agentTyping((string) $lead->getKey(), $request->user());
 
         return response()->json(['ok' => true]);
     }
