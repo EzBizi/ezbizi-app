@@ -4,6 +4,7 @@ namespace Tests\Feature\Field;
 
 use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\FieldAlert;
 use App\Models\FieldGeocode;
@@ -13,9 +14,12 @@ use App\Models\Job;
 use App\Models\Notification;
 use App\Models\TimeClockShift;
 use App\Models\User;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glances\FieldGlance;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -64,7 +68,7 @@ class FieldTest extends TestCase
 
     private function point(float $lat, float $lng, string $at = '2026-09-25 14:00:00'): array
     {
-        return ['lat' => $lat, 'lng' => $lng, 'recorded_at' => \Illuminate\Support\Carbon::parse($at)->toIso8601ZuluString()];
+        return ['lat' => $lat, 'lng' => $lng, 'recorded_at' => Carbon::parse($at)->toIso8601ZuluString()];
     }
 
     private function jobAt(float $lat, float $lng, string $when = '2026-09-25 15:00:00', string $street = '1 Main St'): Job
@@ -488,7 +492,7 @@ class FieldTest extends TestCase
         $this->inTenant($this->t['org'], fn () => $this->t['company']->forceFill([
             'address_line1' => '100 Main St', 'city' => 'Cleveland', 'state' => 'OH', 'postal_code' => '44114',
         ])->save());
-        $sibling = $this->inTenant($this->t['org'], fn () => \App\Models\Company::query()->create([
+        $sibling = $this->inTenant($this->t['org'], fn () => Company::query()->create([
             'name' => 'Sibling Co', 'address_line1' => '1 Elm St', 'city' => 'Akron', 'state' => 'OH',
         ]));
         $local = $this->userWithRole($this->t, 'Local', ['field.view', 'field.map.view'], onlyAt: $this->t['franchise']);
@@ -527,8 +531,8 @@ class FieldTest extends TestCase
         $this->mode('always');
         $this->send($this->point(40, -75));
 
-        $payload = app(\App\Support\Dashboard\Glances\FieldGlance::class)
-            ->resolve($this->manager->fresh(), \App\Support\Dashboard\DashboardPeriod::for($this->manager), []);
+        $payload = app(FieldGlance::class)
+            ->resolve($this->manager->fresh(), DashboardPeriod::for($this->manager), []);
 
         // The technician reports; the administrator is tracked but silent.
         $this->assertSame(['1 of 2 tracked people are reporting now.'], $payload->data['sentences']);
@@ -538,8 +542,8 @@ class FieldTest extends TestCase
     {
         $this->mode('always');
         $this->send($this->point(40, -75));
-        $glance = fn () => app(\App\Support\Dashboard\Glances\FieldGlance::class)
-            ->resolve($this->manager->fresh(), \App\Support\Dashboard\DashboardPeriod::for($this->manager), [])
+        $glance = fn () => app(FieldGlance::class)
+            ->resolve($this->manager->fresh(), DashboardPeriod::for($this->manager), [])
             ->data;
 
         $this->assertSame([], $glance()['attention']);
