@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.1
+Stable tag: 1.26.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.2 =
+* IMPROVED: The review faces are made for a phone. Two full-width buttons
+  to tap, with Great first, and one button shape for Continue, the review and
+  Join. The membership sits in its own card, and the bottom stays clear of
+  the chat bubble, which shows only its icon on that page.
 
 = 1.26.1 =
 * FIX: The booking widget keeps its own input and button look on themes

@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 68 · A-1 reviews page (the faces page the thank-you text links to) — **sent to Jose 2026-10-08, recommended 4 and 1** (`docs/previews/a1-reviews-page-layouts.html`)
+### 68 · A-1 reviews page (the faces page the thank-you text links to) — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-08) — 4 and 1** — **BUILT** (plugin 1.26.2, the commit that marks this) (`docs/previews/a1-reviews-page-layouts.html`)
 
 From Automations (`local_44b29c1e…`), Jose 2026-10-08: *"this is how it looks on phone, so maybe improve it a bit, send
 it to ui ux"*. The page is the `ezbizi-review-faces` widget (wordpress-plugin/ezbizi/widgets.php, Web's) on every A-1

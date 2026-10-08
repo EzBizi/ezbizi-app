@@ -1943,19 +1943,41 @@ function ezbizi_review_faces_shortcode($atts) {
     $size = max(40, min(120, (int) (isset($p['face_size']) ? $p['face_size'] : 56)));
     $dark = isset($p['tone']) && $p['tone'] === 'dark';
 
-    $out = '<style>' . $s . '{text-align:center;max-width:560px;margin:0 auto' . ($dark ? ';color:#fff' : '') . '}'
-        . $s . ' h3{color:' . $accent . '}'
+    /*
+     * Made for the phone it is opened on (UI queue 68; Jose, 2026-10-08: "this
+     * is how it looks on phone, so maybe improve it a bit"): two full-width
+     * buttons to tap, Great first and larger; one button shape for Continue,
+     * the review and Join; the membership as its own card; and the bottom kept
+     * clear of the chat bubble, which shrinks to its icon on this page only.
+     */
+    $small = (int) round($size * 0.7);
+    $out = '<style>' . $s . '{text-align:center;width:100%;max-width:440px;box-sizing:border-box;margin:0 auto;padding-bottom:96px' . ($dark ? ';color:#fff' : '') . '}'
+        . $s . ' h3{color:' . $accent . ';font-size:clamp(22px,6vw,30px);line-height:1.15;margin:0 0 8px}'
         . $s . ' p,' . $s . ' label,' . $s . ' .ezbizi-rf-face{color:inherit}'
         . $s . ' input,' . $s . ' textarea{background:#fff;color:#1b1b1b}'
-        . $s . ' .ezbizi-rf-faces{display:flex;justify-content:center;gap:32px;margin:16px 0}'
-        . $s . ' .ezbizi-rf-face{background:none;border:0;cursor:pointer;padding:8px;color:inherit;font:inherit}'
-        . $s . ' .ezbizi-rf-face svg{display:block;margin:0 auto 6px;transition:transform .15s}'
-        . $s . ' .ezbizi-rf-face:hover svg,' . $s . ' .ezbizi-rf-face:focus svg{transform:scale(1.1)}'
-        . $s . ' .ezbizi-rf-face svg{width:' . $size . 'px;height:' . $size . 'px}'
-        . $s . ' .ezbizi-rf-btn{display:inline-block;padding:12px 22px;border:0;border-radius:6px;background:' . $accent . ';color:' . $on_accent . ';text-decoration:none;font-weight:700;cursor:pointer}'
+        . $s . ' .ezbizi-rf-faces{display:flex;flex-direction:column;gap:12px;margin:20px 0}'
+        . $s . ' .ezbizi-rf-face{display:flex;align-items:center;gap:14px;width:100%;min-height:64px;box-sizing:border-box;padding:12px 18px;border:2px solid;border-radius:12px;background:none;cursor:pointer;color:inherit;font:inherit;font-weight:800;font-size:18px;text-align:left}'
+        . $s . ' .ezbizi-rf-face[data-go=happy]{order:-1;min-height:84px;font-size:20px;border-color:#22B24C;background:rgba(34,178,76,.12)}'
+        . $s . ' .ezbizi-rf-face[data-go=sad]{border-color:rgba(226,61,75,.7);background:rgba(226,61,75,.08)}'
+        . $s . ' .ezbizi-rf-face small{display:block;font-size:13px;font-weight:500;opacity:.75}'
+        . $s . ' .ezbizi-rf-face svg{flex:0 0 auto;transition:transform .15s}'
+        . $s . ' .ezbizi-rf-face:hover svg,' . $s . ' .ezbizi-rf-face:focus svg{transform:scale(1.08)}'
+        . $s . ' .ezbizi-rf-face[data-go=happy] svg{width:' . $size . 'px;height:' . $size . 'px}'
+        . $s . ' .ezbizi-rf-face[data-go=sad] svg{width:' . $small . 'px;height:' . $small . 'px}'
+        . $s . ' .ezbizi-rf-btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;box-sizing:border-box;padding:12px 22px;border:2px solid ' . $accent . ';border-radius:12px;background:' . $accent . ';color:' . $on_accent . ';text-decoration:none;font-weight:800;font-size:16px;cursor:pointer}'
+        . $s . ' .ezbizi-rf-skip{display:block;margin:10px auto 0;min-height:44px}'
+        . $s . ' .ezbizi-rf-check{display:flex;align-items:center;justify-content:center;width:56px;height:56px;margin:0 auto 10px;border:2px solid #22B24C;border-radius:50%;background:rgba(34,178,76,.12);color:#22B24C;font-size:28px;font-weight:900}'
+        . $s . ' .ezbizi-rf-member{text-align:left}'
+        . $s . ' .ezbizi-rf-member h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px}'
+        . $s . ' .ezbizi-rf-plan{margin:8px 0;padding:14px;border:1px solid rgba(127,127,127,.35);border-radius:12px;background:rgba(127,127,127,.08)}'
+        . $s . ' .ezbizi-rf-plan strong{font-size:17px}'
+        . $s . ' .ezbizi-rf-plan p:last-of-type{margin:6px 0 10px;font-size:18px;font-weight:800}'
+        . $s . ' .ezbizi-rf-plan .ezbizi-rf-btn{background:transparent;color:' . $accent . '}'
+        . '@media (max-width:600px){' . $s . '{min-height:70svh}}'
+        . 'body:has(' . $s . ') .ezbizi-chat-launch-text{display:none}'
         . $s . ' form{text-align:left}'
         . $s . ' label{display:block;margin:10px 0 4px;font-weight:600}'
-        . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font:inherit}'
+        . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:12px;font:inherit;min-height:48px}'
         . $s . ' .ezbizi-rf-hp{position:absolute;left:-9999px}'
         . '</style>';
 
@@ -1982,8 +2004,10 @@ function ezbizi_review_faces_shortcode($atts) {
     $out .= '<div class="ezbizi-review-faces" id="' . esc_attr($id) . '">'
         . '<div data-step="pick"><h3>' . $t('title') . '</h3><p>' . $t('text') . '</p>'
         . '<div class="ezbizi-rf-faces">'
-        . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . $t('sad_label') . '</button>'
-        . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . $t('happy_label') . '</button>'
+        . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . '<span>' . $t('sad_label')
+        . '<small>' . esc_html__('Tell us what to fix', 'ezbizi') . '</small></span></button>'
+        . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . '<span>' . $t('happy_label')
+        . '<small>' . esc_html__('Happy with the visit', 'ezbizi') . '</small></span></button>'
         . '</div></div>'
         /*
          * Jose, 2026-10-05: a good review can bring a thank-you and the
@@ -1991,14 +2015,14 @@ function ezbizi_review_faces_shortcode($atts) {
          * is known; anybody else is asked, once, and can skip it, so the way
          * to Google never waits on a box.
          */
-        . '<div data-step="ask" hidden><h3>' . $t('happy_title') . '</h3>'
+        . '<div data-step="ask" hidden><div class="ezbizi-rf-check" aria-hidden="true">&#10003;</div><h3>' . $t('happy_title') . '</h3>'
         . '<p>' . esc_html__('Leave your phone or email so we can thank you (optional).', 'ezbizi') . '</p>'
         . '<label for="' . esc_attr($id) . '-who">' . esc_html__('Phone or email', 'ezbizi') . '</label>'
         . '<input id="' . esc_attr($id) . '-who" class="ezbizi-rf-who" type="text" autocomplete="email" />'
         . '<p><button type="button" class="ezbizi-rf-btn ezbizi-rf-continue">' . esc_html__('Continue', 'ezbizi') . '</button> '
         . '<button type="button" class="ezbizi-rf-skip" style="background:none;border:0;text-decoration:underline;cursor:pointer;color:inherit">'
         . esc_html__('Skip', 'ezbizi') . '</button></p></div>'
-        . '<div data-step="happy" hidden><h3>' . $t('happy_title') . '</h3><p>' . $t('happy_text') . '</p>'
+        . '<div data-step="happy" hidden><div class="ezbizi-rf-check" aria-hidden="true">&#10003;</div><h3>' . $t('happy_title') . '</h3><p>' . $t('happy_text') . '</p>'
         . ($review === '' ? '<p>' . $t('thanks') . '</p>' : $review) . '</div>'
         . '<div data-step="sad" hidden><h3>' . $t('sad_title') . '</h3><p>' . $t('sad_text') . '</p>'
         . '<form novalidate>'
@@ -2032,8 +2056,7 @@ function member(){if(!c||w._ezm)return;w._ezm=1;var m=w.querySelector('.ezbizi-r
   .then(function(r){return r.ok?r.json():null;}).then(function(d){
     if(!d)return;if(d.member){isMember(d.member);return;}if(!d.plans||!d.plans.length)return;
     m.appendChild(el('h3',''," . wp_json_encode(__('Join our membership', 'ezbizi')) . "));
-    d.plans.forEach(function(pl){var box=el('div','ezbizi-rf-plan',null);box.style.cssText='border:1px solid currentColor;border-radius:10px;padding:12px;margin:8px 0;opacity:.95';
-      box.appendChild(el('strong','',pl.name));if(pl.description)box.appendChild(el('p','',pl.description));
+    d.plans.forEach(function(pl){var box=el('div','ezbizi-rf-plan',null);box.appendChild(el('strong','',pl.name));if(pl.description)box.appendChild(el('p','',pl.description));
       box.appendChild(el('p','',pl.billing==='monthly'?money(Math.round(pl.price_minor/12),pl.currency)+' '+" . wp_json_encode(__('a month', 'ezbizi')) . ":money(pl.price_minor,pl.currency)+' '+" . wp_json_encode(__('a year', 'ezbizi')) . "));
       var j=el('button','ezbizi-rf-btn'," . wp_json_encode(__('Join', 'ezbizi')) . ");j.type='button';
       j.addEventListener('click',function(){j.disabled=true;fetch(api+'/api/v1/web/membership/join',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({key:key,c:c,plan_id:pl.id})})
