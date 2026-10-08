@@ -2965,6 +2965,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 70 · Empty screens: one way to say "nothing here yet" — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/empty-states-layouts.html`)
+
+From the full UI review (`docs/UI-AUDIT-2026-10-08.md`, across-the-app item 4): empty screens are drawn about six
+ways, and many name the next step as text. One shared widget: says what goes here, one sentence, and one button
+when there is a next step (shown only to who may take it). Desktop **1** centred icon, bold line, sentence, button
+(recommended); **2** a dashed card at the top of the list; **3** one line with a link. Phone **4** (recommended) as 1
+with a full-width button; **5** the card; **6** the line. Modules then adopt it owner by owner.
+
+### 69 · Tabs inside tabs: telling the levels apart — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/nested-tabs-layouts.html`)
+
+From the full UI review (across-the-app item 2): every level of tabs is the same pill, so Marketing's three stacked
+rows, Web Management, Memberships and Scheduling › Settings (whose second row repeats "Availability" and "Schedule")
+cannot be told apart. First row unchanged everywhere. Desktop **1** second row as underlined tabs, third as a small
+switch in the toolbar (recommended); **2** second row as a list down the left; **3** the same pills, smaller and
+indented. Phone **4** (recommended) as 1, the underline row scrolling with the edge fade; **5** the second level as a
+dropdown; **6** smaller pills. One change in TabBarLike plus a word at each second-row call site.
+
 ### 68 · A-1 reviews page (the faces page the thank-you text links to) — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-08) — 4 and 1** — **BUILT** (plugin 1.26.2, the commit that marks this) (`docs/previews/a1-reviews-page-layouts.html`)
 
 From Automations (`local_44b29c1e…`), Jose 2026-10-08: *"this is how it looks on phone, so maybe improve it a bit, send

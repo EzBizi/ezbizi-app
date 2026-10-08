@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty screens</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.es{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:30px 24px}
+.es .ic{width:54px;height:54px;border-radius:50%;background:var(--pric);color:var(--prid);display:flex;align-items:center;justify-content:center;font-size:24px}
+.es b{font-size:15px}.es p{margin:0;color:var(--muted);font-size:12.5px;max-width:420px}
+.esrow{display:flex;gap:14px;align-items:center;border:1px dashed #b9c7cd;border-radius:10px;padding:14px 16px;background:#fff}
+.esrow .ic{width:40px;height:40px;border-radius:50%;background:var(--pric);color:var(--prid);display:flex;align-items:center;justify-content:center;font-size:18px;flex:0 0 auto}
+.esline{font-size:12.5px;color:#33404a;padding:4px 2px}
+.esline a{color:var(--pri);font-weight:700;text-decoration:none}
+</style>
+<div class="wrap">
+<h1>Empty screens · one way to say "nothing here yet"</h1>
+<p class="sub">From the full UI review (2026-10-08). Empty screens are drawn about six ways: centred or top-left, in a card or loose. Many name the next step as plain text ("Add one in Settings", "Settings › Integrations", "the Library tab") instead of a button, and some offer no next step at all.</p>
+<p class="need"><b>In every option:</b> one shared empty-state widget for the whole app. It always says what goes here, in one sentence, and why it's empty when that's not obvious. It has <b>one button</b> when there is a next step, such as "Add a phone line", "Connect Mailchimp" or "Open Settings". The button only shows to someone allowed to take that step; everyone else sees who can. Each module then replaces its own sentence with this widget, owner by owner.</p>
+
+<h2><span class="n">1</span>Centred, with an icon, a sentence and one button <span class="rec">Recommended</span></h2>
+<p class="cap">In the middle of the area the list would fill: a soft round icon, a short bold line, one sentence, and the button. <b>Why:</b> the most common pattern in good apps, impossible to mistake for a broken screen, and the button sits where the eye lands.</p>
+<div class="win" style="height:360px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i class="on"></i><i></i></div>
+<div class="page"><div class="t">Communication</div><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div>
+<div class="es" style="margin-top:20px"><span class="ic">☎</span><b>No phone lines yet</b><p>Calls and texts come in on a line. Add the first one and it rings here.</p><span class="btn f">＋ Add a phone line</span></div></div></div></div>
+
+<h2><span class="n">2</span>A dashed card at the top of the list</h2>
+<p class="cap">Where the first row would be: a dashed card with an icon on the left, the sentence, and the button on the right. <b>Why:</b> it keeps the list's shape, so the screen looks the same empty or full. It is quieter, though, and can read as just another row.</p>
+<div class="win" style="height:300px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i class="on"></i><i></i></div>
+<div class="page"><div class="t">Communication</div><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div>
+<div class="esrow" style="margin-top:12px"><span class="ic">☎</span><div style="flex:1"><b>No phone lines yet</b><div class="tiny">Calls and texts come in on a line. Add the first one and it rings here.</div></div><span class="btn f">＋ Add a phone line</span></div></div></div></div>
+
+<h2><span class="n">3</span>One line with a link</h2>
+<p class="cap">One line of grey text at the top, ending in a link: "No phone lines yet. <u>Add one</u>". <b>Why:</b> the least space, closest to today. But a link is easy to miss, and the screen still looks bare.</p>
+<div class="win" style="height:240px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i class="on"></i><i></i></div>
+<div class="page"><div class="t">Communication</div><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div>
+<div class="esline" style="margin-top:10px">No phone lines yet. <a>Add one</a></div></div></div></div>
+
+<h2><span class="n">4</span>Phone: as 1, the button full width <span class="rec">Recommended</span></h2>
+<p class="cap">Centred like 1, with the button across the screen where a thumb reaches it. <b>Why:</b> the same look as on a computer, and the next step is the biggest thing on the screen.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Communication</span></div>
+<div class="pb"><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div>
+<div class="es" style="margin-top:80px"><span class="ic">☎</span><b>No phone lines yet</b><p>Calls and texts come in on a line. Add the first one and it rings here.</p><span class="btn f" style="width:100%;margin-top:6px">＋ Add a phone line</span></div></div></div></div></div>
+
+<h2><span class="n">5</span>Phone: as 2, the dashed card</h2>
+<p class="cap">The dashed card at the top, with the button under the sentence.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Communication</span></div>
+<div class="pb"><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div>
+<div class="esrow" style="flex-direction:column;align-items:flex-start"><span class="ic">☎</span><b>No phone lines yet</b><span class="tiny">Calls and texts come in on a line.</span><span class="btn f">＋ Add a phone line</span></div></div></div></div></div>
+
+<h2><span class="n">6</span>Phone: as 3, one line</h2>
+<p class="cap">The line with its link at the top.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Communication</span></div>
+<div class="pb"><div class="pills" style="display:flex;gap:8px"><span class="btn sm" style="background:var(--pric);border-color:var(--pric);color:var(--prid)">Phone</span><span class="btn sm" style="color:#33404a">Users</span><span class="btn sm" style="color:#33404a">Records</span></div><div class="esline">No phone lines yet. <a>Add one</a></div></div></div></div></div>
+</div>
