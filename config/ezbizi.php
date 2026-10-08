@@ -296,7 +296,7 @@ return [
      * actual captcha", the proof of work alone is one any AI clicks through).
      * Cloudflare account Development@ezbizi.com; keys in Credentials/
      * "Cloudflare Turnstile.txt". The free plan takes 10 hostnames a widget and
-     * a root domain covers its subdomains, hence two. A site whose domain is in
+     * a root domain covers its subdomains, hence four. A site whose domain is in
      * neither keeps the proof of work alone (Turnstile::for).
      */
     'turnstile' => [
@@ -306,6 +306,15 @@ return [
         ]],
         ['site' => env('TURNSTILE_SITE_2', ''), 'secret' => env('TURNSTILE_SECRET_2', ''), 'domains' => [
             'roofirst.com', 'speedychimneysweep.com', 'speedygaragedoors.com', 'us-garagedoorrepair.com', 'usgaragerepair.net',
+            'aircooless.com', 'ace-airduct.com', 'a1acrepair.com', 'a1airduct.com', 'mallocksmith.com',
+        ]],
+        // The sites paired on 2026-10-08 (Jose: "yes finish the captcha coverage").
+        ['site' => env('TURNSTILE_SITE_3', ''), 'secret' => env('TURNSTILE_SECRET_3', ''), 'domains' => [
+            'socosmeticsusa.com', 'energysavesolutionstx.com', 'acefireplaceservices.com', 'chimneysweepclevelandoh.us', 'calla-1.com',
+            'acegarage-doors.com', 'a1garagedoors-ga.com', 'emergencyplumbingcorp.com', 'topuproofing.com', 'locksmithpatrol.com',
+        ]],
+        ['site' => env('TURNSTILE_SITE_4', ''), 'secret' => env('TURNSTILE_SECRET_4', ''), 'domains' => [
+            'a1-kitchens.com', 'achdutisraeldallas.org', 'leshemshamayim.org', 'americanfriendsofleshemshamaim.org',
         ]],
     ],
 ];
