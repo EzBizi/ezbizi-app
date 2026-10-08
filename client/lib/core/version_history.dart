@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0394',
+      date: '8 Oct 2026',
+      items: [
+        'Automations: a rule can wait a set number of minutes after its event before acting.',
+        'Memberships: automations can text a short link to the membership sign-up page, and it is never sent to someone who is already a member.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0393',
       date: '8 Oct 2026',
       items: [
