@@ -5,6 +5,8 @@ namespace Tests\Feature\Api;
 use App\Models\AutomationEvent;
 use ReflectionClass;
 use App\Support\Automations\ActionRunner;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Lead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -368,5 +370,38 @@ class AutomationTriggerFieldsTest extends TestCase
         $this->assertContains('company_name', $data['message_fields']);
         $this->assertNotContains('company_name', $data['fields']);
         $this->assertSame($t['company']->name, $data['samples']['company_name'] ?? null);
+    }
+
+    /**
+     * The job thank-you text names the company (desk for Jose, 2026-10-08).
+     * A job carries only its franchise; the company is that franchise's.
+     */
+    public function test_a_job_message_is_offered_the_franchises_company_name(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $customer = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Marta Quill']);
+            $job = Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep',
+                'status' => 'Done', 'currency' => 'USD']);
+
+            AutomationEvent::create([
+                'organization_id' => $t['org']->id,
+                'event_key' => 'job.status_changed',
+                'subject_type' => Job::class,
+                'subject_id' => $job->getKey(),
+                'payload' => ['after' => ['status' => 'Done'], 'before' => ['status' => 'Scheduled']],
+                'occurred_at' => now(),
+                'available_at' => now(),
+            ]);
+        });
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/trigger-fields?trigger=job.status_changed')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertContains('company_name', $data['message_fields']);
+        $this->assertSame($this->inTenant($t['org'], fn () => $t['franchise']->company->name), $data['samples']['company_name'] ?? null);
     }
 }
