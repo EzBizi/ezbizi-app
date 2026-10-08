@@ -101,6 +101,30 @@ class ImportWorkizLeadsTest extends TestCase
     }
 
     /**
+     * "Now" is 2026-09-23 or when the branch connected, not each run's now. Read live, that
+     * moved every minute: a branch with no Workiz lead yet skipped every lead
+     * as older than the run (New Jersey's 2026-10-07 enquiry, 2026-10-08).
+     */
+    public function test_a_branch_with_no_lead_yet_imports_one_made_after_it_connected(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-08 12:00:00', 'UTC'));
+
+        $t = $this->provisionTenant('Charlie');
+        $connection = $this->connection($t);
+        $this->inTenant($t['org'], fn () => $connection->forceFill(['created_at' => Carbon::parse('2026-09-15 14:15:22', 'UTC')])->save());
+        $this->workizReturns([
+            $this->payload(['UUID' => 'wz-after', 'LeadDateTime' => '2026-10-07 12:57:22']),
+            $this->payload(['UUID' => 'wz-before', 'LeadDateTime' => '2026-09-20 09:00:00']),
+        ]);
+
+        $this->artisan('ezbizi:import-workiz-leads')->assertSuccessful();
+
+        $this->assertSame(['wz-after'], $this->inTenant($t['org'], fn () => Lead::query()
+            ->where('source', Lead::SOURCE_WORKIZ)->pluck('remote_id')->all()));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'start_date=2026-09-23'));
+    }
+
+    /**
      * A lead newer than the watermark is imported, with the branch's clock
      * applied.
      *
