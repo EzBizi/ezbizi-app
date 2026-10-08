@@ -2965,6 +2965,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 68 · A-1 reviews page (the faces page the thank-you text links to) — **sent to Jose 2026-10-08, recommended 4 and 1** (`docs/previews/a1-reviews-page-layouts.html`)
+
+From Automations (`local_44b29c1e…`), Jose 2026-10-08: *"this is how it looks on phone, so maybe improve it a bit, send
+it to ui ux"*. The page is the `ezbizi-review-faces` widget (wordpress-plugin/ezbizi/widgets.php, Web's) on every A-1
+site's `/reviews/`; `?c=` adds Memberships' offer. Phone **4** (recommended) two full-width tap buttons (Great large and
+green, Not so great below) in the top third; after Great a check, Thank you, one full-width orange Leave a Google
+review, then a separate "For you · A-1 Membership" card with an outlined Join button the same size; **5** today's
+faces side by side but big and centred, the membership as one line; **6** five stars (4–5 to Google). Desktop **1**
+as 4 in a centred column; **2** as 5; **3** as 6. All: the A-1 look, 48 px targets, one button shape, 96 px clear at
+the bottom with the chat bubble reduced to its icon on this page; the steps unchanged.
+
 ### 67 · Letting web and computer users know there's an app — **Jose: "Looks good", then "go ahead" (2026-10-08) — 1 and 4** — **BUILT** (the commit that marks this) (`docs/previews/app-promotion-layouts.html`)
 
 Jose, 2026-10-08: *"Feel like we need a way to promote the app as well, so people who are using the web or desktop

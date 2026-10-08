@@ -1,0 +1,150 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A-1 reviews page</title>
+<style>
+/* The A-1 site's own look: black brick, orange #e65100, white text. Every name, plan and price is invented. */
+:root{--or:#e65100;--or2:#ff7a1f;--gr:#22B24C;--rd:#E23D4B;--ink:#fff;--mut:#c9c9c9;--line:rgba(255,255,255,.14);--r:12px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:#060808;font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:#060808;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.rec{font-size:11px;font-weight:700;color:#00708f;border:1px solid #00708f;border-radius:10px;padding:2px 8px}
+.cap{color:#5b6672;margin:0 0 12px;font-size:12.5px;max-width:1080px}.cap b{color:#060808}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}.need b{color:#060808}
+.phones{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px}.pl{font-size:12px;font-weight:700}
+.phn{width:300px;height:640px;border:9px solid #111;border-radius:36px;overflow:hidden;position:relative;color:var(--ink);
+ background:#0b0b0b;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:44px 22px,88px 22px;border-top-color:#111}
+.phn:before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--or)}
+.scr{position:absolute;inset:0;padding:30px 20px 96px;display:flex;flex-direction:column;gap:12px;text-align:center}
+.scr.top{justify-content:flex-start;padding-top:56px}.scr.mid{justify-content:center}
+.h{font:900 22px/1.1 "Arial Black",Impact,system-ui;color:var(--or);letter-spacing:.2px}
+.p{font-size:14px;color:var(--mut)}
+.chat{position:absolute;right:12px;bottom:16px;background:var(--or);color:#000;border-radius:999px;padding:7px 14px 7px 7px;display:flex;gap:8px;align-items:center;font-size:11px;font-weight:700}
+.chat i{width:26px;height:26px;border-radius:50%;background:#2b4a63;display:block}
+.chat.mini{padding:7px}.chat.mini span{display:none}
+/* faces */
+.face{width:84px;height:84px}.face.sm{width:64px;height:64px}
+.tile{display:flex;align-items:center;gap:14px;border-radius:var(--r);padding:16px 18px;font:800 18px system-ui;text-align:left}
+.tile.g{background:rgba(34,178,76,.14);border:2px solid var(--gr)}.tile.r{background:rgba(226,61,75,.10);border:2px solid rgba(226,61,75,.7);font-size:16px;padding:12px 18px}
+.tile small{display:block;font:500 12px system-ui;color:var(--mut)}
+.pair{display:flex;gap:12px}.pair .big{flex:1;border-radius:var(--r);padding:16px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:8px;font:800 14px system-ui;letter-spacing:.4px}
+.pair .big.g{background:rgba(34,178,76,.12);border:2px solid var(--gr)}.pair .big.r{background:rgba(226,61,75,.10);border:2px solid var(--rd)}
+.stars{display:flex;justify-content:center;gap:6px;font-size:38px;color:#555}.stars .on{color:#FFB400}
+/* buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:var(--r);font:800 15px system-ui;letter-spacing:.3px;width:100%}
+.btn.o{background:var(--or);color:#000}.btn.ol{border:2px solid var(--or);color:var(--or2);background:transparent}.btn.w{background:#fff;color:#111}
+.btn.t{height:36px;color:var(--mut);font-weight:600;text-decoration:underline}
+.gg{width:20px;height:20px;border-radius:50%;background:conic-gradient(#ea4335 0 25%,#fbbc05 0 50%,#34a853 0 75%,#4285f4 0);display:inline-block}
+.in{height:48px;border-radius:var(--r);background:#fff;color:#888;display:flex;align-items:center;padding:0 14px;font-size:14px;text-align:left}
+.lbl{font-size:12px;font-weight:700;color:var(--mut);text-align:left;margin-bottom:-6px}
+.card{border:1px solid var(--line);background:rgba(255,255,255,.05);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;text-align:left}
+.card .k{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--or2);text-transform:uppercase}
+.card b{font-size:16px}.card .pr{font:900 20px system-ui}.card .pr small{font:600 12px system-ui;color:var(--mut)}
+.card ul{margin:0;padding-left:18px;color:var(--mut);font-size:12.5px}
+.check{width:54px;height:54px;border-radius:50%;background:rgba(34,178,76,.15);border:2px solid var(--gr);color:var(--gr);font:900 26px system-ui;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.dots{display:flex;gap:6px;justify-content:center}.dots i{width:7px;height:7px;border-radius:50%;background:#444;display:block}.dots i.on{background:var(--or)}
+.strip{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:12px;text-align:left;font-size:12.5px;color:var(--mut)}
+.strip b{color:#fff}
+/* desktop */
+.desk{width:900px;height:430px;border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;position:relative;color:#fff;background:#0b0b0b;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:44px 22px,88px 22px}
+.desk .bar{height:34px;background:#111;border-bottom:3px solid var(--or);display:flex;align-items:center;padding:0 14px;font:900 13px system-ui;color:var(--or)}
+.desk .in2{display:flex;gap:22px;padding:26px 40px;align-items:flex-start;justify-content:center}
+.col{width:380px;display:flex;flex-direction:column;gap:12px;text-align:center}
+</style>
+<div class="wrap">
+<h1>A-1 reviews page · the page the thank-you text links to</h1>
+<p class="sub">From Automations, for Jose (2026-10-08): <i>"this is how it looks on phone, so maybe improve it a bit, send it to ui ux"</i>. It is the faces page at any A-1 site's <code>/reviews/</code>. A customer who came by their own link (<code>?c=</code>) also sees the membership offer. Today on an iPhone: a small question low on an empty screen, small faces, a Google button and a Join button of different sizes and fonts, a cramped membership card, and the chat bubble over the bottom corner.</p>
+<p class="need"><b>In every option:</b> the A-1 look stays (black brick, orange, white). Every tap target is at least 48 pixels tall and both buttons share one shape. The page keeps 96 pixels clear at the bottom, so the chat bubble never covers a button, and the bubble shrinks to its round icon on this page. The steps stay the same: a happy face goes to Google, and the membership shows for a known customer; an unhappy face opens the form that tells the office; someone who came without their link is asked, once and skippably, for a phone or email. <b>Who builds what:</b> Web owns the faces widget in the plugin, Memberships the offer; UI/UX builds this restyle in the widget once Web's open changes there are committed. It reaches A-1's sites with the next plugin rollout.</p>
+
+<!-- 1 / 4 -->
+<h2><span class="n">4</span>Phone: two big buttons to tap, then Google first and the membership as its own card <span class="rec">Recommended</span></h2>
+<p class="cap"><b>The question</b> sits in the top third, with two full-width buttons: "Great!" large and green, "Not so great" smaller below it. The whole button is the tap target, not just the face. <b>After Great:</b> a check mark, "Thank you!", and one full-width orange <b>Leave a Google review</b> with Google's G. Then a separate card headed "For you: A-1 Membership", with what it includes, the price, and an outlined <b>Join for $99 a year</b> button the same size as Google's. <b>Why:</b> one obvious thing per screen, a thumb-sized target, and the review always comes before the offer.</p>
+<div class="phones">
+  <div class="pcol"><span class="pl">1 · The question</span>
+    <div class="phn"><div class="scr top">
+      <div class="h" style="font-size:26px">How did we do?</div><div class="p">Your answer goes straight to the office.</div>
+      <div style="height:10px"></div>
+      <div class="tile g"><svg class="face sm" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="none" stroke="#22B24C" stroke-width="4"/><circle cx="23" cy="26" r="3.5" fill="#22B24C"/><circle cx="41" cy="26" r="3.5" fill="#22B24C"/><path d="M20 38 Q32 50 44 38" fill="none" stroke="#22B24C" stroke-width="4" stroke-linecap="round"/></svg><span>Great!<small>Happy with the visit</small></span></div>
+      <div class="tile r"><svg class="face sm" viewBox="0 0 64 64" style="width:44px;height:44px"><circle cx="32" cy="32" r="29" fill="none" stroke="#E23D4B" stroke-width="4"/><circle cx="23" cy="26" r="3.5" fill="#E23D4B"/><circle cx="41" cy="26" r="3.5" fill="#E23D4B"/><path d="M20 46 Q32 34 44 46" fill="none" stroke="#E23D4B" stroke-width="4" stroke-linecap="round"/></svg><span>Not so great<small>Tell us what to fix</small></span></div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+  <div class="pcol"><span class="pl">2 · After Great (a known customer)</span>
+    <div class="phn"><div class="scr top" style="padding-top:40px">
+      <div class="check">✓</div><div class="h">Thank you!</div><div class="p">Would you tell others how we did? It takes a minute.</div>
+      <div class="btn o"><span class="gg"></span>Leave a Google review</div>
+      <div class="card" style="margin-top:8px"><span class="k">For you · A-1 Membership</span><b>Annual Membership</b><ul><li>Yearly chimney inspection</li><li>Priority booking</li></ul><span class="pr">$99 <small>a year</small></span><div class="btn ol">Join for $99 a year</div></div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+  <div class="pcol"><span class="pl">2b · After Great (no link): asked once</span>
+    <div class="phn"><div class="scr top">
+      <div class="check">✓</div><div class="h">Thank you!</div><div class="p">Leave your phone or email and we'll say thanks properly. Optional.</div>
+      <div class="lbl">Phone or email</div><div class="in">(555) 214-0000</div>
+      <div class="btn o">Continue</div><div class="btn t">Skip</div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+</div>
+
+<!-- 5 -->
+<h2><span class="n">5</span>Phone: the faces side by side but big, centred on the screen; membership as one line</h2>
+<p class="cap">Today's layout made larger and centred: two tall face buttons side by side (about 130 pixels each), with the labels inside the buttons. <b>After Great:</b> the Google button full width, with the membership underneath as one line ("Members get a yearly inspection · $99/yr · <b>Join</b>"). <b>Why:</b> closest to what customers see now. The offer is quieter, but easier to miss.</p>
+<div class="phones">
+  <div class="pcol"><span class="pl">1 · The question</span>
+    <div class="phn"><div class="scr mid">
+      <div class="h" style="font-size:26px">How was your experience?</div><div class="p">Tap a face to let us know.</div>
+      <div class="pair" style="margin-top:8px">
+        <div class="big r"><svg class="face" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="none" stroke="#E23D4B" stroke-width="4"/><circle cx="23" cy="26" r="3.5" fill="#E23D4B"/><circle cx="41" cy="26" r="3.5" fill="#E23D4B"/><path d="M20 46 Q32 34 44 46" fill="none" stroke="#E23D4B" stroke-width="4" stroke-linecap="round"/></svg>NOT SO GREAT</div>
+        <div class="big g"><svg class="face" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="none" stroke="#22B24C" stroke-width="4"/><circle cx="23" cy="26" r="3.5" fill="#22B24C"/><circle cx="41" cy="26" r="3.5" fill="#22B24C"/><path d="M20 38 Q32 50 44 38" fill="none" stroke="#22B24C" stroke-width="4" stroke-linecap="round"/></svg>GREAT!</div>
+      </div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+  <div class="pcol"><span class="pl">2 · After Great</span>
+    <div class="phn"><div class="scr mid">
+      <div class="h">So glad we hit the mark!</div><div class="p">Tell us what we did well.</div>
+      <div class="btn o"><span class="gg"></span>Leave a Google review</div>
+      <div class="strip"><span style="flex:1"><b>Members</b> get a yearly inspection · $99/yr</span><span class="btn ol" style="width:auto;height:40px;padding:0 16px">Join</span></div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+</div>
+
+<!-- 6 -->
+<h2><span class="n">6</span>Phone: five stars instead of two faces</h2>
+<p class="cap">"How many stars would you give us?" Four or five stars go on to Google and the offer, as in 4. One to three open the form that tells the office. <b>Why:</b> everyone knows stars, and the number is useful in reports. But it is a different question from today's, and a customer who taps 5 here may feel they've already reviewed us.</p>
+<div class="phones">
+  <div class="pcol"><span class="pl">1 · The question</span>
+    <div class="phn"><div class="scr top">
+      <div class="h" style="font-size:26px">How many stars would you give us?</div><div class="p">Tap to rate your visit.</div>
+      <div class="stars" style="margin-top:14px;font-size:44px"><span class="on">★</span><span class="on">★</span><span class="on">★</span><span class="on">★</span><span>★</span></div>
+      <div class="p" style="color:#fff;font-weight:700">Good</div>
+      <div class="btn o" style="margin-top:10px">Next</div>
+    </div><div class="chat mini"><i></i><span>Chat</span></div></div>
+  </div>
+</div>
+
+<!-- desktop -->
+<h2><span class="n">1</span>Computer: the same as 4, in a centred column <span class="rec">Recommended</span></h2>
+<p class="cap">On a computer, the page keeps one column about 420 pixels wide, with the two buttons stacked as on a phone. After Great, the Google button and the membership card sit side by side. <b>Why:</b> the same page everywhere, and nothing stretched across a wide screen.</p>
+<div class="desk"><div class="bar">A-1 CHIMNEY</div>
+  <div class="in2">
+    <div class="col"><div class="check">✓</div><div class="h">Thank you!</div><div class="p" style="color:#ccc">Would you tell others how we did? It takes a minute.</div><div class="btn o"><span class="gg"></span>Leave a Google review</div></div>
+    <div class="col" style="width:320px"><div class="card"><span class="k">For you · A-1 Membership</span><b>Annual Membership</b><ul><li>Yearly chimney inspection</li><li>Priority booking</li></ul><span class="pr">$99 <small>a year</small></span><div class="btn ol">Join for $99 a year</div></div></div>
+  </div>
+</div>
+
+<h2><span class="n">2</span>Computer: as 5, the faces side by side</h2>
+<p class="cap">Two big face buttons side by side in the middle of the page, then Google with the membership line under it.</p>
+<div class="desk" style="height:300px"><div class="bar">A-1 CHIMNEY</div>
+  <div class="in2"><div class="col"><div class="h">How was your experience?</div><div class="pair"><div class="big r">NOT SO GREAT</div><div class="big g">GREAT!</div></div></div></div>
+</div>
+
+<h2><span class="n">3</span>Computer: as 6, five stars</h2>
+<p class="cap">Five large stars across the middle, then Next.</p>
+<div class="desk" style="height:260px"><div class="bar">A-1 CHIMNEY</div>
+  <div class="in2"><div class="col"><div class="h">How many stars would you give us?</div><div class="stars"><span class="on">★</span><span class="on">★</span><span class="on">★</span><span class="on">★</span><span>★</span></div></div></div>
+</div>
+
+<p class="need" style="margin-top:40px"><b>Left out on purpose:</b> asking for a review inside the text message itself, sending unhappy customers to Google, and changing what the office receives. Only the page's look and order change.</p>
+</div>
