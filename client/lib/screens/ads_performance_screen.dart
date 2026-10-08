@@ -325,6 +325,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
     final response = await widget.api.get('/ads/accounts');
     if (!mounted) return;
+    var onlyOne = false;
 
     setState(() {
       _loadingAccounts = false;
@@ -340,7 +341,14 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       _memory.accounts = _accounts;
       // Deliberately does NOT auto-select. Picking one is what spends quota,
       // and a screen that spends it on open is the thing this replaced.
+      // Except when there is only one: there is nothing to choose (UI review
+      // 2026-10-08), and one report is the cost of opening the screen at all.
+      if (_selected == null && _accounts.length == 1) {
+        _selected = _accounts.single['connection_id'] as String?;
+        onlyOne = _selected != null;
+      }
     });
+    if (onlyOne) _loadReport();
   }
 
   bool get _selectedIsManager {
@@ -617,7 +625,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
                 border: const OutlineInputBorder(),
-                hintText: 'Search ${_accounts.length} accounts',
+                hintText:
+                    'Search ${_accounts.length} '
+                    '${_accounts.length == 1 ? 'account' : 'accounts'}',
               ),
             ),
           ),

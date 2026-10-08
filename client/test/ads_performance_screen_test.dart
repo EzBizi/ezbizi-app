@@ -186,6 +186,16 @@ void main() {
     );
   });
 
+  testWidgets('a lone account is chosen for you, and the hint is singular', (
+    tester,
+  ) async {
+    await pump(tester, accounts: [twoAccounts().first], report: report());
+
+    expect(find.byKey(const ValueKey('ads-pick-one')), findsNothing);
+    expect(calls.where((c) => c.contains('/ads/performance')), hasLength(1));
+    expect(find.text('Search 1 account'), findsOneWidget);
+  });
+
   testWidgets('picking an account loads that one, and only then', (
     tester,
   ) async {

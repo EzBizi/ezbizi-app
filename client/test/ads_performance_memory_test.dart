@@ -109,6 +109,9 @@ void main() {
         return json({
           'data': [
             {'connection_id': 'c1', 'customer_id': '4941850746', 'name': 'A1 Chimney - Cleveland'},
+            // Two, so these tests still pick by hand: a lone account is
+            // chosen on its own (UI review 2026-10-08).
+            {'connection_id': 'c2', 'customer_id': '8839813550', 'name': 'A1 Chimney - Hamden'},
           ],
         });
       }
