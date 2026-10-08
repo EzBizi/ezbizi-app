@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Android: alerts, new leads and missed calls now pop up with sound ("EzBizi urgent" in the phone\'s notification settings); everything else stays as it was.',
         'API activity: calls made in the same second now list in the order they happened.',
+        'Missed-call notifications now name the line the caller rang, as labelled in RingCentral (e.g. DFW - LS Ads).',
       ],
     ),
     VersionRelease(
