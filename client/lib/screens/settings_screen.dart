@@ -126,9 +126,9 @@ String? _notYetInEffect(Map<String, dynamic> setting) {
 /// of a sentence drift on the day somebody improves one of them, and these two
 /// are drawn inches apart.
 String provenanceSentence(Map<String, dynamic>? source) => provenanceWords(
-      source == null ? null : source['name'] as String?,
-      inherited: source != null && source['inherited'] == true,
-    );
+  source == null ? null : source['name'] as String?,
+  inherited: source != null && source['inherited'] == true,
+);
 
 /// True when the value on screen was chosen at the scope being looked at.
 bool sourceIsOwn(Map<String, dynamic>? source) =>
@@ -476,7 +476,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Text(
             _scopeType == 'organization'
                 ? 'Settings for ${me.organization.name} — everything inherits these '
-                      'unless a company or a place overrides them.'
+                      'unless a company or a '
+                      '${me.organization.franchiseLabel.toLowerCase()} overrides them.'
                 : 'Settings for $_scopeLabel. Anything left alone inherits from '
                       'above; anything set here overrides it.',
             style: Theme.of(context).textTheme.bodyMedium,
@@ -491,11 +492,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  bool _inGroup(Map<String, dynamic> setting) =>
+      widget.onlyGroup == null || setting['group'] == widget.onlyGroup;
+
   /// Search, and the two counts worth knowing before reading anything.
   Widget _toolbar(BuildContext context) {
-    final total = _rows.length;
-    final setHere = _rows.where(_setHere).length;
-    final pending = _rows.where((s) => _notYetInEffect(s) != null).length;
+    // Counted over what THIS tab draws: inside Field › Settings, "Search 68
+    // settings" was the whole organization's number (UI review, 2026-10-08).
+    final rows = _rows.where(_inGroup);
+    final total = rows.length;
+    final setHere = rows.where(_setHere).length;
+    final pending = rows.where((s) => _notYetInEffect(s) != null).length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
@@ -591,9 +598,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     for (final setting in _rows) {
       if (!_matches(setting)) continue;
-      if (widget.onlyGroup != null && setting['group'] != widget.onlyGroup) {
-        continue;
-      }
+      if (!_inGroup(setting)) continue;
 
       groups
           .putIfAbsent(
@@ -631,9 +636,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
               child: Text(
                 group.label!,
+                // Larger than the row titles under it (titleMedium): a heading
+                // smaller than its contents read as a footnote (UI review,
+                // 2026-10-08).
                 style: Theme.of(
                   context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
             )
           else
@@ -660,7 +668,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
-        ?_businessAddressCard(context),
+        // The organization's own cards belong to Settings, not to a module's
+        // Settings tab showing one group.
+        if (widget.onlyGroup == null) ?_businessAddressCard(context),
 
         /*
          * Self-contained on purpose: it fetches its own answer and holds its
@@ -668,7 +678,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
          * the field and the builder the deleted sending-identity card needed.
          * Filtered by the search box the same way the others are.
          */
-        if (_filter == _Filter.all &&
+        if (widget.onlyGroup == null &&
+            _filter == _Filter.all &&
             SendingServerPanel.matchesSearch(_search.text))
           SendingServerPanel(api: widget.api, session: widget.session),
         ?organizationData,
@@ -720,9 +731,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text(
                 'Business address',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 6),
               Text(
@@ -770,7 +781,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _fillBusinessAddress(OrganizationSummary? organization) {
     if (organization == null) return;
-    _addressLine1.text = organization.addressLine1 ??
+    _addressLine1.text =
+        organization.addressLine1 ??
         (organization.address != null && organization.city == null
             ? organization.address!
             : '');
@@ -800,9 +812,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.message)));
     }
   }
 
@@ -902,7 +914,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _organizationDataHeading,
             style: Theme.of(
               context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
         Card(
@@ -1027,7 +1039,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
 
-    Files.download('${name.isEmpty ? 'organization' : name}-everything.json', bytes);
+    Files.download(
+      '${name.isEmpty ? 'organization' : name}-everything.json',
+      bytes,
+    );
   }
 
   /// §9 inventory: the record of what is held about people.
@@ -1985,7 +2000,10 @@ class _DurationControlState extends State<_DurationControl> {
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
             onEditingComplete: _commit,
             onTapOutside: (_) => _commit(),

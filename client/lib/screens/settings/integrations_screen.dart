@@ -130,14 +130,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
        * page over a list of things that are absent.
        */
       if (catalogue.ok) {
-        _catalogue = {
-          for (final entry
-              in ((catalogue.body['data'] as List<dynamic>?) ?? const [])
-                  .whereType<Map<String, dynamic>>())
-            (entry['value'] as String? ?? ''): entry,
-        }..removeWhere(
-          (key, value) => key.isEmpty || (value['label'] as String? ?? '').isEmpty,
-        );
+        _catalogue =
+            {
+              for (final entry
+                  in ((catalogue.body['data'] as List<dynamic>?) ?? const [])
+                      .whereType<Map<String, dynamic>>())
+                (entry['value'] as String? ?? ''): entry,
+            }..removeWhere(
+              (key, value) =>
+                  key.isEmpty || (value['label'] as String? ?? '').isEmpty,
+            );
       }
     });
   }
@@ -341,47 +343,55 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// for: the form to connect a base sits beside the bases already connected.
   List<Widget> _airtableForm() => [
     Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: 4),
-      Text(
-        'One connection is one base. Connect as many bases as this business '
-        'keeps its figures in.',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      const SizedBox(height: 8),
-      ApiKeyConnectForm(
-        api: widget.api,
-        path: '/social/airtable',
-        submitLabel: 'Connect base',
-        fields: const [
-          ('api_token', 'Personal access token', 'pat…'),
-          ('base_id', 'Base id', 'app… — from the base\'s URL'),
-        ],
-        onConnected: _load,
-      ),
+    const SizedBox(height: 4),
+    Text(
+      'One connection is one base. Connect as many bases as this business '
+      'keeps its figures in.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/airtable',
+      submitLabel: 'Connect base',
+      fields: const [
+        ('api_token', 'Personal access token', 'pat…'),
+        ('base_id', 'Base id', 'app… — from the base\'s URL'),
+      ],
+      onConnected: _load,
+    ),
   ];
 
   List<Widget> _workizForm() => [
     Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: 4),
-      Text(
-        'One connection is one Workiz account. Switch to the branch it belongs '
-        'to before connecting it — the accounts are separate books and a report '
-        'attributes each one to its branch.',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      const SizedBox(height: 8),
-      ApiKeyConnectForm(
-        api: widget.api,
-        path: '/social/workiz',
-        submitLabel: 'Connect account',
-        fields: const [
-          ('api_token', 'API key', 'From Workiz › Developer › v2 (or the API Token on the v1 tab)'),
-          // The second key on the same page. Without it EzBizi reads the
-          // account's jobs but cannot change them.
-          ('auth_secret', 'API secret', 'Only for a v1 token: the secret beside it'),
-        ],
-        onConnected: _load,
-      ),
+    const SizedBox(height: 4),
+    Text(
+      'One connection is one Workiz account. Switch to the branch it belongs '
+      'to before connecting it — the accounts are separate books and a report '
+      'attributes each one to its branch.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/workiz',
+      submitLabel: 'Connect account',
+      fields: const [
+        (
+          'api_token',
+          'API key',
+          'From Workiz › Developer › v2 (or the API Token on the v1 tab)',
+        ),
+        // The second key on the same page. Without it EzBizi reads the
+        // account's jobs but cannot change them.
+        (
+          'auth_secret',
+          'API secret',
+          'Only for a v1 token: the secret beside it',
+        ),
+      ],
+      onConnected: _load,
+    ),
   ];
 
   Widget _family(
@@ -414,17 +424,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
      * hiding an unconnected Airtable would remove the only way to add one.
      */
     final mine =
-        (where == null ? all : all.where((p) => (byProvider[p] ?? const []).isNotEmpty))
+        (where == null
+                ? all
+                : all.where((p) => (byProvider[p] ?? const []).isNotEmpty))
             .toList()
-      ..sort((a, b) {
-        // Connected first, then alphabetically. What a business HAS is the
-        // thing it came to look at; what it could have is a catalogue.
-        final byCount = (byProvider[b]?.length ?? 0).compareTo(
-          byProvider[a]?.length ?? 0,
-        );
+          ..sort((a, b) {
+            // Connected first, then alphabetically. What a business HAS is the
+            // thing it came to look at; what it could have is a catalogue.
+            final byCount = (byProvider[b]?.length ?? 0).compareTo(
+              byProvider[a]?.length ?? 0,
+            );
 
-        return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
-      });
+            return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
+          });
 
     return DashboardCard(
       title: title,
@@ -456,35 +468,31 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
           // Named rather than merely absent, so somebody can still discover
           // that EzBizi speaks TikTok without a card each for the fifteen it
-          // speaks and they do not use.
+          // speaks and they do not use. Each name OPENS its pane, which offers
+          // Connect: this used to end in "Connect and disconnect under
+          // Marketing › Newsletter", a path written as text (UI review,
+          // 2026-10-08) to a place this screen can now do the job itself.
           if (where != null && all.length > mine.length)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Also available: '
-                '${(all.where((p) => (byProvider[p] ?? const []).isEmpty).map(_label).toList()..sort()).join(', ')}.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-
-          /*
-           * A SENTENCE FOR MOST FAMILIES, A FORM FOR ONE.
-           *
-           * This used to be a sentence for all of them, and the comment here
-           * said why: "connecting is done where the account is understood, and
-           * a second Connect flow here would be a second thing to keep
-           * correct." Jose overrode the first half on 2026-09-16 for the
-           * reporting sources — "make the connection in Integrations".
-           *
-           * The second half is still true, which is why the form is a shared
-           * widget rather than a copy: Workiz can be connected from Reports ›
-           * Experimental as well, and two forms posting to one endpoint would
-           * be two sets of field names to keep in step.
-           */
-          if (where != null)
-            Text(
-              'Connect and disconnect under $where.',
-              style: Theme.of(context).textTheme.bodySmall,
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Also available:',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                for (final provider
+                    in all
+                        .where((p) => (byProvider[p] ?? const []).isEmpty)
+                        .toList()
+                      ..sort((a, b) => _label(a).compareTo(_label(b))))
+                  ActionChip(
+                    key: ValueKey('available:$provider'),
+                    label: Text(_label(provider)),
+                    onPressed: () => setState(() => _open = provider),
+                  ),
+              ],
             ),
         ],
       ),
@@ -552,7 +560,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   // spends it with no warning: a RenderFlex overflow is a
                   // paint-time exception, so nothing that merely reads the
                   // text would notice.
-                  Flexible(child: _pill(theme, rows: rows, broken: broken)),
+                  Flexible(
+                    child: _pill(theme, rows: rows, broken: broken),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),

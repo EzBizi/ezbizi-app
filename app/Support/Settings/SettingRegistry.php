@@ -229,8 +229,7 @@ class SettingRegistry
                     'imperial' => 'Imperial — lb, mi, °F',
                     'metric' => 'Metric — kg, km, °C',
                 ],
-                notYetInEffect: 'Takes effect when jobs record distances and areas. Nothing in '
-                    .'the app shows a measurement yet, in either system.',
+                notYetInEffect: 'EzBizi will use this once jobs record distances and areas.',
             ),
             /*
              * Paper, for the PDF copy of a signed contract.
@@ -256,7 +255,10 @@ class SettingRegistry
              */
             new SettingDefinition(
                 key: 'contract_pdf_paper', label: 'Contract paper size',
-                type: SettingDefinition::TYPE_ENUM, default: 'a4',
+                // Letter, beside the US date format and Imperial units it sits
+                // under: A4 there was the one non-US default (UI review,
+                // 2026-10-08). No organization had chosen either on that day.
+                type: SettingDefinition::TYPE_ENUM, default: 'letter',
                 options: ['a4', 'letter'],
                 optionLabels: [
                     'a4' => 'A4',
@@ -323,8 +325,7 @@ class SettingRegistry
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'Organization-wide so reporting periods line up.',
-                notYetInEffect: 'Takes effect when reporting offers a financial year. No figure '
-                    .'in the app is grouped by one yet.',
+                notYetInEffect: 'EzBizi will use this once reports can be grouped by financial year.',
             ),
             new SettingDefinition(
                 key: 'ops.default_job_duration_minutes', label: 'Default job duration',
@@ -340,8 +341,7 @@ class SettingRegistry
                     '180' => '3 hours',
                     '240' => '4 hours',
                 ],
-                notYetInEffect: 'Takes effect when scheduling ships. A job can already hold a '
-                    .'length, but nothing fills one in, so this number is never reached for.',
+                notYetInEffect: 'EzBizi will use this once it can book jobs into the calendar for you.',
             ),
 
             /*
@@ -462,22 +462,19 @@ class SettingRegistry
                 key: 'money.tax_rate', label: 'Default tax rate (%)',
                 type: SettingDefinition::TYPE_DECIMAL, default: 0.0,
                 help: 'A percentage, not an amount. Set per franchise where rates differ.',
-                notYetInEffect: 'Takes effect when invoicing ships. It will be the rate a new '
-                    .'invoice starts at; nothing in the app charges tax today.',
+                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
             new SettingDefinition(
                 key: 'money.tax_label', label: 'Tax label',
                 type: SettingDefinition::TYPE_ENUM, default: 'Sales Tax',
                 options: ['Sales Tax', 'VAT', 'GST', 'HST', 'PST'],
                 help: 'Shown on invoices.',
-                notYetInEffect: 'Takes effect when invoicing ships. It is the word that will '
-                    .'head the tax line, and there are no invoices to head yet.',
+                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
             new SettingDefinition(
                 key: 'money.tax_inclusive_pricing', label: 'Prices include tax',
                 type: SettingDefinition::TYPE_BOOL, default: false,
-                notYetInEffect: 'Takes effect when invoicing ships. It decides whether a price '
-                    .'already contains tax or has it added, and nothing totals a price yet.',
+                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
             new SettingDefinition(
                 key: 'money.payment_terms_days', label: 'Payment terms',
@@ -493,8 +490,7 @@ class SettingRegistry
                     '60' => 'Net 60',
                     '90' => 'Net 90',
                 ],
-                notYetInEffect: 'Takes effect when invoicing ships. It will set the due date on '
-                    .'a new invoice; nothing in the app has a due date today.',
+                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
         ];
     }
@@ -529,8 +525,7 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'numbering.invoice_prefix', label: 'Invoice number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'INV-',
-                notYetInEffect: 'Takes effect when invoicing ships. Job numbers already use '
-                    .'their prefix — there are simply no invoices to number.',
+                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
             new SettingDefinition(
                 key: 'numbering.estimate_prefix', label: 'Estimate number prefix',
@@ -615,8 +610,7 @@ class SettingRegistry
                 ],
                 allowedScopes: $orgOnly,
                 help: 'Never is the default. Forced rotation encourages weaker passwords — NIST advises against it.',
-                notYetInEffect: 'Takes effect when scheduled password expiry ships. Nobody is '
-                    .'asked to change a password on a timetable today, whatever this says.',
+                notYetInEffect: 'Nobody is asked to change their password on a schedule yet.',
             ),
         ];
     }
@@ -775,9 +769,7 @@ class SettingRegistry
                 // until morning; the same notification now rings a phone.
                 // Nothing here is read by anything yet, so the claim is honest;
                 // it just has to say what it is now failing to hold back.
-                notYetInEffect: 'Takes effect when a notification can be held back and delivered '
-                    .'later. Nothing is held today: a notification raised at 3am is written at '
-                    .'3am, and emailed at 3am if this organization sends them by email.',
+                notYetInEffect: 'Notifications are still sent the moment they happen, even during these hours.',
             ),
             new SettingDefinition(
                 key: 'notifications.reply_to_email', label: 'Reply-to address',

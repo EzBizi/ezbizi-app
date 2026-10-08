@@ -112,6 +112,23 @@ void main() {
     expect(find.textContaining('needs to connect'), findsOneWidget);
   });
 
+  testWidgets('a provider with nothing connected opens from its name', (
+    tester,
+  ) async {
+    /*
+     * The foot of a family used to say "Connect and disconnect under Marketing
+     * › Social Media Management › Accounts" — a path as text (UI review,
+     * 2026-10-08). The name now opens the pane, which is where Connect is.
+     */
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('available:facebook')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('integration-back')), findsOneWidget);
+    expect(find.textContaining('Connect and disconnect under'), findsNothing);
+  });
+
   testWidgets('a connection whose scope this view cannot name is still shown', (
     tester,
   ) async {
@@ -178,6 +195,13 @@ Future<void> _pump(WidgetTester tester) async {
               'connects_by': 'api_key',
               'start_path': '/social/mailchimp/start',
               'permission': 'newsletter.send',
+            },
+            {
+              'value': 'facebook',
+              'label': 'Facebook',
+              'connects_by': 'sign_in',
+              'start_path': '/social/facebook/start',
+              'permission': 'marketing.edit',
             },
             {
               'value': 'thumbtack',

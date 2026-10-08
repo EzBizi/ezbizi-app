@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/settings_screen.dart';
+import 'package:ezbizi_client/widgets/sending_server_panel.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -121,7 +122,9 @@ void main() {
     // comes from. Source is the half the client could not have worked out.
     expect(
       tester
-          .widget<SearchPickerField<Object>>(find.byType(SearchPickerField<Object>))
+          .widget<SearchPickerField<Object>>(
+            find.byType(SearchPickerField<Object>),
+          )
           .value,
       '24h',
     );
@@ -194,6 +197,58 @@ void main() {
       greaterThan(tester.getBottomLeft(label).dy),
     );
   });
+
+  /// Inside Work Hours › Settings: that tab's rows, that tab's count, and none
+  /// of the organization's own cards (UI review, 2026-10-08).
+  for (final onlyGroup in [null, 'work_hours']) {
+    testWidgets('a module tab counts and draws only its own group '
+        '(onlyGroup: $onlyGroup)', (tester) async {
+      _wide(tester);
+
+      await _pumpSettings(tester, (request) async {
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+        return _json({
+          'data': [
+            _row(
+              'locale',
+              label: 'Language',
+              type: 'string',
+              value: 'en',
+              source: null,
+            ),
+            _row(
+              'timezone',
+              label: 'Timezone',
+              type: 'string',
+              value: 'UTC',
+              source: null,
+            ),
+            _row(
+              'time_clock.enabled',
+              label: 'Clock in',
+              type: 'bool',
+              value: false,
+              source: null,
+              group: 'work_hours',
+              groupLabel: 'Work Hours',
+            ),
+          ],
+        });
+      }, onlyGroup: onlyGroup);
+
+      final field = tester.widget<TextField>(find.byType(TextField).first);
+
+      if (onlyGroup == null) {
+        // The control: the whole page counts everything and draws the card.
+        expect(field.decoration?.hintText, 'Search 3 settings');
+        expect(find.byType(SendingServerPanel), findsOneWidget);
+      } else {
+        expect(field.decoration?.hintText, 'Search 1 settings');
+        expect(find.byType(SendingServerPanel), findsNothing);
+      }
+    });
+  }
 
   testWidgets('a subset is ticked from the words, and saved as the values', (
     tester,
@@ -822,14 +877,15 @@ void main() {
 }
 
 /// Is the button carrying this label pressable?
-bool _enabled(WidgetTester tester, String label) => tester
-    .widget<ButtonStyleButton>(
-      find.ancestor(
-        of: find.text(label),
-        matching: find.byType(OutlinedButton),
-      ),
-    )
-    .onPressed !=
+bool _enabled(WidgetTester tester, String label) =>
+    tester
+        .widget<ButtonStyleButton>(
+          find.ancestor(
+            of: find.text(label),
+            matching: find.byType(OutlinedButton),
+          ),
+        )
+        .onPressed !=
     null;
 
 /// A server with one setting on it, at organization scope.
@@ -923,6 +979,7 @@ Future<void> _pumpSettings(
   WidgetTester tester,
   MockClientHandler handler, {
   Map<String, dynamic>? exports,
+  String? onlyGroup,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
@@ -980,7 +1037,7 @@ Future<void> _pumpSettings(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: SettingsScreen(api: api, session: session),
+        body: SettingsScreen(api: api, session: session, onlyGroup: onlyGroup),
       ),
     ),
   );

@@ -429,19 +429,19 @@ class HrOnboardingDocumentPdfTest extends TestCase
 
         $default = $this->pdf($alpha['admin'], $id);
 
-        $this->assertMatchesRegularExpression('/MediaBox\s*\[\s*0[\d.]*\s+0[\d.]*\s+595\./', $default,
-            'The copy did not come out on A4, which is the registry default, so this test '
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[\s*0[\d.]*\s+0[\d.]*\s+612\./', $default,
+            'The copy did not come out on letter, which is the registry default, so this test '
             .'cannot tell a changed setting from a coincidence.');
 
         // Inside the tenant: `settings` is tenant-scoped and TenantScope fails
         // closed, so writing one from a bare test refuses rather than writing a
         // row nobody owns.
         $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)
-            ->set('contract_pdf_paper', $alpha['org'], 'letter'));
+            ->set('contract_pdf_paper', $alpha['org'], 'a4'));
 
-        $this->assertMatchesRegularExpression('/MediaBox\s*\[\s*0[\d.]*\s+0[\d.]*\s+612\./',
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[\s*0[\d.]*\s+0[\d.]*\s+595\./',
             $this->pdf($alpha['admin'], $id),
-            'The organization asked for letter and the copy still came out on A4, so the '
+            'The organization asked for A4 and the copy still came out on letter, so the '
             .'paper size is not reading the setting.');
     }
 
