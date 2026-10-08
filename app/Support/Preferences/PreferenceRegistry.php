@@ -195,6 +195,28 @@ class PreferenceRegistry
                 'help' => 'Drag the sidebar into the order you want.',
             ],
 
+            /*
+             * Letting a person know there's a phone app (UI queue 67; Jose,
+             * 2026-10-08: "so people who are using the web or desktop know
+             * there's an app, something seamless"). The phone app sets
+             * apps.phone_used each time it starts, so the Dashboard's one-time
+             * card never asks somebody who has it; No thanks sets
+             * apps.phone_card_dismissed, which also hides the banner in a
+             * phone's browser. Per person, so a choice holds on every device.
+             */
+            'apps.phone_used' => [
+                'label' => 'Has used the phone app',
+                'type' => 'bool',
+                'default' => false,
+                'help' => 'Set by the phone app itself.',
+            ],
+            'apps.phone_card_dismissed' => [
+                'label' => 'No thanks to the phone app',
+                'type' => 'bool',
+                'default' => false,
+                'help' => 'Set by No thanks on the Dashboard card or the phone banner.',
+            ],
+
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',

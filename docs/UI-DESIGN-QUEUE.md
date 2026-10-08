@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 67 · Letting web and computer users know there's an app — **sent to Jose 2026-10-08, recommended 1 and 4** (`docs/previews/app-promotion-layouts.html`)
+### 67 · Letting web and computer users know there's an app — **Jose: "Looks good", then "go ahead" (2026-10-08) — 1 and 4** — **BUILT** (the commit that marks this) (`docs/previews/app-promotion-layouts.html`)
 
 Jose, 2026-10-08: *"Feel like we need a way to promote the app as well, so people who are using the web or desktop
 know there's an app, something seamless, any ideas."* Phone apps: App Store id6805979795, Google Play
@@ -2978,6 +2978,12 @@ own Smart App Banner on an iPhone (one meta tag), EzBizi's look-alike on Android
 installed, Google Play if not); **5** one full screen after signing in; **6** a Dashboard card. All: the QR opens
 `ezbizi.com/app`, which picks the store by device; No thanks is remembered per person; nobody with the phone app is
 asked. Server asks: tell the phone app's sign-ins from a phone browser's; the website's `/app` link.
+
+Build notes: no server asks after all. The phone app sets the preference `apps.phone_used` on every start
+(`markPhoneAppUsed`, HomeShell.initState); No thanks sets `apps.phone_card_dismissed`, which also hides the Android
+banner. Both declared in PreferenceRegistry, and a server that does not send them asks nobody. The QR opens
+ezbizi.com/download, which already carries both store buttons. Text me the link is not built: it needs a send
+endpoint and the company's number; the QR does the same job.
 
 ### 66 · API activity: what an AI or a script did with a key — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-07) — 1 and 4, without Put it back** — **BUILT** (client in the commit that marks this; server `8427c94d`) (`docs/previews/api-activity-layouts.html`)
 

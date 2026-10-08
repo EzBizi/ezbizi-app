@@ -29,6 +29,8 @@ import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
 import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
+import 'widgets/get_the_apps.dart';
+import 'widgets/side_panel.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -540,6 +542,8 @@ class _HomeShellState extends State<HomeShell> {
     // ending — already notifies in the same frame.
     _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
     _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
+    // So no computer asks somebody who has the phone app to install it.
+    markPhoneAppUsed(widget.session);
     if (!exempt) {
       // The capture service tells the heartbeat how each attempt went, and
       // the beat carries it to the server — otherwise a device that cannot
@@ -1500,6 +1504,11 @@ class _HomeShellState extends State<HomeShell> {
                     value: 'me',
                     child: Text(UiStrings.t('shell.your_account')),
                   ),
+                  const PopupMenuItem(
+                    key: Key('menu-get-the-apps'),
+                    value: 'apps',
+                    child: Text('Get the apps'),
+                  ),
                   PopupMenuItem(
                     value: 'out',
                     child: Text(UiStrings.t('shell.sign_out')),
@@ -1508,6 +1517,17 @@ class _HomeShellState extends State<HomeShell> {
                 onSelected: (v) {
                   if (v == 'out') {
                     _signOut();
+                    return;
+                  }
+                  if (v == 'apps') {
+                    showSidePanel<void>(
+                      context,
+                      builder: (context) => SidePanel(
+                        title: 'Get the apps',
+                        onClose: () => Navigator.of(context).pop(),
+                        child: const GetTheAppsPanel(),
+                      ),
+                    );
                     return;
                   }
 
@@ -1923,10 +1943,15 @@ class _HomeShellState extends State<HomeShell> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // UI queue 67: a phone's browser hears about the app on every page;
+        // a computer, once, on the Dashboard. Both draw nothing otherwise.
+        PhoneAppBanner(session: widget.session),
         ModulePageHeader(
           title: destination.label,
           subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
         ),
+        if (destination.id == 'dashboard')
+          PhoneAppCard(session: widget.session),
         Expanded(child: destination.screen),
       ],
     );
