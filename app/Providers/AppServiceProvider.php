@@ -448,7 +448,15 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(60)
                 ->by('token:'.hash('sha256', (string) $request->bearerToken()))
                 ->response($this->throttledWith('This website is asking too often. It will catch up shortly.')),
-            Limit::perHour(600)
+            /*
+             * Every customer site lives on one box, so they share one address:
+             * 420-560 reads an hour on a normal day of 2026-10-08, against 600.
+             * Eight sites paired that day and a burst of maintenance passes
+             * put all of them into 429 (Web, 2026-10-08). The per-token limit
+             * above is what holds a single site; this only has to stop one
+             * address walking many tokens.
+             */
+            Limit::perHour(5000)
                 ->by('host:'.$request->ip())
                 ->response($this->throttledWith('Too many requests from this address.')),
         ]);
