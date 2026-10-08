@@ -4,15 +4,16 @@ namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
-use Illuminate\Support\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -145,13 +146,20 @@ class SitesController extends Controller
                 'sometimes', 'nullable', 'uuid',
                 Rule::exists('franchises', 'id')->where('organization_id', $this->tenant->idOrFail()),
             ],
+            // The service areas whose jobs' review links come to this site.
+            'service_area_ids' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'service_area_ids.*' => ['uuid', Rule::exists('service_areas', 'id')->where('organization_id', $this->tenant->idOrFail())],
         ]);
+
+        if (array_key_exists('service_area_ids', $input)) {
+            $site->service_area_ids = $input['service_area_ids'] === null ? null : array_values(array_unique($input['service_area_ids']));
+        }
 
         if (array_key_exists('franchise_id', $input)) {
             // A branch of THIS company: another company's branch would file
             // this website's enquiries where its own people never look.
             if ($input['franchise_id'] !== null
-                && \App\Models\Franchise::query()->whereKey($input['franchise_id'])->value('company_id') !== $site->company_id) {
+                && Franchise::query()->whereKey($input['franchise_id'])->value('company_id') !== $site->company_id) {
                 throw ValidationException::withMessages([
                     'franchise_id' => 'That branch belongs to a different company.',
                 ]);
@@ -422,6 +430,7 @@ class SitesController extends Controller
                 'id' => $site->franchise_id,
                 'name' => $site->franchise?->name,
             ],
+            'service_area_ids' => $site->service_area_ids ?? [],
             'connected_at' => $site->connected_at?->toIso8601String(),
             'last_seen_at' => $site->last_seen_at?->toIso8601String(),
             'plugin_version' => $site->plugin_version,

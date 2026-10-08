@@ -41,6 +41,8 @@ class WebSite extends Model implements StatesRetention
             // recognising it when somebody presents it to us. See the
             // migration for why this is the only workable choice.
             'service_password' => 'encrypted',
+            // The areas whose jobs this site's review page thanks (Jose, 2026-10-08).
+            'service_area_ids' => 'array',
         ];
     }
 

@@ -89,7 +89,7 @@ final class CustomerLinks
     /** The reviews page of the site for the franchise that did the job, with the job's token. */
     public static function jobReviewLink(Customer $customer, Job $job): ?string
     {
-        $link = self::siteValue($customer, 'review_link', $job->franchise_id);
+        $link = self::siteValue($customer, 'review_link', $job->franchise_id, $job->service_area_id);
 
         return $link === null ? null
             : $link.(str_contains($link, '?') ? '&' : '?').'c='.rawurlencode(self::jobToken($customer, $job));
@@ -105,11 +105,16 @@ final class CustomerLinks
         return self::siteValue($customer, 'google_review_link');
     }
 
-    /** The franchise's site (the job's, else the customer's), else its company's, else any site of the organization. */
-    private static function siteValue(Customer $customer, string $key, ?string $franchiseId = null): ?string
+    /**
+     * The site for the job's service area (nj. for New Jersey: each has its own
+     * Google profile), else the franchise's (the job's, else the customer's),
+     * else its company's, else any site of the organization.
+     */
+    private static function siteValue(Customer $customer, string $key, ?string $franchiseId = null, ?string $areaId = null): ?string
     {
         $franchise = Franchise::query()->find($franchiseId ?? $customer->owning_franchise_id);
         $sites = WebSite::query()
+            ->when($areaId !== null, fn ($q) => $q->orderByRaw('COALESCE(JSON_CONTAINS(service_area_ids, JSON_QUOTE(?)), 0) desc', [$areaId]))
             ->orderByRaw('franchise_id = ? desc', [$franchise?->getKey()])
             ->orderByRaw('company_id = ? desc', [$franchise?->company_id])
             ->pluck('id');

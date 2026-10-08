@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
+use App\Models\ServiceArea;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Memberships\CustomerLinks;
@@ -88,6 +89,29 @@ class MembershipsPublicTest extends TestCase
 
         $this->travel(CustomerLinks::REVIEW_DAYS + 1)->days();
         $this->assertNull(CustomerLinks::customerId($q['c']));
+    }
+
+    /** Jose, 2026-10-08: each area's subdomain has its own Google profile, so the job's area picks the site. */
+    public function test_a_jobs_review_link_goes_to_the_site_of_its_area(): void
+    {
+        $id = $this->signedInAs($this->t['admin'])->postJson('/api/v1/web/sites', [
+            'company_id' => $this->t['company']->getKey(), 'host' => 'nj.chimney.test',
+        ])->assertCreated()->json('data.id');
+        $area = $this->inTenant($this->t['org'], fn () => ServiceArea::create(['franchise_id' => $this->t['franchise']->id, 'name' => 'New Jersey']));
+        $this->signedInAs($this->t['admin'])->patchJson("/api/v1/web/sites/{$id}", ['service_area_ids' => [$area->id]])
+            ->assertOk()->assertJsonPath('data.service_area_ids', [$area->id]);
+        auth()->forgetGuards();
+
+        $links = $this->inTenant($this->t['org'], function () use ($id, $area) {
+            WebValue::create(['site_id' => $id, 'path' => '', 'key' => 'review_link', 'value' => 'https://nj.chimney.test/reviews/']);
+            $job = fn (?string $areaId) => Job::create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $this->customer->id,
+                'service_area_id' => $areaId, 'number' => 'J-'.bin2hex(random_bytes(3)), 'title' => 'Sweep', 'status' => 'done', 'currency' => 'USD']);
+
+            return [$job($area->id)->review_link, $job(null)->review_link];
+        });
+
+        $this->assertStringStartsWith('https://nj.chimney.test/reviews/?c=', $links[0]);
+        $this->assertStringStartsWith('https://chimney.test/reviews/?c=', $links[1]);
     }
 
     public function test_a_forged_token_matches_nobody_and_the_answer_is_the_same(): void
