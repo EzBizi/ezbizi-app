@@ -1463,7 +1463,10 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   Future<void> _decideBooking(String decision) async {
-    final response = await widget.api.post('/leads/${widget.lead['id']}/booking/$decision', const {});
+    // Two literal paths, so ClientCallsRealRoutesTest can match each route.
+    final response = decision == 'approve'
+        ? await widget.api.post('/leads/${widget.lead['id']}/booking/approve', const {})
+        : await widget.api.post('/leads/${widget.lead['id']}/booking/decline', const {});
     if (!mounted) return;
     if (response.ok && response.data is Map) {
       setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
