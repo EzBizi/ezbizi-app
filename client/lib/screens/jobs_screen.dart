@@ -1000,14 +1000,17 @@ class _JobsScreenState extends State<JobsScreen> {
       // server sends no amount, and a column of dashes would read as "free".
       // Workiz's money where the job has it (queue 31): its state and what is
       // still due; a job EzBizi priced itself shows its own amount instead.
-      if (_seesMoney) ...[
+      // Only when a loaded job has some, as the Workiz column: two empty
+      // columns were squeezing Title and Where (UI review, 2026-10-08).
+      if (_seesMoney &&
+          _jobs.any((job) => job['money'] != null || job['amount'] != null)) ...[
         TableColumn(
           'Money',
           width: 120,
           cell: (_, job) =>
               _moneyPill(job) ??
               Text(
-                listAmount(job['amount']) ?? '',
+                listAmount(job['amount']) ?? '—',
                 style: TextStyle(color: muted),
               ),
         ),

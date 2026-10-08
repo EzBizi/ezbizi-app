@@ -32,11 +32,27 @@ void main() {
     await _open(
       tester,
       permissions: const ['jobs.view', 'jobs.edit', 'jobs.financials'],
+      jobs: _moneyJobs,
     );
 
     // Queue 31: Workiz's money is a state and what is still due.
     expect(find.text('Money'), findsOneWidget);
     expect(find.text('Due'), findsOneWidget);
+  });
+
+  // UI review, 2026-10-08: two empty columns squeezed Title and Where. As the
+  // Workiz column does, they draw only when a loaded job has money.
+  testWidgets('with Financials but no money on the page, no money columns', (
+    tester,
+  ) async {
+    await _open(
+      tester,
+      permissions: const ['jobs.view', 'jobs.edit', 'jobs.financials'],
+    );
+
+    expect(find.text('Money'), findsNothing);
+    expect(find.text('Due'), findsNothing);
+    expect(find.text('Chimney Sweep'), findsOneWidget, reason: 'the control');
   });
 
   // ── queue 31, Jose's 1 and 4: money on the list and on the job ──

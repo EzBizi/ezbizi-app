@@ -388,15 +388,37 @@ class _EstimatesTabState extends State<EstimatesTab> {
     final open = _openId;
 
     if (_rows.isEmpty && open == null) {
+      // The first one starts here too, not only from the header (UI review,
+      // 2026-10-08), for somebody allowed to add one.
+      final first =
+          _term == null &&
+          _status == null &&
+          _me.refusal('estimates.create', 'add an estimate') == null &&
+          _me.franchises.isNotEmpty;
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            _term != null
-                ? 'Nothing matches "$_term".'
-                : _status == null
-                ? 'No estimates yet.'
-                : 'No ${estimateStatus(_status).$1.toLowerCase()} estimates.',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _term != null
+                    ? 'Nothing matches "$_term".'
+                    : _status == null
+                    ? 'No estimates yet.'
+                    : 'No ${estimateStatus(_status).$1.toLowerCase()} estimates.',
+              ),
+              if (first) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  key: const ValueKey('estimate-new-empty'),
+                  onPressed: () => _open('new'),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('New estimate'),
+                ),
+              ],
+            ],
           ),
         ),
       );

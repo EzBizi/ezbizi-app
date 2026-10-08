@@ -86,6 +86,18 @@ void main() {
       expect(_server.lastList?['status'], 'sent');
     });
 
+    // UI review, 2026-10-08: the empty list says what to do, with the button.
+    testWidgets('with none yet, the empty list offers the first one', (
+      tester,
+    ) async {
+      await _estimates(tester, empty: true);
+
+      expect(find.text('No estimates yet.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('estimate-new-empty')));
+      await tester.pumpAndSettle();
+      expect(find.text('New estimate'), findsWidgets);
+    });
+
     testWidgets('searches by number or customer when asked', (tester) async {
       await _estimates(tester);
 
@@ -708,12 +720,14 @@ Future<Session> _session(WidgetTester tester, List<String> permissions) async {
 Future<void> _estimates(
   WidgetTester tester, {
   Size size = const Size(1280, 900),
+  bool empty = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final session = await _session(tester, _writes);
+  if (empty) _server.estimates.clear();
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
