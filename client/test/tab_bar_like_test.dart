@@ -64,6 +64,73 @@ void main() {
 
     expect(tester.takeException(), isA<AssertionError>());
   });
+
+  // UI audit, 2026-10-08: on a phone a strip ran past the edge with nothing
+  // saying so, a selected tab could sit out of sight, and a screen reader
+  // heard every tab as a checkbox.
+  const many = [
+    'General',
+    'Map',
+    'PC Specs',
+    'Files',
+    'Camera Monitoring',
+    'Desktop Monitoring',
+  ];
+
+  testWidgets('on a phone the strip fades where tabs go on past the edge', (
+    tester,
+  ) async {
+    await _phone(tester);
+    await _pump(tester, labels: many, at: 0);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tab-bar-more')), findsOneWidget);
+
+    // The last tab selected: brought into view, and nothing lies past it.
+    await _pump(tester, labels: many, at: 5);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.text('Desktop Monitoring')).right,
+      lessThanOrEqualTo(390),
+    );
+    expect(find.byKey(const Key('tab-bar-more')), findsNothing);
+  });
+
+  testWidgets('a strip that fits has no fade, and a desk wraps instead', (
+    tester,
+  ) async {
+    await _phone(tester);
+    await _pump(tester, labels: ['Jobs', 'Estimates'], at: 0);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tab-bar-more')), findsNothing);
+
+    tester.view.physicalSize = const Size(1200, 800);
+    await _pump(tester, labels: many, at: 0);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tab-bar-more')), findsNothing);
+  });
+
+  testWidgets('a tab is a selected button to a screen reader, not a checkbox', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, labels: ['Records', 'Contracts'], at: 1);
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Contracts')),
+      isSemantics(isButton: true, isSelected: true, hasCheckedState: false),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Records')),
+      isSemantics(isButton: true, isSelected: false),
+    );
+    semantics.dispose();
+  });
+}
+
+Future<void> _phone(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
 }
 
 Future<void> _pump(

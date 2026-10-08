@@ -38,6 +38,23 @@ void main() {
     expect(card, findsNothing);
   });
 
+  testWidgets('in a narrow window the card drops the QR code and fits', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final session = await _session(tester, _Server(), _prefs());
+    await tester.pumpWidget(_wrap(PhoneAppCard(session: session)));
+    await tester.pumpAndSettle();
+
+    // An overflow here would fail the test on its own.
+    expect(find.byKey(const Key('phone-app-card')), findsOneWidget);
+    expect(find.byKey(const Key('get-the-apps-qr')), findsNothing);
+    expect(find.byKey(const Key('get-the-apps-ios')), findsOneWidget);
+    expect(find.byKey(const Key('phone-app-no-thanks')), findsOneWidget);
+  });
+
   testWidgets('nobody with the phone app is asked', (tester) async {
     final session = await _session(tester, _Server(), _prefs(used: true));
     await tester.pumpWidget(_wrap(PhoneAppCard(session: session)));

@@ -82,51 +82,70 @@ class PhoneAppCard extends StatelessWidget {
         }
 
         final theme = Theme.of(context);
+        final noThanks = TextButton.icon(
+          key: const Key('phone-app-no-thanks'),
+          onPressed: () => session.setPreference(_dismissed, true),
+          iconAlignment: IconAlignment.end,
+          icon: const Icon(Icons.close, size: 16),
+          label: const Text('No thanks'),
+        );
         return Padding(
           key: const Key('phone-app-card'),
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
               border: Border.all(color: EzBiziTheme.edge(context)),
               borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _Qr(size: 104),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Narrow (a small browser window): no QR code beside the words,
+            // which would leave them a sliver; the store buttons do its job.
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final narrow = box.maxWidth < 640;
+                final words = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'EzBizi on your phone',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      narrow
+                          ? 'Jobs, calls and alerts in your pocket, with '
+                                "notifications even when EzBizi isn't open."
+                          : 'Jobs, calls and alerts in your pocket, with '
+                                "notifications even when EzBizi isn't open. "
+                                "Scan with your phone's camera to install.",
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const _StoreButtons(),
+                  ],
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        'EzBizi on your phone',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Jobs, calls and alerts in your pocket, with '
-                        "notifications even when EzBizi isn't open. Scan with "
-                        "your phone's camera to install.",
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 10),
-                      const _StoreButtons(),
+                      words,
+                      Align(alignment: Alignment.centerRight, child: noThanks),
                     ],
-                  ),
-                ),
-                TextButton.icon(
-                  key: const Key('phone-app-no-thanks'),
-                  onPressed: () => session.setPreference(_dismissed, true),
-                  iconAlignment: IconAlignment.end,
-                  icon: const Icon(Icons.close, size: 16),
-                  label: const Text('No thanks'),
-                ),
-              ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _Qr(size: 84),
+                    const SizedBox(width: 16),
+                    Expanded(child: words),
+                    noThanks,
+                  ],
+                );
+              },
             ),
           ),
         );
