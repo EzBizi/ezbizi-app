@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0393',
+      date: '8 Oct 2026',
+      items: [
+        'Leads: an Overdue filter beside Unreplied shows only the customers waiting too long (the red rows).',
+        'Workiz leads: a branch that had never received a Workiz lead now imports new ones; one missed New Jersey enquiry from Oct 7 appears.',
+        'Invitation emails now include the link to download the EzBizi apps.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0392',
       date: '8 Oct 2026',
       items: [
