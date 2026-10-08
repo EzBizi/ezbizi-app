@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.3
+Stable tag: 1.26.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.4 =
+* NEW: /r/<code> on every site forwards a short review link to the site's
+  reviews page.
+* CHANGE: No membership offer after a "not so great" review; that
+  thank-you is centred. The Google button stays on both paths.
 
 = 1.26.3 =
 * NEW: A customer who came by their review link is not asked for their

@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.3
+ * Version:           1.26.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.3';
+const EZBIZI_VERSION = '1.26.4';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -528,6 +528,25 @@ function ezbizi_is_link_key($key) {
 }
 
 add_shortcode('ezbizi', 'ezbizi_shortcode');
+
+/*
+ * /r/Ab3xK9m: the short review link a job's thank-you text carries (Jose,
+ * 2026-10-08: ~40 characters instead of ~140). The code is EzBizi's; this
+ * only forwards it to the site's own reviews page, which sends it back.
+ */
+add_action('init', function () {
+    $path = (string) wp_parse_url(isset($_SERVER['REQUEST_URI']) ? wp_unslash($_SERVER['REQUEST_URI']) : '', PHP_URL_PATH);
+
+    if (! preg_match('~^/r/([A-Za-z0-9]{7})/?$~', $path, $m)) {
+        return;
+    }
+
+    $page = trim((string) ezbizi_value('review_link'));
+    $page = preg_match('~^https?://~i', $page) ? $page : home_url('/reviews/');
+    nocache_headers();
+    wp_redirect($page . (strpos($page, '?') === false ? '?' : '&') . 'c=' . $m[1], 302);
+    exit;
+}, 1);
 
 add_action('init', function () {
     $payload = ezbizi_payload();

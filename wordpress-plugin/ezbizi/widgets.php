@@ -1968,6 +1968,9 @@ function ezbizi_review_faces_shortcode($atts) {
         . $s . ' .ezbizi-rf-skip{display:block;margin:10px auto 0;min-height:44px}'
         . $s . ' .ezbizi-rf-check{display:flex;align-items:center;justify-content:center;width:56px;height:56px;margin:0 auto 10px;border:2px solid #22B24C;border-radius:50%;background:rgba(34,178,76,.12);color:#22B24C;font-size:28px;font-weight:900}'
         . $s . ' .ezbizi-rf-member{text-align:left}'
+        // After a not-so-great review: the thank-you, centred (Jose, 2026-10-08).
+        . $s . ' [data-step=sent]{text-align:center}'
+        . $s . ' [data-step=sent] .ezbizi-rf-btn{margin-left:auto;margin-right:auto}'
         . $s . ' .ezbizi-rf-member h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px}'
         . $s . ' .ezbizi-rf-plan{margin:8px 0;padding:14px;border:1px solid rgba(127,127,127,.35);border-radius:12px;background:rgba(127,127,127,.08)}'
         . $s . ' .ezbizi-rf-plan strong{font-size:17px}'
@@ -2095,7 +2098,7 @@ f.addEventListener('submit',function(e){
   if(ts)v.turnstile=ts;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
   return fetch(api+'/api/v1/web/form',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
-  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');member();})
+  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });
 })();</script>";

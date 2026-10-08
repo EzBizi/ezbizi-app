@@ -78,10 +78,10 @@ class MembershipsPublicTest extends TestCase
 
             return [$job->review_link, $job];
         });
-        $this->assertStringStartsWith('https://chimney.test/reviews/?c=', $link);
-        $this->assertStringNotContainsString('201', $link);
-        $this->assertStringNotContainsString('marta', strtolower($link));
-        parse_str(parse_url($link, PHP_URL_QUERY), $q);
+        // Short (Jose, 2026-10-08): the site's /r/ and a 7-character code, nothing personal.
+        $this->assertMatchesRegularExpression('~^https://chimney\.test/r/[A-Za-z0-9]{7}$~', $link);
+        $q = ['c' => basename($link)];
+        $this->assertSame($link, $this->inTenant($this->t['org'], fn () => $job->review_link), 'the same job reuses its code');
 
         $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'c' => $q['c']])->assertOk();
         $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->first();
@@ -89,7 +89,7 @@ class MembershipsPublicTest extends TestCase
         $this->assertSame($job->id, $event->payload['after']['job_id']);
 
         $this->travel(CustomerLinks::REVIEW_DAYS + 1)->days();
-        $this->assertNull(CustomerLinks::customerId($q['c']));
+        $this->assertNull($this->inTenant($this->t['org'], fn () => CustomerLinks::customerId($q['c'])));
     }
 
     /** Jose, 2026-10-08: each area's subdomain has its own Google profile, so the job's area picks the site. */
@@ -111,8 +111,8 @@ class MembershipsPublicTest extends TestCase
             return [$job($area->id)->review_link, $job(null)->review_link];
         });
 
-        $this->assertStringStartsWith('https://nj.chimney.test/reviews/?c=', $links[0]);
-        $this->assertStringStartsWith('https://chimney.test/reviews/?c=', $links[1]);
+        $this->assertStringStartsWith('https://nj.chimney.test/r/', $links[0]);
+        $this->assertStringStartsWith('https://chimney.test/r/', $links[1]);
     }
 
     /** Jose, 2026-10-08: a known customer's sad form asks only what happened; the lead still says who. */
