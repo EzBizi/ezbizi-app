@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0396',
+      date: '8 Oct 2026',
+      items: [
+        'On a phone, a row of tabs that runs past the screen edge now fades there so you can see there\'s more, and the tab you\'re on always scrolls into view.',
+        'Screen readers now announce tabs as tabs (they were read as checkboxes).',
+        'The "EzBizi on your phone" card fits a narrow browser window.',
+        'Every dropdown shows a dropdown arrow instead of a magnifier, so it no longer looks like a search box.',
+        'Leads: an empty list names its source and says when LS Call is left out of All; the In All toggles are labelled; long source names fit in the left rail.',
+        'Communication: the Users tab no longer calls itself Team; Settings › Connection says No account instead of a contradicting Uses the organization; an empty Dial has an Open Settings button.',
+        'Jobs: a job with no date that is already done now shows under Past, not Upcoming.',
+        'Jobs: the Money and Due columns appear only when a job on the list has money, so Title and Where get the room. The Estimates empty list has a New estimate button.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0395',
       date: '8 Oct 2026',
       items: [
