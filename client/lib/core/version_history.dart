@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0389',
+      date: '8 Oct 2026',
+      items: [
+        'Website forms and chat now show a "verify you are human" box (Cloudflare Turnstile) on top of the existing robot check.',
+        'Websites can take online bookings: customers pick a day and arrival window from your real availability, and dispatchers approve them in Leads › Online Booking. Website forms now ask for the ZIP code.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0388',
       date: '8 Oct 2026',
       items: [
