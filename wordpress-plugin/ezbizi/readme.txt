@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.6
+Stable tag: 1.26.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,11 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.7 =
+* CHANGE: The review faces no longer offer the membership; it is sent as
+  its own text after a happy review.
+* CHANGE: No scrollbar on phones.
 
 = 1.26.6 =
 * CHANGE: A short booking step sits centred in the fixed-size card.

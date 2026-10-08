@@ -1867,8 +1867,8 @@ check('light by default', str_contains($faces, 'color:#fff}'), false);
 // Jose, 2026-10-05: a review reaches the customer's record for the Membership offer.
 check('the review is told to EzBizi', str_contains($faces, "/api/v1/web/review'"), true);
 check('with the personal link when the page has one', str_contains($faces, "get('c')") && str_contains($faces, 'if(c)v.c=c'), true);
-check('a happy face with a link goes straight to Google', str_contains($faces, "if(c){tell({rating:'happy'});show('happy');member();}else show('ask')"), true);
-check('and offers their membership, or the plans with Join (2026-10-08)', str_contains($faces, "'/api/v1/web/membership?key='") && str_contains($faces, "'/api/v1/web/membership/join'"), true);
+check('a happy face with a link goes straight to Google', str_contains($faces, "if(c){tell({rating:'happy'});show('happy');}else show('ask')"), true);
+check('and no membership offer on the page (Jose, 2026-10-08: it is a text of its own)', str_contains($faces, "'/api/v1/web/membership/join'"), false);
 check('without one it asks, and can be skipped', str_contains($faces, 'data-step="ask"') && str_contains($faces, 'ezbizi-rf-skip'), true);
 check('a sad face is told too, with what happened', str_contains($faces, "tell({rating:'sad'"), true);
 
