@@ -392,11 +392,13 @@ class ActionRunner
             ];
         }
 
-        // A thank-you whose review link is missing (the job's franchise has no
-        // site with one set) is skipped, not sent with a hole (Web, 2026-10-08).
-        if ($subject !== null && $subject->getAttribute('review_link') === null
-            && preg_match('/\{\{\s*review_link\s*\}\}/i', json_encode($action))) {
-            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: there is no review link for this job.'];
+        // A message whose link is missing (no site with a review link; no
+        // membership to offer) is skipped, not sent with a hole (Web, 2026-10-08).
+        foreach (['review_link' => 'review link', 'membership_link' => 'membership link'] as $field => $words) {
+            if ($subject !== null && blank($subject->getAttribute($field))
+                && preg_match('/\{\{\s*'.$field.'\s*\}\}/i', json_encode($action))) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "Skipped: there is no {$words} for this."];
+            }
         }
 
         return match ($type) {

@@ -23,7 +23,7 @@ class ReviewLinkSkipTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
 
-        [$withLink, $without] = $this->inTenant($t['org'], function () use ($t) {
+        [$withLink, $without, $noOffer] = $this->inTenant($t['org'], function () use ($t) {
             $customer = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Marta Quill']);
             $job = Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id,
                 'number' => 'J-1', 'title' => 'Sweep', 'status' => 'Done', 'currency' => 'USD']);
@@ -33,11 +33,13 @@ class ReviewLinkSkipTest extends TestCase
             return [
                 $runner->run(['type' => 'sms.send', 'to' => 'customer:', 'body' => 'Thanks! {{ review_link }}'], $event, $job),
                 $runner->run(['type' => 'sms.send', 'to' => 'customer:', 'body' => 'Thanks!'], $event, $job),
+                $runner->run(['type' => 'sms.send', 'to' => 'customer:', 'body' => 'Join: {{membership_link}}'], $event, $customer),
             ];
         });
 
         $this->assertTrue($withLink['skipped'] ?? false);
         $this->assertStringContainsString('no review link', $withLink['detail']);
         $this->assertArrayNotHasKey('skipped', $without, 'only a step that names the link is held back');
+        $this->assertTrue($noOffer['skipped'] ?? false, 'a membership offer with no link is held back too');
     }
 }
