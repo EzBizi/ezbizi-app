@@ -239,6 +239,8 @@ new token" in EzBizi for that.
   Online Booking for a dispatcher. Robot check and Turnstile box.
 * NEW: Every EzBizi and Elementor form asks for a ZIP code when it has no
   ZIP question of its own, so leads can be checked against availability.
+* NEW: The review faces show a customer who came by their link their
+  membership, or the plans with a one-tap Join.
 
 = 1.25.1 =
 * FIX: Cloudflare's Turnstile script loads only on pages with an Elementor

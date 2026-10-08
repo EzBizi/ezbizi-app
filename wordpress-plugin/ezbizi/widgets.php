@@ -2012,7 +2012,8 @@ function ezbizi_review_faces_shortcode($atts) {
         . '<p class="ezbizi-rf-note" role="status" aria-live="polite"></p></form></div>'
         . '<div data-step="sent" hidden><p>' . $t('thanks') . '</p>'
         . ($review !== '' && ! empty($p['ask_public']) ? '<p>' . $t('public_prompt') . '</p>' . $review : '')
-        . '</div></div>';
+        // The membership, for a customer who came by their link (Membership, 2026-10-08).
+        . '</div><div class="ezbizi-rf-member" hidden style="margin-top:18px"></div></div>';
 
     $out .= "<script>(function(){
 var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
@@ -2021,10 +2022,28 @@ var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) .
 var c='';try{c=new URLSearchParams(location.search).get('c')||'';}catch(x){}
 // The review itself, for the customer's record and the Membership offer. Never waited on.
 function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
+// Their membership, or the plans with one-tap Join, for a known customer only (Jose, 2026-10-08).
+function member(){if(!c||w._ezm)return;w._ezm=1;var m=w.querySelector('.ezbizi-rf-member');
+  function el(t,s,txt){var e=document.createElement(t);if(s)e.className=s;if(txt!=null)e.textContent=txt;return e;}
+  function money(minor,cur){try{return new Intl.NumberFormat('en-US',{style:'currency',currency:cur||'USD'}).format(minor/100);}catch(x){return '$'+(minor/100).toFixed(2);}}
+  function isMember(d){m.innerHTML='';var p=el('p','',null);var b=el('strong',''," . wp_json_encode(__("You're a member", 'ezbizi')) . ");p.appendChild(b);
+    p.appendChild(document.createTextNode(': '+d.plan_name+(d.ends_on?' '+" . wp_json_encode(__('until', 'ezbizi')) . "+' '+new Date(d.ends_on+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'')));m.appendChild(p);m.hidden=false;}
+  fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+encodeURIComponent(c),{headers:{'Accept':'application/json'}})
+  .then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(!d)return;if(d.member){isMember(d.member);return;}if(!d.plans||!d.plans.length)return;
+    m.appendChild(el('h3',''," . wp_json_encode(__('Join our membership', 'ezbizi')) . "));
+    d.plans.forEach(function(pl){var box=el('div','ezbizi-rf-plan',null);box.style.cssText='border:1px solid currentColor;border-radius:10px;padding:12px;margin:8px 0;opacity:.95';
+      box.appendChild(el('strong','',pl.name));if(pl.description)box.appendChild(el('p','',pl.description));
+      box.appendChild(el('p','',pl.billing==='monthly'?money(Math.round(pl.price_minor/12),pl.currency)+' '+" . wp_json_encode(__('a month', 'ezbizi')) . ":money(pl.price_minor,pl.currency)+' '+" . wp_json_encode(__('a year', 'ezbizi')) . "));
+      var j=el('button','ezbizi-rf-btn'," . wp_json_encode(__('Join', 'ezbizi')) . ");j.type='button';
+      j.addEventListener('click',function(){j.disabled=true;fetch(api+'/api/v1/web/membership/join',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({key:key,c:c,plan_id:pl.id})})
+        .then(function(r){return r.ok?r.json():null;}).then(function(x){if(x&&x.member)isMember(x.member);else j.disabled=false;}).catch(function(){j.disabled=false;});});
+      box.appendChild(j);m.appendChild(box);});
+    m.hidden=false;}).catch(function(){});}
 function who(raw){var s=String(raw||'').trim(),o={};if(!s)return o;if(s.indexOf('@')>-1)o.email=s;else o.phone=s;return o;}
 Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){
   var go=b.getAttribute('data-go');
-  if(go==='happy'){if(c){tell({rating:'happy'});show('happy');}else show('ask');return;}
+  if(go==='happy'){if(c){tell({rating:'happy'});show('happy');member();}else show('ask');return;}
   show(go);
 });});
 var whoBox=w.querySelector('.ezbizi-rf-who');
@@ -2045,7 +2064,7 @@ f.addEventListener('submit',function(e){
   if(ts)v.turnstile=ts;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
   return fetch(api+'/api/v1/web/form',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
-  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
+  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');member();})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });
 })();</script>";
