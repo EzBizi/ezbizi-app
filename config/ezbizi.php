@@ -27,7 +27,7 @@
  */
 $hosts = [
     'customer' => env('EZBIZI_HOST_CUSTOMER', 'https://app.ezbizi.com'),
-    'staff'    => env('EZBIZI_HOST_STAFF', 'https://dev.ezbizi.com'),
+    'staff' => env('EZBIZI_HOST_STAFF', 'https://dev.ezbizi.com'),
 ];
 
 return [
@@ -62,9 +62,9 @@ return [
         // a schemeless value — and a null host builds `ssl://:443`, which fails
         // to connect and reports a permanently red certificate with a message
         // blaming the certificate rather than the configuration.
-        'host'    => env('EZBIZI_TLS_HOST')
+        'host' => env('EZBIZI_TLS_HOST')
             ?: (parse_url($hosts['customer'], PHP_URL_HOST) ?: $hosts['customer']),
-        'port'    => (int) env('EZBIZI_TLS_PORT', 443),
+        'port' => (int) env('EZBIZI_TLS_PORT', 443),
 
         // Short on purpose: this runs inside a staff page request, and a health
         // screen that hangs waiting for a socket is reporting nothing while
@@ -290,4 +290,22 @@ return [
      * on to test exactly that.
      */
     'web_form_captcha' => filter_var(env('EZBIZI_WEB_FORM_CAPTCHA', true), FILTER_VALIDATE_BOOL),
+
+    /*
+     * Cloudflare Turnstile, the box a visitor ticks (Jose, 2026-10-08: "an
+     * actual captcha", the proof of work alone is one any AI clicks through).
+     * Cloudflare account Development@ezbizi.com; keys in Credentials/
+     * "Cloudflare Turnstile.txt". The free plan takes 10 hostnames a widget and
+     * a root domain covers its subdomains, hence two. A site whose domain is in
+     * neither keeps the proof of work alone (Turnstile::for).
+     */
+    'turnstile' => [
+        ['site' => env('TURNSTILE_SITE_1', ''), 'secret' => env('TURNSTILE_SECRET_1', ''), 'domains' => [
+            'a-1chimney.com', 'a-1chimneysweep.com', 'a-1garagedoorrepair.com', 'air75hvac.com', 'angisweep.com',
+            'calla1.com', 'chimneystar.com', 'crestln.com', 'everdoors.com', 'premiergaragerepair.net',
+        ]],
+        ['site' => env('TURNSTILE_SITE_2', ''), 'secret' => env('TURNSTILE_SECRET_2', ''), 'domains' => [
+            'roofirst.com', 'speedychimneysweep.com', 'speedygaragedoors.com', 'us-garagedoorrepair.com', 'usgaragerepair.net',
+        ]],
+    ],
 ];

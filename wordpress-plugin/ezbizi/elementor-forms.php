@@ -119,12 +119,44 @@ add_action('elementor_pro/forms/validation', function ($record, $handler) {
     }
 
     // phpcs:ignore WordPress.Security.NonceVerification -- Elementor verified the form
-    if (! ezbizi_challenge_passes(isset($_POST['ezbizi_pow']) ? wp_unslash($_POST['ezbizi_pow']) : '')) {
+    if (! ezbizi_challenge_passes(isset($_POST['ezbizi_pow']) ? wp_unslash($_POST['ezbizi_pow']) : '')
+        // phpcs:ignore WordPress.Security.NonceVerification -- as above
+        || ! ezbizi_turnstile_passes(isset($_POST['cf-turnstile-response']) ? wp_unslash($_POST['cf-turnstile-response']) : '')) {
         $message = __('We could not confirm you are a person. Please send the form again.', 'ezbizi');
         $handler->add_error('ezbizi_pow', $message);
         $handler->add_error_message($message);
     }
 }, 5, 2);
+
+/**
+ * The Turnstile box's token, checked with Cloudflare. True where EzBizi has no
+ * widget for this domain (the proof of work stands alone there), and when
+ * Cloudflare cannot be reached, rather than losing the enquiry.
+ */
+function ezbizi_turnstile_passes($token) {
+    $t = ezbizi_turnstile();
+
+    if ($t === null) {
+        return true;
+    }
+
+    if ((string) $token === '') {
+        return false;
+    }
+
+    $r = wp_remote_post('https://challenges.cloudflare.com/turnstile/v0/siteverify', array(
+        'timeout' => 10,
+        'body' => array('secret' => $t['secret'], 'response' => (string) $token),
+    ));
+
+    if (is_wp_error($r)) {
+        return true;
+    }
+
+    $answer = json_decode((string) wp_remote_retrieve_body($r), true);
+
+    return is_array($answer) && ! empty($answer['success']);
+}
 
 /*
  * The browser half: solve on the first touch of a form, and hold a submit
@@ -135,8 +167,16 @@ add_action('wp_footer', function () {
         return;
     }
 
+    $ts = ezbizi_turnstile();
+
     echo "<script>(function(){
-var api=" . wp_json_encode(esc_url_raw(rest_url('ezbizi/v1/challenge'))) . ";
+var api=" . wp_json_encode(esc_url_raw(rest_url('ezbizi/v1/challenge'))) . ",tsKey=" . wp_json_encode($ts === null ? '' : $ts['site']) . ";
+// The Turnstile box above each form's button; a form drawn later (a popup) gets it on first touch.
+function box(f){if(!tsKey||f.querySelector('.cf-turnstile'))return;
+  var d=document.createElement('div');d.className='cf-turnstile';d.setAttribute('data-sitekey',tsKey);d.setAttribute('data-size','flexible');d.style.margin='0 0 12px';d.style.width='100%';
+  var s=f.querySelector('.elementor-field-type-submit');(s?s.parentNode:f).insertBefore(d,s);
+  if(window.turnstile)try{turnstile.render(d);}catch(e){}}
+Array.prototype.forEach.call(document.querySelectorAll('form.elementor-form'),box);
 function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
 function solve(c){var enc=new TextEncoder(),n=0;
   function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
@@ -150,11 +190,13 @@ function prep(f){if(f._ezPow)return f._ezPow;
     var i=f.querySelector('input[name=ezbizi_pow]');if(!i){i=document.createElement('input');i.type='hidden';i.name='ezbizi_pow';f.appendChild(i);}i.value=a;});
   f._ezPow.catch(function(){f._ezPow=null;});return f._ezPow;}
 function form(e){return e.target&&e.target.closest?e.target.closest('form.elementor-form'):null;}
-document.addEventListener('focusin',function(e){var f=form(e);if(f)prep(f);},true);
+document.addEventListener('focusin',function(e){var f=form(e);if(f){box(f);prep(f);}},true);
 document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
   var i=f.querySelector('input[name=ezbizi_pow]');
   // An answer is spent by one submission; the next one solves again.
-  if((i&&i.value)||f._ezGo){f._ezGo=0;setTimeout(function(){if(i)i.value='';f._ezPow=null;prep(f);},0);return;}
+  if((i&&i.value)||f._ezGo){f._ezGo=0;setTimeout(function(){if(i)i.value='';f._ezPow=null;prep(f);
+    // A token is spent by one submission too.
+    var b=f.querySelector('.cf-turnstile');if(b&&window.turnstile)try{turnstile.reset(b);}catch(e){}},1500);return;}
   e.preventDefault();e.stopImmediatePropagation();
   // One send per wait: a second click while it solves must not queue a second enquiry.
   if(f._ezWait)return;f._ezWait=1;
@@ -162,7 +204,7 @@ document.addEventListener('submit',function(e){var f=form(e);if(!f)return;
   // Unsolvable here (no network, an old browser): send anyway, so the visitor sees the site's answer, never silence.
   prep(f).then(go,go);
 },true);
-})();</script>";
+})();</script>" . ($ts === null ? '' : ezbizi_turnstile_script());
 }, 20);
 
 /**

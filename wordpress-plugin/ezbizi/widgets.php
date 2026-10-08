@@ -2007,6 +2007,7 @@ function ezbizi_review_faces_shortcode($atts) {
         . $field('email', 'Email', 'email')
         . $field('feedback', 'What happened?', 'textarea')
         . '<input class="ezbizi-rf-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />'
+        . ezbizi_turnstile_box()
         . '<p><button type="submit" class="ezbizi-rf-btn">' . $t('submit') . '</button></p>'
         . '<p class="ezbizi-rf-note" role="status" aria-live="polite"></p></form></div>'
         . '<div data-step="sent" hidden><p>' . $t('thanks') . '</p>'
@@ -2035,14 +2036,16 @@ f.addEventListener('submit',function(e){
   e.preventDefault();
   if(f.elements.website.value!==''){show('sent');return;}
   if(!f.checkValidity()){f.reportValidity();return;}
+  var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('button');b.disabled=true;
   var g=function(n){return f.elements[n].value;};
   var v={key:" . wp_json_encode($key) . ",name:g('name'),email:g('email'),phone:g('phone'),page_url:location.href,
     fields:{'Rating':'Not happy','Name':g('name'),'Phone':g('phone'),'Email':g('email'),'What happened?':g('feedback')}};
   // The robot check every EzBizi form carries (Jose, 2026-10-06).
+  if(ts)v.turnstile=ts;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
   return fetch(api+'/api/v1/web/form',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
-  .then(function(r){if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
+  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });
 })();</script>";

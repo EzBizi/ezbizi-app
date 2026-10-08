@@ -366,6 +366,7 @@ function widget_payload_at($position) {
 function widget_payload($enabled = true) {
     $base = json_decode(payload_json(['phone' => '555-0100']), true);
     $base['public_key'] = 'pk_testkey';
+    $base['turnstile'] = ['site' => '0xTESTSITE', 'secret' => '0xTESTSECRET'];
     $base['widgets'] = [
         'chat' => [
             'enabled' => $enabled,
@@ -890,6 +891,9 @@ check('the form posts to the form endpoint', str_contains($form, "'/api/v1/web/f
 check('a file question is a file picker', str_contains($form, '<input type="file"'), true);
 check('a question can wait for another answer', str_contains($form, 'data-if-field="Service" data-if-value="Repair"'), true);
 check('the CAPTCHA is always on (Jose, 2026-10-06)', str_contains($form, 'captcha=true') && str_contains($form, 'function ezSolve(api)'), true);
+check('the Turnstile box sits in the form (Jose, 2026-10-08)', str_contains($form, 'class="cf-turnstile" data-sitekey="0xTESTSITE"'), true);
+check('and its token goes with the form', str_contains($form, 'if(ts)v.turnstile=ts'), true);
+check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);
 check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), true);

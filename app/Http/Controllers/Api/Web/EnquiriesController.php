@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\LeadConversation;
+use App\Models\User;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
+use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
-use App\Models\User;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
+use App\Support\Web\Turnstile;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -85,9 +87,12 @@ class EnquiriesController extends Controller
             'marketing_consent_text' => ['nullable', 'string', 'max:500'],
             // The robot check every website form carries (2026-10-06).
             'captcha' => ['nullable', 'string', 'max:2000'],
+            // And the box the visitor ticks (2026-10-08).
+            'turnstile' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        if (config('ezbizi.web_form_captcha') && ! FormChallenge::passes($input['captcha'] ?? null)) {
+        if (config('ezbizi.web_form_captcha') && (! FormChallenge::passes($input['captcha'] ?? null)
+            || (Turnstile::required($site) && ! Turnstile::passes($site, $input['turnstile'] ?? null)))) {
             return response()->json(['message' => 'The chat could not confirm you are a person. Please try again.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
         }
@@ -222,6 +227,7 @@ class EnquiriesController extends Controller
             'files' => ['sometimes', 'array', 'max:5'],
             'files.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,txt'],
             'captcha' => ['nullable', 'string', 'max:2000'],
+            'turnstile' => ['nullable', 'string', 'max:4000'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -229,7 +235,8 @@ class EnquiriesController extends Controller
         return $this->tenant->run($organization, function () use ($site, $input, $request): JsonResponse {
             $form = WebWidget::resolvedFor($site)['form'] ?? [];
 
-            if ((config('ezbizi.web_form_captcha') || ! empty($form['captcha'])) && ! FormChallenge::passes($input['captcha'] ?? null)) {
+            if ((config('ezbizi.web_form_captcha') || ! empty($form['captcha'])) && (! FormChallenge::passes($input['captcha'] ?? null)
+                || (Turnstile::required($site) && ! Turnstile::passes($site, $input['turnstile'] ?? null)))) {
                 return response()->json(['message' => 'The form could not confirm you are a person. Please try again.'],
                     Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
             }
@@ -290,7 +297,7 @@ class EnquiriesController extends Controller
         $subject = $this->tenant->runWithoutTenant(fn () => User::query()->find($user));
         abort_if($subject === null || $subject->avatar_path === null, Response::HTTP_NOT_FOUND);
 
-        return app(\App\Support\Files\FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
+        return app(FileStore::class)->serve($subject->avatar_path, disposition: 'inline');
     }
 
     /** GET /api/v1/web/form/challenge — the puzzle a CAPTCHA'd form solves first. */

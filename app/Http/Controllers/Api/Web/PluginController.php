@@ -7,9 +7,11 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\ChatPeople;
 use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\SiteLists;
+use App\Support\Web\Turnstile;
 use App\Support\Web\ValueResolver;
 use App\Support\Web\WebsiteEnquiries;
 use App\Support\Web\WidgetPresets;
@@ -149,6 +151,16 @@ class PluginController extends Controller
                 'public_key' => $site->public_key,
 
                 /*
+                 * The Turnstile box for this site's domain, or null. The secret
+                 * rides along because Elementor's forms post to WordPress, not
+                 * here, so the plugin checks those itself. This payload goes only
+                 * to the site holding the token, never to a browser.
+                 * ponytail: the secret is shared by every domain on the widget;
+                 * a per-site proxy check if that ever matters.
+                 */
+                'turnstile' => Turnstile::for($site),
+
+                /*
                  * The whole look and shape of the widgets, so a shortcode on
                  * the customer's site is `[ezbizi_chat]` and nothing else. It
                  * arrives with the values and refreshes with them, which is why
@@ -273,6 +285,7 @@ class PluginController extends Controller
     {
         return response()->json(['message' => $message], Response::HTTP_UNAUTHORIZED);
     }
+
     /**
      * What the website publishes, with the derived values filled in.
      *
@@ -305,7 +318,7 @@ class PluginController extends Controller
     private static function withChatPeople(array $published, WebSite $site): array
     {
         if (isset($published['chat'])) {
-            $published['chat']['team'] = \App\Support\Web\ChatPeople::team($site);
+            $published['chat']['team'] = ChatPeople::team($site);
             $published['chat']['company'] = (string) ($site->company?->name ?? '');
         }
 

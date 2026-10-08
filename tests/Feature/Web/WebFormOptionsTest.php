@@ -10,6 +10,7 @@ use App\Support\Web\WidgetDefaults;
 use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -50,6 +51,31 @@ class WebFormOptionsTest extends TestCase
             + ['captcha' => $this->solve($this->getJson('/api/v1/web/form/challenge')->json())])->assertCreated();
         $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi',
             'captcha' => $this->solve($this->getJson('/api/v1/web/form/challenge')->json())])->assertCreated();
+    }
+
+    /** Jose, 2026-10-08: "an actual captcha". Turnstile on top, once the site's plugin draws the box. */
+    public function test_a_turnstile_domain_needs_a_token_cloudflare_accepts(): void
+    {
+        config(['ezbizi.web_form_captcha' => true, 'ezbizi.turnstile' => [
+            ['site' => '0xSITE', 'secret' => '0xSECRET', 'domains' => ['a-1chimney.com']],
+        ]]);
+        [$site, $tenant] = $this->siteWithForm();
+        Http::fake(['challenges.cloudflare.com/*' => Http::sequence()
+            ->push(['success' => false])->push(['success' => true])->push(['success' => true])]);
+        $solved = fn () => $this->solve($this->getJson('/api/v1/web/form/challenge')->json());
+
+        // An older plugin draws no box, so none is asked of it.
+        $this->inTenant($tenant['org'], fn () => $site->forceFill(['plugin_version' => '1.24.5'])->save());
+        $this->postJson('/api/v1/web/form', $this->enquiry($site) + ['captcha' => $solved()])->assertCreated();
+        Http::assertNothingSent();
+
+        $this->inTenant($tenant['org'], fn () => $site->forceFill(['plugin_version' => '1.25.0'])->save());
+        $this->postJson('/api/v1/web/form', $this->enquiry($site) + ['captcha' => $solved()])->assertStatus(422);
+        $this->postJson('/api/v1/web/form', $this->enquiry($site) + ['captcha' => $solved(), 'turnstile' => 'bad'])->assertStatus(422);
+        $this->postJson('/api/v1/web/form', $this->enquiry($site) + ['captcha' => $solved(), 'turnstile' => 'good'])->assertCreated();
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi', 'captcha' => $solved()])->assertStatus(422);
+        $this->postJson('/api/v1/web/chat', ['key' => $site->public_key, 'message' => 'Hi', 'captcha' => $solved(), 'turnstile' => 'good'])->assertCreated();
+        Http::assertSent(fn ($r) => $r['secret'] === '0xSECRET' && $r['response'] === 'good');
     }
 
     public function test_a_forged_challenge_is_refused(): void

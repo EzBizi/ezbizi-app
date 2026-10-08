@@ -43,6 +43,39 @@ function ezbizi_public_key() {
         : '';
 }
 
+/** This site's Cloudflare Turnstile widget, `{site, secret}`, or null when EzBizi has none for its domain. */
+function ezbizi_turnstile() {
+    $payload = ezbizi_payload();
+    $t = isset($payload['turnstile']) && is_array($payload['turnstile']) ? $payload['turnstile'] : array();
+
+    return isset($t['site'], $t['secret']) && is_string($t['site']) && $t['site'] !== '' ? $t : null;
+}
+
+/** Cloudflare's script, once per page. */
+function ezbizi_turnstile_script() {
+    static $done = false;
+
+    if ($done) {
+        return '';
+    }
+
+    $done = true;
+
+    return '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>';
+}
+
+/**
+ * The "verify you are human" box (Jose, 2026-10-08: "an actual captcha").
+ * Turnstile puts the visitor's token in a hidden `cf-turnstile-response`
+ * inside it; ezTs() reads that, the server checks it (Turnstile.php).
+ */
+function ezbizi_turnstile_box() {
+    $t = ezbizi_turnstile();
+
+    return $t === null ? '' : '<div class="cf-turnstile" data-sitekey="' . esc_attr($t['site']) . '" data-size="flexible" style="margin:0 0 12px"></div>'
+        . ezbizi_turnstile_script();
+}
+
 /** The API base, for the browser to call. */
 function ezbizi_api_base() {
     $settings = ezbizi_settings();
@@ -356,6 +389,7 @@ function ezbizi_form_shortcode($atts) {
             . esc_html(ezbizi_widget_text($config, 'antibot_label', "I'm not a robot")) . '</span></label></p>';
     }
 
+    $out .= ezbizi_turnstile_box();
     $out .= '<p><button type="submit" class="ezbizi-form-submit">' . esc_html(ezbizi_widget_text($config, 'button', 'Send')) . '</button></p>';
     $out .= '<p class="ezbizi-form-note" role="status" aria-live="polite"></p>';
     $out .= '</form>';
@@ -382,6 +416,7 @@ f.addEventListener('submit',function(e){
   var bot=f.querySelector('.ezbizi-antibot-box');
   if(bot&&!bot.checked){note.textContent=" . wp_json_encode(__('Please tick the box to show you are not a robot.', 'ezbizi')) . ";return;}
   if(!f.checkValidity()){f.reportValidity();return;}
+  var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('button');b.disabled=true;
   var fields={},files={},v={},first='',last='';
   Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
@@ -402,6 +437,7 @@ f.addEventListener('submit',function(e){
   if(!v.name&&(first||last))v.name=(first+' '+last).trim();
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
   var c=f.querySelector('.ezbizi-consent-box');if(c&&c.checked){v.marketing_consent=true;v.marketing_consent_text=c.parentNode.textContent.trim();}
+  if(ts)v.turnstile=ts;
   (captcha?ezSolve(api).catch(function(){return null;}):Promise.resolve(null)).then(function(sol){
     if(sol)v.captcha=sol;
     var h={'Accept':'application/json'},body;
@@ -413,6 +449,7 @@ f.addEventListener('submit',function(e){
     }else{h['Content-Type']='application/json';body=JSON.stringify(v);}
     return fetch(api+'/api/v1/web/form',{method:'POST',headers:h,body:body});
   }).then(function(r){
+    ezTsReset(f);
     if(!r.ok)throw new Error(r.status);
     f.reset();sync();note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'thanks', 'Thank you.')) . ";
     " . ($redirect !== '' ? 'location.href=' . wp_json_encode($redirect) . ';' : '') . "
@@ -593,6 +630,7 @@ function ezbizi_chat_shortcode($atts) {
         . '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
         . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
         . '</span></label></p>'
+        . ezbizi_turnstile_box()
         . '<button type="submit" class="ezbizi-chat-start">'
         . esc_html(ezbizi_widget_text($config, 'start', 'Start chat')) . '</button>'
         . '<p class="ezbizi-chat-error" hidden role="alert"></p>'
@@ -729,10 +767,11 @@ pre.addEventListener('submit',function(e){
   err.hidden=true;
   var body={key:key,message:text,name:pre.name.value.trim(),phone:pre.phone.value.trim(),email:pre.email.value.trim(),zip:pre.zip.value.trim(),page_url:location.href};
   var c=pre.querySelector('.ezbizi-consent-box');if(c&&c.checked){body.marketing_consent=true;body.marketing_consent_text=c.parentNode.textContent.trim();}
+  var ts=ezTs(pre);if(ts===''){err.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";err.hidden=false;return;}if(ts)body.turnstile=ts;
   // The same robot check as the forms; unsolvable here, it sends anyway and the server answers.
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)body.captcha=sol;
   return fetch(api+'/api/v1/web/chat',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});})
-    .then(function(r){return r.ok?r.json():null;})
+    .then(function(r){ezTsReset(pre);return r.ok?r.json():null;})
     .then(function(d){
       if(!keep(d)){err.textContent=failed;err.hidden=false;return;}
       started();tell('start');draw(d);ticking(true);box.focus();
@@ -790,6 +829,8 @@ function ezbizi_chat_initials($name) {
  */
 function ezbizi_solver_js() {
     return "function ezHex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
+function ezTs(f){var b=f.querySelector('.cf-turnstile');if(!b)return null;var i=b.querySelector('[name=cf-turnstile-response]');return i?i.value:'';}
+function ezTsReset(f){var b=f.querySelector('.cf-turnstile');if(b&&window.turnstile)try{turnstile.reset(b);}catch(e){}}
 function ezSolve(api){return fetch(api+'/api/v1/web/form/challenge').then(function(r){return r.json();}).then(function(c){
   var enc=new TextEncoder(),n=0;
   function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
