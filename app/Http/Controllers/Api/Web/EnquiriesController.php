@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
@@ -12,6 +14,7 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Files\FileStore;
+use App\Support\Memberships\CustomerLinks;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -237,6 +240,9 @@ class EnquiriesController extends Controller
             'turnstile' => ['nullable', 'string', 'max:4000'],
             // The form's ZIP (2026-10-08); the lead keeps it only when it is one.
             'zip' => ['nullable', 'string', 'max:20'],
+            // A review link's customer token: the faces' sad form sends it
+            // instead of asking for a name, phone and email (Jose, 2026-10-08).
+            'c' => ['nullable', 'string', 'max:200'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -263,6 +269,20 @@ class EnquiriesController extends Controller
                 $file->storeAs('web-form', $name, 'local');
                 $attachments[] = URL::signedRoute('web.form.file', ['name' => $name]);
                 $input['fields'][(string) $label] = $file->getClientOriginalName();
+            }
+
+            // Who the review link names, filled in here so it is never on the page.
+            $customerId = CustomerLinks::customerId($input['c'] ?? null);
+            $customer = $customerId === null ? null : Customer::query()->find($customerId);
+
+            if ($customer !== null) {
+                $input['name'] = $input['name'] ?? $customer->name;
+                $input['phone'] = $input['phone'] ?? $customer->phone;
+                $input['email'] = $input['email'] ?? (filter_var($customer->email, FILTER_VALIDATE_EMAIL) ? $customer->email : null);
+                $job = ($jobId = CustomerLinks::jobId($input['c'])) === null ? null : Job::query()->find($jobId);
+                $input['fields'] = ['Customer' => trim($customer->name.' '.($customer->number ?? ''))]
+                    + ($job === null ? [] : ['Job' => trim(($job->number ?? '').' '.($job->title ?? ''))])
+                    + $input['fields'];
             }
 
             $this->enquiries->submitForm($site, $input['fields'], [

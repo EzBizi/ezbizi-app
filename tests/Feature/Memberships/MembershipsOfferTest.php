@@ -58,8 +58,8 @@ class MembershipsOfferTest extends TestCase
 
     public function test_an_unknown_or_forged_token_gets_the_same_empty_shape(): void
     {
-        $this->assertSame(['member' => null, 'plans' => []], $this->offer('nobody.forged'));
-        $this->assertSame(['member' => null, 'plans' => []], $this->offer(null));
+        $this->assertSame(['member' => null, 'plans' => [], 'first_name' => null], $this->offer('nobody.forged'));
+        $this->assertSame(['member' => null, 'plans' => [], 'first_name' => null], $this->offer(null));
         $this->getJson('/api/v1/web/membership?key=wrong&c='.$this->c)->assertNotFound();
     }
 

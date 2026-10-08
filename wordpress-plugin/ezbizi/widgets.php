@@ -2047,6 +2047,12 @@ var c='';try{c=new URLSearchParams(location.search).get('c')||'';}catch(x){}
 // The review itself, for the customer's record and the Membership offer. Never waited on.
 function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
 // Their membership, or the plans with one-tap Join, for a known customer only (Jose, 2026-10-08).
+// A link that names the customer: the sad form stops asking for their name,
+// phone and email, once the server confirms the link (Jose, 2026-10-08).
+if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+encodeURIComponent(c),{headers:{'Accept':'application/json'}})
+  .then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d||!d.first_name)return;var sf=w.querySelector('form');w._ezAs=1;
+    ['name','phone','email'].forEach(function(n){var i=sf.elements[n];if(!i)return;i.required=false;i.style.display='none';var l=w.querySelector('label[for=\"'+i.id+'\"]');if(l)l.style.display='none';});
+    var p=document.createElement('p');p.className='ezbizi-rf-as';p.textContent=" . wp_json_encode(__('Sending as', 'ezbizi')) . "+' '+d.first_name;sf.insertBefore(p,sf.firstChild);}).catch(function(){});}
 function member(){if(!c||w._ezm)return;w._ezm=1;var m=w.querySelector('.ezbizi-rf-member');
   function el(t,s,txt){var e=document.createElement(t);if(s)e.className=s;if(txt!=null)e.textContent=txt;return e;}
   function money(minor,cur){try{return new Intl.NumberFormat('en-US',{style:'currency',currency:cur||'USD'}).format(minor/100);}catch(x){return '$'+(minor/100).toFixed(2);}}
@@ -2083,6 +2089,8 @@ f.addEventListener('submit',function(e){
   var g=function(n){return f.elements[n].value;};
   var v={key:" . wp_json_encode($key) . ",name:g('name'),email:g('email'),phone:g('phone'),page_url:location.href,
     fields:{'Rating':'Not happy','Name':g('name'),'Phone':g('phone'),'Email':g('email'),'What happened?':g('feedback')}};
+  // Known by the link: the server fills who they are; nothing typed, nothing shown.
+  if(w._ezAs){v={key:" . wp_json_encode($key) . ",c:c,page_url:location.href,fields:{'Rating':'Not happy','What happened?':g('feedback')}};}
   // The robot check every EzBizi form carries (Jose, 2026-10-06).
   if(ts)v.turnstile=ts;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;

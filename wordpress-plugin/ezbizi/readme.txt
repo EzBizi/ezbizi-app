@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.2
+Stable tag: 1.26.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,11 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.3 =
+* NEW: A customer who came by their review link is not asked for their
+  name, phone or email on the "not so great" form: it says "Sending as
+  <first name>" and EzBizi fills in the rest. Nothing personal is shown.
 
 = 1.26.2 =
 * IMPROVED: The review faces are made for a phone. Two full-width buttons

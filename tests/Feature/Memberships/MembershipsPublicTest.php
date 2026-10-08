@@ -5,6 +5,7 @@ namespace Tests\Feature\Memberships;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\ServiceArea;
@@ -112,6 +113,25 @@ class MembershipsPublicTest extends TestCase
 
         $this->assertStringStartsWith('https://nj.chimney.test/reviews/?c=', $links[0]);
         $this->assertStringStartsWith('https://chimney.test/reviews/?c=', $links[1]);
+    }
+
+    /** Jose, 2026-10-08: a known customer's sad form asks only what happened; the lead still says who. */
+    public function test_a_sad_form_sent_with_the_link_lands_as_that_customer(): void
+    {
+        $job = $this->inTenant($this->t['org'], fn () => Job::create(['franchise_id' => $this->t['franchise']->id,
+            'customer_id' => $this->customer->id, 'number' => 'J-7', 'title' => 'Sweep', 'status' => 'done', 'currency' => 'USD']));
+        $c = $this->inTenant($this->t['org'], fn () => CustomerLinks::jobToken($this->customer, $job));
+
+        $this->getJson('/api/v1/web/membership?key='.$this->site->public_key.'&c='.rawurlencode($c))->assertJsonPath('first_name', 'Marta');
+        $this->getJson('/api/v1/web/membership?key='.$this->site->public_key.'&c=nope')->assertJsonPath('first_name', null);
+
+        $this->postJson('/api/v1/web/form', ['key' => $this->site->public_key, 'c' => $c,
+            'fields' => ['Rating' => 'Not happy', 'What happened?' => 'Late']])->assertCreated();
+
+        $lead = $this->inTenant($this->t['org'], fn () => Lead::query()->latest('created_at')->first());
+        $this->assertSame('Marta Quill', $lead->contact_name);
+        $this->assertSame('marta@example.test', $lead->email);
+        $this->assertStringContainsString('5552013344', (string) $lead->phone_digits);
     }
 
     public function test_a_forged_token_matches_nobody_and_the_answer_is_the_same(): void

@@ -121,6 +121,10 @@ class MembershipsPublicController extends Controller
         return $this->asWebCustomer($request, fn (?Customer $c) => [
             'member' => $c ? $this->memberJson($this->current($c)) : null,
             'plans'  => $c ? $this->plansJson() : [],
+            // "Sending as Marta" on the faces' sad form, which then asks for
+            // nothing the link already says (Jose, 2026-10-08). First name
+            // only: the link can be forwarded.
+            'first_name' => $c ? (strtok(trim((string) $c->name), ' ') ?: null) : null,
         ]);
     }
 
