@@ -2560,3 +2560,35 @@ WordPress directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-08: ten releases, nothing on the site went false
+
+**Production is `0.0.0397` at `17f64cde`** (`/download/windows.json`). All
+seven pages, `robots.txt` and `sitemap.xml` are byte-identical to `www/`;
+`1c089b43` (Cloudflare Turnstile under Who we rely on, another session) is
+live. No desk asked (`send_message` is unavailable to a scheduled run); the
+one inbox item, `0103`, is UI/UX's tab-level note to module owners and touches
+nothing in `www/`.
+
+**Walked `71578003..17f64cde` (88 commits) against the load-bearing table;
+nothing moved:** `config/services.php`, manifest, `Info.plist`,
+`pubspec.yaml`, `Publishers`, `app/Services/Ads`, `Reports/Tagging`,
+Monitoring `FilesController` and the SMS strings untouched; no new outbound
+host or runtime permission request. `SettingRegistry` changed only the paper
+size default (a4 → letter); `monitoring.control_indicator` and
+`notifications.email_enabled` are still `false`. `InvitationLink` gained a
+line pointing at `/download/` — still the invitation the privacy page names.
+
+**Deliberately unpublished:** website booking widget (`web_bookings` — a
+visitor asks for an area/day/window, a dispatcher approves; it is not a job,
+so the Scheduling row holds), short review links (`review_codes`), plus
+everything held on 10-07.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0363; WordPress
+directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
