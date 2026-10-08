@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0390',
+      date: '8 Oct 2026',
+      items: [
+        'Thank-you review links now go to the reviews page of the branch that did the job, and are unique to the customer and job, so they never have to type their phone or email.',
+        'Memberships: the review page a customer opens after a finished job can show their membership, or offer the plans with a one-tap Join.',
+        'Phone: A-1 Chimney\'s approved toll-free 855-955-3322 can text from EzBizi while staying on the platform account; customer replies to it land in Communication.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0389',
       date: '8 Oct 2026',
       items: [
