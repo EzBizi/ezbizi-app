@@ -173,28 +173,37 @@ class FieldController extends Controller
             ]]);
         }
 
-        $people = $this->tracking->trackedPeople($request->user())->keyBy(fn (User $u) => $u->getKey());
-        $presences = FieldPresence::query()->with('atJob:id,number,title')->whereIn('user_id', $people->keys())->get();
+        // EVERY tracked person, not only those who have reported: the list,
+        // the Dashboard and the phone chip must count the same people (UI
+        // review, 2026-10-08: "8 Tracked" beside "People 0"). Somebody who
+        // has never reported has no position and no pin, and says so.
+        $people = $this->tracking->trackedPeople($request->user());
+        $presences = FieldPresence::query()->with('atJob:id,number,title')
+            ->whereIn('user_id', $people->modelKeys())->get()->keyBy('user_id');
 
-        return response()->json(['data' => $presences->map(fn (FieldPresence $p) => [
-            'user' => ['id' => $p->user_id, 'name' => $people[$p->user_id]->name],
-            'lat' => $p->latitude,
-            'lng' => $p->longitude,
-            'accuracy_m' => $p->accuracy_m,
-            'last_seen_at' => $p->last_seen_at->toIso8601ZuluString(),
-            'fresh' => $p->last_seen_at->gt(now()->subMinutes(self::FRESH_MINUTES)),
-            'stopped' => $p->stopped_alerted,
-            'silent' => $p->signal_lost_alerted,
-            'at_job' => $p->atJob ? ['id' => $p->atJob->id, 'number' => $p->atJob->number, 'title' => $p->atJob->title] : null,
-            'device' => [
-                'battery_pct' => $p->battery_pct,
-                'charging' => $p->charging,
-                'platform' => $p->platform,
-                'os_version' => $p->os_version,
-                'model' => $p->device_model,
-                'app_version' => $p->app_version,
-            ],
-        ] + $this->today($people[$p->user_id]))->sortBy('user.name')->values()]);
+        return response()->json(['data' => $people->map(function (User $person) use ($presences) {
+            $p = $presences[$person->getKey()] ?? null;
+
+            return [
+                'user' => ['id' => $person->getKey(), 'name' => $person->name],
+                'lat' => $p?->latitude,
+                'lng' => $p?->longitude,
+                'accuracy_m' => $p?->accuracy_m,
+                'last_seen_at' => $p?->last_seen_at->toIso8601ZuluString(),
+                'fresh' => $p !== null && $p->last_seen_at->gt(now()->subMinutes(self::FRESH_MINUTES)),
+                'stopped' => (bool) $p?->stopped_alerted,
+                'silent' => (bool) $p?->signal_lost_alerted,
+                'at_job' => $p?->atJob ? ['id' => $p->atJob->id, 'number' => $p->atJob->number, 'title' => $p->atJob->title] : null,
+                'device' => [
+                    'battery_pct' => $p?->battery_pct,
+                    'charging' => $p?->charging,
+                    'platform' => $p?->platform,
+                    'os_version' => $p?->os_version,
+                    'model' => $p?->device_model,
+                    'app_version' => $p?->app_version,
+                ],
+            ] + $this->today($person);
+        })->sortBy('user.name')->values()]);
     }
 
     /**

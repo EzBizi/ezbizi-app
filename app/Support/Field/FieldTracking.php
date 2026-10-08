@@ -132,10 +132,13 @@ final class FieldTracking
             'tracked' => true,
             'should_track' => $on,
             'mode' => $mode,
+            // Says whether sharing is on NOW, then when it happens (UI review,
+            // 2026-10-08: the off icon beside "Shared while you are clocked
+            // in" read as a contradiction).
             'reason' => match (true) {
-                $on => 'Your location is being shared with your managers.',
-                $mode === self::CLOCKED_IN => 'Shared while you are clocked in.',
-                default => 'Shared during your scheduled work hours.',
+                $on => 'Sharing your location with your managers now.',
+                $mode === self::CLOCKED_IN => 'Not sharing now. Your location is shared while you are clocked in.',
+                default => 'Not sharing now. Your location is shared during your scheduled work hours.',
             },
         ];
     }

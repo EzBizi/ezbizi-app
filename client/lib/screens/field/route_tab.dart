@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/api_client.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
+import 'map_overlays.dart' show fieldLongDay;
 
 /// Field › Route: a person's jobs for a day in the order Google finds
 /// fastest, with drive times and a warning where they would be late.
@@ -115,7 +116,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
                 ),
               ActionChip(
                 avatar: const Icon(Icons.event, size: 18),
-                label: Text('${_day.month}/${_day.day}/${_day.year}'),
+                label: Text(fieldLongDay(_day)),
                 onPressed: () async {
                   final picked = await showDatePicker(
                     context: context,

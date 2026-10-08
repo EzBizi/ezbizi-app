@@ -37,6 +37,33 @@ void main() {
     );
   });
 
+  testWidgets('the six tiles are one size and fill the row', (tester) async {
+    await _pump(tester, grants: ['field.dashboard.view']);
+
+    final tiles = find.ancestor(
+      of: find.text('Reporting now'),
+      matching: find.byType(Card),
+    );
+    final sizes = {
+      for (final label in [
+        'Tracked',
+        'Reporting now',
+        'At a job',
+        'Stopped too long',
+        'Lost signal',
+        'Open alerts',
+      ])
+        tester.getSize(
+          find
+              .ancestor(of: find.text(label), matching: find.byType(Card))
+              .first,
+        ),
+    };
+    expect(sizes, hasLength(1));
+    // 1400 wide minus 16 padding each side: six columns, 8 between.
+    expect(tester.getSize(tiles.first).width, closeTo((1368 - 40) / 6, 0.5));
+  });
+
   testWidgets('a tracked person gets the SOS button', (tester) async {
     await _pump(tester, grants: ['field.dashboard.view'], tracked: true);
 
@@ -85,7 +112,9 @@ Future<void> _pump(
       final path = request.url.path;
 
       if (path.endsWith('/v1/me')) {
-        return _json({'data': _me(['field.view', ...grants])});
+        return _json({
+          'data': _me(['field.view', ...grants]),
+        });
       }
       if (path.endsWith('/field/dashboard')) {
         return _json({

@@ -184,7 +184,8 @@ class _FieldMapTabState extends State<FieldMapTab> {
     if (people.ok && _firstFit) {
       _firstFit = false;
       _fit([
-        ..._people.map(_at),
+        for (final p in _people)
+          if (p['lat'] != null) _at(p),
         for (final j in _jobs)
           if (j['lat'] != null) _at(j),
       ]);
@@ -228,7 +229,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
       _trail = const [];
     });
     if (_personId != null) {
-      _fit([_at(person)]);
+      if (person['lat'] != null) _fit([_at(person)]);
       _loadTrail();
     }
   }
@@ -263,7 +264,8 @@ class _FieldMapTabState extends State<FieldMapTab> {
       _fit([
         LatLng((lat as num).toDouble(), (_eta!['lng'] as num).toDouble()),
         for (final c in ((_eta?['candidates'] as List?) ?? const []))
-          if (_person('${(c as Map)['user']['id']}') case final p?) _at(p),
+          if (_person('${(c as Map)['user']['id']}') case final p?)
+            if (p['lat'] != null) _at(p),
       ]);
     }
   }
@@ -502,23 +504,24 @@ class _FieldMapTabState extends State<FieldMapTab> {
                         ),
                       ),
                   for (final p in _people)
-                    Marker(
-                      point: _at(p),
-                      width: 140,
-                      height: 64,
-                      alignment: Alignment.topCenter,
-                      child: GestureDetector(
-                        onTap: () => _selectPerson(p),
-                        child: FieldPersonPin(
-                          name: '${(p['user'] as Map)['name']}',
-                          colour: _colour(p, scheme),
-                          selected:
-                              (p['user'] as Map)['id'] == _personId ||
-                              (_route?['user'] as Map?)?['id'] ==
-                                  (p['user'] as Map)['id'],
+                    if (p['lat'] != null)
+                      Marker(
+                        point: _at(p),
+                        width: 140,
+                        height: 64,
+                        alignment: Alignment.topCenter,
+                        child: GestureDetector(
+                          onTap: () => _selectPerson(p),
+                          child: FieldPersonPin(
+                            name: '${(p['user'] as Map)['name']}',
+                            colour: _colour(p, scheme),
+                            selected:
+                                (p['user'] as Map)['id'] == _personId ||
+                                (_route?['user'] as Map?)?['id'] ==
+                                    (p['user'] as Map)['id'],
+                          ),
                         ),
                       ),
-                    ),
                 ],
               ),
             ],

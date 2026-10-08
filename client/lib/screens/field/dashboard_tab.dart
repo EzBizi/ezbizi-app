@@ -132,20 +132,23 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     final alerts = ((_data['alerts'] as List?) ?? const [])
         .cast<Map<String, dynamic>>();
 
-    Widget tile(String label, Object? value, IconData icon) => SizedBox(
-      width: 160,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(height: 8),
-              Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
-              Text(label, style: theme.textTheme.bodySmall),
-            ],
-          ),
+    Widget tile(String label, Object? value, IconData icon) => Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(height: 8),
+            Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
         ),
       ),
     );
@@ -183,7 +186,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                           foregroundColor: theme.colorScheme.onError,
                         ),
                         onPressed: _armed ? _sos : _arm,
-                        icon: const Icon(Icons.sos),
+                        icon: const Icon(Icons.warning_amber_rounded),
                         label: Text(_armed ? 'Tap again to send SOS' : 'SOS'),
                       ),
                     ],
@@ -196,29 +199,45 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               ErrorNote(_actionError!),
               const SizedBox(height: 12),
             ],
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                tile('Tracked', counts['tracked'], Icons.people_outline),
-                tile('Reporting now', counts['reporting'], Icons.gps_fixed),
-                tile(
-                  'At a job',
-                  counts['at_job'],
-                  Icons.home_repair_service_outlined,
-                ),
-                tile(
-                  'Stopped too long',
-                  counts['stopped'],
-                  Icons.pause_circle_outline,
-                ),
-                tile(
-                  'Lost signal',
-                  counts['silent'],
-                  Icons.signal_cellular_off,
-                ),
-                tile('Open alerts', counts['open_alerts'], Icons.warning_amber),
-              ],
+            // Six tiles in 6, 3 or 2 equal columns: always full rows (the
+            // equal-tiles rule, UI review 2026-10-08).
+            LayoutBuilder(
+              builder: (context, box) {
+                final columns = box.maxWidth >= 900
+                    ? 6
+                    : box.maxWidth >= 450
+                    ? 3
+                    : 2;
+                final width = (box.maxWidth - 8 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    tile('Tracked', counts['tracked'], Icons.people_outline),
+                    tile('Reporting now', counts['reporting'], Icons.gps_fixed),
+                    tile(
+                      'At a job',
+                      counts['at_job'],
+                      Icons.home_repair_service_outlined,
+                    ),
+                    tile(
+                      'Stopped too long',
+                      counts['stopped'],
+                      Icons.pause_circle_outline,
+                    ),
+                    tile(
+                      'Lost signal',
+                      counts['silent'],
+                      Icons.signal_cellular_off,
+                    ),
+                    tile(
+                      'Open alerts',
+                      counts['open_alerts'],
+                      Icons.warning_amber,
+                    ),
+                  ].map((t) => SizedBox(width: width, child: t)).toList(),
+                );
+              },
             ),
             const SizedBox(height: 16),
             Text('Alerts', style: theme.textTheme.titleMedium),
