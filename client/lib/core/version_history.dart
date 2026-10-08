@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0395',
+      date: '8 Oct 2026',
+      items: [
+        'Android: alerts, new leads and missed calls now pop up with sound ("EzBizi urgent" in the phone\'s notification settings); everything else stays as it was.',
+        'API activity: calls made in the same second now list in the order they happened.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0394',
       date: '8 Oct 2026',
       items: [
