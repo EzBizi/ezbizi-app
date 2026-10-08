@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.4
+Stable tag: 1.26.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.5 =
+* CHANGE: The booking widget keeps one size through every step; a taller
+  step scrolls inside it.
 
 = 1.26.4 =
 * NEW: /r/<code> on every site forwards a short review link to the site's

@@ -1067,7 +1067,9 @@ function ezbizi_booking_shortcode($atts) {
     return '<style>'
         . $s . '{max-width:660px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.12);overflow:hidden;font-family:inherit;color:#183a33}'
         . $s . ' .ezb-top{background:' . $accent . ';color:' . $on . ';text-align:center;font-size:26px;font-weight:700;padding:22px 16px}'
-        . $s . ' .ezb-body{padding:24px 40px 32px}'
+        // One fixed size for every step (Jose, 2026-10-08: "it needs to have a
+        // fixed size"); a step taller than the card scrolls inside it.
+        . $s . ' .ezb-body{padding:24px 40px 32px;height:600px;box-sizing:border-box;overflow-y:auto}'
         . $s . ' .ezb-back{background:none;border:0;color:' . $accent . ';cursor:pointer;padding:0;margin:0 0 8px;font-size:14px}'
         . $s . ' .ezb-head{text-align:center;padding:10px 0 12px;margin:0 0 14px;border-bottom:1px solid ' . $line . '}'
         . $s . ' .ezb-head small{color:' . $accent . ';font-size:11px;vertical-align:middle;margin-right:6px}'
@@ -1090,7 +1092,7 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' button{text-transform:none!important;letter-spacing:normal!important;box-shadow:none!important;font-family:inherit}'
         . $s . ' .ezb-back{border:0!important;background:none!important}'
         . $s . ' .ezb-done{text-align:center;padding:20px 0}'
-        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:18px 16px 24px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}}'
+        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:18px 16px 24px;height:560px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}}'
         . '</style>'
         . '<div class="ezbizi-booking" id="' . esc_attr($id) . '">'
         . '<div class="ezb-top">' . esc_html($atts['title']) . '</div><div class="ezb-body">'
