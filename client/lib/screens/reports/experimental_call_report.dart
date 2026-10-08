@@ -523,9 +523,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
             const SizedBox(height: 12),
             Text(
-              'This report reads $vendor directly, and no credential is '
-              'configured for it. Nothing has gone wrong and no calls are '
-              'missing — there is simply nothing to read.',
+              // Connected on the server, not from a screen, so the way in is
+              // a person (UI review 2026-10-08: "no way to connect").
+              'This report reads your calls from $vendor, and $vendor is not '
+              'connected for your company yet. EzBizi support connects it: '
+              'ask them, and your calls appear here.',
               style: theme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),

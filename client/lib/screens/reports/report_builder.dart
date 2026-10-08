@@ -334,6 +334,12 @@ class _ReportBuilderState extends State<ReportBuilder> {
           icon: const Icon(Icons.add),
           label: const Text('Add filter'),
         ),
+        // A disabled button says why (UI review 2026-10-08).
+        if (_columns.isEmpty)
+          Text(
+            'Choose a column first, then filter on it.',
+            style: theme.textTheme.bodySmall,
+          ),
         const SizedBox(height: 16),
         if (_saveError != null) ...[
           ErrorNote(_saveError!),
