@@ -3049,6 +3049,16 @@ class ActionRunner
             // or the reply itself. Interpolated like the title; empty is none.
             $details = trim($this->interpolate((string) ($action['details'] ?? $action['body'] ?? ''), $event, $subject));
 
+            // A TITLE FITS ITS COLUMN (varchar 255). A long {{field}}, such as
+            // a customer's whole message, failed the insert and switched
+            // "Customer Waiting Warning" off. Cut with an ellipsis; the full
+            // text goes in the body, ahead of any second line.
+            if (mb_strlen($title) > 255) {
+                $details = trim($title."
+".$details);
+                $title = mb_substr($title, 0, 254).'…';
+            }
+
             $sent = $this->notifications->dispatch(
                 title: $title,
                 body: $details === '' ? null : $details,

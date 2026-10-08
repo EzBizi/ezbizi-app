@@ -2525,6 +2525,30 @@ class AutomationEngineTest extends TestCase
         $this->assertNull($bodies['Two']);
     }
 
+    /**
+     * A long {{field}} cannot overflow the title column. A 400-character
+     * customer message failed the insert and switched "Customer Waiting
+     * Warning" off; now the title is cut and the whole text is in the body.
+     */
+    public function test_a_long_title_is_cut_and_kept_whole_in_the_body(): void
+    {
+        $runner = app(ActionRunner::class);
+        $preview = str_repeat('a', 400);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create(['organization_id' => $this->org['organization']->id,
+            'event_key' => 'lead.received', 'payload' => ['after' => ['preview' => $preview]],
+            'occurred_at' => now(), 'available_at' => now()]));
+
+        $result = $this->inTenant(fn () => $runner->run(['type' => 'notify', 'message' => 'Waited: {{preview}}',
+            'user_ids' => [$this->org['admin']->id]], $event, $this->org['organization']));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+        $row = $this->inTenant(fn () => Notification::query()->sole());
+        $this->assertSame(255, mb_strlen($row->title));
+        $this->assertStringEndsWith('…', $row->title);
+        $this->assertStringContainsString('Waited: '.$preview, $row->body);
+    }
+
     public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
     {
         // A notification never emails (2026-09-28), so with the bell off it
