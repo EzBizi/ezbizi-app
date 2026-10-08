@@ -86,4 +86,16 @@ class MembershipsOfferTest extends TestCase
 
         $this->assertSame(0, Membership::withoutGlobalScopes()->count());
     }
+
+    public function test_the_job_done_link_token_gets_the_offer_too(): void
+    {
+        $c = $this->inTenant($this->t['org'], function () {
+            $customer = Customer::query()->where('name', 'Marta Quill')->firstOrFail();
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
+
+            return CustomerLinks::jobToken($customer, $job);
+        });
+
+        $this->assertSame(['Yearly sweep'], array_column($this->offer($c)['plans'], 'name'));
+    }
 }
