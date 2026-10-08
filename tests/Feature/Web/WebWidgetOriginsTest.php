@@ -51,6 +51,8 @@ class WebWidgetOriginsTest extends TestCase
             ['/api/v1/web/chat/01931234-5678-7abc-8def-000000000000/messages', 'GET'],
             ['/api/v1/web/chat/01931234-5678-7abc-8def-000000000000/messages', 'POST'],
             ['/api/v1/web/form', 'POST'],
+            ['/api/v1/web/review', 'POST'],
+            ['/api/v1/web/membership/join', 'POST'],
         ] as [$path, $method]) {
             $this->assertSame(
                 '*',

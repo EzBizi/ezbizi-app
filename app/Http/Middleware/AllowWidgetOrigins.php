@@ -55,6 +55,10 @@ final class AllowWidgetOrigins
         'api/v1/web/chat',
         'api/v1/web/chat/*/messages',
         'api/v1/web/form',
+        // The review page's faces and its one-tap Join (Memberships): a signed
+        // customer token proves who, like the site key above.
+        'api/v1/web/review',
+        'api/v1/web/membership/join',
     ];
 
     public function handle(Request $request, Closure $next): Response
