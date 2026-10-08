@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0392',
+      date: '8 Oct 2026',
+      items: [
+        'Review links are now short (https://ma.a-1chimney.com/r/Ab3xK9m) and unique per customer and job. A known customer\'s "not so great" form only asks what happened. After a bad review there is no membership offer, and the thank-you is centred.',
+        'Automations: a rule switched on only acts on what happens from that moment, never on older events.',
+        'Leads: the "customer waiting" warning quotes what the customer wrote, not our automatic reply.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0391',
       date: '8 Oct 2026',
       items: [
