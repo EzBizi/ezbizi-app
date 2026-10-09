@@ -4,7 +4,6 @@ namespace App\Support\Dashboard\Widgets;
 
 use App\Models\Job;
 use App\Models\User;
-use App\Support\Dashboard\Widget;
 
 /**
  * How much work is in each state.
@@ -13,28 +12,9 @@ use App\Support\Dashboard\Widget;
  * from a list in here — a business that calls it "Booked / On site / Invoiced"
  * would otherwise see a dashboard using somebody else's words.
  */
-class JobsByStatus implements Widget
+class JobsByStatus
 {
     use ScopesToReach;
-
-    public function key(): string { return 'jobs.by_status'; }
-
-    public function label(): string { return 'Jobs by status'; }
-
-    public function permission(): string { return 'jobs.view'; }
-
-    public function options(User $user): array
-    {
-        return [
-            'include_finished' => [
-                'label'   => 'Include finished work',
-                'type'    => 'bool',
-                'default' => false,
-                'help'    => 'Off by default, so the board shows what still needs doing '
-                    .'rather than everything that ever happened.',
-            ],
-        ];
-    }
 
     public function resolve(User $user, array $options): array
     {

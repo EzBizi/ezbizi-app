@@ -442,34 +442,12 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
             ),
           )
         else ...[
-          _band(context, 'Waiting on EzBizi', waiting.length),
+          suggestionBand(context, 'Waiting on EzBizi', waiting.length),
           for (final row in waiting) _railRow(context, row),
-          _band(context, 'Answered', answered.length),
+          suggestionBand(context, 'Answered', answered.length),
           for (final row in answered) _railRow(context, row),
         ],
       ],
-    );
-  }
-
-  Widget _band(BuildContext context, String label, int count) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-      child: Row(
-        children: [
-          Text(label, style: theme.textTheme.labelSmall),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-            decoration: BoxDecoration(
-              border: Border.all(color: EzBiziTheme.edge(context)),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text('$count', style: theme.textTheme.labelSmall),
-          ),
-        ],
-      ),
     );
   }
 
@@ -511,7 +489,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
           children: [
             Row(
               children: [
-                _pill(context, status),
+                suggestionPill(context, status),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -888,7 +866,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   tooltip: 'Back to the list',
                   onPressed: () => setState(() => _openNarrow = false),
                 ),
-              _pill(context, status),
+              suggestionPill(context, status),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1088,48 +1066,6 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  /// The state in words — never the raw key. `new` gets an outline rather
-  /// than a fill because it is the one state with nothing decided about it
-  /// yet; the other three borrow the same colours the rest of the app already
-  /// uses for the same idea (`EzBiziTheme.clockIn` for a good outcome, the
-  /// real `errorContainer` for a refusal) rather than inventing new ones.
-  Widget _pill(BuildContext context, String status) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final (label, fg, bg, outlined) = switch (status) {
-      'reviewing' => (
-        'In review',
-        scheme.primary,
-        scheme.primaryContainer.withValues(alpha: 0.35),
-        false,
-      ),
-      'approved' => (
-        'Approved',
-        EzBiziTheme.clockIn(context),
-        EzBiziTheme.clockIn(context).withValues(alpha: 0.12),
-        false,
-      ),
-      'denied' => (
-        'Denied',
-        scheme.onErrorContainer,
-        scheme.errorContainer,
-        false,
-      ),
-      _ => ('New', scheme.onSurface, scheme.surface, true),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: outlined ? Border.all(color: scheme.outline) : null,
-      ),
-      child: Text(label, style: theme.textTheme.labelSmall?.copyWith(color: fg)),
     );
   }
 }

@@ -135,10 +135,7 @@ class HrInvitationsController extends Controller
         return response()->json([
             'data' => collect($invitations->items())->map(fn (Invitation $i) => $this->present($i)),
             'meta' => [
-                'total'        => $invitations->total(),
-                'per_page'     => $invitations->perPage(),
-                'current_page' => $invitations->currentPage(),
-                'last_page'    => $invitations->lastPage(),
+                ...$this->pageMeta($invitations),
                 'tiles'        => $tiles,
             ],
         ]);

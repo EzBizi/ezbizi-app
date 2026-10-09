@@ -3126,96 +3126,24 @@ class _ConnectPanelState extends State<_ConnectPanel> {
   }
 
   Future<void> _connectOauth(_SocialNetwork network) async {
-    final window = widget.openConsent();
-    if (window == null) {
-      setState(() {
-        _error =
-            'EzBizi could not open the ${network.label} sign-in window. On the web that '
-            'is usually the browser blocking new windows for this site — allow '
-            'them and press the button again.';
-      });
-      return;
-    }
-
-    setState(() {
-      _busy = network.value;
-      _error = null;
-    });
-
-    final response = await widget.api.post(network.startPath, {});
-
-    if (!mounted) {
-      window.close();
-      return;
-    }
-
-    if (!response.ok) {
-      window.close();
-      setState(() {
-        _busy = null;
-        _error = response.reason;
-      });
-      return;
-    }
-
-    final data = response.data;
-    final url = data is Map<String, dynamic> ? data['authorization_url'] : null;
-    final flow = data is Map<String, dynamic> ? data['flow'] : null;
-
-    if (url is! String || flow is! String) {
-      window.close();
-      setState(() {
-        _busy = null;
-        _error = '${network.label} did not hand back a sign-in address.';
-      });
-      return;
-    }
-
-    window.goTo(url);
-    _watch(window, network, flow);
-  }
-
-  void _watch(ConsentWindow window, _SocialNetwork network, String flow) {
-    var asks = 150;
     _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      asks -= 1;
-      if (asks <= 0 || !mounted) {
-        timer.cancel();
-        if (mounted) setState(() => _busy = null);
-        return;
-      }
-
-      final statusPath = network.startPath.replaceFirst('/start', '/status');
-      final status = await widget.api.get(statusPath, {'flow': flow});
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      final data = status.data;
-      final state = data is Map<String, dynamic> ? data['state'] : null;
-      final message = data is Map<String, dynamic> ? data['message'] : null;
-
-      if (state == 'connected') {
-        timer.cancel();
-        window.close();
-        setState(() => _busy = null);
-        await widget.onConnected();
-        return;
-      }
-
-      if (state == 'refused') {
-        timer.cancel();
-        window.close();
-        setState(() {
-          _busy = null;
-          _error = message is String
-              ? message
-              : '${network.label} sign-in did not finish.';
-        });
-      }
-    });
+    _poll = await runConsentFlow(
+      api: widget.api,
+      openConsent: widget.openConsent,
+      startPath: network.startPath,
+      label: network.label,
+      refusedFallback: '${network.label} sign-in did not finish.',
+      isMounted: () => mounted,
+      onStart: () => setState(() {
+        _busy = network.value;
+        _error = null;
+      }),
+      onEnd: (error) => setState(() {
+        _busy = null;
+        _error = error;
+      }),
+      onConnected: widget.onConnected,
+    );
   }
 }
 

@@ -284,7 +284,7 @@ final class HrOverview
         return $months;
     }
 
-    /** Active people by place now (Headcount's rule), and how many are counted twice. */
+    /** Active people by place now, and how many are counted twice (one person, several places). */
     private function placesNow(array $places, User $viewer): array
     {
         $names = $this->placeNames($places, $viewer);

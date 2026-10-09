@@ -195,7 +195,7 @@ class DemoFill extends Command
 
             // A user with no Assignment row is "unplaced", which is a real
             // state with real consequences and not a tidiness point. HR's
-            // Headcount widget gives unplaced people their own row reading
+            // overview gives unplaced people their own row reading
             // "Not assigned to a place" — five of those on a store screenshot
             // reads as a broken install. Worse, TimeClock::visibleTo and
             // HrPeopleController::visibleTo only show unplaced people to

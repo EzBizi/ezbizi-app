@@ -287,35 +287,13 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
     return ListView(
       key: const Key('suggestions-rail'),
       children: [
-        _band(context, 'Waiting', newRows.length),
+        suggestionBand(context, 'Waiting', newRows.length),
         for (final row in newRows) _railRow(context, row),
-        _band(context, 'Being read', reviewingRows.length),
+        suggestionBand(context, 'Being read', reviewingRows.length),
         for (final row in reviewingRows) _railRow(context, row),
-        _band(context, 'Answered', decidedRows.length),
+        suggestionBand(context, 'Answered', decidedRows.length),
         for (final row in decidedRows) _railRow(context, row),
       ],
-    );
-  }
-
-  Widget _band(BuildContext context, String label, int count) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-      child: Row(
-        children: [
-          Text(label, style: theme.textTheme.labelSmall),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-            decoration: BoxDecoration(
-              border: Border.all(color: EzBiziTheme.edge(context)),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text('$count', style: theme.textTheme.labelSmall),
-          ),
-        ],
-      ),
     );
   }
 
@@ -346,7 +324,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
           children: [
             Row(
               children: [
-                _pill(context, status),
+                suggestionPill(context, status),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -442,7 +420,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _pill(context, status),
+                  suggestionPill(context, status),
                   if (decided) ...[
                     const SizedBox(height: 6),
                     Text(
@@ -638,50 +616,6 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  /// The state in words, never the raw key. `new` gets an outline rather
-  /// than a fill because it is the one state with nothing decided about it
-  /// yet — the same convention `SuggestionsScreen._pill` uses on the
-  /// author's own tab, so the two halves of one table read as one product.
-  Widget _pill(BuildContext context, String status) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final (label, fg, bg, outlined) = switch (status) {
-      'reviewing' => (
-        'In review',
-        scheme.primary,
-        scheme.primaryContainer.withValues(alpha: 0.35),
-        false,
-      ),
-      'approved' => (
-        'Approved',
-        EzBiziTheme.clockIn(context),
-        EzBiziTheme.clockIn(context).withValues(alpha: 0.12),
-        false,
-      ),
-      'denied' => (
-        'Denied',
-        scheme.onErrorContainer,
-        scheme.errorContainer,
-        false,
-      ),
-      _ => ('New', scheme.onSurface, scheme.surface, true),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: outlined ? Border.all(color: scheme.outline) : null,
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(color: fg),
       ),
     );
   }

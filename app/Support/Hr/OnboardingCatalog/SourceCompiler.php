@@ -5,12 +5,10 @@ namespace App\Support\Hr\OnboardingCatalog;
 use RuntimeException;
 
 /**
- * Compile-time sections in a catalog source, never merge tags.
+ * Section markers in a catalog source, never merge tags.
  *
  * A-1 Tools kept both sides of two either/or decisions in one file and deleted
- * clauses at render time (`hourly_only`, `raise_only`). EzBizi has no body
- * conditionals — a published body is the agreement — so those decisions happen
- * here, once, and the bytes that get published contain only legal `{{tags}}`.
+ * clauses at render time (`hourly_only`, `raise_only`).
  *
  * Markers are `<<hourly>>…<</hourly>>`, `<<salary>>…<</salary>>`,
  * `<<raise>>…<</raise>>`. They may nest (a raise clause that says "per hour"
@@ -21,52 +19,6 @@ final class SourceCompiler
     public const HOURLY = 'hourly';
     public const SALARY = 'salary';
     public const RAISE  = 'raise';
-
-    public const SECTIONS = [self::HOURLY, self::SALARY, self::RAISE];
-
-    /**
-     * @param  string[]  $keep  section names that survive
-     */
-    public static function compile(string $source, array $keep): string
-    {
-        $known = array_fill_keys(self::SECTIONS, true);
-        $keep  = array_fill_keys($keep, true);
-
-        // Innermost first: the inner pattern cannot itself contain a marker.
-        $pattern = '/<<([a-z]+)>>((?:(?!<<[a-z]+>>|<<\/[a-z]+>>).)*)<<\/\1>>/s';
-        $guard   = 0;
-
-        while (preg_match($pattern, $source, $match, PREG_OFFSET_CAPTURE) === 1) {
-            if (++$guard > 1000) {
-                throw new RuntimeException(
-                    'Onboarding catalog source did not finish compiling. A section marker is probably unclosed.',
-                );
-            }
-
-            $flag = $match[1][0];
-
-            if (! isset($known[$flag])) {
-                throw new RuntimeException(sprintf(
-                    "Onboarding catalog source has a section '%s' this compiler does not keep or drop.",
-                    $flag,
-                ));
-            }
-
-            $replacement = isset($keep[$flag]) ? $match[2][0] : '';
-            $source      = substr_replace($source, $replacement, $match[0][1], strlen($match[0][0]));
-        }
-
-        if (str_contains($source, '<<')) {
-            throw new RuntimeException(
-                'Onboarding catalog source still has section markers after compile. '
-                .'Nothing is published rather than a body that would print those markers.',
-            );
-        }
-
-        $source = preg_replace("/\n{3,}/", "\n\n", $source) ?? $source;
-
-        return trim($source)."\n";
-    }
 
     /**
      * Turn compile-time markers into live merge sections.

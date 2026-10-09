@@ -54,7 +54,6 @@ class TimeField extends StatelessWidget {
     required this.value,
     required this.formats,
     required this.onChanged,
-    this.enabled = true,
   });
 
   final String value;
@@ -64,7 +63,6 @@ class TimeField extends StatelessWidget {
   final DisplayFormats formats;
 
   final ValueChanged<String> onChanged;
-  final bool enabled;
 
   static const int _stepMinutes = 15;
 
@@ -95,7 +93,7 @@ class TimeField extends StatelessWidget {
         value: value,
         isDense: true,
         border: InputBorder.none,
-        onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
+        onChanged: (v) => v == null ? null : onChanged(v),
         options: [
           for (final slot in slots)
             SearchOption(value: slot, label: formats.formatWallClock(slot)),

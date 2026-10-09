@@ -8,13 +8,13 @@ use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Fleet\VehicleStatus;
-use App\Support\Fleet\VehicleVisibility;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Fleet Management box: pie of VehicleStatus under VehicleVisibility (snapshot).
+ * Fleet Management box: pie of VehicleStatus under InventoryVisibility (snapshot).
  *
  * Empty-at-zero once any vehicle exists so the board does not reorder as vans
  * move. Service / insurance due stay sentences. Money stays off this box —
@@ -33,7 +33,7 @@ final class FleetGlance extends DescribedGlance
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user) {
             $scope = ViewScope::forUser($user);
-            $base = VehicleVisibility::constrain(Vehicle::query(), $user, $scope);
+            $base = InventoryVisibility::constrain(Vehicle::query(), $user, $scope);
 
             $counts = (clone $base)
                 ->selectRaw('status, COUNT(*) as total')
@@ -61,7 +61,7 @@ final class FleetGlance extends DescribedGlance
             $slices = array_map(fn (string $status) => [
                 'label' => $this->statusLabel($status),
                 'total' => (int) ($counts[$status] ?? 0),
-            ], VehicleStatus::values());
+            ], array_column(VehicleStatus::cases(), 'value'));
 
             $data = [
                 'empty' => false,

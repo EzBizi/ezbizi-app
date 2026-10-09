@@ -839,15 +839,6 @@ class _EstimatePanelState extends State<EstimatePanel> {
 
   void _removeLine(int i) => setState(() => _lines.removeAt(i).dispose());
 
-  static String? _firstError(ApiResponse response) {
-    final errors = response.body['errors'];
-    if (errors is Map && errors.isNotEmpty) {
-      final first = errors.values.first;
-      if (first is List && first.isNotEmpty) return '${first.first}';
-    }
-    return response.message;
-  }
-
   String? _trimmed(TextEditingController c) =>
       c.text.trim().isEmpty ? null : c.text.trim();
 
@@ -873,7 +864,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -907,7 +898,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -959,7 +950,7 @@ class _EstimatePanelState extends State<EstimatePanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }

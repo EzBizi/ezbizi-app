@@ -50,16 +50,6 @@ String inventoryQty(dynamic raw) {
 
 double? inventoryQtyNumber(dynamic raw) => double.tryParse('$raw');
 
-bool inventoryIsLow(Map<String, dynamic>? item, dynamic qty) {
-  if (item == null) return false;
-  final reorder = item['reorder_at'];
-  if (reorder == null || '$reorder'.isEmpty) return false;
-  final at = inventoryQtyNumber(reorder);
-  final onHand = inventoryQtyNumber(qty);
-  if (at == null || onHand == null) return false;
-  return onHand <= at;
-}
-
 String? inventoryCents(dynamic cents) {
   if (cents is! num) return null;
   return '\$${(cents / 100).toStringAsFixed(2)}';
@@ -180,7 +170,6 @@ class ItemPane extends StatefulWidget {
     required this.itemId,
     required this.onBack,
     this.seed,
-    this.seedBalance,
     this.showBack = false,
   });
 
@@ -188,7 +177,6 @@ class ItemPane extends StatefulWidget {
   final Session session;
   final String itemId;
   final Map<String, dynamic>? seed;
-  final Map<String, dynamic>? seedBalance;
   final VoidCallback onBack;
   final bool showBack;
 
@@ -299,7 +287,7 @@ class _ItemPaneState extends State<ItemPane> {
             for (final row in inventoryRows(stockRes.data))
               if (inventoryMap(row['item'])?['id'] == widget.itemId) row,
           ];
-    final balances = _unionSeed(mine);
+    final balances = mine;
 
     setState(() {
       _loading = false;
@@ -386,21 +374,6 @@ class _ItemPaneState extends State<ItemPane> {
       what,
       ?by,
     ].join(' · ');
-  }
-
-  List<Map<String, dynamic>> _unionSeed(List<Map<String, dynamic>> rows) {
-    final seed = widget.seedBalance;
-    if (seed == null) return rows;
-
-    final seedLoc = inventoryMap(seed['location'])?['id'];
-    if (seedLoc == null) return rows;
-
-    final already = rows.any(
-      (row) => inventoryMap(row['location'])?['id'] == seedLoc,
-    );
-    if (already) return rows;
-
-    return [seed, ...rows];
   }
 
   Future<void> _adjust() async {

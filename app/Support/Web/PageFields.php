@@ -84,66 +84,6 @@ final class PageFields
     }
 
     /**
-     * The next template name.
-     *
-     * From the names present, never from how many: deleting template 2 of three
-     * must not hand template 3's name to new words, on a site where
-     * `[ezbizi_template_3]` is already pasted into nine pages.
-     *
-     * @param  array<int, string>  $existing
-     */
-    public static function nextTemplateKey(array $existing): string
-    {
-        $taken = [];
-
-        foreach ($existing as $key) {
-            if (preg_match('/^template_([0-9]+)$/', $key, $m) === 1) {
-                $taken[] = (int) $m[1];
-            }
-        }
-
-        return 'template_'.(($taken === [] ? 0 : max($taken)) + 1);
-    }
-
-    /**
-     * The key a new field on this page should take.
-     *
-     * Derived from the page's own path so it reads as belonging to it, and
-     * numbered from the keys already there rather than from a count — deleting
-     * field 2 of three must not make the next one collide with field 3.
-     */
-    public static function nextKey(string $path, array $existing): string
-    {
-        $slug = self::slug($path);
-        $taken = [];
-
-        foreach ($existing as $key) {
-            if (preg_match('/^'.preg_quote($slug, '/').'_field_([0-9]+)$/', $key, $m) === 1) {
-                $taken[] = (int) $m[1];
-            }
-        }
-
-        return $slug.'_field_'.(($taken === [] ? 0 : max($taken)) + 1);
-    }
-
-    /**
-     * A page path as a key prefix. `/about-us/` becomes `about_us`, and the
-     * site root becomes `home` because `_field_1` on its own is not a name.
-     */
-    public static function slug(string $path): string
-    {
-        $slug = Str::of($path)
-            ->trim('/')
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '_')
-            ->trim('_')
-            ->limit(40, '')
-            ->value();
-
-        return $slug === '' ? 'home' : $slug;
-    }
-
-    /**
      * Every custom key this site has, with the page it belongs to.
      *
      * Read from the values themselves, which is what makes the two lists

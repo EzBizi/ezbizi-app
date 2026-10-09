@@ -1532,7 +1532,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -1556,7 +1556,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -1566,17 +1566,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     ).showSnackBar(SnackBar(content: Text('Version $number is live again.')));
 
     widget.onSaved();
-  }
-
-  String _firstError(ApiResponse response) {
-    final errors = response.body['errors'];
-
-    if (errors is Map && errors.isNotEmpty) {
-      final first = errors.values.first;
-      if (first is List && first.isNotEmpty) return first.first.toString();
-    }
-
-    return response.message;
   }
 
   // ── the form ─────────────────────────────────────────────────────

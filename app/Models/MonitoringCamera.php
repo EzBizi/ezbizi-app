@@ -7,7 +7,6 @@ use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A camera registered by its stream URL — generic-protocol v1
@@ -48,10 +47,5 @@ class MonitoringCamera extends Model implements StatesRetention
             .'happened — it stays as long as the organization keeps the camera registered, '
             .'the same answer ServiceArea gives for where a franchise works.'
         );
-    }
-
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
     }
 }

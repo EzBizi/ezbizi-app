@@ -37,11 +37,6 @@ final class PhoneNumberDirectory
     /** @return array<string, GrantablePhoneNumber> */
     public function keyedByIdFor(Organization|string $organization): array
     {
-        $out = [];
-        foreach ($this->forOrganization($organization) as $item) {
-            $out[$item->id] = $item;
-        }
-
-        return $out;
+        return array_column($this->forOrganization($organization), null, 'id');
     }
 }

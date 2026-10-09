@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
-import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import 'device_display.dart';
+import 'note_card.dart';
 
 /// Desktop Monitoring — one employee's periodic screen captures, in the
 /// "hero + filmstrip" layout Jose picked (docs/previews/
@@ -70,12 +70,6 @@ class DesktopMonitoringTab extends StatefulWidget {
   /// import, because this tab has no reason to depend on the capture
   /// service itself, only on the number it uses.
   static const Duration captureInterval = Duration(minutes: 5);
-
-  /// A device silent longer than this draws as offline — same threshold and
-  /// same reasoning as PcSpecsTab.onlineWithin (this tab has its own copy
-  /// rather than importing that one, for the same reason PcSpecsTab's own
-  /// `_seenAgo` is not shared: independent knobs that happen to agree today).
-  static const Duration onlineWithin = Duration(minutes: 5);
 
   /// Above this width the people list is a left rail beside the capture;
   /// at or below it, a horizontal chip row sits above the capture instead.
@@ -276,7 +270,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       _loadingDevices = false;
       _devices = devices;
       if (!keepSelection) {
-        final fallback = _mostRecentCaptureDevice(devices);
+        final fallback = mostRecentlySeen(devices);
         _selectedDeviceId = fallback == null ? null : fallback['id'] as String?;
       }
     });
@@ -309,8 +303,8 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   /// were most recently seen on. Goes through [_selectDevice] so the race
   /// guard and the existing fetch path are exactly the same one a direct
   /// device pick uses.
-  void _selectPerson(_Person person) {
-    final target = _mostRecentCaptureDevice(person.devices);
+  void _selectPerson(MonitoringPerson person) {
+    final target = mostRecentlySeen(person.devices);
     if (target != null) _selectDevice(target['id'] as String);
   }
 
@@ -814,7 +808,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   @override
   Widget build(BuildContext context) {
     if (!_canView) {
-      return _NoteCard(DesktopMonitoringTab.noPermissionNote);
+      return NoteCard(DesktopMonitoringTab.noPermissionNote);
     }
 
     return AsyncBody(
@@ -827,11 +821,11 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
   Widget _content(BuildContext context) {
     if (_devices.isEmpty) {
-      return _NoteCard(DesktopMonitoringTab.noDevicesNote);
+      return NoteCard(DesktopMonitoringTab.noDevicesNote);
     }
 
-    final people = _groupByPerson(_devices);
-    final device = _deviceById(_selectedDeviceId) ?? _mostRecentCaptureDevice(_devices)!;
+    final people = groupByPerson(_devices);
+    final device = _deviceById(_selectedDeviceId) ?? mostRecentlySeen(_devices)!;
     final selectedPersonId = (device['user'] as Map<String, dynamic>?)?['id'] as String?;
     final selectedPerson = _personById(people, selectedPersonId);
 
@@ -852,7 +846,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
                     key: const Key('desktop-monitoring-picker'),
                     people: people,
                     selectedPersonId: selectedPersonId,
-                    isOnline: _isOnline,
+                    isOnline: isDeviceOnline,
                     onSelect: _selectPerson,
                   ),
                 ),
@@ -872,7 +866,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
                 key: const Key('desktop-monitoring-picker'),
                 people: people,
                 selectedPersonId: selectedPersonId,
-                isOnline: _isOnline,
+                isOnline: isDeviceOnline,
                 onSelect: _selectPerson,
               ),
               const SizedBox(height: 12),
@@ -884,9 +878,9 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     );
   }
 
-  Widget _buildCapturePane(Map<String, dynamic> device, _Person? person) {
+  Widget _buildCapturePane(Map<String, dynamic> device, MonitoringPerson? person) {
     final canCapture = _declaresScreenshot(device);
-    final online = _isOnline(device);
+    final online = isDeviceOnline(device);
 
     final newest = _shots.isEmpty ? null : _shots.first;
     final newestAt = newest == null
@@ -954,7 +948,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
             child: _FreshnessLine(
               stopped: stopped,
               offline: !online,
-              ago: _relativeAge(newestAt),
+              ago: relativeAge(newestAt),
             ),
           ),
         // Why the last attempt produced nothing, straight from the device.
@@ -964,10 +958,10 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         if (canCapture && captureError != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
-            child: _NoteCard(captureError),
+            child: NoteCard(captureError),
           ),
         if (!canCapture)
-          _NoteCard(DesktopMonitoringTab.noAgentNote)
+          NoteCard(DesktopMonitoringTab.noAgentNote)
         else if (_live)
           _buildLive(device)
         else if (_loadingShots)
@@ -980,7 +974,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         else if (_shots.isEmpty || hero == null)
           // The reason (when there is one) is already shown above, so this
           // does not repeat it — it just stops claiming nothing is wrong.
-          _NoteCard(captureError == null
+          NoteCard(captureError == null
               ? DesktopMonitoringTab.noCapturesYetNote
               : DesktopMonitoringTab.noCapturesFailingNote)
         else ...[
@@ -989,7 +983,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
             bytes: _bytes[hero['id']],
             stopped: stopped,
             offline: !online,
-            newestAgo: newestAt == null ? '' : _relativeAge(newestAt),
+            newestAgo: newestAt == null ? '' : relativeAge(newestAt),
           ),
           const SizedBox(height: 12),
           _Filmstrip(
@@ -1049,28 +1043,6 @@ bool _declaresScreenshot(Map<String, dynamic> device) =>
     (device['capabilities'] as List<dynamic>? ?? const [])
         .cast<String>()
         .contains('screenshot');
-
-bool _isOnline(Map<String, dynamic> device) {
-  final seenRaw = device['last_seen_at'] as String?;
-  if (seenRaw == null) return false;
-  final seen = DateTime.tryParse(seenRaw);
-  if (seen == null) return false;
-  return DateTime.now().toUtc().difference(seen.toUtc()) <=
-      DesktopMonitoringTab.onlineWithin;
-}
-
-/// "just now" / "3m ago" / "2h ago" / "yesterday" / "5d ago" — this tab's own
-/// copy of the same relative-time shape PcSpecsTab's `_seenAgo` and
-/// leads_screen.dart each carry independently (see PcSpecsTab's doc comment
-/// on why no shared helper exists for this).
-String _relativeAge(DateTime at) {
-  final ago = DateTime.now().difference(at.toLocal());
-  if (ago.isNegative || ago.inMinutes < 1) return 'just now';
-  if (ago.inMinutes < 60) return '${ago.inMinutes}m ago';
-  if (ago.inHours < 24) return '${ago.inHours}h ago';
-  if (ago.inHours < 48) return 'yesterday';
-  return '${ago.inDays}d ago';
-}
 
 /// The device's own reason its last capture produced nothing, as a sentence,
 /// or null when the last attempt succeeded (or predates this reporting).
@@ -1147,80 +1119,12 @@ String _clockTime(DateTime at) {
   return '$hour12:$minute $meridiem';
 }
 
-/// One person and the capture-capable devices they are signed in from, in
-/// the order the server returned them (most recently seen first — see
-/// DevicesController::index).
-class _Person {
-  _Person(this.id, this.name);
-
-  final String id;
-  final String name;
-  final List<Map<String, dynamic>> devices = [];
-}
-
-List<_Person> _groupByPerson(List<Map<String, dynamic>> devices) {
-  final byId = <String, _Person>{};
-  final order = <String>[];
-
-  for (final device in devices) {
-    final user = device['user'] as Map<String, dynamic>? ?? const {};
-    final id = user['id'] as String? ?? 'unknown';
-    final name = user['name'] as String? ?? 'Unknown';
-
-    final person = byId.putIfAbsent(id, () {
-      order.add(id);
-      return _Person(id, name);
-    });
-    person.devices.add(device);
-  }
-
-  return [for (final id in order) byId[id]!];
-}
-
-_Person? _personById(List<_Person> people, String? id) {
+MonitoringPerson? _personById(List<MonitoringPerson> people, String? id) {
   if (id == null) return null;
   for (final person in people) {
     if (person.id == id) return person;
   }
   return null;
-}
-
-/// The device to default to for a person or for the whole list — max by
-/// `last_seen_at`. A missing or unparseable stamp sorts as the oldest
-/// possible.
-Map<String, dynamic>? _mostRecentCaptureDevice(List<Map<String, dynamic>> devices) {
-  if (devices.isEmpty) return null;
-
-  var best = devices.first;
-  var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
-      DateTime.fromMillisecondsSinceEpoch(0);
-
-  for (final device in devices.skip(1)) {
-    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    if (seen.isAfter(bestSeen)) {
-      best = device;
-      bestSeen = seen;
-    }
-  }
-
-  return best;
-}
-
-class _NoteCard extends StatelessWidget {
-  const _NoteCard(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-      ),
-    );
-  }
 }
 
 /// The wide layout's people picker: a search field above a scrollable list —
@@ -1236,10 +1140,10 @@ class _PeopleRail extends StatefulWidget {
     required this.onSelect,
   });
 
-  final List<_Person> people;
+  final List<MonitoringPerson> people;
   final String? selectedPersonId;
   final bool Function(Map<String, dynamic>) isOnline;
-  final ValueChanged<_Person> onSelect;
+  final ValueChanged<MonitoringPerson> onSelect;
 
   @override
   State<_PeopleRail> createState() => _PeopleRailState();
@@ -1277,7 +1181,7 @@ class _PeopleRailState extends State<_PeopleRail> {
                     for (final person in filtered)
                       _PersonListTile(
                         person: person,
-                        device: _mostRecentCaptureDevice(person.devices)!,
+                        device: mostRecentlySeen(person.devices)!,
                         selected: person.id == widget.selectedPersonId,
                         isOnline: widget.isOnline,
                         onTap: () => widget.onSelect(person),
@@ -1299,7 +1203,7 @@ class _PersonListTile extends StatelessWidget {
     required this.onTap,
   });
 
-  final _Person person;
+  final MonitoringPerson person;
   final Map<String, dynamic> device;
   final bool selected;
   final bool Function(Map<String, dynamic>) isOnline;
@@ -1340,7 +1244,7 @@ class _PersonListTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            _StatusDot(online: isOnline(device)),
+            StatusDot(online: isOnline(device)),
           ],
         ),
       ),
@@ -1361,10 +1265,10 @@ class _PeopleChipRow extends StatelessWidget {
     required this.onSelect,
   });
 
-  final List<_Person> people;
+  final List<MonitoringPerson> people;
   final String? selectedPersonId;
   final bool Function(Map<String, dynamic>) isOnline;
-  final ValueChanged<_Person> onSelect;
+  final ValueChanged<MonitoringPerson> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -1413,29 +1317,6 @@ class _DeviceChooser extends StatelessWidget {
             onSelected: (_) => onSelect(device['id'] as String),
           ),
       ],
-    );
-  }
-}
-
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.online});
-
-  final bool online;
-
-  @override
-  Widget build(BuildContext context) {
-    // A bolt and a struck-through bolt, not two coloured circles: colour was
-    // the ONLY thing separating online from offline here, which fails anyone
-    // who cannot tell this green from this grey, and fails everyone in a
-    // screenshot pasted into a ticket. The shape now carries the fact and the
-    // colour reinforces it.
-    return Icon(
-      online ? Icons.flash_on : Icons.flash_off,
-      size: 13,
-      color: online
-          ? EzBiziTheme.clockIn(context)
-          : Theme.of(context).colorScheme.outlineVariant,
-      semanticLabel: online ? 'Online' : 'Offline',
     );
   }
 }
@@ -1574,7 +1455,7 @@ class _Hero extends StatelessWidget {
     final capturedAt = DateTime.tryParse(
       shot['captured_at'] as String? ?? '',
     )?.toLocal();
-    final ownAgo = capturedAt == null ? '' : _relativeAge(capturedAt);
+    final ownAgo = capturedAt == null ? '' : relativeAge(capturedAt);
     final timeText = capturedAt == null ? '' : _clockTime(capturedAt);
 
     final badgeText = stopped

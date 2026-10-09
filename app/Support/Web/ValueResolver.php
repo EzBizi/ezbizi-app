@@ -34,6 +34,12 @@ use Illuminate\Support\Collection;
  * If no site is primary, or this site IS the primary, the inherited layer is
  * simply empty and the chain collapses to what it was before. Nothing needs a
  * branch for "inheritance is off".
+ *
+ * ── Every map is cast to an object ──
+ *
+ * An empty PHP array encodes as `[]`, not `{}`. The Flutter panel casts these
+ * to a Map, so a site with no values yet threw and the panel never opened: a
+ * first-run deadlock, since values are added through that panel.
  */
 final class ValueResolver
 {

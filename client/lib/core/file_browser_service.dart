@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'api_client.dart';
+import 'file_access_types.dart';
 
 /// The VIEWER half of remote file access (2026-10-01-monitoring-files) — a
 /// manager browsing and downloading a monitored machine's files. The agent half
@@ -28,7 +29,7 @@ class FileBrowserService {
   final Duration _pollInterval;
   final int _maxPolls;
 
-  /// A directory's entries, or a [FileBrowserException] with the agent's slug.
+  /// A directory's entries, or a [FileAccessException] with the agent's slug.
   /// An empty [path] asks for the roots (the drives).
   Future<FileListing> list(String deviceId, String path) async {
     final answer = await _run(deviceId, 'list', path);
@@ -48,7 +49,7 @@ class FileBrowserService {
     );
   }
 
-  /// A file's bytes (base64-decoded), or a [FileBrowserException].
+  /// A file's bytes (base64-decoded), or a [FileAccessException].
   Future<FileDownload> download(String deviceId, String path) async {
     final answer = await _run(deviceId, 'download', path);
 
@@ -59,7 +60,7 @@ class FileBrowserService {
   }
 
   /// POST the request, then poll its slot until the agent answers or the budget
-  /// runs out. An `error` answer is thrown as a [FileBrowserException] carrying
+  /// runs out. An `error` answer is thrown as a [FileAccessException] carrying
   /// the slug; exhausting the budget throws `offline`.
   Future<Map<String, dynamic>> _run(String deviceId, String op, String path) async {
     final posted = await _api.post('/monitoring/devices/$deviceId/files', {
@@ -68,7 +69,7 @@ class FileBrowserService {
     });
 
     if (!posted.ok) {
-      throw const FileBrowserException('unreadable');
+      throw const FileAccessException('unreadable');
     }
 
     final requestId = posted.data is Map
@@ -76,7 +77,7 @@ class FileBrowserService {
         : null;
 
     if (requestId == null) {
-      throw const FileBrowserException('unreadable');
+      throw const FileAccessException('unreadable');
     }
 
     for (var i = 0; i < _maxPolls; i++) {
@@ -95,7 +96,7 @@ class FileBrowserService {
       }
 
       if (status == 'error') {
-        throw FileBrowserException(data['error'] as String? ?? 'unreadable');
+        throw FileAccessException(data['error'] as String? ?? 'unreadable');
       }
 
       return data;
@@ -103,7 +104,7 @@ class FileBrowserService {
 
     // No answer within the budget — the agent is not running or the device is
     // offline. The screen pairs this with last_seen_at to say which.
-    throw const FileBrowserException('offline');
+    throw const FileAccessException('offline');
   }
 
   static String _basename(String path) {
@@ -149,28 +150,14 @@ class FileDownload {
   final List<int> bytes;
 }
 
-/// A read the agent refused or that never came back, carrying the slug the
-/// screen turns into a sentence: access_denied, not_found, too_large,
-/// unreadable, offline.
-class FileBrowserException implements Exception {
-  const FileBrowserException(this.slug);
-
-  final String slug;
-
-  @override
-  String toString() => 'FileBrowserException($slug)';
-}
-
 /// Decode base64, tolerant of a null or malformed blob (an empty file, or an
 /// answer that somehow carried no content) — an empty list rather than a throw,
 /// so a zero-byte download saves a zero-byte file instead of failing.
 List<int> base64OrEmpty(String? encoded) {
   if (encoded == null || encoded.isEmpty) return const [];
   try {
-    return _decode(encoded);
+    return base64Decode(encoded);
   } catch (_) {
     return const [];
   }
 }
-
-List<int> _decode(String encoded) => base64Decode(encoded);

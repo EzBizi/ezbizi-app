@@ -8,9 +8,9 @@ import '../../widgets/refused.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import '../inventory_screen.dart';
-import 'add_issue_pane.dart';
 import 'add_purchase_order_pane.dart';
 import 'add_sale_pane.dart';
+import 'add_stock_move_pane.dart';
 import 'issue_pane.dart';
 import 'item_pane.dart';
 import 'stock_join.dart';
@@ -679,7 +679,7 @@ class _OrderListState extends State<OrderList> {
     }
 
     if (_addingIssue) {
-      return AddIssuePane(
+      return AddStockMovePane.issue(
         api: widget.api,
         session: widget.session,
         showBack: showBack,

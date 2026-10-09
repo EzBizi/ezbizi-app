@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/api_client.dart';
 import '../../core/staff_session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -503,25 +502,12 @@ class _NewStaffPanelState extends State<_NewStaffPanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
 
     Navigator.of(context).pop(response.body);
-  }
-
-  /// Laravel returns field errors under `errors`; the top-level message is the
-  /// generic "the given data was invalid", which tells the reader nothing.
-  String _firstError(ApiResponse response) {
-    final errors = response.body['errors'];
-
-    if (errors is Map && errors.isNotEmpty) {
-      final first = errors.values.first;
-      if (first is List && first.isNotEmpty) return first.first.toString();
-    }
-
-    return response.message;
   }
 
   @override

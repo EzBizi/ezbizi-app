@@ -56,6 +56,30 @@ final class SocialConnectionAccess
         };
     }
 
+    /**
+     * One provider's connections this person may see, as the `connections`
+     * meta Business Profile and Reviews send. The id is what lets the tab that
+     * owns a connection remove it; without it the only disconnect was in
+     * Marketing, a module these providers are kept out of.
+     *
+     * @return list<array{id: mixed, provider: string, display_name: string, status: string}>
+     */
+    public function presentableInView(?User $user, SocialProvider $provider): array
+    {
+        return SocialConnection::query()
+            ->where('provider', $provider->value)
+            ->get()
+            ->filter(fn (SocialConnection $c) => $user !== null && $this->inView($user, $c))
+            ->map(fn (SocialConnection $c) => [
+                'id'           => $c->getKey(),
+                'provider'     => $c->provider,
+                'display_name' => $c->display_name,
+                'status'       => $c->status,
+            ])
+            ->values()
+            ->all();
+    }
+
     public function reaches(User $user, SocialConnection $connection): bool
     {
         return $this->reachesScope($user, $connection->scope_type, $connection->scope_id);

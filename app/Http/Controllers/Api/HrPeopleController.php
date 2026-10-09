@@ -179,12 +179,7 @@ class HrPeopleController extends Controller
                     + ($contacts->has($p->getKey()) ? 0 : 1)
                     + ($paid === null || $paid->has($p->getKey()) ? 0 : 1),
             ]),
-            'meta' => [
-                'total'        => $people->total(),
-                'per_page'     => $people->perPage(),
-                'current_page' => $people->currentPage(),
-                'last_page'    => $people->lastPage(),
-            ],
+            'meta' => $this->pageMeta($people),
         ]);
     }
 

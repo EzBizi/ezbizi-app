@@ -9,6 +9,7 @@ import '../../widgets/list_table.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
+import 'phone_refs.dart';
 
 /// Phone › Settings › IVR menus — the menu a caller hears.
 ///
@@ -66,7 +67,7 @@ class _FlowsPaneState extends State<FlowsPane> {
   String? _error;
 
   List<_Flow> _flows = const [];
-  List<_Group> _groups = const [];
+  List<RingGroupRef> _groups = const [];
   List<_Conn> _connections = const [];
   List<_Ext> _extensions = const [];
 
@@ -145,7 +146,7 @@ class _FlowsPaneState extends State<FlowsPane> {
 
     setState(() {
       _flows = _Flow.listFrom(results[0].body);
-      _groups = _Group.listFrom(results[1].body);
+      _groups = RingGroupRef.listFrom(results[1].body);
       _connections = _Conn.listFrom(results[2].body);
       _extensions = _Ext.listFrom(results[3].body);
       _loading = false;
@@ -967,29 +968,6 @@ class _Flow {
             promptAudio: row['prompt_audio'] as String?,
           );
         })
-        .toList(growable: false);
-  }
-}
-
-@immutable
-class _Group {
-  const _Group({required this.id, required this.name});
-
-  final String id;
-  final String name;
-
-  static List<_Group> listFrom(dynamic payload) {
-    final data = payload is Map ? payload['data'] : payload;
-    if (data is! List) return const [];
-
-    return data
-        .whereType<Map<String, dynamic>>()
-        .map(
-          (r) => _Group(
-            id: r['id'].toString(),
-            name: r['name']?.toString() ?? 'Group',
-          ),
-        )
         .toList(growable: false);
   }
 }

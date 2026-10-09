@@ -39,11 +39,6 @@ final class PinterestOAuth implements SocialOAuth
         return 'pinterest';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;

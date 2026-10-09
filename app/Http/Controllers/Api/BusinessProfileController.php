@@ -78,7 +78,7 @@ class BusinessProfileController extends Controller
                 // Counted here rather than derived on the client, so the number
                 // in the tab badge and the number in the list cannot disagree.
                 'not_live'    => $locations->reject(fn (BusinessLocation $l) => $l->isLive())->count(),
-                'connections' => $this->connectionState(),
+                'connections' => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
             ],
         ]);
     }
@@ -211,37 +211,6 @@ class BusinessProfileController extends Controller
         }
 
         return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
-    }
-
-    /** @return array<int, array{provider: string, display_name: string, status: string}> */
-    private function connectionState(): array
-    {
-        $user = request()->user();
-
-        return SocialConnection::query()
-            ->where('provider', SocialProvider::GoogleBusinessProfile->value)
-            ->get()
-            /*
-             * The view, not just the organization.
-             *
-             * The tenant scope narrows this to the organization and nothing
-             * narrowed it to the company being looked at, so every company in an
-             * organization saw - and fetched through - every other company's
-             * connected Google account. Marketing's catalogue has always filtered
-             * this way; these three tabs never did.
-             */
-            ->filter(fn (SocialConnection $c) => $user !== null && $this->access->inView($user, $c))
-            ->map(fn (SocialConnection $c) => [
-                // The id is what lets the tab that owns this connection
-                // remove it. Without it the only disconnect was in
-                // Marketing, a module these providers are kept out of.
-                'id'           => $c->getKey(),
-                'provider'     => $c->provider,
-                'display_name' => $c->display_name,
-                'status'       => $c->status,
-            ])
-            ->values()
-            ->all();
     }
 
     /** @return array<string, mixed> */

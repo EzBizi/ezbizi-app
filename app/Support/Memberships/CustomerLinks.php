@@ -155,11 +155,6 @@ final class CustomerLinks
         return URL::temporarySignedRoute('memberships.join', now()->addDays(self::JOIN_DAYS), ['customer' => $customer->getKey()]);
     }
 
-    public static function googleReviewLink(Customer $customer): ?string
-    {
-        return self::siteValue($customer, 'google_review_link');
-    }
-
     /**
      * The site for the job's service area (nj. for New Jersey: each has its own
      * Google profile), else the franchise's (the job's, else the customer's),

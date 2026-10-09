@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import 'inventory_place_fields.dart';
 import 'item_pane.dart';
 
 /// Add is the same 75% pane as a location, not a modal.
@@ -42,11 +43,6 @@ class _AddLocationPaneState extends State<AddLocationPane> {
 
   bool get _atOrganization => _me.scope.type == 'organization';
 
-  bool get _showCompanyField => _me.offersCompanyChoice;
-
-  bool get _showFranchiseField =>
-      _me.offersFranchiseChoice && _companyId != null;
-
   bool get _fleetView => _me.can('fleet_management.view');
 
   List<(String, String)> get _kinds => [
@@ -66,8 +62,6 @@ class _AddLocationPaneState extends State<AddLocationPane> {
     _name.dispose();
     super.dispose();
   }
-
-  List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
 
   Future<void> _loadVehicles() async {
     if (!_fleetView) return;
@@ -160,56 +154,17 @@ class _AddLocationPaneState extends State<AddLocationPane> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_showCompanyField) ...[
-                  SearchPickerField<String>(
-                    value: _companyId ?? inventoryOrgValue,
-                    label: 'Company',
-                    helperText: _companyId == null && _atOrganization
-                        ? '$inventoryGeneralLabel — the whole group can see it.'
-                        : null,
-                    helperMaxLines: 3,
-                    options: [
-                      if (_atOrganization)
-                        SearchOption(
-                          value: inventoryOrgValue,
-                          label: _me.organization.name,
-                        ),
-                      for (final c in _me.companiesInView)
-                        SearchOption(value: c.id, label: c.name),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (v) => setState(() {
-                            _companyId = v == inventoryOrgValue ? null : v;
-                            _franchiseId = null;
-                          }),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_showFranchiseField)
-                  SearchPickerField<String>(
-                    key: ValueKey(_companyId),
-                    value: _franchiseId ?? inventoryGeneralValue,
-                    label: _me.organization.franchiseLabel,
-                    helperText:
-                        '$inventoryGeneralLabel is visible to everyone who can see this company.',
-                    helperMaxLines: 3,
-                    options: [
-                      const SearchOption(
-                        value: inventoryGeneralValue,
-                        label: inventoryGeneralLabel,
-                      ),
-                      for (final f in _places)
-                        SearchOption(value: f.id, label: f.name),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (v) => setState(
-                            () => _franchiseId = v == inventoryGeneralValue
-                                ? null
-                                : v,
-                          ),
-                  ),
+                InventoryPlaceFields(
+                  me: _me,
+                  companyId: _companyId,
+                  franchiseId: _franchiseId,
+                  enabled: !_busy,
+                  onCompanyChanged: (v) => setState(() {
+                    _companyId = v;
+                    _franchiseId = null;
+                  }),
+                  onFranchiseChanged: (v) => setState(() => _franchiseId = v),
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _name,

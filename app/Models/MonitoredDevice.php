@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Access\ScopeReach;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -110,5 +112,28 @@ class MonitoredDevice extends Model implements HoldsPersonalData
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * §3: devices whose person the actor may see — the reach check on top of
+     * `BelongsToTenant`, which already excludes a sibling org's device.
+     */
+    public function scopeVisibleTo(Builder $query, User $actor): Builder
+    {
+        return $query->whereHas('user', fn (Builder $u) => app(ScopeReach::class)->constrainToVisiblePeople($u, $actor));
+    }
+
+    /**
+     * An agent's own device, from its own session, never anyone else's: the
+     * three-key (org, user, device_key) resolution HeartbeatController::store
+     * uses. The explicit org filter throws when no tenant is set.
+     */
+    public function scopeOwnedBy(Builder $query, User $user, string $deviceKey): Builder
+    {
+        return $query->where([
+            'organization_id' => app(TenantContext::class)->idOrFail(),
+            'user_id' => $user->getKey(),
+            'device_key' => $deviceKey,
+        ]);
     }
 }

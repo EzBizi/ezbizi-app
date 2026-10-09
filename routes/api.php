@@ -2101,7 +2101,7 @@ Route::prefix('v1')
         // What a call was about. Editing the list is phone.edit; putting one
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
-        // Reports. Literal paths before {report}, or "run" is captured as an id.
+        // Reports.
         Route::post('phone/audio', [\App\Http\Controllers\Api\Phone\AudioController::class, 'store'])
             ->middleware('permission:phone.settings.view');
         Route::get('phone/reports/run', [PhoneReportsController::class, 'run'])
@@ -2109,10 +2109,6 @@ Route::prefix('v1')
         Route::get('phone/reports', [PhoneReportsController::class, 'index'])
             ->middleware('permission:phone.reports.view');
         Route::post('phone/reports', [PhoneReportsController::class, 'store'])
-            ->middleware('permission:phone.reports.view');
-        Route::get('phone/reports/{report}/run', [PhoneReportsController::class, 'runSaved'])
-            ->middleware('permission:phone.reports.view');
-        Route::patch('phone/reports/{report}', [PhoneReportsController::class, 'update'])
             ->middleware('permission:phone.reports.view');
         Route::delete('phone/reports/{report}', [PhoneReportsController::class, 'destroy'])
             ->middleware('permission:phone.reports.view');
@@ -2258,8 +2254,6 @@ Route::prefix('v1')
         Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover'])
             ->middleware('permission:inspection.builder.view');
         Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover'])
-            ->middleware('permission:inspection.builder.view');
-        Route::get('inspections/{inspection_definition}/graph', [InspectionDefinitionsController::class, 'graph'])
             ->middleware('permission:inspection.builder.view');
         Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish'])
             ->middleware('permission:inspection.builder.view');

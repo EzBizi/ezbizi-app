@@ -695,12 +695,6 @@ final class ReportRunner
         return (string) app(SettingsResolver::class)->get('timezone', $user->organization);
     }
 
-    /** Dates a report can ask for by name, so a saved "Last month" moves on with the calendar. */
-    public const PERIODS = [
-        'today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month',
-        'last_7_days', 'last_30_days', 'last_90_days', 'this_year', 'last_year',
-    ];
-
     /**
      * One filter as SQL. The expression comes from the map, never the
      * request; every value is bound.

@@ -4,7 +4,6 @@ namespace App\Support\Dashboard\Widgets\Hr;
 
 use App\Models\Invitation;
 use App\Models\User;
-use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -39,32 +38,9 @@ use Illuminate\Database\Eloquent\Builder;
  * method resolves them, and the one place they could drift — what counts as
  * expired — is `expires_at` in both.
  */
-class InvitationsStalled implements Widget
+class InvitationsStalled
 {
     use ScopesToPlaces;
-
-    public const KEY = 'hr.invitations_stalled';
-
-    public function key(): string { return self::KEY; }
-
-    public function label(): string { return 'Invitations that have stalled'; }
-
-    public function permission(): string { return 'hr.view'; }
-
-    public function options(User $user): array
-    {
-        return [
-            'quiet_days' => [
-                'label'   => 'Count as unopened after',
-                'type'    => 'enum',
-                'options' => [1, 3, 7],
-                'default' => 3,
-                'help'    => 'How long a live invitation may sit unopened before it is worth '
-                    .'chasing. Below the expiry window, so it says something while there is '
-                    .'still time to act on it.',
-            ],
-        ];
-    }
 
     public function resolve(User $user, array $options): array
     {

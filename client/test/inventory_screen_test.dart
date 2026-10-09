@@ -6,7 +6,6 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/inventory/stock_join.dart';
 import 'package:ezbizi_client/screens/inventory_screen.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,7 +153,6 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(InventoryScreen), findsOneWidget);
     expect(find.text('Stock'), findsWidgets);

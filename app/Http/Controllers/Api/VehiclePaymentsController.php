@@ -46,10 +46,10 @@ class VehiclePaymentsController extends Controller
         $this->authorize('create', [VehiclePayment::class, $vehicle]);
 
         $input = $request->validate([
-            'category' => ['required', 'string', Rule::in(VehiclePaymentCategory::values())],
+            'category' => ['required', 'string', Rule::enum(VehiclePaymentCategory::class)],
             'amount_cents' => ['required', 'integer', 'min:0'],
             'occurred_on' => ['required', 'date'],
-            'method' => ['required', 'string', Rule::in(VehiclePaymentMethod::values())],
+            'method' => ['required', 'string', Rule::enum(VehiclePaymentMethod::class)],
             'note' => ['nullable', 'string', 'max:5000'],
             'ownership_period_id' => [
                 'nullable', 'uuid',

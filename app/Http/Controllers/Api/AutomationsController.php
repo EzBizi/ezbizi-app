@@ -1958,7 +1958,7 @@ class AutomationsController extends Controller
              */
             /*
              * A TEMPLATE, never free text, and that is Meta's rule rather than
-             * ours: WhatsAppCloud::sendText's own docblock says free text is
+             * ours: WhatsAppCloud::replyFreeForm's own docblock says free text is
              * accepted only inside the 24-hour window after the customer wrote
              * to us. An automation is by definition a message the business
              * starts - a job booked, a lead arriving - and almost never inside

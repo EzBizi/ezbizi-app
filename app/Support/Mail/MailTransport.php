@@ -75,16 +75,6 @@ enum MailTransport: string
      */
     case Smtp = 'smtp';
 
-    /** Can a tenant put this on one of their own identities? */
-    public function isTenantChoosable(): bool
-    {
-        return match ($this) {
-            self::Platform       => false,
-            self::VerifiedDomain => true,
-            self::Smtp           => true,
-        };
-    }
-
     /** Does using this transport require the domain to have been proved? */
     public function requiresDomainProof(): bool
     {
@@ -111,12 +101,6 @@ enum MailTransport: string
             self::VerifiedDomain => 'Your own domain, sent by EzBizi',
             self::Smtp           => 'Your own mail server',
         };
-    }
-
-    /** @return self[] what a tenant may pick from */
-    public static function tenantChoices(): array
-    {
-        return array_values(array_filter(self::cases(), fn (self $t) => $t->isTenantChoosable()));
     }
 
     /**

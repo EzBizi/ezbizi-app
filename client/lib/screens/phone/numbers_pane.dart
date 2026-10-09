@@ -12,6 +12,7 @@ import 'settings_pane.dart';
 import '../../widgets/refused.dart';
 import 'buy_number_panel.dart';
 import 'carrier_settings.dart';
+import 'phone_refs.dart';
 
 /// Phone › Settings › Numbers — the lines this business answers on.
 ///
@@ -55,7 +56,7 @@ class _NumbersPaneState extends State<NumbersPane> {
 
   List<_Line> _lines = const [];
   List<_Conn> _connections = const [];
-  List<_Group> _groups = const [];
+  List<RingGroupRef> _groups = const [];
   List<_Schedule> _schedules = const [];
 
   /// Lines ticked for a change made to all of them at once. Jose,
@@ -270,7 +271,7 @@ class _NumbersPaneState extends State<NumbersPane> {
     setState(() {
       _lines = _Line.listFrom(results[0].body);
       _connections = connections;
-      _groups = _Group.listFrom(results[2].body);
+      _groups = RingGroupRef.listFrom(results[2].body);
       _schedules = _Schedule.listFrom(results[3].body);
       _scope ??= connections.isEmpty ? null : connections.first;
       _loading = false;
@@ -1101,7 +1102,7 @@ class _LineForm extends StatefulWidget {
   final String scopeType;
   final String scopeId;
   final _Line line;
-  final List<_Group> groups;
+  final List<RingGroupRef> groups;
   final List<_Schedule> schedules;
   final bool saving;
   final String? error;
@@ -1546,24 +1547,6 @@ class _Conn {
         scopeId: row['scope_id']?.toString() ?? '',
       );
     }).toList(growable: false);
-  }
-}
-
-@immutable
-class _Group {
-  const _Group({required this.id, required this.name});
-
-  final String id;
-  final String name;
-
-  static List<_Group> listFrom(dynamic payload) {
-    final data = payload is Map ? payload['data'] : payload;
-    if (data is! List) return const [];
-
-    return data
-        .whereType<Map<String, dynamic>>()
-        .map((r) => _Group(id: r['id'].toString(), name: r['name']?.toString() ?? 'Group'))
-        .toList(growable: false);
   }
 }
 

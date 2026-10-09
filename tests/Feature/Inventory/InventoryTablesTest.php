@@ -52,13 +52,13 @@ class InventoryTablesTest extends TestCase
 
     public function test_backed_enums_expose_values_for_validation_rules(): void
     {
-        $this->assertSame(['each', 'box', 'ft', 'in', 'gal', 'lb', 'kit', 'other'], InventoryUnit::values());
-        $this->assertSame(['active', 'discontinued'], InventoryItemStatus::values());
-        $this->assertSame(['warehouse', 'shop', 'cage', 'receiving', 'van', 'other'], InventoryLocationKind::values());
-        $this->assertSame(['active', 'closed'], InventoryLocationStatus::values());
-        $this->assertSame(['draft', 'open', 'received', 'cancelled'], InventoryPurchaseOrderStatus::values());
-        $this->assertSame(['draft', 'open', 'partial', 'fulfilled', 'cancelled'], InventorySaleStatus::values());
-        $this->assertSame(['unpaid', 'paid'], InventorySalePaymentStatus::values());
+        $this->assertSame(['each', 'box', 'ft', 'in', 'gal', 'lb', 'kit', 'other'], array_column(InventoryUnit::cases(), 'value'));
+        $this->assertSame(['active', 'discontinued'], array_column(InventoryItemStatus::cases(), 'value'));
+        $this->assertSame(['warehouse', 'shop', 'cage', 'receiving', 'van', 'other'], array_column(InventoryLocationKind::cases(), 'value'));
+        $this->assertSame(['active', 'closed'], array_column(InventoryLocationStatus::cases(), 'value'));
+        $this->assertSame(['draft', 'open', 'received', 'cancelled'], array_column(InventoryPurchaseOrderStatus::cases(), 'value'));
+        $this->assertSame(['draft', 'open', 'partial', 'fulfilled', 'cancelled'], array_column(InventorySaleStatus::cases(), 'value'));
+        $this->assertSame(['unpaid', 'paid'], array_column(InventorySalePaymentStatus::cases(), 'value'));
     }
 
     public function test_sku_is_unique_inside_a_place_not_the_organization(): void

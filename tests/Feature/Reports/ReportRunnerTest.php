@@ -9,8 +9,8 @@ use App\Models\MonitoredDevice;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
-use App\Support\Services\ServiceVisibility;
 use App\Support\Reports\ReportRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -390,7 +390,7 @@ class ReportRunnerTest extends TestCase
             'services.name',
         );
 
-        $fromTheTab = $this->inTenant($tenant['org'], fn () => ServiceVisibility::constrain(
+        $fromTheTab = $this->inTenant($tenant['org'], fn () => InventoryVisibility::constrain(
             Service::query(),
             $limited,
             ViewScope::forUser($limited),

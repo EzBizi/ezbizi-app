@@ -48,11 +48,6 @@ final class FacebookOAuth implements SocialOAuth
         return 'facebook';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;

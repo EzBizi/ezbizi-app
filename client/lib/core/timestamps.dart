@@ -82,9 +82,6 @@ class DisplayFormats {
     );
   }
 
-  bool get dateFormatKnown => known['date_format']!.contains(dateFormat);
-  bool get timeFormatKnown => known['time_format']!.contains(timeFormat);
-
   /// A sentence for the settings screen when a value cannot be drawn, or null
   /// when it can.
   ///

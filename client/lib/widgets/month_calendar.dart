@@ -40,7 +40,6 @@ class MonthCalendar extends StatefulWidget {
     required this.entries,
     this.title = 'Calendar',
     this.emptyNote,
-    this.expand = false,
   });
 
   final List<CalendarEntry> entries;
@@ -49,8 +48,6 @@ class MonthCalendar extends StatefulWidget {
   /// Shown when the visible month holds nothing. A grid of empty squares looks
   /// like a screen that failed to load.
   final String? emptyNote;
-
-  final bool expand;
 
   @override
   State<MonthCalendar> createState() => _MonthCalendarState();
@@ -88,7 +85,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return DashboardCard(
       title: widget.title,
       icon: Icons.calendar_view_month_outlined,
-      expand: widget.expand,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

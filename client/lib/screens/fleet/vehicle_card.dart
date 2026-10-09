@@ -85,12 +85,7 @@ List<Map<String, dynamic>> fleetMaps(dynamic value) {
   ];
 }
 
-String fleetToday() {
-  final n = DateTime.now();
-  final m = n.month.toString().padLeft(2, '0');
-  final d = n.day.toString().padLeft(2, '0');
-  return '${n.year}-$m-$d';
-}
+String fleetToday() => formatCalendarDay(DateTime.now());
 
 /// Calendar day, or the date part of an instant. Never parsed as UTC midnight.
 String fleetDay(String? stamp) {

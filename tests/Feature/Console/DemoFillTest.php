@@ -201,8 +201,8 @@ class DemoFillTest extends TestCase
         // with consequences rather than a tidiness point. TimeClock::visibleTo
         // and HrPeopleController::visibleTo only show unplaced people to
         // somebody standing at the ORGANIZATION, so a franchise-level viewer
-        // would meet vans held by nobody and an empty time clock. HR's Headcount
-        // widget gives them their own row reading "Not assigned to a place",
+        // would meet vans held by nobody and an empty time clock. HR's overview
+        // gives them their own row reading "Not assigned to a place",
         // and five of those on an App Store screenshot reads as a broken
         // install.
         //

@@ -18,7 +18,7 @@ use Tests\TestCase;
 /**
  * Fleet Management dashboard glance (spec § Fleet — pie).
  *
- * Snapshot pie of VehicleStatus under VehicleVisibility. Empty-at-zero once any
+ * Snapshot pie of VehicleStatus under InventoryVisibility. Empty-at-zero once any
  * vehicle exists. No money keys on this box.
  */
 class FleetGlanceTest extends TestCase

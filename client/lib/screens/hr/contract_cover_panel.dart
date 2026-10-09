@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/files.dart';
+import '../../widgets/error_note.dart';
 import '../../widgets/logo_badge.dart';
 import '../../widgets/side_panel.dart';
 
@@ -249,7 +250,10 @@ class _ContractCoverPanelState extends State<ContractCoverPanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_error != null) ...[
-            _Refusal(_error!),
+            // A box rather than a snackbar: over a side panel that is gone in
+            // four seconds, and the sentence is still needed while they go
+            // and find a smaller file.
+            ErrorNote(_error!),
             const SizedBox(height: 16),
           ],
           _option(
@@ -445,44 +449,6 @@ class _Thumbnail extends StatelessWidget {
       child: bytes == null
           ? Icon(Icons.image_outlined, size: 18, color: scheme.onSurfaceVariant)
           : Image.memory(bytes!, fit: BoxFit.contain),
-    );
-  }
-}
-
-/// Why the upload was refused, in the server's words.
-///
-/// Its own small box rather than a snackbar: a snackbar over a side panel is
-/// gone in four seconds, and the sentence explaining that a 12MB photograph was
-/// too big is the one thing somebody needs to still be able to read while they
-/// go and find a smaller one.
-class _Refusal extends StatelessWidget {
-  const _Refusal(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline, size: 18, color: scheme.error),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

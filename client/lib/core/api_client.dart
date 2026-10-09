@@ -99,7 +99,7 @@ class ApiClient {
   /// refused. Opt-in registration means the next screen that builds a client
   /// silently reopens the same hole, and nothing fails when it does.
   ///
-  /// So it is registered once, by [VersionGate.install], and it covers clients
+  /// So it is registered once, by `installVersionGate`, and it covers clients
   /// nobody remembered to think about — which is every client that matters here,
   /// because the ones people remember were never the problem.
   static void Function(UpgradeRequired notice)? onUpgradeRequiredAnywhere;
@@ -689,16 +689,6 @@ class ApiResponse {
   bool get paymentRequired => statusCode == 402;
 
   bool get forbidden => statusCode == 403;
-
-  /// This build of the client is too old for this server.
-  ///
-  /// Screens rarely need to ask — [ApiClient.onUpgradeRequiredAnywhere] has already
-  /// raised the full-screen explanation by the time this response is returned,
-  /// and a screen underneath it showing its own error note is showing it to
-  /// nobody. It is named here anyway so that a caller reasoning about a failed
-  /// request has the word for what happened, rather than reading `426` and
-  /// having to go and look it up.
-  bool get upgradeRequired => statusCode == 426;
 
   String get message =>
       body['message'] as String? ?? 'Something went wrong (HTTP $statusCode).';

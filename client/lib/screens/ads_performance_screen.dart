@@ -779,9 +779,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             ],
           ),
         ),
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _PinnedRow(child: _campaignHeader(theme, rows)),
+        PinnedHeaderSliver(
+          child: SizedBox(
+            height: _headerHeight,
+            child: _campaignHeader(theme, rows),
+          ),
         ),
         SliverToBoxAdapter(child: _campaignBody(theme, rows, currency)),
         if (_refused.isNotEmpty)
@@ -1310,6 +1312,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
   static const double _checkWidth = 48;
 
+  /// The pinned header's fixed height: one row of labels.
+  static const double _headerHeight = 44;
+
   double get _tableWidth =>
       (_canManage ? _checkWidth : 0) +
       _tableColumns.fold<double>(0, (sum, c) => sum + c.width) +
@@ -1331,7 +1336,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         physics: const NeverScrollableScrollPhysics(),
         child: SizedBox(
           width: _tableWidth,
-          height: _PinnedRow.height,
+          height: _headerHeight,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -1841,31 +1846,4 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       ),
     );
   }
-}
-
-/// The campaign table's header, pinned while the rows scroll beneath it.
-///
-/// A fixed height: the header is one row of labels, and measuring it would
-/// mean laying it out twice every frame.
-class _PinnedRow extends SliverPersistentHeaderDelegate {
-  const _PinnedRow({required this.child});
-
-  final Widget child;
-
-  static const double height = 44;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
-      SizedBox(height: height, child: child);
-
-  /// True whenever the header WIDGET differs - which it does on every sort,
-  /// column or selection change. Returning false would pin a stale arrow.
-  @override
-  bool shouldRebuild(_PinnedRow old) => old.child != child;
 }

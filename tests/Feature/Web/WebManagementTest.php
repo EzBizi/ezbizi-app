@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Web\SeoFields;
-use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -940,10 +939,15 @@ class WebManagementTest extends TestCase
      */
     public function test_no_field_is_named_after_a_shortcode_the_plugin_already_owns(): void
     {
-        $taken = array_intersect(
-            SeoFields::keys(),
-            WidgetPresets::PLUGIN_OWNED_SHORTCODES,
-        );
+        // Read off the plugin itself, so a shortcode it adds is covered the day
+        // it lands. The catalogue loop (`'ezbizi_' . $key`) does not match.
+        $owned = [];
+        foreach (glob(base_path('wordpress-plugin/ezbizi/*.php')) as $file) {
+            preg_match_all("/add_shortcode\(\s*'ezbizi_([a-z0-9_]+)'/", file_get_contents($file), $m);
+            array_push($owned, ...$m[1]);
+        }
+
+        $taken = array_intersect(SeoFields::keys(), $owned);
 
         $this->assertSame(
             [],
@@ -954,10 +958,10 @@ class WebManagementTest extends TestCase
         );
 
         // The positive control. Without it this passes just as happily against
-        // an empty catalogue or a renamed constant, which is the state a
+        // an empty catalogue or a plugin that moved, which is the state a
         // refactor leaves behind.
         $this->assertNotEmpty(SeoFields::keys());
-        $this->assertContains('city_list', WidgetPresets::PLUGIN_OWNED_SHORTCODES);
+        $this->assertContains('city_list', $owned);
     }
 
     /**

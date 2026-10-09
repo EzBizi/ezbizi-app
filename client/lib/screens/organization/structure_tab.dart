@@ -545,7 +545,7 @@ class _StructureTabState extends State<StructureTab> {
         // what was refused.
         if (!_flippedSinceSent) _orientation = undoOrientation;
       });
-      _snack(_firstError(response) ?? response.message);
+      _snack(response.reason);
       return;
     }
 
@@ -594,16 +594,6 @@ class _StructureTabState extends State<StructureTab> {
 
       _lastSavedOrientation = storedOrientation;
     });
-  }
-
-  String? _firstError(ApiResponse response) {
-    final errors = response.body['errors'] as Map<String, dynamic>?;
-
-    if (errors == null || errors.isEmpty) return null;
-
-    final first = errors.values.first;
-
-    return first is List && first.isNotEmpty ? first.first as String : null;
   }
 
   void _snack(String message) {

@@ -16,7 +16,7 @@ use RuntimeException;
  * Inside 24 hours of the customer's last message you may send free text.
  * Outside it you may send ONLY a template Meta has approved in advance, and a
  * free-text attempt is refused rather than queued. That is not a rate limit, it
- * is the product's central rule, which is why `sendTemplate` and `sendText` are
+ * is the product's central rule, which is why `send` and `replyFreeForm` are
  * separate methods rather than one with a flag: the caller has to have decided
  * which situation it is in.
  *
@@ -113,7 +113,7 @@ final class WhatsAppCloud
         string $language = 'en_US',
         ?string $from = null,
     ): WhatsAppMessage {
-        $row = $this->rowFor($recipient, $template, 'template', $from);
+        $row = $this->rowFor($recipient, $template, $from);
 
         return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
     }
@@ -123,9 +123,35 @@ final class WhatsAppCloud
      *
      * FREE-FORM MEANS INSIDE THE 24-HOUR WINDOW, and that is the only reason
      * this is safe to call without a template: the one caller is the staff bot,
-     * answering a message the person sent seconds ago. Called outside a window
-     * it would return 200 with a wamid and then fail on the webhook - see
-     * sendText().
+     * answering a message the person sent seconds ago.
+     *
+     * ── Outside the window this SUCCEEDS and then fails ──────────
+     *
+     * Measured 2026-09-16, because Jose asked whether the template rule was
+     * really as absolute as it sounds. A plain text sent 75 minutes after the
+     * window closed came back **HTTP 200 with a message id**, so `deliver()`
+     * wrote `status = sent` and returned normally. Meta failed it
+     * asynchronously and said so only on the webhook:
+     *
+     *     status         failed
+     *     status_reason  Re-engagement message
+     *
+     * So the refusal is NOT a thrown exception and there is nothing here to
+     * catch. The synchronous answer is an acknowledgement that the request was
+     * well formed, not a statement that the message will be delivered - and a
+     * caller that reports "sent" off this method's return value reports a
+     * success that is already wrong by the time anybody reads it.
+     *
+     * This is why the automation action uses `send()` and templates. A rule
+     * fires when a job is booked or an invoice goes unpaid, which is never
+     * inside the window, and a free-text action would have passed every test
+     * anyone wrote - the API says 200 - while silently failing in production.
+     *
+     * No window check is done here on purpose. Our own `whatsapp_messages`
+     * inbound rows only go back to the day the webhook was wired, so a local
+     * clock would refuse conversations Meta would have allowed, and a false
+     * refusal on a live reply is worse than a recorded failure. The webhook is
+     * the authority and it records the real outcome.
      *
      * Takes the resolved number rather than a display number to look up,
      * because the bot already knows which of our numbers the message arrived
@@ -246,118 +272,6 @@ final class WhatsAppCloud
     }
 
     /**
-     * Free text, which Meta accepts only inside the 24-hour window.
-     *
-     * ── Outside the window this SUCCEEDS and then fails ──────────
-     *
-     * Measured 2026-09-16, because Jose asked whether the template rule was
-     * really as absolute as it sounds. A plain text sent 75 minutes after the
-     * window closed came back **HTTP 200 with a message id**, so `deliver()`
-     * wrote `status = sent` and returned normally. Meta failed it
-     * asynchronously and said so only on the webhook:
-     *
-     *     status         failed
-     *     status_reason  Re-engagement message
-     *
-     * So the refusal is NOT a thrown exception and there is nothing here to
-     * catch. The synchronous answer is an acknowledgement that the request was
-     * well formed, not a statement that the message will be delivered - and a
-     * caller that reports "sent" off this method's return value reports a
-     * success that is already wrong by the time anybody reads it.
-     *
-     * This is why the automation action uses `send()` and templates. A rule
-     * fires when a job is booked or an invoice goes unpaid, which is never
-     * inside the window, and a free-text action would have passed every test
-     * anyone wrote - the API says 200 - while silently failing in production.
-     *
-     * No window check is done here on purpose. Our own `whatsapp_messages`
-     * inbound rows only go back to the day the webhook was wired, so a local
-     * clock would refuse conversations Meta would have allowed, and a false
-     * refusal on a live reply screen is worse than a recorded failure. The
-     * webhook is the authority and it records the real outcome.
-     */
-    public function sendText(WhatsAppMessage $row, string $text): WhatsAppMessage
-    {
-        return $this->deliver($row, [
-            'messaging_product' => 'whatsapp',
-            'to' => $row->counterparty,
-            'type' => 'text',
-            'text' => ['preview_url' => false, 'body' => $text],
-        ]);
-    }
-
-    /**
-     * A PDF (or any document) attached to a template, by link. Row and all.
-     *
-     * ── Why this is a TEMPLATE and not a document message ────────
-     *
-     * Meta does have a plain `type: document` message, and it is the obvious
-     * thing to reach for. It is also free-form, which means it is refused
-     * outside the 24-hour window exactly like `sendText` is. A scheduled
-     * financial report is by definition business-initiated, so the plain
-     * document message would work when tested right after somebody wrote in,
-     * and fail every Monday morning it actually ran.
-     *
-     * A document rides as the template's HEADER instead. That needs a template
-     * whose header format is DOCUMENT - a TEXT-header template cannot carry
-     * one, and Meta refuses the send rather than dropping the attachment.
-     *
-     * ── By link, so there is no upload step ──────────────────────
-     *
-     * Meta fetches the URL itself. It must be publicly reachable and it must
-     * answer `application/pdf`; a login page or an HTML error page is fetched
-     * happily and arrives as a broken attachment. The alternative is uploading
-     * for a media id first, which is a second call and an id that expires.
-     *
-     * `filename` is what the recipient sees and what they get if they save it.
-     * Left out, WhatsApp shows the URL's last path segment, which for a signed
-     * link is a long meaningless token.
-     *
-     * @param  array<int, string|int|float>  $parameters  fills the BODY's {{1}}, {{2}}
-     * @param  string|null  $from  which of our numbers to send from, when the
-     *                             organization holds more than one
-     *
-     * @throws RuntimeException on the same cases as send()
-     */
-    public function sendDocument(
-        string $template,
-        string $recipient,
-        string $link,
-        string $filename,
-        array $parameters = [],
-        string $language = 'en_US',
-        ?string $from = null,
-    ): WhatsAppMessage {
-        $row = $this->rowFor($recipient, $template, 'document', $from);
-
-        return $this->deliver($row, [
-            'messaging_product' => 'whatsapp',
-            'to' => $row->counterparty,
-            'type' => 'template',
-            'template' => [
-                'name' => $template,
-                'language' => ['code' => $language],
-                'components' => [
-                    [
-                        'type' => 'header',
-                        'parameters' => [[
-                            'type' => 'document',
-                            'document' => ['link' => $link, 'filename' => $filename],
-                        ]],
-                    ],
-                    ...($parameters === [] ? [] : [[
-                        'type' => 'body',
-                        'parameters' => array_map(
-                            fn ($p) => ['type' => 'text', 'text' => (string) $p],
-                            array_values($parameters),
-                        ),
-                    ]]),
-                ],
-            ],
-        ]);
-    }
-
-    /**
      * WHICH of our numbers to send from, or a refusal to choose.
      *
      * ── This used to be `->first()` and that was a defect ────────
@@ -422,14 +336,12 @@ final class WhatsAppCloud
     /**
      * The row every outbound send starts from, written before the attempt.
      *
-     * Shared by send() and sendDocument() rather than copied: the three facts
-     * it encodes - provider id not display number, digits with no `+`, written
-     * first - are the ones a second copy would drift on.
+     * The three facts it encodes - provider id not display number, digits with
+     * no `+`, written first - are the ones a second copy would drift on.
      */
     private function rowFor(
         string $recipient,
         string $template,
-        string $kind,
         ?string $from,
     ): WhatsAppMessage {
         $number = $this->numberToSendFrom($from);
@@ -457,7 +369,7 @@ final class WhatsAppCloud
             // conversation key the same way and thread together.
             'counterparty' => ltrim($e164, '+'),
             'status' => WhatsAppMessage::STATUS_QUEUED,
-            'kind' => $kind,
+            'kind' => 'template',
             'template_name' => $template,
         ]);
     }

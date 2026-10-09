@@ -78,10 +78,7 @@ class InventorySalesController extends Controller
                 fn (InventorySale $sale) => $this->presentSale($sale, $user),
             ),
             'meta' => [
-                'total' => $sales->total(),
-                'per_page' => $sales->perPage(),
-                'current_page' => $sales->currentPage(),
-                'last_page' => $sales->lastPage(),
+                ...$this->pageMeta($sales),
                 // Across every page, before the filter: a tapped tile lands on
                 // a list as long as the number it showed.
                 'tiles' => collect(self::TILES)->mapWithKeys(fn (string $tile) => [
@@ -311,7 +308,7 @@ class InventorySalesController extends Controller
         }
 
         $input = $request->validate([
-            'payment_status' => ['required', 'string', Rule::in(InventorySalePaymentStatus::values())],
+            'payment_status' => ['required', 'string', Rule::enum(InventorySalePaymentStatus::class)],
         ]);
 
         $sale->payment_status = InventorySalePaymentStatus::from($input['payment_status']);

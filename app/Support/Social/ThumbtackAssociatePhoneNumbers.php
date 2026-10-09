@@ -3,8 +3,6 @@
 namespace App\Support\Social;
 
 use App\Models\SocialConnection;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
@@ -45,7 +43,7 @@ use RuntimeException;
  */
 final class ThumbtackAssociatePhoneNumbers
 {
-    private const TIMEOUT = 20;
+    private const PATH = '/associate-phone-numbers';
 
     /** Their documented ceiling for the bulk endpoint. */
     private const BULK_MAX = 100;
@@ -114,7 +112,8 @@ final class ThumbtackAssociatePhoneNumbers
     /** @return array<int, array<string, mixed>> */
     public function list(SocialConnection $connection): array
     {
-        $body = $this->call($connection, 'get', $this->base($connection));
+        $client = new ThumbtackClient($connection);
+        $body = $client->get($client->businessPath(self::PATH));
 
         return array_values(array_filter(
             (array) ($body['phoneNumbers'] ?? []),
@@ -127,7 +126,9 @@ final class ThumbtackAssociatePhoneNumbers
     {
         $e164 = self::e164($number) ?? throw new RuntimeException($number.' is not a phone number Thumbtack will take.');
 
-        return $this->call($connection, 'post', $this->base($connection), array_filter([
+        $client = new ThumbtackClient($connection);
+
+        return $client->post($client->businessPath(self::PATH), array_filter([
             'phoneNumber' => $e164,
             'name'        => $name !== '' ? $name : null,
         ], static fn ($v) => $v !== null));
@@ -146,6 +147,7 @@ final class ThumbtackAssociatePhoneNumbers
             return 1;
         }
 
+        $client = new ThumbtackClient($connection);
         $created = 0;
 
         // Their limit is 100 per call, and exceeding it is a validation error
@@ -160,12 +162,7 @@ final class ThumbtackAssociatePhoneNumbers
                 ], static fn ($v) => $v !== null);
             }
 
-            $body = $this->call(
-                $connection,
-                'post',
-                $this->base($connection).'-bulk-create',
-                ['phoneNumbers' => $payload],
-            );
+            $body = $client->post($client->businessPath(self::PATH.'-bulk-create'), ['phoneNumbers' => $payload]);
 
             $created += count((array) ($body['phoneNumbers'] ?? []));
         }
@@ -178,7 +175,9 @@ final class ThumbtackAssociatePhoneNumbers
     {
         $e164 = self::e164($number) ?? throw new RuntimeException($number.' is not a phone number Thumbtack will take.');
 
-        return $this->call($connection, 'put', $this->base($connection).'/'.$phoneNumberId, array_filter([
+        $client = new ThumbtackClient($connection);
+
+        return $client->put($client->businessPath(self::PATH.'/'.$phoneNumberId), array_filter([
             'phoneNumber' => $e164,
             'name'        => $name !== '' ? $name : null,
         ], static fn ($v) => $v !== null));
@@ -186,7 +185,8 @@ final class ThumbtackAssociatePhoneNumbers
 
     public function delete(SocialConnection $connection, string $phoneNumberId): void
     {
-        $this->call($connection, 'delete', $this->base($connection).'/'.$phoneNumberId);
+        $client = new ThumbtackClient($connection);
+        $client->delete($client->businessPath(self::PATH.'/'.$phoneNumberId));
     }
 
     /**
@@ -216,41 +216,5 @@ final class ThumbtackAssociatePhoneNumbers
         }
 
         return '+'.$digits;
-    }
-
-    private function base(SocialConnection $connection): string
-    {
-        return config('services.thumbtack.api_base')
-            .'/v4/businesses/'.$connection->remote_id.'/associate-phone-numbers';
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
-    private function call(SocialConnection $connection, string $method, string $url, array $payload = []): array
-    {
-        $credentials = $connection->getAttribute('credentials');
-        $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
-
-        if (! is_string($token) || $token === '') {
-            throw new RuntimeException('That Thumbtack connection has no usable token. Reconnect it.');
-        }
-
-        try {
-            $request  = Http::withToken($token)->timeout(self::TIMEOUT)->asJson();
-            $response = $payload === [] ? $request->{$method}($url) : $request->{$method}($url, $payload);
-        } catch (ConnectionException) {
-            throw new RuntimeException('EzBizi could not reach Thumbtack.');
-        }
-
-        if ($response->failed()) {
-            throw new RuntimeException(
-                'Thumbtack refused it: '
-                .(string) ($response->json('error.message') ?? $response->json('message') ?? 'HTTP '.$response->status()),
-            );
-        }
-
-        return (array) $response->json();
     }
 }

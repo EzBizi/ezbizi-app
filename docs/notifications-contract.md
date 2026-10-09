@@ -21,7 +21,7 @@ So an organization that switched "Show in-app notifications" off went on
 receiving every automation notify. The setting had been in the settings screen
 looking live since it shipped.
 
-The check now lives **inside** `dispatch()` and `dispatchUnique()`, on the path
+The check now lives **inside** `dispatch()`, on the path
 the row is written on, where no caller can leave it out.
 
 **You do not need to change `ActionRunner::notify()`.** It already passes

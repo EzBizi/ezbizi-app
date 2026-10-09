@@ -166,8 +166,8 @@ class _UpdateRequiredScreenState extends State<UpdateRequiredScreen> {
                   const SizedBox(height: 24),
 
                   // The exits, deliberately quieter than the remedy above them
-                  // and deliberately present. See VersionGate.clear for why
-                  // trying again is offered at all.
+                  // and deliberately present. See main.dart's onTryAgain for
+                  // why trying again is offered at all.
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,

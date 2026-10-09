@@ -478,17 +478,6 @@ final class ModuleDefinition
         return array_map(fn (string $a) => "{$this->key}.{$a}", $this->actions);
     }
 
-    /**
-     * Just the keys — for the engine, which routes on them and has no use for
-     * the wording.
-     *
-     * @return string[]
-     */
-    public function triggerKeys(): array
-    {
-        return array_map(fn (TriggerDefinition $t) => $t->key, $this->triggers);
-    }
-
     public function trigger(string $key): ?TriggerDefinition
     {
         foreach ($this->triggers as $trigger) {

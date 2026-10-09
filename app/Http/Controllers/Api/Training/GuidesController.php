@@ -70,8 +70,8 @@ class GuidesController extends Controller
         // InventoryVisibility already IS the shared place-scope engine:
         // organization rows reach the whole tenant, a company's General
         // reaches anyone who can see that company, a franchise row reaches
-        // only that franchise. ServiceVisibility delegates to it for the
-        // same reason. It is misnamed for a shared engine, but renaming it
+        // only that franchise. Services and Fleet call it for the same
+        // reason. It is misnamed for a shared engine, but renaming it
         // would edit Inventory's and Services' files, which are not this
         // module's to change.
         $query = InventoryVisibility::constrain(TrainingGuide::query(), $user, $scope);
@@ -84,12 +84,7 @@ class GuidesController extends Controller
             'data' => collect($guides->items())->map(
                 fn (TrainingGuide $g) => $this->present($g),
             ),
-            'meta' => [
-                'total' => $guides->total(),
-                'per_page' => $guides->perPage(),
-                'current_page' => $guides->currentPage(),
-                'last_page' => $guides->lastPage(),
-            ],
+            'meta' => $this->pageMeta($guides),
         ]);
     }
 

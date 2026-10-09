@@ -4,9 +4,7 @@ namespace App\Support\Inspection;
 
 use App\Models\InspectionReport;
 use App\Support\Files\HardenedPdf;
-use App\Support\Settings\SettingRegistry;
-use App\Support\Settings\SettingsResolver;
-use App\Support\Tenancy\TenantContext;
+use App\Support\Files\PdfPaper;
 
 /**
  * A filed report as PDF bytes — the one place that decides how.
@@ -38,36 +36,11 @@ class ReportPdf
 {
     public function __construct(
         private readonly ReportDocument $document,
-        private readonly TenantContext $tenant,
-        private readonly SettingsResolver $settings,
-        private readonly SettingRegistry $registry,
+        private readonly PdfPaper $paper,
     ) {}
 
     public function render(InspectionReport $report): string
     {
-        return HardenedPdf::render($this->document->html($report), $this->paper());
-    }
-
-    /**
-     * The tenant's paper size, or the registry default when there is no tenant.
-     *
-     * ponytail: reads `contract_pdf_paper`, which is named for the first module
-     * that needed it. "Which paper does this organization use" is ONE fact — a
-     * franchise in Ohio prints its contracts and its inspections on the same
-     * letter-sized sheet — so a second setting would be a second place to
-     * change it and a chance for the two to disagree. Rename the key to
-     * `pdf_paper` in a settings migration when someone is next in that file;
-     * until then the honest thing is to read the one that exists and say so.
-     *
-     * Carried here verbatim from InspectionReportsController, which is where it
-     * was written and no longer where the reading happens.
-     */
-    public function paper(): string
-    {
-        $organization = $this->tenant->get();
-
-        return (string) ($organization === null
-            ? $this->registry->getOrFail('contract_pdf_paper')->default
-            : $this->settings->get('contract_pdf_paper', $organization));
+        return HardenedPdf::render($this->document->html($report), $this->paper->get());
     }
 }

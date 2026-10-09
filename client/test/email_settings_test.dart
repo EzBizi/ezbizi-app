@@ -1414,7 +1414,7 @@ void main() {
   /// The server checks that the account somebody signed in with IS the address
   /// being connected, and refuses when it is not — because connecting them would
   /// hand everybody with a grant on this shared inbox the mail of somebody's
-  /// personal account. GoogleOAuthRefused::wrongAccount names both addresses and
+  /// personal account. MailOAuthRefused::wrongAccount names both addresses and
   /// says what to do, the callback records it against the flow, and the panel
   /// that is polling prints it.
   ///

@@ -46,7 +46,7 @@ namespace App\Support\Privacy;
  * timed with its own column. It is already correct. Copying it into a consents
  * table would create two homes for one fact (R6) with no way to tell which was
  * authoritative — so the ledger READS it where it lives, and a second kind of
- * consent added later implements RecordsConsent on whatever table owns its
+ * consent added later is read by ConsentLedger from whatever table owns its
  * evidence.
  */
 final class ConsentRecord

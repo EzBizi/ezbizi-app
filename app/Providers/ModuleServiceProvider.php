@@ -510,8 +510,8 @@ class ModuleServiceProvider extends ServiceProvider
                  *
                  * THE LABELS ARE THE SCREEN'S OWN WORDS, taken from
                  * hr_screen.dart's `_tabs` rather than written afresh. "Work
-                 * Hours" is `UiStrings.t('time_clock.tab')` and is capitalised
-                 * that way there; matching it matters more than house style,
+                 * Hours" is capitalised that way on screen; matching it
+                 * matters more than house style,
                  * because an administrator who ticks "Work hours" and then
                  * cannot find it has been given a checkbox for something whose
                  * name they were told wrongly.

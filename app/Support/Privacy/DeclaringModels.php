@@ -53,20 +53,6 @@ class DeclaringModels
         return $this->implementing(StatesRetention::class);
     }
 
-    /**
-     * Every model holding evidence that somebody consented to something.
-     *
-     * One implementor today, and that is the honest answer rather than a gap —
-     * see RecordsConsent, which argues why padding the list would be worse than
-     * a list of one.
-     *
-     * @return array<class-string<Model&RecordsConsent>>
-     */
-    public function recordingConsent(): array
-    {
-        return $this->implementing(RecordsConsent::class);
-    }
-
     /** @return array<class-string> */
     private function implementing(string $interface): array
     {

@@ -70,12 +70,7 @@ class InventoryIssuesController extends Controller
             'data' => collect($issues->items())->map(
                 fn (InventoryIssue $issue) => $this->present($issue),
             ),
-            'meta' => [
-                'total' => $issues->total(),
-                'per_page' => $issues->perPage(),
-                'current_page' => $issues->currentPage(),
-                'last_page' => $issues->lastPage(),
-            ],
+            'meta' => $this->pageMeta($issues),
         ]);
     }
 

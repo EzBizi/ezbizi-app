@@ -79,12 +79,10 @@ class SignaturePad extends StatelessWidget {
     super.key,
     required this.controller,
     this.enabled = true,
-    this.height = 200,
   });
 
   final SignatureController controller;
   final bool enabled;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +92,7 @@ class SignaturePad extends StatelessWidget {
     return ListenableBuilder(
       listenable: c,
       builder: (context, _) => Container(
-        height: height,
+        height: 200,
         decoration: BoxDecoration(
           // White in both themes: it is the paper the signature lands on.
           color: EzBiziTheme.paper,

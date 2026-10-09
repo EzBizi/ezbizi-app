@@ -143,7 +143,6 @@ class ListTable extends StatelessWidget {
     this.onTap,
     this.rowKey,
     this.footer,
-    this.stackBelow = 720,
   });
 
   final List<ListColumn> columns;
@@ -155,7 +154,7 @@ class ListTable extends StatelessWidget {
 
   /// Under the last row: a "load more", for instance.
   final Widget? footer;
-  final double stackBelow;
+  static const double stackBelow = 720;
 
   @override
   Widget build(BuildContext context) {

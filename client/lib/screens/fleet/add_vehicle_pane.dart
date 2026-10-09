@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
-import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
@@ -71,47 +70,6 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
   Me get _me => widget.session.me!;
   bool get _financials => _me.can('fleet_management.financials');
 
-  static const _bodyTypes = <(String, String)>[
-    ('van', 'Van'),
-    ('truck', 'Truck'),
-    ('car', 'Car'),
-    ('suv', 'SUV'),
-    ('trailer', 'Trailer'),
-    ('other', 'Other'),
-  ];
-
-  static const _fuelTypes = <(String, String)>[
-    ('gas', 'Gas'),
-    ('diesel', 'Diesel'),
-    ('hybrid', 'Hybrid'),
-    ('electric', 'Electric'),
-    ('other', 'Other'),
-  ];
-
-  static const _periods = <(String, String)>[
-    ('day', 'Day'),
-    ('week', 'Week'),
-    ('month', 'Month'),
-  ];
-
-  static const _terms = <(String, String)>[
-    ('due_on_receipt', 'Due on receipt'),
-    ('net_15', 'Net 15'),
-    ('net_30', 'Net 30'),
-    ('net_45', 'Net 45'),
-    ('net_60', 'Net 60'),
-  ];
-
-  static const _methods = <(String, String)>[
-    ('cash', 'Cash'),
-    ('check', 'Check'),
-    ('credit_card', 'Credit card'),
-    ('debit_card', 'Debit card'),
-    ('ach', 'ACH'),
-    ('net_30', 'Net 30'),
-    ('other', 'Other'),
-  ];
-
   bool get _atOrganization => widget.session.me!.scope.type == 'organization';
 
   bool get _showCompanyField => _me.offersCompanyChoice;
@@ -124,7 +82,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     super.initState();
     _companyId = _me.filingCompanyId;
     _franchiseId = _me.filingFranchiseId;
-    _startedOn.text = _today();
+    _startedOn.text = fleetToday();
     for (final c in [_year, _make, _model, _plate, _vin]) {
       c.addListener(() => setState(() {}));
     }
@@ -160,13 +118,6 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
   }
 
   List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
-
-  String _today() {
-    final n = DateTime.now();
-    final m = n.month.toString().padLeft(2, '0');
-    final d = n.day.toString().padLeft(2, '0');
-    return '${n.year}-$m-$d';
-  }
 
   /// Same degrade as the server: year/make/model · plate → description →
   /// plate → VIN → Unidentified vehicle. Kept here so the preview cannot
@@ -391,8 +342,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           ),
                   ),
                 const SizedBox(height: 16),
-                _card(
-                  context,
+                FleetSectionCard(
                   title: 'Identity',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -413,7 +363,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                         value: _bodyType,
                         label: 'Body type',
                         options: [
-                          for (final t in _bodyTypes)
+                          for (final t in fleetBodyTypes)
                             SearchOption(value: t.$1, label: t.$2),
                         ],
                         onChanged: _busy
@@ -425,7 +375,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                         value: _fuelType,
                         label: 'Fuel type',
                         options: [
-                          for (final t in _fuelTypes)
+                          for (final t in fleetFuelTypes)
                             SearchOption(value: t.$1, label: t.$2),
                         ],
                         onChanged: _busy
@@ -448,8 +398,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _card(
-                  context,
+                FleetSectionCard(
                   title: 'How do we hold it?',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -524,7 +473,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           value: _rentalPeriod,
                           label: 'Rate period',
                           options: [
-                            for (final t in _periods)
+                            for (final t in fleetRatePeriods)
                               SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
@@ -545,7 +494,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           value: _rentalTerms,
                           label: 'Payment terms',
                           options: [
-                            for (final t in _terms)
+                            for (final t in fleetRentalTerms)
                               SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
@@ -557,7 +506,7 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           value: _rentalMethod,
                           label: 'Payment method',
                           options: [
-                            for (final t in _methods)
+                            for (final t in fleetPaymentMethods)
                               SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
@@ -598,56 +547,24 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     );
   }
 
-  Widget _card(
-    BuildContext context, {
-    required String title,
-    required Widget child,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _day(TextEditingController controller, String label) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: CalendarDayField(
-        controller: controller,
-        label: label,
+  Widget _day(TextEditingController controller, String label) =>
+      fleetCalendarDay(
+        controller,
+        label,
         formats: _me.display,
         enabled: !_busy,
-      ),
-    );
-  }
+      );
 
   Widget _field(
     TextEditingController controller,
     String label, {
     String? helper,
     TextInputType? keyboard,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: TextField(
-        controller: controller,
-        enabled: !_busy,
-        keyboardType: keyboard,
-        decoration: InputDecoration(
-          labelText: label,
-          helperText: helper,
-          helperMaxLines: 2,
-        ),
-      ),
-    );
-  }
+  }) => fleetField(
+    controller,
+    label,
+    enabled: !_busy,
+    helper: helper,
+    keyboard: keyboard,
+  );
 }

@@ -4,7 +4,6 @@ namespace App\Support\Dashboard\Widgets\Hr;
 
 use App\Models\EmploymentEvent;
 use App\Models\User;
-use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
@@ -21,32 +20,19 @@ use Illuminate\Support\Carbon;
  * still appear on "No longer active" so the panel does not disagree with Records.
  * History is not invented from `users.updated_at`.
  */
-class StartersAndLeavers implements Widget
+class StartersAndLeavers
 {
     use ScopesToPlaces;
 
-    public const KEY = 'hr.starters_and_leavers';
-
-    public function key(): string { return self::KEY; }
-
-    public function label(): string { return 'Starting and leaving'; }
-
-    public function permission(): string { return 'hr.view'; }
-
     /** How many names the panel lists before it stops and says how many more. */
     private const NAMES_SHOWN = 8;
-
-    public function options(User $user): array
-    {
-        return ['days' => $this->periodOption(30)];
-    }
 
     public function resolve(User $user, array $options): array
     {
         $places = $this->placesInView($user);
 
-        // Glances pass the dashboard period start as a Carbon; the old widget
-        // board still uses rolling days via since().
+        // Glances pass the dashboard period start as a Carbon; without one,
+        // `days` gives a rolling window via since().
         $since = ($options['since'] ?? null) instanceof Carbon
             ? $options['since']
             : $this->since($options);

@@ -73,9 +73,4 @@ class InspectionDefinitionVersion extends Model implements StatesRetention
     {
         return $this->belongsTo(InspectionDefinition::class, 'inspection_definition_id');
     }
-
-    public function publishedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'published_by');
-    }
 }

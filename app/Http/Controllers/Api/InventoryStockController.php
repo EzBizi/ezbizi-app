@@ -123,12 +123,7 @@ class InventoryStockController extends Controller
             'data' => collect($balances->items())->map(
                 fn (InventoryBalance $balance) => $this->present($balance),
             ),
-            'meta' => [
-                'total' => $balances->total(),
-                'per_page' => $balances->perPage(),
-                'current_page' => $balances->currentPage(),
-                'last_page' => $balances->lastPage(),
-            ],
+            'meta' => $this->pageMeta($balances),
         ]);
     }
 

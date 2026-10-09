@@ -178,7 +178,6 @@ class Session extends ChangeNotifier {
   /// Kept apart from `signedIn` because the two need opposite responses: one is
   /// "sign in again", the other is "try again in a moment".
   bool _unreachable = false;
-  bool get unreachable => _unreachable;
 
   /// Change one preference and repaint.
   ///
@@ -209,7 +208,7 @@ class Session extends ChangeNotifier {
   /// Not [setPreference], which WRITES — through `PATCH /me/preferences` and
   /// `PreferenceRegistry`, the registry for the controls the Settings screen
   /// renders. Some preferences are not one of those and have an endpoint of
-  /// their own: `dashboard.widgets` and `dashboard.order` go through
+  /// their own: `dashboard.glances` goes through
   /// `DashboardController::saveLayout`, because a layout is not a setting
   /// somebody picks from a list and the registry's casts have nothing to say
   /// about it.
@@ -1045,17 +1044,12 @@ class TimeClockWindow {
 }
 
 class TimeClockOpen {
-  const TimeClockOpen({required this.id, required this.clockedInAt});
+  const TimeClockOpen({required this.id});
 
   final String id;
 
-  /// ISO-8601 UTC instant from the server. The client never submits a time.
-  final String clockedInAt;
-
-  factory TimeClockOpen.fromJson(Map<String, dynamic> json) => TimeClockOpen(
-    id: json['id'] as String,
-    clockedInAt: json['clocked_in_at'] as String,
-  );
+  factory TimeClockOpen.fromJson(Map<String, dynamic> json) =>
+      TimeClockOpen(id: json['id'] as String);
 }
 
 class OrganizationSummary {
@@ -1204,14 +1198,9 @@ class FranchiseSummary {
 
 /// Platform-staff access held by the signed-in person (§4.2, revised).
 class DevelopmentAccess {
-  const DevelopmentAccess({
-    required this.tier,
-    required this.staffName,
-    required this.focusedAt,
-  });
+  const DevelopmentAccess({required this.tier, required this.focusedAt});
 
   final String tier;
-  final String staffName;
 
   /// The focused control-plane host. The Development section here is the same
   /// screens embedded in the CRM; dev.ezbizi.com is them on their own, which is
@@ -1225,7 +1214,6 @@ class DevelopmentAccess {
   factory DevelopmentAccess.fromJson(Map<String, dynamic> json) =>
       DevelopmentAccess(
         tier: json['tier'] as String? ?? 'developer',
-        staffName: json['staff_name'] as String? ?? '',
         focusedAt: json['focused_at'] as String? ?? 'https://dev.ezbizi.com',
       );
 }

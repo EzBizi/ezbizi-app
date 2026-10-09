@@ -51,19 +51,4 @@ class VehiclePayment extends Model implements StatesRetention
     {
         return $this->belongsTo(Vehicle::class);
     }
-
-    public function ownershipPeriod(): BelongsTo
-    {
-        return $this->belongsTo(VehicleOwnershipPeriod::class, 'ownership_period_id');
-    }
-
-    public function insurancePolicy(): BelongsTo
-    {
-        return $this->belongsTo(VehicleInsurancePolicy::class, 'insurance_policy_id');
-    }
-
-    public function serviceVisit(): BelongsTo
-    {
-        return $this->belongsTo(VehicleServiceVisit::class, 'service_visit_id');
-    }
 }

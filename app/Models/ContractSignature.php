@@ -13,7 +13,6 @@ use App\Support\Privacy\ConsentRecord;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
-use App\Support\Privacy\RecordsConsent;
 use App\Support\Privacy\RetentionPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -80,7 +79,7 @@ use RuntimeException;
  * through unopposed before it. Raw SQL beneath Eloquent is not stopped by either,
  * and WriteOnceBuilder's docblock says why the line falls there.
  */
-class ContractSignature extends Model implements HoldsPersonalData, RecordsConsent
+class ContractSignature extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
     use HasFactory;

@@ -6,6 +6,7 @@ use App\Models\CallReportTranscript;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Services\Leads\CallTranscripts;
+use App\Support\Phone\NumberNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -117,7 +118,7 @@ class TranscribeReportCalls extends Command
     /** @return array{0: string, 1: string}|null */
     private function fromLead(array $call): ?array
     {
-        $phone = self::phoneKey($call['from'] ?? null);
+        $phone = NumberNames::lastTen($call['from'] ?? null);
         $at = $call['started_at'] ? CarbonImmutable::parse($call['started_at']) : null;
 
         if ($phone === null || $at === null) {
@@ -135,7 +136,7 @@ class TranscribeReportCalls extends Command
                 $at->addSeconds(self::MATCH_SECONDS)->utc(),
             ])
             ->get(['leads.phone', 'lead_conversations.transcript'])
-            ->first(fn ($row) => self::phoneKey($row->phone) === $phone);
+            ->first(fn ($row) => NumberNames::lastTen($row->phone) === $phone);
 
         return $match === null ? null : ['lead', (string) $match->transcript];
     }
@@ -171,12 +172,5 @@ class TranscribeReportCalls extends Command
             ->pluck('organization_id');
 
         return $ids->count() === 1 ? Organization::query()->find($ids->first()) : null;
-    }
-
-    private static function phoneKey(?string $phone): ?string
-    {
-        $digits = preg_replace('/\D+/', '', (string) $phone);
-
-        return strlen($digits) >= 10 ? substr($digits, -10) : null;
     }
 }

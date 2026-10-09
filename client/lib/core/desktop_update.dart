@@ -25,7 +25,7 @@ class AvailableUpdate {
 ///
 /// ── Why this exists at all, when there is already a version gate ─
 ///
-/// [VersionGate] is a different job wearing a similar name. It is the server
+/// The version gate is a different job wearing a similar name. It is the server
 /// REFUSING a client that is too old: a 426, and the whole app replaced by a
 /// screen telling you to go and download something. That is a wall, and it
 /// arrives at the worst possible moment — mid-job, because that is when the

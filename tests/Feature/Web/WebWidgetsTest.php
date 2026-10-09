@@ -745,7 +745,7 @@ class WebWidgetsTest extends TestCase
             ->json('widgets.schema');
 
         // Every widget with a preset, every option of it.
-        $this->assertSame(WidgetPresets::WIDGETS, array_keys($schema));
+        $this->assertSame(array_keys(WidgetPresets::schema()), array_keys($schema));
         foreach (WidgetPresets::defaults() as $widget => $defaults) {
             $this->assertSame(array_keys($defaults), array_keys($schema[$widget]), $widget);
         }
@@ -1161,7 +1161,7 @@ class WebWidgetsTest extends TestCase
                 'config' => ['presets' => ['social_links' => ['footer' => ['size' => 999]]]],
             ])->assertOk()->json();
 
-        foreach (WidgetPresets::WIDGETS as $widget) {
+        foreach (array_keys(WidgetPresets::schema()) as $widget) {
             $this->assertArrayHasKey('default', $body['config']['presets'][$widget]);
         }
 
@@ -1169,48 +1169,6 @@ class WebWidgetsTest extends TestCase
         // rather than refused: this renders on a customer's page, and a saved
         // config that fails to load would take the widget with it.
         $this->assertSame(64, $body['config']['presets']['social_links']['footer']['size']);
-    }
-
-    /**
-     * A widget in WIDGETS with no DEFAULTS is a blank box on 110 live sites.
-     *
-     * The guard above derives from `WIDGETS`, so it grows on its own — but it
-     * only asks whether a `default` KEY exists, and `resolve()` manufactures
-     * one for any name it is given. A widget added to the list and forgotten
-     * in `defaults()` therefore passes it with `default => []`, renders
-     * nothing anybody can see, and reports nothing anywhere.
-     *
-     * Jose asked for fourteen more widgets on 2026-09-23. That is fourteen
-     * chances to add a name and forget its values, so the completeness has to
-     * be asserted rather than remembered.
-     */
-    public function test_every_declared_widget_has_values_and_not_just_a_name(): void
-    {
-        $defaults = WidgetPresets::defaults();
-
-        foreach (WidgetPresets::WIDGETS as $widget) {
-            $this->assertArrayHasKey(
-                $widget,
-                $defaults,
-                "{$widget} is declared and has no defaults, so it renders blank.",
-            );
-
-            $this->assertNotSame(
-                [],
-                $defaults[$widget],
-                "{$widget} has an empty default, which is the same blank box.",
-            );
-        }
-
-        // And the inverse, because the pair is what makes it a boundary:
-        // values for a widget nobody declared are values nothing can reach.
-        foreach (array_keys($defaults) as $widget) {
-            $this->assertContains(
-                $widget,
-                WidgetPresets::WIDGETS,
-                "{$widget} has defaults and is not declared, so nothing renders it.",
-            );
-        }
     }
 
     /**

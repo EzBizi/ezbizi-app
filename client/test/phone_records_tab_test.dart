@@ -5,7 +5,6 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/screens/phone/records_tab.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +21,6 @@ void main() {
   testWidgets('Records is not Coming soon', (tester) async {
     await _pump(tester, calls: const [], messages: const []);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.text('There are no calls or messages yet.'), findsOneWidget);
   });

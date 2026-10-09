@@ -4,12 +4,8 @@ namespace App\Http\Controllers\Api\Monitoring;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
-use App\Models\User;
-use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Monitoring\ScreenMonitoringExemption;
-use App\Support\Tenancy\TenantContext;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -111,8 +107,6 @@ class FilesController extends Controller
     private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
 
     public function __construct(
-        private readonly TenantContext $tenant,
-        private readonly ScopeReach $reach,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -129,7 +123,7 @@ class FilesController extends Controller
     {
         $this->authorize('files', MonitoredDevice::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -196,7 +190,7 @@ class FilesController extends Controller
     {
         $this->authorize('files', MonitoredDevice::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -225,7 +219,7 @@ class FilesController extends Controller
             'device_key' => ['required', 'string', 'max:64'],
         ]);
 
-        $device = $this->resolveOwnDevice($request, $data['device_key']);
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404);
@@ -278,7 +272,7 @@ class FilesController extends Controller
             'content_base64' => ['sometimes', 'string'],
         ]);
 
-        $device = $this->resolveOwnDevice($request, $data['device_key']);
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404);
@@ -362,23 +356,5 @@ class FilesController extends Controller
     private function resultSlotKey(string $requestId): string
     {
         return "monitoring:files-res:{$requestId}";
-    }
-
-    /** §3 reach — identical to RemoteControlController::visibleDevice. */
-    private function visibleDevice(User $actor, string $id): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()
-            ->whereHas('user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor))
-            ->find($id);
-    }
-
-    /** Same (org, user, device_key) resolution every agent endpoint uses. */
-    private function resolveOwnDevice(Request $request, string $deviceKey): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()->where([
-            'organization_id' => $this->tenant->idOrFail(),
-            'user_id' => $request->user()->getKey(),
-            'device_key' => $deviceKey,
-        ])->first();
     }
 }

@@ -2,9 +2,9 @@
 
 namespace App\Support\Email;
 
+use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 
 /**
  * Talking to Google about a sign-in — and nothing else.
@@ -138,7 +138,7 @@ final class GoogleOAuth
      * unrecognisable Google error page — and it means "allow-listed" is
      * something this code does rather than something a comment claims.
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function redirectUri(): string
     {
@@ -146,7 +146,8 @@ final class GoogleOAuth
         $parts      = $configured === '' ? false : parse_url($configured);
 
         if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
-            throw GoogleOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Google',
                 'The web address Google is meant to return people to has not been set up, so '
                 .'there is nowhere for the sign-in to come back to.',
             );
@@ -161,7 +162,8 @@ final class GoogleOAuth
         // an authorization code travelling over an unencrypted connection is a
         // code anybody on the network has.
         if ($scheme !== 'https' && ! in_array($host, ['localhost', '127.0.0.1', '[::1]'], true)) {
-            throw GoogleOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Google',
                 'The web address Google is meant to return people to is not a secure (https) '
                 .'address, and Google will not send anybody to an insecure one.',
             );
@@ -170,7 +172,8 @@ final class GoogleOAuth
         if (($parts['path'] ?? '') !== self::CALLBACK_PATH
             || isset($parts['query'])
             || isset($parts['fragment'])) {
-            throw GoogleOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Google',
                 'The web address Google is meant to return people to does not point at this '
                 .'EzBizi installation\'s sign-in page, so a sign-in would end up somewhere '
                 .'else.',
@@ -193,7 +196,7 @@ final class GoogleOAuth
      *                             the fact, because a hint is something a person
      *                             can click straight past.
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function authorizeUrl(string $state, string $verifier, string $loginHint): string
     {
@@ -229,37 +232,11 @@ final class GoogleOAuth
             // this server's access log on its way here. The challenge is what
             // makes a code lifted from any of those useless without the verifier
             // that never left this server.
-            'code_challenge'        => $this->challengeFor($verifier),
+            'code_challenge'        => Pkce::challenge($verifier),
             'code_challenge_method' => 'S256',
 
             'login_hint' => $loginHint,
         ]);
-    }
-
-    /**
-     * The S256 challenge for a verifier — base64url of its SHA-256, unpadded.
-     *
-     * `strtr` for the alphabet and `rtrim` for the padding, because base64url is
-     * base64 with two characters swapped and `=` removed; sending standard
-     * base64 produces a challenge Google will not match and an exchange that
-     * fails for a reason no error message explains.
-     */
-    private function challengeFor(string $verifier): string
-    {
-        return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
-    }
-
-    /**
-     * A fresh verifier: 96 characters from the unreserved set (RFC 7636 §4.1
-     * requires 43–128 of `[A-Za-z0-9-._~]`, and `Str::random` is alphanumeric).
-     *
-     * `Str::random` is Laravel's `random_bytes` wrapper, so this is CSPRNG
-     * output rather than anything seeded — a predictable verifier is no verifier
-     * at all.
-     */
-    public function newVerifier(): string
-    {
-        return Str::random(96);
     }
 
     // ── step two: turn the code into a lasting permission ────────
@@ -274,7 +251,7 @@ final class GoogleOAuth
      * decides what that value is. RFC 6749 §4.1.3 requires the two to match, and
      * they cannot fail to.
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function exchange(string $code, string $verifier): GoogleOAuthGrant
     {
@@ -291,26 +268,26 @@ final class GoogleOAuth
             // Nothing answered. Deliberately not carrying the client's message
             // into the sentence: it is a cURL string written for a developer,
             // and the person reading this is looking at a web page.
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         if ($response->failed()) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         $refresh = $response->json('refresh_token');
         $access  = $response->json('access_token');
 
         if (! is_string($access) || $access === '') {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         // An access token without a refresh token is a connection that dies
         // within the hour. Refused rather than stored — see
-        // GoogleOAuthRefused::noLastingPermission for why this is an anomaly
+        // MailOAuthRefused::noLastingPermission for why this is an anomaly
         // here rather than the ordinary second-consent case.
         if (! is_string($refresh) || $refresh === '') {
-            throw GoogleOAuthRefused::noLastingPermission();
+            throw MailOAuthRefused::noLastingPermission('Google');
         }
 
         return new GoogleOAuthGrant(
@@ -375,7 +352,7 @@ final class GoogleOAuth
      * No `access_type=offline`: a lasting mail grant is the mailbox flow's job,
      * and this one must not mint one by accident.
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function workspaceAuthorizeUrl(string $state, string $verifier, string $hostedDomain): string
     {
@@ -387,7 +364,7 @@ final class GoogleOAuth
             'hd'                    => strtolower($hostedDomain),
             'prompt'                => 'select_account',
             'state'                 => $state,
-            'code_challenge'        => $this->challengeFor($verifier),
+            'code_challenge'        => Pkce::challenge($verifier),
             'code_challenge_method' => 'S256',
         ]);
     }
@@ -401,7 +378,7 @@ final class GoogleOAuth
      *
      * @return array{email: string, domain: string}
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      * @throws GoogleWorkspaceRefused
      */
     public function identifyWorkspaceAccount(string $code, string $verifier): array
@@ -416,11 +393,11 @@ final class GoogleOAuth
                 'redirect_uri'  => $this->redirectUri(),
             ]);
         } catch (ConnectionException) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         if ($response->failed() || ! is_string($response->json('access_token'))) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         $access  = (string) $response->json('access_token');
@@ -437,18 +414,18 @@ final class GoogleOAuth
                 ->timeout(self::TIMEOUT)
                 ->get(self::USERINFO_ENDPOINT);
         } catch (ConnectionException) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         if ($info->failed()) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         $email = strtolower(trim((string) $info->json('email')));
         $hd    = strtolower(trim((string) $info->json('hd')));
 
         if ($email === '' || ! str_contains($email, '@')) {
-            throw GoogleOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Google');
         }
 
         if ($hd === '') {

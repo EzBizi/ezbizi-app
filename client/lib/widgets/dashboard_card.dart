@@ -175,62 +175,83 @@ class DashboardNote extends StatelessWidget {
   }
 }
 
-/// The headline figure, with the word that says what it counts.
+/// The switch between the ways a glance can be drawn, for a card's controls.
 ///
-/// The unit is never left off. "1" beside "Headcount by place" could be one
-/// person or one place, and the two are a very different message.
-class DashboardBigNumber extends StatelessWidget {
-  const DashboardBigNumber(this.value, this.unit, {super.key});
+/// One for both dashboards: the HR tab kept its own copy, and it drifted.
+/// Compact, because the header may already hold the move and drag controls.
+class PresentationMenu extends StatelessWidget {
+  const PresentationMenu({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.options,
+    required this.onSelected,
+  });
 
-  final String value;
-  final String unit;
+  /// [glance]'s menu, or null when it offers fewer than two presentations.
+  ///
+  /// Exactly what the server allows, and nothing else. Appending `text` to a
+  /// list that omitted it drew text for one frame and the chart again on the
+  /// next load: `declaredPresentation` drops a kind the glance never offered.
+  ///
+  /// Coming soon and an empty `allowed_presentations` draw nothing, and one
+  /// option is the same case as none (`web_management` and `business_profile`
+  /// allow only `text`): a menu whose single entry is already ticked is a
+  /// control that cannot change anything.
+  static PresentationMenu? of(
+    Map<String, dynamic> glance, {
+    required ValueChanged<String> onSelected,
+  }) {
+    final raw = glance['allowed_presentations'];
+    final options = [
+      if (raw is List)
+        for (final item in raw) '$item',
+    ];
+    if (options.length < 2) return null;
+
+    return PresentationMenu(
+      label: glance['label'] as String? ?? 'this box',
+      selected: glance['presentation'] as String? ?? 'text',
+      options: options,
+      onSelected: onSelected,
+    );
+  }
+
+  final String label;
+  final String selected;
+  final List<String> options;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(value, style: theme.textTheme.headlineMedium),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            unit,
-            style: theme.textTheme.bodyMedium,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+    return PopupMenuButton<String>(
+      tooltip: 'How to draw “$label”',
+      padding: EdgeInsets.zero,
+      iconSize: 18,
+      initialValue: options.contains(selected) ? selected : null,
+      icon: Icon(_iconFor(selected)),
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        for (final option in options)
+          PopupMenuItem(value: option, child: Text(_labelFor(option))),
       ],
     );
   }
-}
 
-/// A label with a figure at the end of the line.
-///
-/// Zero is stated in the same weight as any other number rather than greyed
-/// out. A place with nobody in it is usually the row somebody opened the
-/// dashboard to find.
-class DashboardCountRow extends StatelessWidget {
-  const DashboardCountRow({super.key, required this.label, required this.value});
+  static String _labelFor(String presentation) => switch (presentation) {
+    'pie' => 'Pie',
+    'bar' => 'Bar',
+    'line' => 'Line',
+    'timeline' => 'Timeline',
+    'text' => 'Text',
+    _ => presentation,
+  };
 
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
-          const SizedBox(width: 12),
-          Text(value, style: theme.textTheme.titleSmall),
-        ],
-      ),
-    );
-  }
+  static IconData _iconFor(String presentation) => switch (presentation) {
+    'pie' => Icons.pie_chart,
+    'bar' => Icons.bar_chart,
+    'line' => Icons.show_chart,
+    'timeline' => Icons.timeline,
+    _ => Icons.notes,
+  };
 }

@@ -32,7 +32,7 @@ final class NumberNames
     {
         $byDigits = [];
         foreach ($numbers as $number) {
-            $digits = self::digits((string) $number);
+            $digits = self::lastTen((string) $number);
             if ($digits !== null) {
                 $byDigits[$digits][] = (string) $number;
             }
@@ -54,7 +54,7 @@ final class NumberNames
         $found = [];
         $claim = function (iterable $rows, string $kind, string $nameField, string $phoneField) use (&$found, $byDigits) {
             foreach ($rows as $row) {
-                $digits = self::digits((string) $row->{$phoneField});
+                $digits = self::lastTen((string) $row->{$phoneField});
                 $name = trim((string) $row->{$nameField});
                 if ($digits === null || $name === '' || isset($found[$digits]) || ! isset($byDigits[$digits])) {
                     continue;
@@ -84,10 +84,10 @@ final class NumberNames
         return $out;
     }
 
-    /** The last ten digits of a North American number, or null. */
-    private static function digits(string $phone): ?string
+    /** The last ten digits, so "+1 (212) 555-1212" and "2125551212" agree, or null. */
+    public static function lastTen(?string $phone): ?string
     {
-        $digits = preg_replace('/\D/', '', $phone);
+        $digits = preg_replace('/\D/', '', (string) $phone);
 
         return strlen((string) $digits) >= 10 ? substr((string) $digits, -10) : null;
     }

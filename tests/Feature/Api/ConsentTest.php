@@ -5,8 +5,6 @@ namespace Tests\Feature\Api;
 use App\Models\ContractSignature;
 use App\Models\Role;
 use App\Models\User;
-use App\Support\Privacy\DeclaringModels;
-use App\Support\Privacy\RecordsConsent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -180,14 +178,6 @@ class ConsentTest extends TestCase
             .'App\Support\Privacy\ConsentRecord for why a generic table is the wrong shape '
             .'for this product.',
         );
-
-        $recorders = app(DeclaringModels::class)->recordingConsent();
-
-        $this->assertSame([ContractSignature::class], $recorders,
-            'The list of things this product asks consent for changed. That is a decision '
-            .'worth making deliberately: see RecordsConsent on what implementing it claims.');
-
-        $this->assertTrue(is_subclass_of(ContractSignature::class, RecordsConsent::class));
     }
 
     // ── helpers ──────────────────────────────────────────────────

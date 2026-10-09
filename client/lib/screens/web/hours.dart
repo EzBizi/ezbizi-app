@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../../widgets/shortcode_button.dart';
 
 /// Hours of operation — the only field that is not a line of text.
 ///
@@ -321,7 +322,7 @@ class _HoursFieldState extends State<HoursField> {
               Expanded(
                 child: Text(widget.label, style: theme.textTheme.titleSmall),
               ),
-              _ShortcodeChip(code: widget.shortcode),
+              ShortcodeButton(code: widget.shortcode),
             ],
           ),
           if (_isInheriting)
@@ -500,48 +501,6 @@ class _HoursFieldState extends State<HoursField> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The same copy-on-click chip the other fields use, kept here so hours does
-/// not have to reach into the SEO screen for one widget.
-class _ShortcodeChip extends StatefulWidget {
-  const _ShortcodeChip({required this.code});
-
-  final String code;
-
-  @override
-  State<_ShortcodeChip> createState() => _ShortcodeChipState();
-}
-
-class _ShortcodeChipState extends State<_ShortcodeChip> {
-  bool _copied = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return OutlinedButton.icon(
-      onPressed: () async {
-        await Clipboard.setData(ClipboardData(text: widget.code));
-        if (!mounted) return;
-        setState(() => _copied = true);
-        await Future<void>.delayed(const Duration(milliseconds: 1200));
-        if (mounted) setState(() => _copied = false);
-      },
-      icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 14),
-      label: Text(
-        _copied ? 'Copied' : widget.code,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-      ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: _copied
-            ? theme.colorScheme.primary
-            : theme.colorScheme.outline,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        visualDensity: VisualDensity.compact,
       ),
     );
   }

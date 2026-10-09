@@ -100,7 +100,7 @@ minutes. It has already overturned three confident guesses — including one of 
 
   *Precision correction, twice. An earlier version said the dashboard dispatches on
   presentation rather than glance key — wrong. The replacement said it looks up by
-  key with a default fallback — two-thirds right. `dashboard_panels.dart:73-77` has
+  key with a default fallback — two-thirds right. `dashboard_panels.dart:65-67` has
   **three arms**, and the middle one is a distinct second fallback:*
 
       byModule[key]                      // exact glance key

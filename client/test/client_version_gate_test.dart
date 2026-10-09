@@ -101,6 +101,13 @@ void main() {
     );
   }
 
+  /// A gate wired the way main.dart wires it.
+  ValueNotifier<UpgradeRequired?> installedGate() {
+    final gate = ValueNotifier<UpgradeRequired?>(null);
+    installVersionGate(gate);
+    return gate;
+  }
+
   group('the client says which build is asking', () {
     /// Every verb, because the gate is only as good as its least-covered one.
     ///
@@ -232,15 +239,15 @@ void main() {
   group('a 426 raises the gate', () {
     test('any refused request raises it', () async {
       final api = refusing();
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       final response = await api.get('/jobs');
 
-      expect(response.upgradeRequired, isTrue);
+      expect(response.statusCode, 426);
 
       expect(
-        gate.blocked,
-        isTrue,
+        gate.value,
+        isNotNull,
         reason: 'The server said this build is too old and the app carried on '
             'as though nothing happened, so every screen becomes its own small '
             'unexplained failure.',
@@ -260,19 +267,19 @@ void main() {
         downloadUrl: 'https://downloads.ezbizi.com/windows',
         note: 'This update fixes invoice totals.',
       );
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       await api.get('/customers');
 
       expect(
-        gate.notice!.upgradeUrl,
+        gate.value!.upgradeUrl,
         'https://downloads.ezbizi.com/windows',
         reason: 'The address arrived in the refusal and did not survive the '
             'trip to the screen, which then tells the customer no address is '
             'configured — a dead end that also states something false.',
       );
 
-      expect(gate.notice!.note, 'This update fixes invoice totals.');
+      expect(gate.value!.note, 'This update fixes invoice totals.');
     });
 
     /// The 426 is acted on with no condition attached, unlike the 401 beside it.
@@ -281,15 +288,15 @@ void main() {
     /// password for no visible reason is worse off.
     test('it raises with nobody signed in', () async {
       final api = refusing();
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       expect(api.hasToken, isFalse);
 
       await api.post('/auth/login', {'email': 'marta@a-1chimney.com'});
 
       expect(
-        gate.blocked,
-        isTrue,
+        gate.value,
+        isNotNull,
         reason: 'Somebody at the sign-in screen on a stale build is told '
             'nothing, so a correct password appears to be refused.',
       );
@@ -299,7 +306,7 @@ void main() {
     /// permission set. Each comes back 426, and the app must say so once.
     test('several refusals at once raise it once', () async {
       final api = refusing();
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       var raises = 0;
       gate.addListener(() => raises++);
@@ -322,24 +329,24 @@ void main() {
     /// like any other. Neither goes through the same code path as the rest.
     test('an upload and a download raise it too', () async {
       final upload = refusing();
-      final uploadGate = VersionGate()..install();
+      final uploadGate = installedGate();
 
       await upload.postFile('/me/avatar', 'avatar', 'a.png', [1]);
 
       expect(
-        uploadGate.blocked,
-        isTrue,
+        uploadGate.value,
+        isNotNull,
         reason: 'An upload from a stale build fails with nothing on screen.',
       );
 
       final download = refusing();
-      final downloadGate = VersionGate()..install();
+      final downloadGate = installedGate();
 
       await download.getBytes('/customers/export');
 
       expect(
-        downloadGate.blocked,
-        isTrue,
+        downloadGate.value,
+        isNotNull,
         reason: 'An export from a stale build fails with nothing on screen.',
       );
     });
@@ -349,13 +356,13 @@ void main() {
     test('no other status raises it', () async {
       for (final status in const [200, 400, 401, 402, 403, 422, 500, 503]) {
         final api = refusing(status: status);
-        final gate = VersionGate()..install();
+        final gate = installedGate();
 
         await api.get('/customers');
 
         expect(
-          gate.blocked,
-          isFalse,
+          gate.value,
+          isNull,
           reason: 'HTTP $status raised the update screen, so an ordinary '
               'refusal now tells somebody to reinstall the app.',
         );
@@ -368,41 +375,41 @@ void main() {
     /// somebody whose real problem is a year-old app.
     test('a 426 with an unreadable body still raises it', () async {
       final api = refusing(rawBody: '<html><body>426</body></html>');
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       await api.get('/customers');
 
-      expect(gate.blocked, isTrue);
+      expect(gate.value, isNotNull);
 
       expect(
-        gate.notice!.message,
+        gate.value!.message,
         isEmpty,
         reason: 'A sentence was invented from a body that contained none.',
       );
     });
 
-    /// Clearing is the way out. See VersionGate.clear — somebody who has just
-    /// installed the newer build over the top must not need a reinstall to
+    /// Clearing is the way out. See main.dart's onTryAgain — somebody who has
+    /// just installed the newer build over the top must not need a reinstall to
     /// escape a conclusion this client drew from one answer.
     test('it can be cleared and raised again', () async {
       final api = refusing();
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       await api.get('/customers');
-      expect(gate.blocked, isTrue);
+      expect(gate.value, isNotNull);
 
-      gate.clear();
+      gate.value = null;
       expect(
-        gate.blocked,
-        isFalse,
+        gate.value,
+        isNull,
         reason: 'There is no way off the update screen, so a minimum raised by '
             'mistake traps everybody until they reinstall.',
       );
 
       await api.get('/customers');
       expect(
-        gate.blocked,
-        isTrue,
+        gate.value,
+        isNotNull,
         reason: 'Trying again on a build that really is too old let the app '
             'back in, so the gate can be walked straight through.',
       );
@@ -413,24 +420,24 @@ void main() {
       final tenant = refusing();
       final staff = refusing();
 
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       await staff.get('/staff/me');
 
       expect(
-        gate.blocked,
-        isTrue,
+        gate.value,
+        isNotNull,
         reason: 'A stale control-plane build is refused by the server and told '
             'nothing by the app.',
       );
 
-      gate.clear();
+      gate.value = null;
       await tenant.get('/customers');
 
-      expect(gate.blocked, isTrue);
+      expect(gate.value, isNotNull);
     });
 
-    /// The one that was actually broken, and the reason [VersionGate.install]
+    /// The one that was actually broken, and the reason [installVersionGate]
     /// replaced a per-client `watch()`.
     ///
     /// Screens build their own [ApiClient] for good reasons — the Development
@@ -445,7 +452,7 @@ void main() {
     /// so nothing here is registered per client any more.
     test('a client built inside a screen is covered without being registered',
         () async {
-      final gate = VersionGate()..install();
+      final gate = installedGate();
 
       // Built the way DevelopmentScreen and StaffLoginScreen build theirs:
       // locally, for one token, and never passed to anything.
@@ -454,8 +461,8 @@ void main() {
       await deep.get('/staff/me');
 
       expect(
-        gate.blocked,
-        isTrue,
+        gate.value,
+        isNotNull,
         reason: 'A client built inside a screen never reaches the gate, so the '
             'server refuses this build and the person is told something else '
             'entirely — on the Development tab, that their staff session has '

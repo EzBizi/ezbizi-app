@@ -223,15 +223,6 @@ class ValuesController extends Controller
     }
 
     /**
-     * Every value row for this site, site-wide and per-page together.
-     *
-     * One query rather than the two this used to make, because ValuePayload
-     * splits them — and because two queries could disagree if somebody saved
-     * between them.
-     *
-     * @return \Illuminate\Support\Collection<int, WebValue>
-     */
-    /**
      * The editor's view of this site's values, with the derived ones filled in.
      *
      * One method rather than two call sites, because the GET and the PUT both
@@ -258,6 +249,14 @@ class ValuesController extends Controller
         ];
     }
 
+    /**
+     * Every value row for this site, site-wide and per-page together.
+     *
+     * One query rather than two, because ValueResolver splits them — and
+     * because two queries could disagree if somebody saved between them.
+     *
+     * @return \Illuminate\Support\Collection<int, WebValue>
+     */
     private function rows(WebSite $site): \Illuminate\Support\Collection
     {
         return WebValue::query()

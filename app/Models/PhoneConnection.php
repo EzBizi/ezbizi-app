@@ -137,16 +137,6 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         return $this->hasMany(PhoneNumber::class, 'connection_id');
     }
 
-    public function hoursSchedules(): HasMany
-    {
-        return $this->hasMany(PhoneHoursSchedule::class, 'connection_id');
-    }
-
-    public function ringGroups(): HasMany
-    {
-        return $this->hasMany(PhoneRingGroup::class, 'connection_id');
-    }
-
     public function flows(): HasMany
     {
         return $this->hasMany(PhoneFlow::class, 'connection_id');
@@ -160,11 +150,6 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
     public function messages(): HasMany
     {
         return $this->hasMany(PhoneMessage::class, 'connection_id');
-    }
-
-    public function presences(): HasMany
-    {
-        return $this->hasMany(PhonePresence::class, 'connection_id');
     }
 
     public function sensitiveAttributes(): array

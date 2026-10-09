@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehiclePayment;
 use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Time\ViewTimezone;
 use Illuminate\Support\Carbon;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
  * Inventory's dashboard). Same three blocks as InventorySummary - health,
  * warnings, and a series over the period - so the two tabs read alike.
  *
- * Every query starts from VehicleVisibility, so nothing is counted from a
+ * Every query starts from InventoryVisibility, so nothing is counted from a
  * company the caller cannot reach. Money (`spending`) is computed only for a
  * caller holding `fleet_management.financials`: an aggregate over payments is
  * still an answer about payments.
@@ -154,7 +155,7 @@ final class FleetSummary
      */
     public static function spending(User $user, ViewScope $scope, DashboardPeriod $period): array
     {
-        $visible = VehicleVisibility::constrain(Vehicle::query(), $user, $scope)->select('vehicles.id');
+        $visible = InventoryVisibility::constrain(Vehicle::query(), $user, $scope)->select('vehicles.id');
 
         $payments = VehiclePayment::query()
             ->whereIn('vehicle_id', $visible)
@@ -197,7 +198,7 @@ final class FleetSummary
     /** In the register: not sold, not returned. */
     private static function onRoad(User $user, ViewScope $scope): Builder
     {
-        return VehicleVisibility::constrain(Vehicle::query(), $user, $scope)
+        return InventoryVisibility::constrain(Vehicle::query(), $user, $scope)
             ->whereIn('status', [
                 VehicleStatus::Active->value,
                 VehicleStatus::InShop->value,

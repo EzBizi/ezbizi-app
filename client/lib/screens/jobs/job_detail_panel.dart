@@ -251,7 +251,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -272,7 +272,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
@@ -709,17 +709,6 @@ String _wallClock(String? stamp) {
       .replaceFirst('T', ' ')
       .replaceFirst(RegExp(r'(?:Z|[+-]\d{2}:?\d{2})$'), '')
       .trim();
-}
-
-String _firstError(ApiResponse response) {
-  final errors = response.body['errors'];
-
-  if (errors is Map && errors.isNotEmpty) {
-    final first = errors.values.first;
-    if (first is List && first.isNotEmpty) return first.first.toString();
-  }
-
-  return response.message;
 }
 
 /// Workiz's money on this job (queue 31, Jose's 1): total, paid and due, a

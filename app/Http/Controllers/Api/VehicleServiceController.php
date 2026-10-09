@@ -42,7 +42,7 @@ class VehicleServiceController extends Controller
         $this->authorize('update', $vehicle);
 
         $input = $request->validate([
-            'kind' => ['required', 'string', Rule::in(VehicleServiceKind::values())],
+            'kind' => ['required', 'string', Rule::enum(VehicleServiceKind::class)],
             'occurred_on' => ['required', 'date'],
             'odometer_miles' => ['nullable', 'integer', 'min:0'],
             'performed_by' => ['nullable', 'string', 'max:200'],

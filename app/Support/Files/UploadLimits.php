@@ -67,7 +67,8 @@ class UploadLimits
     public function maxKilobytes(): int
     {
         $configured = (int) config('ezbizi.attachments.max_kilobytes');
-        $ceiling    = $this->phpCeilingKilobytes() - self::HEADROOM_KILOBYTES;
+        // The lower of `upload_max_filesize` and `post_max_size`; 0 is unlimited.
+        $ceiling    = (int) (UploadedFile::getMaxFilesize() / 1024) - self::HEADROOM_KILOBYTES;
 
         return max(1, min($configured, $ceiling));
     }
@@ -168,49 +169,5 @@ class UploadLimits
         }
 
         throw ValidationException::withMessages([$field => $this->tooLargeMessage()]);
-    }
-
-    /**
-     * What PHP itself will carry, in kilobytes — the lower of its two limits.
-     *
-     * Both apply and they are independently configured: `upload_max_filesize`
-     * caps the file, `post_max_size` caps the whole body. Whichever is smaller
-     * is the real ceiling, and reading only one of them is how a limit that
-     * looks generous turns out not to be.
-     *
-     * `post_max_size = 0` means unlimited, which is a legitimate configuration
-     * and must not be read as "zero bytes" — that would clamp every upload to
-     * the 1KB floor and refuse everything.
-     */
-    private function phpCeilingKilobytes(): int
-    {
-        $limits = array_filter([
-            $this->iniKilobytes('upload_max_filesize'),
-            $this->iniKilobytes('post_max_size'),
-        ], fn (?int $value) => $value !== null && $value > 0);
-
-        return $limits === [] ? PHP_INT_MAX : (int) min($limits);
-    }
-
-    /** `8M` → 8192. Null when the directive is absent or unparseable. */
-    private function iniKilobytes(string $directive): ?int
-    {
-        $raw = trim((string) ini_get($directive));
-
-        if ($raw === '') {
-            return null;
-        }
-
-        $value = (int) $raw;
-        $unit  = strtolower(substr($raw, -1));
-
-        return match ($unit) {
-            'g'     => $value * 1024 * 1024,
-            'm'     => $value * 1024,
-            'k'     => $value,
-            // A bare byte count, which is legal in php.ini and rounds up so a
-            // sub-kilobyte limit does not become zero.
-            default => is_numeric($raw) ? (int) ceil($value / 1024) : null,
-        };
     }
 }

@@ -5,7 +5,8 @@
 
 /// A read the agent could not complete, carrying the slug the manager's screen
 /// shows — the SAME slugs FilesController validates the answer against:
-/// `access_denied`, `not_found`, `too_large`, `unreadable`.
+/// `access_denied`, `not_found`, `too_large`, `unreadable`. The viewer side
+/// (file_browser_service.dart) also throws `offline` when no answer comes back.
 class FileAccessException implements Exception {
   const FileAccessException(this.slug);
 

@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\User;
 use App\Models\Vehicle;
-use App\Support\Fleet\VehicleVisibility;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -106,7 +106,7 @@ class VehicleVisibilityTest extends TestCase
             $fresh = User::find($viewer->id);
             $scope = ViewScope::forUser($fresh);
 
-            $ids = VehicleVisibility::constrain(Vehicle::query(), $fresh, $scope)
+            $ids = InventoryVisibility::constrain(Vehicle::query(), $fresh, $scope)
                 ->pluck('id')
                 ->all();
 
@@ -150,7 +150,7 @@ class VehicleVisibilityTest extends TestCase
 
         $this->inTenant($tenant['org'], function () use ($nowhere) {
             $scope = ViewScope::forUser($nowhere->fresh());
-            $count = VehicleVisibility::constrain(Vehicle::query(), $nowhere->fresh(), $scope)->count();
+            $count = InventoryVisibility::constrain(Vehicle::query(), $nowhere->fresh(), $scope)->count();
             $this->assertSame(0, $count);
         });
     }

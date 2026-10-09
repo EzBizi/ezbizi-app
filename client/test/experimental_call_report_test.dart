@@ -474,11 +474,7 @@ void main() {
   ) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    final header = tester.widget<SliverPersistentHeader>(
-      find.byType(SliverPersistentHeader),
-    );
-
-    expect(header.pinned, isTrue);
+    expect(find.byType(PinnedHeaderSliver), findsOneWidget);
   });
 
   testWidgets('a narrow screen draws cards and still opens the calls', (
@@ -486,7 +482,7 @@ void main() {
   ) async {
     await _pump(tester, width: 375, view: 'People');
 
-    expect(find.byType(SliverPersistentHeader), findsNothing);
+    expect(find.byType(PinnedHeaderSliver), findsNothing);
 
     // Ada's card specifically: the cards are sorted by answered, so `.first`
     // would open Bo and the assertion below would be about the wrong person.
@@ -516,7 +512,7 @@ void main() {
       );
     }
     expect(find.byKey(const ValueKey('stat-calls')), findsOneWidget);
-    expect(find.byType(SliverPersistentHeader), findsNothing);
+    expect(find.byType(PinnedHeaderSliver), findsNothing);
   });
 
   testWidgets('the seven figures are one size', (tester) async {
@@ -785,7 +781,7 @@ Map<String, dynamic> _withAccounts({
 /// carries the same phrase. Tapping by text alone is ambiguous and fails with
 /// a wall of style dumps that says nothing about the cause.
 Finder _header(String label) => find.descendant(
-  of: find.byType(SliverPersistentHeader),
+  of: find.byType(PinnedHeaderSliver),
   matching: find.text(label),
 );
 

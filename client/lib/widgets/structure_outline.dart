@@ -666,9 +666,12 @@ class _StructureOutlineState extends State<StructureOutline> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ?widget.header,
-          _Note(
-            'The structure has not loaded. Try again from the top of the page.',
+          Padding(
             padding: widget.padding,
+            child: Text(
+              'The structure has not loaded. Try again from the top of the page.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       );
@@ -730,26 +733,14 @@ class _StructureOutlineState extends State<StructureOutline> {
         trailing: widget.trailing?.call(context, _rows[i]),
       ),
     if (!_rows.any((row) => row.kind == structureCompany))
-      const _Note(
-        'No companies yet. The List view is where one is added.',
-        padding: EdgeInsets.only(top: 12, left: 4),
+      Padding(
+        padding: const EdgeInsets.only(top: 12, left: 4),
+        child: Text(
+          'No companies yet. The List view is where one is added.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ),
   ];
-}
-
-class _Note extends StatelessWidget {
-  const _Note(this.text, {required this.padding});
-
-  final String text;
-  final EdgeInsets padding;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: padding,
-      child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-    );
-  }
 }
 
 class _OutlineTile extends StatelessWidget {

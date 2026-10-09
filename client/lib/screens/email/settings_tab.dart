@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
@@ -11,7 +12,6 @@ import 'consent_window.dart';
 import 'inbox_people.dart';
 import 'mailbox_panels.dart';
 import 'mailbox_settings.dart';
-import 'open_external.dart';
 
 /// Email › Settings — where an inbox is set up, and where you find out why one
 /// stopped working.
@@ -544,8 +544,11 @@ class _WorkspaceCard extends StatelessWidget {
                     (pending || (link?.health?.needsAttention ?? false)) &&
                     (link!.marketplaceListingUrl ?? '').isNotEmpty)
                   FilledButton(
-                    onPressed: () =>
-                        openExternalUrl(link!.marketplaceListingUrl!),
+                    onPressed: () => launchUrl(
+                      Uri.parse(link!.marketplaceListingUrl!),
+                      mode: LaunchMode.externalApplication,
+                      webOnlyWindowName: '_blank',
+                    ),
                     child: const Text('Install EzBizi in Google'),
                   ),
                 linked
@@ -686,7 +689,11 @@ class _GuideStep extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
-                    onPressed: () => openExternalUrl(step.url!),
+                    onPressed: () => launchUrl(
+                      Uri.parse(step.url!),
+                      mode: LaunchMode.externalApplication,
+                      webOnlyWindowName: '_blank',
+                    ),
                     child: Text(
                       step.url!.contains('workspace.google.com/marketplace')
                           ? 'Install in Google'

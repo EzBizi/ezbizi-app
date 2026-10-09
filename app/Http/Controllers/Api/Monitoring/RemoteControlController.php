@@ -4,14 +4,11 @@ namespace App\Http\Controllers\Api\Monitoring;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
-use App\Models\User;
-use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Closure;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
@@ -100,7 +97,6 @@ class RemoteControlController extends Controller
 
     public function __construct(
         private readonly TenantContext $tenant,
-        private readonly ScopeReach $reach,
         private readonly SettingsResolver $settings,
         private readonly AuditLogger $audit,
     ) {}
@@ -117,7 +113,7 @@ class RemoteControlController extends Controller
     {
         $this->authorize('control', MonitoredDevice::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -162,7 +158,7 @@ class RemoteControlController extends Controller
     {
         $this->authorize('control', MonitoredDevice::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -224,7 +220,7 @@ class RemoteControlController extends Controller
             'device_key' => ['required', 'string', 'max:64'],
         ]);
 
-        $device = $this->resolveOwnDevice($request, $data['device_key']);
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404);
@@ -268,24 +264,6 @@ class RemoteControlController extends Controller
     private function inputQueueKey(string $deviceId): string
     {
         return "monitoring:input:{$deviceId}";
-    }
-
-    /** §3 reach — identical to LiveViewController::visibleDevice. */
-    private function visibleDevice(User $actor, string $id): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()
-            ->whereHas('user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor))
-            ->find($id);
-    }
-
-    /** Same three-key (org, user, device_key) resolution LiveViewController::resolveOwnDevice uses. */
-    private function resolveOwnDevice(Request $request, string $deviceKey): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()->where([
-            'organization_id' => $this->tenant->idOrFail(),
-            'user_id' => $request->user()->getKey(),
-            'device_key' => $deviceKey,
-        ])->first();
     }
 
     private function batchSizeRule(): Closure

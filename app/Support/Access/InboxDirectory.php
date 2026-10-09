@@ -106,12 +106,6 @@ class InboxDirectory
      */
     public function keyedByIdFor(Organization|string $organization): array
     {
-        $keyed = [];
-
-        foreach ($this->forOrganization($organization) as $inbox) {
-            $keyed[$inbox->id] = $inbox;
-        }
-
-        return $keyed;
+        return array_column($this->forOrganization($organization), null, 'id');
     }
 }

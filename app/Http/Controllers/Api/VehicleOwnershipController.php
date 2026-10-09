@@ -42,10 +42,10 @@ class VehicleOwnershipController extends Controller
         }
 
         $input = $request->validate([
-            'kind' => ['required', 'string', Rule::in(VehicleOwnershipKind::values())],
+            'kind' => ['required', 'string', Rule::enum(VehicleOwnershipKind::class)],
             'counterparty' => ['nullable', 'string', 'max:200'],
             'started_on' => ['nullable', 'date'],
-            'ended_reason' => ['nullable', 'string', Rule::in(VehicleEndedReason::values())],
+            'ended_reason' => ['nullable', 'string', Rule::enum(VehicleEndedReason::class)],
             'purchase_price_cents' => ['nullable', 'integer', 'min:0'],
             'lienholder' => ['nullable', 'string', 'max:200'],
             'loan_account' => ['nullable', 'string', 'max:100'],
@@ -53,11 +53,11 @@ class VehicleOwnershipController extends Controller
             'loan_payoff_date' => ['nullable', 'date'],
             'transport_cost_cents' => ['nullable', 'integer', 'min:0'],
             'rental_rate_cents' => ['nullable', 'integer', 'min:0'],
-            'rental_rate_period' => ['nullable', 'string', Rule::in(VehicleRatePeriod::values())],
+            'rental_rate_period' => ['nullable', 'string', Rule::enum(VehicleRatePeriod::class)],
             'rental_deposit_cents' => ['nullable', 'integer', 'min:0'],
             'rental_account_number' => ['nullable', 'string', 'max:100'],
-            'rental_payment_terms' => ['nullable', 'string', Rule::in(VehicleRentalTerms::values())],
-            'rental_payment_method' => ['nullable', 'string', Rule::in(VehiclePaymentMethod::values())],
+            'rental_payment_terms' => ['nullable', 'string', Rule::enum(VehicleRentalTerms::class)],
+            'rental_payment_method' => ['nullable', 'string', Rule::enum(VehiclePaymentMethod::class)],
         ], [
             'kind.required' => 'A vehicle has to be owned or rented. Say which, then save.',
         ]);

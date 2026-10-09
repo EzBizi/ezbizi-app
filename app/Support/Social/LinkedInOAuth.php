@@ -37,11 +37,6 @@ final class LinkedInOAuth implements SocialOAuth
         return 'linkedin';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;

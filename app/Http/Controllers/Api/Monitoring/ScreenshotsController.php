@@ -84,11 +84,7 @@ class ScreenshotsController extends Controller
         // MUST land on the identical row a heartbeat would, never a
         // divergent one. Not found is a real rejection, not a row to create:
         // see the class docblock for why.
-        $device = MonitoredDevice::query()->where([
-            'organization_id' => $organizationId,
-            'user_id' => $userId,
-            'device_key' => $data['device_key'],
-        ])->first();
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404, 'No registered device for this session — send a heartbeat first.');

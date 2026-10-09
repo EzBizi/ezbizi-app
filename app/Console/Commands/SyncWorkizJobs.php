@@ -11,6 +11,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizTwins;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -372,7 +373,7 @@ class SyncWorkizJobs extends Command
      */
     public static function named(array $ids): array
     {
-        $named = MergeWorkizTwins::namedElsewhere($ids, ['workiz_jobs.job_id', 'leads.job_id', 'automation_events.subject_id', 'audit_events.target_id']);
+        $named = WorkizTwins::namedElsewhere($ids, ['workiz_jobs.job_id', 'leads.job_id', 'automation_events.subject_id', 'audit_events.target_id']);
 
         $made = DB::table('leads')->whereIn('job_id', $ids)->where(fn ($q) => $q->whereNull('job_matched_by')->orWhere('job_matched_by', '<>', 'phone'))->pluck('job_id');
         $edited = DB::table('audit_events')->whereIn('target_id', $ids)->where('action', '<>', 'workiz.job_gone')->pluck('target_id');

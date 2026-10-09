@@ -3,9 +3,7 @@
 namespace App\Support\Contracts;
 
 use App\Support\Files\HardenedPdf;
-use App\Support\Settings\SettingRegistry;
-use App\Support\Settings\SettingsResolver;
-use App\Support\Tenancy\TenantContext;
+use App\Support\Files\PdfPaper;
 use DateTimeInterface;
 use DateTimeZone;
 use Dompdf\Adapter\CPDF;
@@ -146,11 +144,7 @@ use RuntimeException;
  */
 final class PdfRenderer
 {
-    public function __construct(
-        private readonly TenantContext $tenant,
-        private readonly SettingsResolver $settings,
-        private readonly SettingRegistry $registry,
-    ) {}
+    public function __construct(private readonly PdfPaper $paper) {}
 
     /** The derived artefact's type, and its extension. */
     public const MIME      = 'application/pdf';
@@ -231,8 +225,8 @@ final class PdfRenderer
      * would have been a second chance to get one of the locks wrong, and the
      * second copy is always the weaker one.
      *
-     * What stays here is what is genuinely this class's: the paper size, which
-     * is resolved from the CONTRACT setting below.
+     * The paper size is Support\Files\PdfPaper's, which the inspection report
+     * reads too.
      */
     /**
      * What they uploaded, after the contract: each picture on its own page, any
@@ -383,68 +377,7 @@ final class PdfRenderer
 
     private function options(): Options
     {
-        return HardenedPdf::options($this->paper());
-    }
-
-    /**
-     * The page size of the COPY — a property of the paper, not of the agreement.
-     *
-     * ── It is the ORGANIZATION's, and it used to be the box's ────
-     *
-     * This read `config('contracts.pdf.paper')`, and that file's own docblock
-     * admitted the home was wrong. §2.1's test for deployment config is "would a
-     * second INSTALLATION need a different value", and paper only half passes:
-     * two organizations on one installation disagree the moment one of them is
-     * in North America, so a franchise in Ohio and its parent in Manchester
-     * printed contracts on the same wrong sheet.
-     *
-     * So it is `contract_pdf_paper` in SettingRegistry, and it cascades like
-     * every other setting — franchise, then the company above it, then the
-     * organization, then the registry's default. A franchise that prints on
-     * letter can say so without changing anything for the rest of the group.
-     *
-     * ── Why there is a tenant-less path at all ───────────────────
-     *
-     * The registry's default, used when nothing has been set and when there is
-     * no tenant in context. The second case is real rather than defensive: this
-     * class is a plain service and its unit tests convert a document without a
-     * request around them. Resolving to the DEFINITION's default rather than
-     * writing `'a4'` here keeps one answer to "what paper, if nobody said" —
-     * change the registry entry and this follows.
-     *
-     * An unknown value REFUSES rather than falling back. dompdf's own behaviour
-     * is to silently substitute letter for anything it does not recognise, which
-     * turns a typo into a mystery about margins six months later. The registry
-     * offers two options, so this can only fire if a value was written around
-     * the setting layer — which is exactly when a silent substitution would be
-     * least welcome.
-     */
-    private function paper(): string
-    {
-        $paper = strtolower(trim((string) $this->configuredPaper()));
-
-        if (! array_key_exists($paper, CPDF::$PAPER_SIZES)) {
-            throw new RuntimeException(sprintf(
-                'The contract paper size is set to "%s", which is not a paper size this '
-                .'converter knows. Set it to one of: %s. It is refused rather than '
-                .'approximated because the alternative is a contract that quietly prints on '
-                .'the wrong paper.',
-                $paper,
-                implode(', ', array_slice(array_keys(CPDF::$PAPER_SIZES), 0, 12)).', …',
-            ));
-        }
-
-        return $paper;
-    }
-
-    /** The setting for whoever is in context, or the registry's default. */
-    private function configuredPaper(): mixed
-    {
-        $organization = $this->tenant->get();
-
-        return $organization === null
-            ? $this->registry->getOrFail('contract_pdf_paper')->default
-            : $this->settings->get('contract_pdf_paper', $organization);
+        return HardenedPdf::options($this->paper->get());
     }
 
     /**

@@ -5,7 +5,6 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/services_screen.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -17,7 +16,6 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.byType(ServicesScreen), findsOneWidget);
     expect(
       find.descendant(

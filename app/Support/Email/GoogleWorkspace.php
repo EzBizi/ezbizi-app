@@ -355,26 +355,6 @@ final class GoogleWorkspace
      *
      * @throws GoogleWorkspaceRefused
      */
-    public function directory(Organization $organization): array
-    {
-        $connection = $this->connectionAt(
-            $organization->getKey(),
-            'organization',
-            $organization->getKey(),
-        );
-
-        if ($connection === null) {
-            throw GoogleWorkspaceRefused::notConnected();
-        }
-
-        return $this->directoryFor($connection);
-    }
-
-    /**
-     * @return list<array{address: string, name: string, primary: bool}>
-     *
-     * @throws GoogleWorkspaceRefused
-     */
     public function directoryFor(GoogleWorkspaceConnection $connection): array
     {
         if (($notReady = $this->notReadyBecause()) !== null) {

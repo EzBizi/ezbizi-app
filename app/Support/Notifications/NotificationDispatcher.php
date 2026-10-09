@@ -347,14 +347,6 @@ class NotificationDispatcher
      *
      * @return int how many were actually emailed
      *
-     * -- One thing deliberately left alone --
-     *
-     * `dispatchUnique` does not get this. It has NO callers: measured across
-     * app/ and tests/, only this file and docs/notifications-contract.md
-     * mention it at all. Wiring mail into it would be delivery nobody can
-     * reach, and its own question -- does a suppressed duplicate still mail? --
-     * has no caller to answer it. It goes to whoever gives it one.
-     *
      * @param  Collection<int, User>  $recipients  already capped by the caller
      */
     private function alsoByEmail(Collection $recipients, string $title, ?string $body, Model $scope): int
@@ -526,41 +518,6 @@ class NotificationDispatcher
         return $recipients
             ->filter(fn (User $user) => in_array($user->role_id, $roleIds, true))
             ->values();
-    }
-
-    /**
-     * Null when this organization has the source switched off.
-     *
-     * Null rather than a silently-unsaved model: the caller holds a delivery
-     * intent it has to settle either way, and "suppressed" and "delivered" are
-     * different answers to give it. A Notification returned for a row that was
-     * never written would have the intent recording a delivery that did not
-     * happen — which is precisely the evidence that table exists to keep.
-     */
-    public function dispatchUnique(
-        User $recipient,
-        string $title,
-        ?string $body,
-        Model $subject,
-        string $source,
-        string $deliveryKey,
-    ): ?Notification {
-        if (! $this->allows($source, $subject)) {
-            return null;
-        }
-
-        return Notification::query()->firstOrCreate([
-            'user_id' => $recipient->id,
-            'source' => $source,
-            'delivery_key' => $deliveryKey,
-        ], [
-            'organization_id' => $this->tenant->idOrFail(),
-            'title' => $title,
-            'body' => $body,
-            'subject_type' => $subject::class,
-            'subject_id' => $subject->getKey(),
-            'created_at' => now(),
-        ]);
     }
 
     /**

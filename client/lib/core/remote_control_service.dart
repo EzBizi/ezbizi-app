@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart'
     show ValueNotifier, debugPrint, kDebugMode;
+import 'package:flutter/services.dart' show MethodChannel;
 
 import 'api_client.dart';
 import 'device_key.dart';
-import 'monitoring_indicator_channel.dart';
-import 'monitoring_input_channel.dart';
 import 'screenshot_capability.dart';
 
 /// Remote Control — the AGENT half (2026-09-02-monitoring-remote-control, Part
@@ -15,7 +14,7 @@ import 'screenshot_capability.dart';
 /// /monitoring/input-pending?device_key={key}` returns AND clears this
 /// device's queue as `{"events":[...], "control_wanted":bool}`, and every
 /// returned event is applied via the native `injectInput` channel
-/// (monitoring_input_channel.dart, Win32 SendInput).
+/// ([_defaultInject], Win32 SendInput).
 ///
 /// ── One adaptive poll, cheap when idle and quick when driven ─────────
 ///
@@ -67,7 +66,7 @@ class RemoteControlService {
   final Future<void> Function(List<Map<String, Object?>> events) _inject;
 
   /// Raises or clears the native "being controlled" notice. Injected in tests;
-  /// [_defaultIndicate] otherwise reaches the real tray via [setControlled].
+  /// [_defaultIndicate] otherwise reaches the real tray.
   final Future<void> Function(bool active) _indicate;
 
   Timer? _timer;
@@ -105,11 +104,36 @@ class RemoteControlService {
   late Duration _interval;
   int _idleTicks = 0;
 
-  static Future<void> _defaultInject(List<Map<String, Object?>> events) =>
-      injectInput(events, caller: 'RemoteControlService');
+  /// Only windows/runner registers these two channels: `injectInput` applies
+  /// input via Win32 SendInput, `setControlled` swaps the tray icon's tooltip
+  /// and shows a balloon. Nothing else has a handler, hence the Windows-only
+  /// `screenshotCaptureSupported` gate in the constructor.
+  static const _input = MethodChannel('com.ezbizi.app/monitoring_input');
+  static const _indicator = MethodChannel(
+    'com.ezbizi.app/monitoring_indicator',
+  );
 
-  static Future<void> _defaultIndicate(bool active) =>
-      setControlled(active, caller: 'RemoteControlService');
+  /// Never throws, like [_defaultIndicate]: a `Timer` callback must never be
+  /// at risk of an uncaught error from the native side.
+  static Future<void> _defaultInject(List<Map<String, Object?>> events) async {
+    try {
+      await _input.invokeMethod<void>('injectInput', events);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('RemoteControlService: native input injection failed: $e');
+      }
+    }
+  }
+
+  static Future<void> _defaultIndicate(bool active) async {
+    try {
+      await _indicator.invokeMethod<void>('setControlled', active);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('RemoteControlService: native control indicator failed: $e');
+      }
+    }
+  }
 
   void _scheduleNext() {
     if (_disposed) return;
@@ -166,7 +190,7 @@ class RemoteControlService {
   }
 
   /// Push a new notice state to native, but only when it actually changed —
-  /// the transition guard that keeps [setControlled] off the per-poll path.
+  /// the transition guard that keeps `setControlled` off the per-poll path.
   Future<void> _setIndicating(bool active) async {
     if (active == _indicating) return;
     _indicating = active;
@@ -193,7 +217,7 @@ class RemoteControlService {
 
     // Best-effort clear so a notice never outlives the loop that raised it —
     // if this instance goes away mid-control, the machine should not be left
-    // saying it is being controlled. Fire-and-forget: [setControlled] never
+    // saying it is being controlled. Fire-and-forget: [_defaultIndicate] never
     // throws, and dispose does not await.
     if (_indicating) {
       _indicating = false;
