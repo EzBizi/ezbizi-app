@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Http;
 /**
  * X API v2 OAuth 2.0 with PKCE. Confidential client (Basic auth).
  * tweet.write + offline.access so a post can be scheduled unattended.
+ * media.write because a picture is uploaded to X before the post names it;
+ * without it the upload is refused and only words can be posted. An account
+ * connected before media.write was asked for must reconnect to post pictures.
  */
 final class XOAuth implements SocialOAuth
 {
@@ -18,6 +21,7 @@ final class XOAuth implements SocialOAuth
         'tweet.read',
         'tweet.write',
         'users.read',
+        'media.write',
         'offline.access',
     ];
 
@@ -127,7 +131,63 @@ final class XOAuth implements SocialOAuth
             throw SocialOAuthRefused::noLastingPermission('X');
         }
 
-        return new SocialOAuthGrant(accessToken: $access, refreshToken: $refresh);
+        // expires_in is kept so the publisher renews BEFORE the two hours are
+        // up rather than learning it from a refused post.
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: $refresh,
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
+    }
+
+    /**
+     * A new access token from the stored refresh token.
+     *
+     * X ROTATES the refresh token: the one sent here is spent the moment X
+     * answers, so the caller stores the returned one under a lock
+     * (XPublisher::token). A 400 is X saying the refresh token is no good —
+     * spent, revoked in the user's settings, or six months unused — and it
+     * comes back as HTTP_CONFLICT so the caller can mark the row broken.
+     *
+     * @throws SocialOAuthRefused
+     */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()
+                ->withBasicAuth(
+                    (string) config('services.x.client_id'),
+                    (string) config('services.x.client_secret'),
+                )
+                ->timeout(self::TIMEOUT)
+                ->post('https://api.x.com/2/oauth2/token', [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                ]);
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('X');
+        }
+
+        // X answers a dead refresh token with 400 and `invalid_request`, not
+        // only the RFC's `invalid_grant`; both mean the same thing here.
+        if ($response->status() === 400
+            && in_array($response->json('error'), ['invalid_grant', 'invalid_request'], strict: true)) {
+            throw SocialOAuthRefused::noLongerPermitted('X no longer accepts this connection. It needs connecting again.');
+        }
+
+        $access = $response->json('access_token');
+
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('X');
+        }
+
+        $rotated = $response->json('refresh_token');
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
     }
 
     public function identify(SocialOAuthGrant $grant): array

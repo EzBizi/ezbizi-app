@@ -15,7 +15,7 @@ use App\Support\Social\SocialProvider;
  * posts and the composer says "not wired yet", and nothing fails.
  *
  * It answers `null` rather than throwing, because "no publisher for this yet"
- * is an ordinary state this module is in for four of its nine connectable
+ * is an ordinary state this module is in for some of its connectable
  * networks, and the caller has a better sentence for it than an exception does.
  */
 final class Publishers
@@ -40,6 +40,8 @@ final class Publishers
             // narrowest shape of that yes and the place the reasoning lives.
             SocialProvider::InstagramProfessional => new InstagramPublisher,
 
+            SocialProvider::Bluesky   => new BlueskyPublisher,
+            SocialProvider::X         => new XPublisher,
             SocialProvider::Pinterest => new PinterestPublisher,
             SocialProvider::TikTok    => new TikTokPublisher(
                 toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),
