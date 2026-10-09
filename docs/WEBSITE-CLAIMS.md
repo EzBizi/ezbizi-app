@@ -93,7 +93,7 @@ touches apps, monitoring, social, Google or mail.
 | "— if your organization turns it on — a copy of a notification" | `/privacy/` | `SettingRegistry` → `notifications.email_enabled` → `default:`. **Flipped `true` → `false` on 2026-09-28** (Jose's ruling, deployed by `0.0.0304`), which made "unless your organization turns it off" false from that deploy until this fix. If the default goes back to `true`, the word goes back to "unless". |
 | "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. **RUN 2026-09-22, AND THE ROW FAILED ITS OWN TEST ON ITS FIRST RUN.** STOP and HELP do match, word for word, in all three. The frequency string does not: the site says *"typically fewer than five a month"* and `sms_codes_card.dart:328` says *"typically fewer than 5 messages per month"*. Both are true and they are not the same words, which is the state this row was written to forbid. **It was NOT corrected on the site, deliberately**, and the reason is the only interesting part: the toll-free campaign is in carrier review, the consent language cited in a campaign filing is part of that filing, and nobody here knows which of the two wordings was filed. Editing a published consent sentence mid-review to match an app is a change to evidence somebody is currently reading. **The next person to answer this owns the campaign, not this page** — asked as `0059`. Align to whichever was filed; do not align to whichever is prettier. |
 | "Either stops the texts; neither needs a password" | `/terms/` | `SmsCodesController::disable()` takes only `$request->user()`. Load-bearing: add a confirmation step and this page is false. |
-| "Facebook Pages, Instagram, Threads, Pinterest and TikTok send today" · "Pinterest images only" · "TikTok drafts, not the profile" | `/`, `/social-media/` | `Publishers::for()` — which providers return non-null. Was two, corrected upward to five on 2026-09-02; the site was the last to hear. |
+| "Facebook Pages, Instagram, Threads and TikTok send today" · "TikTok drafts, not the profile" · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
 | "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
@@ -106,7 +106,7 @@ touches apps, monitoring, social, Google or mail.
 
 | QR scans: "The scan record holds no internet address, no device details and no location" · "a random key that is changed every day and thrown away after two" · "deleted after thirteen months" | `/privacy/` | `create_qr_code_scans_table` — four columns only (`organization_id`, `qr_code_id`, `scanned_at`, `visitor`); **a fifth column breaks the first sentence**. `QrCodeScan::visitorFor` — `sha256(salt|ip|ua)`, salt `Cache::remember('qr-scan-salt:'.$day, now()->addDays(2), random_bytes(32))`; a persisted or fixed salt makes "nobody can work out which phone" false. `RetentionPolicy::window(13, 'scanned_at')`. **Scoped to the SCAN RECORD on purpose**: nginx access logs on app.ezbizi.com record every request's IP including `/q/…`, so "we do not store IP addresses" would be false — never widen it. |
 | Cloudflare: "Its script loads with the page, so Cloudflare sees the browser and IP address of anyone who opens a page with one of these forms, not only of those who send it" · "nothing typed into the form is sent to it" | `/privacy/` Who we rely on | `wordpress-plugin/ezbizi/enquiries.php` + `widgets.php` + `elementor-forms.php` print `challenges.cloudflare.com/turnstile/v0/api.js` with the box at render time, not on submit — so the peer's "a visitor submitting" wording understated it; never narrow back. `app/Support/Web/Turnstile.php::passes` and `ezbizi_turnstile_passes` send siteverify only `secret` + `response` (no `remoteip`, no form fields); **adding a form field or `remoteip` to that POST breaks the second sentence**. Only domains in `config('ezbizi.turnstile')` get the box. |
-| YouTube: "Read-only access ... is used once, when you connect, to read the channel's id, title and handle" · "Upload access ... is used only to publish a video you choose ... nothing is uploaded otherwise" · "We do not read your videos, comments, subscribers or analytics" · disconnect "deletes those stored tokens and channel details at once" · audit note "for three months" | `/privacy/` Connected social accounts → YouTube (YouTube API Services Developer Policy, asked by Social 2026-10-09) | `YouTubeOAuth::SCOPES` (upload + readonly) and `identify()` — the ONLY YouTube API call (`channels?part=snippet&mine=true`). **On 2026-10-09 no YouTube publisher exists** (`Publishers.php` has no YouTube arm), so the upload sentence is worded as a limit, never as "EzBizi uploads"; **any new YouTube read (videos, comments, analytics) breaks the "we do not read" sentence**. `SocialConnectionsController::letGo` → `$row->delete()` (no revoke at Google — hence "doing both"). `credentials` cast `encrypted:array`. `social.disconnected` falls in ExpireAuditEvents business = 3 months. |
+| YouTube: "Read-only access ... is used once, when you connect, to read the channel's id, title and handle" · "Upload access ... is used only to publish a video you choose ... nothing is uploaded otherwise" · "We do not read your videos, comments, subscribers or analytics" · disconnect "deletes those stored tokens and channel details at once" · audit note "for three months" | `/privacy/` Connected social accounts → YouTube (YouTube API Services Developer Policy, asked by Social 2026-10-09) | `YouTubeOAuth::SCOPES` (upload + readonly) and `identify()` — the ONLY YouTube API call (`channels?part=snippet&mine=true`). **A YouTube publisher landed later the same day** (`8b232f86`, in production `0.0.0404`); the upload sentence was already worded as a limit ("only to publish a video you choose"), so it stays true; **any new YouTube read (videos, comments, analytics) breaks the "we do not read" sentence**. `SocialConnectionsController::letGo` → `$row->delete()` (no revoke at Google — hence "doing both"). `credentials` cast `encrypted:array`. `social.disconnected` falls in ExpireAuditEvents business = 3 months. |
 | Leads → xAI: "conversation … including Google Local Services messages and calls … and the contact's name … sent to xAI (Grok)" · "A draft is never sent on its own" · "Data retention is switched off on our xAI account" · Google section "We share it with one service provider … xAI … Nobody else receives it" · /google-ads-api/ "shared with one service provider" | `/privacy/` Calls and messages + Google user data + Who we rely on; `/google-ads-api/` | `LeadInsights::thread()` (every `LeadConversation`, text or transcript, + `contact_name`) → `GrokCli::ask` in `read()`/`suggestReply()`; switch `config('ezbizi.leads_ai_grok')` (LEADS_AI_GROK). Never sends: `suggestReply` returns text only. **Jose 2026-10-09, relayed verbatim by Leads (local_29c0a73a): "yes change it"** — option (b), Google-sourced leads included, told it changes what Ads API access was approved against. Retention: Jose, "Data retention is turned off" — an account setting nobody here can read, so it is written as ours, not as xAI's promise. **Any new recipient of Google user data breaks "Nobody else receives it"** — Bedrock (`bedrock()` path in the same class) included: if AWS Bedrock keys are ever set, Anthropic-on-AWS reads leads too and this row must change. |
 | Automations card: triggers "a lead arrives, a call is missed, a job changes status, stock runs low" · steps "send a text, open a follow-up job, assign it, email a saved report or tell the administrators" · "conditions" · "on a schedule" | `/` grid (Jose 2026-10-09: "review … and improve it") | `ModuleServiceProvider` keys `lead.received`, `phone.call.missed`, `job.status_changed`, `item.low`; actions `phone.sms.send` (to "a number you give" — so NOT "text the customer"), `job.create` (follow-up for the same customer), `job.assign_to_user`, `report.send`, `organization.notify_administrators`; `ConditionEvaluator`; trigger `automation.schedule_reached`. The old "no fix in the window" hold is superseded by Jose's ask; **removing any of those keys breaks the card**. |
 | DO NOT: "Keeps working offline — everything syncs once there's signal again" | `/` Office, truck or phone | Removed 2026-10-09. `client/pubspec.yaml` has no local database (no sqflite/drift/hive/isar) and `api_client.dart` has no outbox; only `field_tracker.dart` buffers GPS points offline. Replaced with "Installs without IT", which the FAQ already carried. Re-add only with an offline write queue in the client. |
@@ -2592,6 +2592,56 @@ Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
 Stores: Play `200`; Apple `resultCount` 1, version 0.0.0363; WordPress
 directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
+
+## 2026-10-09: seven releases, and "Pinterest sends now" was false on production
+
+**Production is `0.0.0404` at `25dbe9b3`** (`/download/windows.json`). Before
+this run's edit all seven pages, `robots.txt` and `sitemap.xml` were
+byte-identical to `www/`; today's three `www/` commits by other sessions
+(`e850c807` YouTube, `ef8d1480` offline/Automations, `41cc00bd` xAI) are live.
+No desk asked (`send_message` is unavailable to a scheduled run); row counts
+were taken read-only on the box instead.
+
+**The finding: Pinterest refuses EzBizi's Pins, and the site said it sends.**
+`975d1d59` says it outright — Trial-access apps may not create Pins on
+`api.pinterest.com`. Production `social_post_targets` for `pinterest`: one
+`failed` 2026-10-09 15:36 with Pinterest's own refusal (*"Apps with Trial access
+may not create Pins in production"*), one `sent` 17:37 — **to the sandbox**:
+`services.pinterest.sandbox_token` is SET on production, so every tenant's
+Pinterest post now goes to `api-sandbox.pinterest.com` with the app owner's
+token and never reaches the tenant's Pinterest. Pinterest moved from "Sends
+now" to "Posting waits on Pinterest" on `/social-media/`, and out of the
+"send today" list on `/`. Counts "five of the nine" → "four".
+
+**Also corrected, the understatement direction:** `b78751c1` + `8b232f86`
+gave LinkedIn, YouTube, X and Bluesky publishers (in `0.0.0404`), so "sending
+is not built. The tick box is greyed" and "EzBizi refuses the post" were false.
+**Not promoted to "sends"**: 0 `social_post_targets` rows for any of the four.
+Worded "newly built and not yet proven on a customer's account". Promote each
+on its first real `sent` row. Only `facebook_page` has ever had a `sent` row
+(1); Instagram, Threads and TikTok have none either — left as they are, because
+nothing shows a network refusing them, and the rule above pulls on evidence of
+refusal, not on absence of sends.
+
+**Walked `17f64cde..25dbe9b3` (98 commits) against the rest of the table:**
+`GrokTagger` gained a Grok CLI path — still xAI, still instruction + transcript
+only, so the call-labelling sentence holds. `FilesController` refactor only
+(still `list`/`download`). `pubspec.yaml` added `desktop_drop` (no permission).
+`config/services.php`: Pinterest sandbox + `grok_cli` (xAI, already listed).
+New hosts in `app/`: LinkedIn, X, Bluesky, YouTube, Pinterest sandbox — all
+networks a customer connects.
+
+**Deliberately unpublished:** Report Builder, HR signature fix, plus everything
+held on 10-08. Flagged to Marketing as `0107`: the sandbox token routes every
+tenant's Pinterest post to the app owner's sandbox.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, version 0.0.0363; WordPress directory 1.10.0.
 
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
