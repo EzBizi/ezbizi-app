@@ -449,6 +449,24 @@ class AutomationEngineTest extends TestCase
         $this->assertSame('Later', $this->inTenant(fn () => Job::find($job)->title));
     }
 
+    /** The rules list says when each rule last ran and how (UI/UX, 2026-10-09). */
+    public function test_the_rules_list_carries_each_rules_last_run(): void
+    {
+        $ran = $this->automation('job.created', null, [['type' => 'update_field', 'field' => 'title', 'value' => 'Seen']]);
+        $idle = $this->automation('job.status_changed', null, [['type' => 'update_field', 'field' => 'title', 'value' => 'x']]);
+
+        $this->makeJob();
+        $this->drain();
+
+        $rows = collect($this->as()->getJson('/api/v1/automations')->assertOk()->json('data'))->keyBy('id');
+
+        $this->assertSame('worked', $rows[$ran->id]['last_run_status']);
+        $this->assertNotNull($rows[$ran->id]['last_run_at']);
+        $this->assertSame(1, $rows[$ran->id]['runs_this_week']);
+        $this->assertNull($rows[$idle->id]['last_run_status'], 'never run');
+        $this->assertSame(0, $rows[$idle->id]['runs_this_week']);
+    }
+
     public function test_nested_any_and_all_evaluate_as_written(): void
     {
         $this->automation('job.status_changed',

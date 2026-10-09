@@ -1012,8 +1012,33 @@ class AutomationsController extends Controller
                 // person standing at the organization is the one who has to be
                 // able to find every rule in the business.
                 || $a->coversScope($view->type, $view->id, companyChain: $chain))
-            ->values()
-            ->map(fn (Automation $a) => $this->present($a));
+            ->values();
+
+        // The list's "last ran" and "this week" (UI/UX, 2026-10-09), in two
+        // queries for the whole list. Test runs are not runs.
+        $ids = $automations->pluck('id');
+        $last = DB::query()->fromSub(
+            AutomationRun::query()->whereIn('automation_id', $ids)->where('is_test', false)
+                ->select(['automation_id', 'status', 'started_at'])
+                ->selectRaw('ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY started_at DESC, id DESC) AS rn'),
+            'last_runs',
+        )->where('rn', 1)->get()->keyBy('automation_id');
+        $week = AutomationRun::query()->whereIn('automation_id', $ids)->where('is_test', false)
+            ->where('started_at', '>=', now()->subDays(7))
+            ->selectRaw('automation_id, COUNT(*) AS n')->groupBy('automation_id')->pluck('n', 'automation_id');
+
+        $automations = $automations->map(fn (Automation $a) => $this->present($a) + [
+            'last_run_at' => ($run = $last->get($a->id)) ? \Illuminate\Support\Carbon::parse($run->started_at)->toIso8601String() : null,
+            'last_run_status' => match ($run?->status) {
+                AutomationRun::SUCCEEDED => 'worked',
+                AutomationRun::FAILED => 'failed',
+                AutomationRun::SKIPPED => 'skipped',
+                AutomationRun::MATCHED => 'running',
+                default => null,
+            },
+            // The last seven days, not the calendar week.
+            'runs_this_week' => (int) ($week[$a->id] ?? 0),
+        ]);
 
         return response()->json(['data' => $automations]);
     }
