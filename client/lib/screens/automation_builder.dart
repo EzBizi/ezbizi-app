@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
@@ -47,6 +48,7 @@ class AutomationBuilder extends StatefulWidget {
     required this.onCancel,
     this.editing,
     this.canEditHoursReports = false,
+    this.onTry,
   });
 
   final ApiClient api;
@@ -63,6 +65,10 @@ class AutomationBuilder extends StatefulWidget {
 
   final VoidCallback onSaved;
   final VoidCallback onCancel;
+
+  /// Rehearses the SAVED rule against a recent real event, beside Save
+  /// (UI queue 73). Null for a rule not saved yet: there is nothing to try.
+  final VoidCallback? onTry;
 
   @override
   State<AutomationBuilder> createState() => _AutomationBuilderState();
@@ -1599,9 +1605,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     _nameStep(context),
                     const SizedBox(height: 24),
                     _triggerStep(context),
-                    const SizedBox(height: 24),
                     _conditionStep(context),
-                    const SizedBox(height: 24),
                     _actionStep(context),
                     if (_isEdit) ...[
                       const SizedBox(height: 24),
@@ -1632,9 +1636,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Editing “${widget.editing?['name']}”. Saving writes a new version '
-              'and makes it the live one — the runs already recorded keep '
-              'pointing at the version that produced them.',
+              'Editing “${widget.editing?['name']}”. Saving makes this the live '
+              'version; the earlier ones stay under History.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -1923,9 +1926,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         context,
         2,
         'When this happens',
-        'Fixed for the life of the rule — a rule that changed what it reacts to '
-            'would make every run already recorded describe something it no '
-            'longer does. Build a new one instead.',
+        'This stays as it is once a rule is saved, so its past runs keep '
+            'making sense. To react to something else, make a new rule.',
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1956,8 +1958,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       context,
       2,
       'When this happens',
-      'Only things this system actually emits are listed. Pick a category, then '
-          'the event — or search across all of them.',
+      'What sets it off. Pick a category, then the event, or search them '
+          'all.',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2526,9 +2528,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'Then do this',
       // Unbuilt actions are no longer offered at all (Jose, 2026-09-23), so
       // the sentence that promised them "listed and marked" went too.
-      'One step at a time, in order.'
-          '${budget == null ? '' : ' One event may set off at most $budget '
-                    'actions in total before the engine stops the cascade.'}',
+      'The steps run one after another, in order.'
+          '${budget == null ? '' : ' One event can set off at most $budget '
+                    'steps in all.'}',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -3922,9 +3924,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       context,
       5,
       'History',
-      'Every save wrote one of these and none of them can be edited, because '
-          'each run points at the version that produced it. Putting an older one '
-          'back is how a rule that turned out wrong is undone.',
+      'Every save is kept here. Put an older one back to undo a change.',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -3984,6 +3984,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             onPressed: _busy ? null : widget.onCancel,
             child: const Text('Cancel'),
           ),
+          if (widget.onTry case final tryIt?) ...[
+            const SizedBox(width: 10),
+            OutlinedButton(
+              key: const Key('automation-builder-try'),
+              onPressed: _busy ? null : tryIt,
+              child: const Text('Try the saved rule'),
+            ),
+          ],
           const SizedBox(width: 10),
           FilledButton(
             onPressed: _busy || blocker != null ? null : _submit,
@@ -3998,6 +4006,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// so the contract designer cannot slowly disagree with it about a heading
   /// size. Kept as a method because every call site here reads
   /// `_step(context, 3, …)` and rewriting six of them buys nothing.
+  ///
+  /// Steps 2, 3 and 4 are one chain, When → Only if → Then (UI queue 73): each
+  /// a card with its own mark, joined by a line, so the form reads like the
+  /// sentence it makes. Naming it and its History stay numbered steps.
   Widget _step(
     BuildContext context,
     int number,
@@ -4006,12 +4018,92 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     Widget body, {
     Widget? action,
   }) {
-    return NumberedStep(
-      number: number,
-      title: title,
-      note: note,
-      action: action,
-      child: body,
+    final mark = switch (number) {
+      2 => (Icons.bolt, Tone.info),
+      3 => (Icons.alt_route, Tone.caution),
+      4 => (Icons.play_arrow, Tone.ok),
+      _ => null,
+    };
+    if (mark == null) {
+      return NumberedStep(
+        number: number,
+        title: title,
+        note: note,
+        action: action,
+        child: body,
+      );
+    }
+
+    final theme = Theme.of(context);
+    final tone = ToneColours.of(context, mark.$2);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // The line from the block above; the first block gets the gap.
+        Padding(
+          padding: const EdgeInsets.only(left: 30),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 2,
+              height: 24,
+              child: number == 2
+                  ? null
+                  : ColoredBox(color: EzBiziTheme.edge(context)),
+            ),
+          ),
+        ),
+        // A box, not a Card: a step's own action cards are Cards, and the
+        // two must stay told apart.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border.all(color: EzBiziTheme.edge(context)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: tone.fill,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(mark.$1, size: 18, color: tone.ink),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    ?action,
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  note,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                body,
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

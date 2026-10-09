@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 73 · Automations · an overhaul — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/automations-overhaul-layouts.html`)
+### 73 · Automations · an overhaul — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/automations-overhaul-layouts.html`)
 
 Jose 2026-10-09: *"take a look at the Automations Tab and improve it… it's one of the screens we havent been paying
 attentions and could use an ui-ux overhaul"*. Today: cards with a red Off chip beside an off switch, "When Jobs ›
@@ -2980,6 +2980,13 @@ rule. Desktop **1** cards across (Jose 2026-09-22) grouped by module with search
 a top bar (recommended); **2** a sortable table, the builder in a wide panel; **3** ideas to start from and a
 one-question-per-screen builder. Phone **4** (recommended) cards with the sentence, the rule opens over the list,
 blocks stacked; **5** a compact list; **6** one question per screen. Owner: Automations.
+Built: cards stay across (Jose 2026-09-22), grouped by the trigger's module, with search and All / On / Off / Needs
+attention; the sentence uses the catalogue's trigger name and, once the list carries `action_keys` (asked of
+Automations), its action labels; last run, runs this week and scope under it (server 6ffd4c1c). The Live/Off chip
+is gone; Auto-disabled stays. A card opens a side panel (recent runs, Delete / Make a copy / Try it / Edit, Run it
+now apart). The builder's When / Only if / Then are joined blocks with plain help; "Try the saved rule" sits beside
+Save when editing. Kept on purpose: the Build tab (the tests' way in, and a create-only role's), the name as step 1
+rather than in a top bar, the ⋮ menu. The phone filter wraps rather than scrolling sideways.
 
 ### 72 · Reports · Report Builder with a live preview — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/report-builder-preview-layouts.html`)
 

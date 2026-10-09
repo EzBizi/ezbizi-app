@@ -28,6 +28,78 @@ import 'package:http/testing.dart';
 /// is still the payload it sends. That last one matters most — a redesign that
 /// quietly changed what a rule means would be far worse than the dropdown.
 void main() {
+  // ── UI queue 73: a rule reads as a sentence and opens beside the list ──
+
+  testWidgets('a rule says what it does and how its last run went', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        list: [
+          {
+            ..._list.first,
+            'action_keys': ['webhook'],
+            'last_run_at': '2026-10-09T12:00:00Z',
+            'last_run_status': 'failed',
+            'runs_this_week': 3,
+          },
+        ],
+      ),
+    );
+
+    expect(find.textContaining('→ Call a webhook'), findsOneWidget);
+    expect(find.textContaining('failed'), findsOneWidget);
+    expect(find.text('3 this week'), findsOneWidget);
+    // The switch is the status: no Live or Off chip beside it.
+    expect(find.text('Live'), findsNothing);
+    expect(find.text('Off'), findsNothing);
+  });
+
+  testWidgets('Off and the search narrow the list', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        list: [
+          ..._list,
+          {
+            ..._list.first,
+            'id': 'a-2',
+            'name': 'Welcome new customers',
+            'is_active': false,
+          },
+        ],
+      ),
+    );
+
+    await _tap(tester, find.byKey(const ValueKey('automations-show-off')));
+    expect(find.text('Chase completions'), findsNothing);
+    expect(find.text('Welcome new customers'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('automations-show-all')));
+    await tester.enterText(
+      find.byKey(const Key('automations-search')),
+      'chase',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Chase completions'), findsOneWidget);
+    expect(find.text('Welcome new customers'), findsNothing);
+  });
+
+  testWidgets('a rule opens beside the list with its runs and Run now apart', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+
+    await _tap(tester, find.byKey(const ValueKey('automation-a-1')));
+
+    expect(find.text('Recent runs'), findsOneWidget);
+    expect(find.byKey(const Key('automation-open-edit')), findsOneWidget);
+    expect(find.byKey(const Key('automation-open-try')), findsOneWidget);
+    // Really sends, so it is not one of the buttons beside Edit.
+    expect(find.byKey(const Key('automation-open-run-now')), findsOneWidget);
+  });
+
   testWidgets('the list and the builder are two tabs, and switching works', (
     tester,
   ) async {

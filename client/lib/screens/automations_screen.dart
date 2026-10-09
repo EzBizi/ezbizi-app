@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
@@ -64,6 +65,11 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   /// for the first person who cannot open Build: the same `1` means a different
   /// pane depending on who is looking, and nothing would say so.
   String _tab = 'rules';
+
+  /// What the list is narrowed to (UI queue 73): words in a rule's name or
+  /// sentence, and 'all', 'on', 'off' or 'attention'.
+  String _query = '';
+  String _show = 'all';
 
   /// The tabs this person may open, in the order the bar draws them.
   ///
@@ -172,9 +178,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          note:
-              'When something happens, do something. Rules are yours — they '
-              'never need a new release.',
+          // The live count (UI queue 73). It was "Rules are yours — they never
+          // need a new release", which is a developer's sentence.
+          note: _automations.isEmpty
+              ? 'Rules that do the next step for you when something happens.'
+              : '${_automations.length} '
+                    '${_automations.length == 1 ? 'rule' : 'rules'} · '
+                    '${_automations.where((a) => a['is_active'] == true).length} on',
           action: _tab != 'rules'
               ? null
               : Refused(
@@ -261,62 +271,191 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                 ),
               ),
             )
-          : LayoutBuilder(
-              // CARDS ACROSS, NOT ONE PER LINE. Jose, 2026-09-22: "i would also
-              // like to see the current automations in card format too, so i
-              // can see more at the same time." A full-width row on a 27-inch
-              // screen spent about a fifth of its width on the rule and the
-              // rest on nothing, so four rules filled a display that could show
-              // sixteen.
-              //
-              // The count comes from the WIDTH rather than from a breakpoint
-              // name: this pane sits beside a sidebar that opens and closes, so
-              // "desktop" is not one width here. 400 is where the name, its
-              // tags and the switch stop competing for the same line.
-              builder: (context, constraints) {
-                const target = 400.0;
-                const gap = 12.0;
-                const sides = 48.0;
+          : _groups(context),
+    );
+  }
 
-                final columns = ((constraints.maxWidth - sides) / target)
-                    .floor()
-                    .clamp(1, 4);
+  /// A rule that wants somebody: switched off by EzBizi, its last run failed,
+  /// or nothing sets it off.
+  bool _needsAttention(Map<String, dynamic> automation) =>
+      automation['disabled_reason'] != null ||
+      automation['last_run_status'] == 'failed' ||
+      _catalogue?.triggerIsRaised(automation['trigger_key'] as String?) ==
+          false;
 
-                final width =
-                    (constraints.maxWidth - sides - (columns - 1) * gap) /
-                    columns;
+  /// The module a rule's event belongs to: "Jobs" from "Jobs › Created".
+  String _moduleOf(Map<String, dynamic> automation) {
+    final trigger = automation['trigger_key'] as String? ?? '';
+    final said = _catalogue?.describeTrigger(trigger) ?? trigger;
+    final at = said.indexOf(' › ');
+    return at < 0 ? 'Other' : said.substring(0, at);
+  }
 
-                // ONE HEIGHT PER ROW. A Wrap sizes each card to itself, so a
-                // name on two lines or one more tag made a card taller than
-                // the one beside it. Rows of [columns], each as tall as its
-                // tallest card, keep every card in a row the same size.
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                  child: Column(
+  /// What a rule does, in the catalogue's own words: "Send a text, then
+  /// Set a field". Null until the list carries `action_keys`.
+  String? _does(Map<String, dynamic> automation) {
+    final keys = automation['action_keys'];
+    if (keys is! List || keys.isEmpty) return null;
+    String label(String key) {
+      for (final type
+          in _catalogue?.actionTypes ?? const <CatalogueActionType>[]) {
+        if (type.key == key) return type.label;
+      }
+      for (final module in _catalogue?.modules ?? const <CatalogueModule>[]) {
+        for (final action in module.actions) {
+          if (action.key == key) return action.label;
+        }
+      }
+      return key;
+    }
+
+    return [for (final key in keys) label('$key')].join(', then ');
+  }
+
+  Widget _groups(BuildContext context) {
+    final theme = Theme.of(context);
+    final words = _query.trim().toLowerCase();
+    bool shown(Map<String, dynamic> a) {
+      final on = a['is_active'] == true;
+      final keep = switch (_show) {
+        'on' => on,
+        'off' => !on,
+        'attention' => _needsAttention(a),
+        _ => true,
+      };
+      if (!keep) return false;
+      if (words.isEmpty) return true;
+      final said = [
+        a['name'],
+        a['description'],
+        _catalogue?.describeTrigger('${a['trigger_key']}'),
+        _does(a),
+      ].whereType<String>().join(' ').toLowerCase();
+      return said.contains(words);
+    }
+
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final a in _automations.where(shown)) {
+      groups.putIfAbsent(_moduleOf(a), () => []).add(a);
+    }
+
+    int count(bool Function(Map<String, dynamic>) test) =>
+        _automations.where(test).length;
+    Widget chip(String key, String label, int n) => ChoiceChip(
+      key: ValueKey('automations-show-$key'),
+      label: Text('$label $n'),
+      selected: _show == key,
+      showCheckmark: false,
+      onSelected: (_) => setState(() => _show = key),
+    );
+
+    return LayoutBuilder(
+      // CARDS ACROSS, NOT ONE PER LINE. Jose, 2026-09-22: "i would also
+      // like to see the current automations in card format too, so i
+      // can see more at the same time." A full-width row on a 27-inch
+      // screen spent about a fifth of its width on the rule and the
+      // rest on nothing, so four rules filled a display that could show
+      // sixteen.
+      //
+      // The count comes from the WIDTH rather than from a breakpoint
+      // name: this pane sits beside a sidebar that opens and closes, so
+      // "desktop" is not one width here. 400 is where the name, its
+      // tags and the switch stop competing for the same line.
+      builder: (context, constraints) {
+        const target = 400.0;
+        const gap = 12.0;
+        const sides = 48.0;
+
+        final columns = ((constraints.maxWidth - sides) / target).floor().clamp(
+          1,
+          4,
+        );
+
+        final width =
+            (constraints.maxWidth - sides - (columns - 1) * gap) / columns;
+
+        // ONE HEIGHT PER ROW. A Wrap sizes each card to itself, so a
+        // name on two lines or one more tag made a card taller than
+        // the one beside it. Rows of [columns], each as tall as its
+        // tallest card, keep every card in a row the same size.
+        Widget grid(List<Map<String, dynamic>> rules) => Column(
+          children: [
+            for (var i = 0; i < rules.length; i += columns)
+              Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < _automations.length; i += columns)
-                        Padding(
-                          padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
-                          child: IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (var j = i; j < i + columns && j < _automations.length; j++) ...[
-                                  if (j > i) const SizedBox(width: gap),
-                                  SizedBox(
-                                    width: width,
-                                    child: _row(context, _automations[j]),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
+                      for (
+                        var j = i;
+                        j < i + columns && j < rules.length;
+                        j++
+                      ) ...[
+                        if (j > i) const SizedBox(width: gap),
+                        SizedBox(width: width, child: _row(context, rules[j])),
+                      ],
                     ],
                   ),
-                );
-              },
-            ),
+                ),
+              ),
+          ],
+        );
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 260,
+                    child: TextField(
+                      key: const Key('automations-search'),
+                      onChanged: (text) => setState(() => _query = text),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Find a rule',
+                      ),
+                    ),
+                  ),
+                  chip('all', 'All', _automations.length),
+                  chip('on', 'On', count((a) => a['is_active'] == true)),
+                  chip('off', 'Off', count((a) => a['is_active'] != true)),
+                  chip('attention', 'Needs attention', count(_needsAttention)),
+                ],
+              ),
+              if (groups.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: Text(
+                    'No rule matches. Clear the search or pick All.',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              for (final group in groups.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 20, 0, 8),
+                  child: Text(
+                    group.key.toUpperCase(),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                grid(group.value),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -324,138 +463,149 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final noEdit = _noEdit;
     final noDelete = _noDelete;
     final noCreate = _noCreate;
-    final live = automation['is_live'] as bool? ?? false;
     final disabledReason = automation['disabled_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
     final description = automation['description'] as String?;
     final scope = (automation['scope'] as Map?)?['label'] as String?;
 
+    final theme = Theme.of(context);
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  // A WRAP, NOT A ROW, since these cards became three abreast.
-                  // A Tag sizes to its own text and takes no part in a Row's
-                  // negotiation, so at card width a long place name pushed the
-                  // switch off the edge instead of ellipsising — the name was
-                  // Flexible and the tags beside it were not. Wrapping puts the
-                  // tags on their own line when they no longer fit, which is
-                  // the only outcome that keeps every one of them readable.
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 0,
-                    runSpacing: 4,
-                    children: [
-                      Text(
-                        automation['name'] as String,
-                        // Two lines: on a phone one line cut every rule to
-                        // "Flag a customer with no w…", which is not what it
-                        // does.
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium,
+      // The whole card opens the rule (UI queue 73); it used to do nothing,
+      // so everything hid in the ⋮ menu.
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('automation-${automation['id']}'),
+        onTap: () => _open(automation),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    // A WRAP, NOT A ROW, since these cards became three abreast.
+                    // A Tag sizes to its own text and takes no part in a Row's
+                    // negotiation, so at card width a long place name pushed the
+                    // switch off the edge instead of ellipsising — the name was
+                    // Flexible and the tags beside it were not. Wrapping puts the
+                    // tags on their own line when they no longer fit, which is
+                    // the only outcome that keeps every one of them readable.
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 0,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          automation['name'] as String,
+                          // Two lines: on a phone one line cut every rule to
+                          // "Flag a customer with no w…", which is not what it
+                          // does.
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        // The switch is the status (UI queue 73): a red "Off"
+                        // beside an off switch read as an error. Only a rule
+                        // EzBizi itself switched off is tagged.
+                        if (disabledReason != null)
+                          const Tag('Auto-disabled', warn: true),
+                      ],
+                    ),
+                  ),
+                  Refused(
+                    reason: noEdit,
+                    child: Semantics(
+                      // A bare Switch announces "on" or "off" and nothing about
+                      // what. The rule's name is a sibling widget, which a screen
+                      // reader has no reason to read as belonging to it.
+                      label: 'Live — ${automation['name']}',
+                      child: Switch(
+                        value: automation['is_active'] as bool? ?? false,
+                        onChanged: noEdit != null
+                            ? null
+                            : (on) => _setActive(automation, on),
                       ),
-                      Tag(live ? 'Live' : 'Off', warn: !live, good: live),
-                      if (disabledReason != null)
-                        const Tag('Auto-disabled', warn: true),
-                      // WHERE IT APPLIES. At the organization every rule in the
-                      // business is listed, so without this a rule for one
-                      // company is indistinguishable from one that runs
-                      // everywhere — which is exactly how Jose came to switch
-                      // his attention to a rule that was not his branch's.
-                      if (scope != null) Tag(scope),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    // Every menu on this screen is drawn from the same icon, so
+                    // "Show menu" — the framework's default — is what a screen
+                    // reader reads for all of them.
+                    tooltip: 'What to do with ${automation['name']}',
+                    itemBuilder: (context) => [
+                      refusedMenuItem(
+                        context,
+                        value: 'edit',
+                        label: 'Open and edit',
+                        reason: noEdit,
+                      ),
+                      // A copy starts OFF, so it cannot send beside its
+                      // original before somebody changes where it applies.
+                      refusedMenuItem(
+                        context,
+                        value: 'duplicate',
+                        label: 'Make a copy',
+                        reason: noCreate,
+                      ),
+                      const PopupMenuItem(
+                        value: 'runs',
+                        child: Text('Run history'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'run_now',
+                        // Distinct from "Test against a real event", which
+                        // rehearses and performs nothing. This one really sends,
+                        // so the wording has to say so before it is pressed
+                        // rather than after.
+                        child: Text('Run it now for real'),
+                      ),
+                      // A rehearsal is authorized as `update`, not `view` —
+                      // AutomationsController::test — because rehearsing is part
+                      // of authoring a rule rather than of reading one.
+                      refusedMenuItem(
+                        context,
+                        value: 'test',
+                        label: 'Test against a real event',
+                        reason: noEdit,
+                      ),
+                      const PopupMenuDivider(),
+                      refusedMenuItem(
+                        context,
+                        value: 'delete',
+                        label: 'Delete',
+                        reason: noDelete,
+                      ),
                     ],
+                    onSelected: (v) => _act(v, automation),
                   ),
-                ),
-                Refused(
-                  reason: noEdit,
-                  child: Semantics(
-                    // A bare Switch announces "on" or "off" and nothing about
-                    // what. The rule's name is a sibling widget, which a screen
-                    // reader has no reason to read as belonging to it.
-                    label: 'Live — ${automation['name']}',
-                    child: Switch(
-                      value: automation['is_active'] as bool? ?? false,
-                      onChanged: noEdit != null
-                          ? null
-                          : (on) => _setActive(automation, on),
-                    ),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  // Every menu on this screen is drawn from the same icon, so
-                  // "Show menu" — the framework's default — is what a screen
-                  // reader reads for all of them.
-                  tooltip: 'What to do with ${automation['name']}',
-                  itemBuilder: (context) => [
-                    refusedMenuItem(
-                      context,
-                      value: 'edit',
-                      label: 'Open and edit',
-                      reason: noEdit,
-                    ),
-                    // A copy starts OFF, so it cannot send beside its
-                    // original before somebody changes where it applies.
-                    refusedMenuItem(
-                      context,
-                      value: 'duplicate',
-                      label: 'Make a copy',
-                      reason: noCreate,
-                    ),
-                    const PopupMenuItem(
-                      value: 'runs',
-                      child: Text('Run history'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'run_now',
-                      // Distinct from "Test against a real event", which
-                      // rehearses and performs nothing. This one really sends,
-                      // so the wording has to say so before it is pressed
-                      // rather than after.
-                      child: Text('Run it now for real'),
-                    ),
-                    // A rehearsal is authorized as `update`, not `view` —
-                    // AutomationsController::test — because rehearsing is part
-                    // of authoring a rule rather than of reading one.
-                    refusedMenuItem(
-                      context,
-                      value: 'test',
-                      label: 'Test against a real event',
-                      reason: noEdit,
-                    ),
-                    const PopupMenuDivider(),
-                    refusedMenuItem(
-                      context,
-                      value: 'delete',
-                      label: 'Delete',
-                      reason: noDelete,
-                    ),
-                  ],
-                  onSelected: (v) => _act(v, automation),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              // The raw event key told a reader nothing. The catalogue knows
-              // what it is called, and falls back to the key when nothing
-              // declares it any more — which is itself the useful fact.
-              'When ${_catalogue?.describeTrigger(trigger) ?? trigger} · '
-              'version ${automation['version'] ?? '—'} · '
-              '$runs ${runs == 1 ? 'run' : 'runs'}',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            if (description != null && description.trim().isNotEmpty) ...[
+                ],
+              ),
               const SizedBox(height: 4),
-              Text(description, style: Theme.of(context).textTheme.bodySmall),
-            ],
-            /*
+              Text(
+                // The rule as a sentence (UI queue 73). The raw event key told a
+                // reader nothing; the catalogue knows what it is called, and
+                // falls back to the key when nothing declares it any more —
+                // which is itself the useful fact.
+                'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
+                '${switch (_does(automation)) {
+                  final does? => ' → $does',
+                  null => '',
+                }}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              _lastRun(context, automation, runs, scope),
+              if (description != null && description.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(description, style: Theme.of(context).textTheme.bodySmall),
+              ],
+              /*
              * A rule that can never run, said loudly, on the screen where
              * somebody thinks they have finished.
              *
@@ -475,32 +625,211 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
              * trigger it does not carry is one this build cannot judge, and
              * neither is a licence to call somebody's rule broken.
              */
-            if (_catalogue?.triggerIsRaised(trigger) == false) ...[
-              const SizedBox(height: 10),
-              ErrorNote(
-                'Nothing sets this off yet. The rule is saved and switched on, '
-                'but the event it waits for is not something EzBizi reports '
-                'today, so it will not run.',
-              ),
+              if (_catalogue?.triggerIsRaised(trigger) == false) ...[
+                const SizedBox(height: 10),
+                ErrorNote(
+                  'Nothing sets this off yet. The rule is saved and switched on, '
+                  'but the event it waits for is not something EzBizi reports '
+                  'today, so it will not run.',
+                ),
+              ],
+              // Surfaced, not buried: a rule that switched itself off after
+              // repeated failure has to say so where somebody will see it.
+              if (disabledReason != null) ...[
+                const SizedBox(height: 10),
+                // WHEN it stopped, leading. `disabled_at` has been served by the
+                // controller all along and rendered nowhere, so the card could not
+                // tell "this broke this morning" from "this has been off a
+                // fortnight" - which is the difference that decides what somebody
+                // does next. formatStamp so it reads in the organization's own
+                // date and time format rather than the browser's.
+                ErrorNote(
+                  '${formatStamp(automation['disabled_at'], 'At an unknown time', formats: _formats)}'
+                  ' — $disabledReason',
+                ),
+              ],
             ],
-            // Surfaced, not buried: a rule that switched itself off after
-            // repeated failure has to say so where somebody will see it.
-            if (disabledReason != null) ...[
-              const SizedBox(height: 10),
-              // WHEN it stopped, leading. `disabled_at` has been served by the
-              // controller all along and rendered nowhere, so the card could not
-              // tell "this broke this morning" from "this has been off a
-              // fortnight" - which is the difference that decides what somebody
-              // does next. formatStamp so it reads in the organization's own
-              // date and time format rather than the browser's.
-              ErrorNote(
-                '${formatStamp(automation['disabled_at'], 'At an unknown time', formats: _formats)}'
-                ' — $disabledReason',
-              ),
-            ],
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// When it last ran and how that went, how often this week, and where it
+  /// applies — the line that says whether a rule is doing its job.
+  Widget _lastRun(
+    BuildContext context,
+    Map<String, dynamic> automation,
+    int runs,
+    String? scope,
+  ) {
+    final theme = Theme.of(context);
+    final status = automation['last_run_status'] as String?;
+    final at = automation['last_run_at'];
+    final week = automation['runs_this_week'];
+    final small = theme.textTheme.bodySmall;
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 2,
+      children: [
+        if (at == null)
+          Text(
+            runs == 0 ? 'Never run' : '$runs ${runs == 1 ? 'run' : 'runs'}',
+            style: small,
+          )
+        else
+          Text.rich(
+            TextSpan(
+              style: small,
+              children: [
+                const TextSpan(text: 'Last run '),
+                TextSpan(
+                  text:
+                      '${formatStamp(at, 'at an unknown time', formats: _formats)} · '
+                      '${switch (status) {
+                        'worked' => 'worked',
+                        'failed' => 'failed',
+                        'skipped' => 'skipped',
+                        'running' => 'running',
+                        _ => 'ran',
+                      }}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: switch (status) {
+                      'failed' => theme.colorScheme.error,
+                      'worked' => ToneColours.of(context, Tone.ok).ink,
+                      _ => null,
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (week is int) Text('$week this week', style: small),
+        // WHERE IT APPLIES. At the organization every rule in the business is
+        // listed, so without this a rule for one company is indistinguishable
+        // from one that runs everywhere — which is exactly how Jose came to
+        // switch his attention to a rule that was not his branch's.
+        if (scope != null) Text(scope, style: small),
+      ],
+    );
+  }
+
+  /// A rule, opened beside the list (UI queue 73): what it does, its recent
+  /// runs, and what can be done with it — Run it now apart from Try it.
+  Future<void> _open(Map<String, dynamic> automation) async {
+    final response = await widget.api.get(
+      '/automations/${automation['id']}/runs',
+    );
+    if (!mounted) return;
+
+    final runs = response.ok
+        ? List<Map<String, dynamic>>.from(response.data as List)
+        : <Map<String, dynamic>>[];
+    final trigger = automation['trigger_key'] as String? ?? '';
+    final noEdit = _noEdit;
+    final noCreate = _noCreate;
+    final noDelete = _noDelete;
+
+    Future<void> then(String action) async {
+      Navigator.of(context).pop();
+      await _act(action, automation);
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SidePanel(
+          title: '${automation['name']}',
+          width: 560,
+          actions: [
+            Refused(
+              reason: noDelete,
+              child: TextButton(
+                onPressed: noDelete != null ? null : () => then('delete'),
+                child: const Text('Delete'),
+              ),
+            ),
+            Refused(
+              reason: noCreate,
+              child: OutlinedButton(
+                onPressed: noCreate != null ? null : () => then('duplicate'),
+                child: const Text('Make a copy'),
+              ),
+            ),
+            Refused(
+              reason: noEdit,
+              child: OutlinedButton(
+                key: const Key('automation-open-try'),
+                onPressed: noEdit != null ? null : () => then('test'),
+                child: const Text('Try it on a recent event'),
+              ),
+            ),
+            Refused(
+              reason: noEdit,
+              child: FilledButton(
+                key: const Key('automation-open-edit'),
+                onPressed: noEdit != null ? null : () => then('edit'),
+                child: const Text('Edit'),
+              ),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'When ${_catalogue?.describeTrigger(trigger) ?? trigger}'
+                '${switch (_does(automation)) {
+                  final does? => ' → $does',
+                  null => '',
+                }}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              if ('${automation['description'] ?? ''}'.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('${automation['description']}'),
+              ],
+              const SizedBox(height: 6),
+              _lastRun(
+                context,
+                automation,
+                automation['runs_count'] as int? ?? 0,
+                (automation['scope'] as Map?)?['label'] as String?,
+              ),
+              const SizedBox(height: 16),
+              Text('Recent runs', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              if (!response.ok)
+                ErrorNote(response.message)
+              else if (runs.isEmpty)
+                const Text('It has not run yet.')
+              else
+                for (final run in runs.take(5)) ...[
+                  _runEntry(context, run),
+                  const Divider(height: 20),
+                ],
+              if (runs.length > 5)
+                TextButton(
+                  onPressed: () => then('runs'),
+                  child: Text('All ${runs.length} runs'),
+                ),
+              const SizedBox(height: 16),
+              // Apart from Try it, and saying what it does before it is
+              // pressed: this one really sends.
+              TextButton.icon(
+                key: const Key('automation-open-run-now'),
+                onPressed: () => then('run_now'),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Run it now for real'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -548,6 +877,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       formats: _formats,
       editing: _editing,
       canEditHoursReports: widget.session.me?.can('work_hours.manage') ?? false,
+      onTry: switch (_editing) {
+        final saved? => () => _test(saved),
+        null => null,
+      },
       onCancel: () => setState(() {
         _editing = null;
         _tab = 'rules';
@@ -798,7 +1131,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           ),
           const SizedBox(height: 8),
         ],
-        if (did.isEmpty) const Text('The rule matched but has no steps to run.'),
+        if (did.isEmpty)
+          const Text('The rule matched but has no steps to run.'),
       ],
     );
   }
