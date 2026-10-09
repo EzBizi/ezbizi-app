@@ -2965,6 +2965,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 72 · Reports · Report Builder with a live preview — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/report-builder-preview-layouts.html`)
+
+Jose 2026-10-09, relayed by the desk: *"i also want a preview view, as you select the items and be able to order them
+too"*. Today: a module tree, then a name, a Columns list with no reordering, plain filter rows and Save; nothing shows
+the report until it is saved. All options: a live preview of the first 10 real rows that fills in as fields are
+ticked (the new column tinted), columns drag to reorder and have a remove, fields searchable and typed, room for
+Filters, Sort, Group by (subtotals) and Totals, the date range and Save. Desktop **1** fields left, column chips to
+drag, a row of Filter/Sort/Group/Totals buttons, the preview filling the rest (recommended); **2** the preview is the
+builder (add column at the end of the header, header menus); **3** four steps with the preview beside each. Phone **4**
+(recommended) as 1 stacked, preview on top, columns as a drag list; **5** the table with header menus; **6** one step
+per screen. Reports owns the backend (preview rows, grouping, totals) and is listing the options against Workiz's
+builder; the list fills these menus and does not move the layout.
+
 ### 71 · Reports · Performance · the inner tabs — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/reports-performance-inner-tabs-layouts.html`)
 
 Jose 2026-10-09, with four screenshots: *"I feel like this performance screen is a mess, specially the inner tabs, so

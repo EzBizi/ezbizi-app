@@ -1,0 +1,301 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Report Builder preview</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.toprow{display:flex;gap:8px;align-items:center}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.bw{display:flex;gap:14px;flex:1;min-height:0}
+.fields{width:250px;flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.srch{height:30px;border:1px solid #b9c7cd;border-radius:10px;display:flex;align-items:center;padding:0 10px;color:#8a969e;font-size:12px}
+.grp{font-size:11px;font-weight:800;color:var(--neu);margin-top:4px;display:flex;align-items:center;gap:6px}
+.fd{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 4px;border-radius:6px}
+.fd .bx{width:14px;height:14px;border:1.5px solid #8fa2ab;border-radius:3px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+.fd.on .bx{background:var(--pri);border-color:var(--pri)}
+.fd .ty{margin-left:auto;font-size:10px;color:#8a969e}
+.right{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.namebar{display:flex;align-items:center;gap:10px}
+.namebar .in{flex:1}
+.colbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px}
+.colbar .lb{font-size:11px;font-weight:700;color:var(--muted);margin-right:4px}
+.cc{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 6px;border:1px solid #b9c7cd;border-radius:8px;background:#fff;font-size:12px;font-weight:600}
+.cc .h{color:#8a969e;letter-spacing:-2px;font-size:11px;cursor:grab}
+.cc .x{color:#8a969e;font-size:11px}
+.cc.drag{box-shadow:0 6px 14px rgba(6,8,8,.18);transform:translateY(-3px) rotate(-2deg);border-color:var(--pri)}
+.cc.gap{border-style:dashed;background:transparent;color:transparent;width:86px}
+.opts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.opt{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:12px}
+.opt b{font-weight:700}
+.opt.add{border-style:dashed;color:var(--pri);font-weight:700}
+.prev{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column}
+.prev .ph{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.prev .ph b{font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{text-align:left;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;background:#fafcfd;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.gr td{background:#f1f6f8;font-weight:700;color:var(--prid)}
+tr.tot td{font-weight:800;border-top:2px solid var(--line);background:#fafcfd}
+th.new{background:var(--pric);color:var(--prid)}
+td.new{background:#f0f8fb}
+th .hm{color:#8a969e;margin-left:4px}
+.addcol{color:var(--pri);font-weight:800}
+.menu{position:absolute;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 24px rgba(6,8,8,.16);padding:6px;display:flex;flex-direction:column;font-size:12px;width:190px}
+.menu span{padding:6px 10px;border-radius:6px}
+.menu span.hl{background:var(--pric);color:var(--prid);font-weight:700}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.steps{display:flex;gap:8px;align-items:center;font-size:12px}
+.st{display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600}
+.st i{font-style:normal;width:22px;height:22px;border-radius:50%;border:1.5px solid #b9c7cd;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.st.done i{background:var(--okc);border-color:#8fc79c;color:var(--ok)}
+.st.on{color:var(--ink)} .st.on i{background:var(--pri);border-color:var(--pri);color:#fff}
+.st+.st:before{content:"";width:26px;height:1px;background:#c9d4d9;margin-right:2px}
+.olist{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:4px 12px}
+.oi{display:flex;align-items:center;gap:10px;height:40px;border-top:1px solid var(--line2);font-size:12.5px}
+.oi:first-child{border-top:0}
+.oi .h{color:#8a969e;letter-spacing:-2px;font-size:12px}
+.oi .nm{font-weight:600}.oi .sr{color:var(--muted);font-size:11px}
+.oi .sp{flex:1}
+.ex{font-size:11px;color:var(--muted)}
+/* phone */
+.phn .prev{flex:0 0 auto}
+.phn table{font-size:11px}
+.phn th,.phn td{padding:6px 8px}
+.sec{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+.sec .sh{display:flex;align-items:center;font-size:12px;font-weight:800}
+.sec .sh em{font-style:normal;margin-left:auto;color:var(--pri);font-size:11.5px}
+</style>
+<div class="wrap">
+<h1>Reports › Report Builder · see it as you build it</h1>
+<p class="sub">Jose 2026-10-09: <i>"i also want a preview view, as you select the items and be able to order them too"</i>. Today the builder is a list of modules on the left and, on the right, a name box, a "Columns" list of picked fields with no way to reorder them, filters as plain text rows, and Save. You only see what the report looks like after saving it. Every name and number below is invented.</p>
+<p class="need"><b>In every option:</b> a <b>live preview</b> of the first 10 real rows, which fills in as each field is ticked, with the column just added tinted for a moment. <b>Columns drag to reorder</b>, and each has ✕ to remove it. Fields are searchable, grouped by module, and show their type (date, money, text). Around the preview there's room for <b>Filters</b> (field, condition, value), <b>Sort</b>, <b>Group by</b> (with a subtotal per group) and <b>Totals</b> (sum or count on money and number columns), plus the date range and Save. The list of what Reports can offer (in progress, Workiz's builder as the yardstick) only adds choices to these menus. It doesn't change the layout.</p>
+
+<h2><span class="n">1</span>Fields on the left, preview on the right, columns as chips you drag <span class="rec">Recommended</span></h2>
+<p class="cap">Tick fields on the left, and each one joins the <b>column bar</b> and the preview at once. Drag a chip in the bar to reorder, or drag the preview's header itself. Filters, Sort, Group by and Totals are one row of buttons above the preview, each showing what it's set to. <b>Why:</b> you pick, arrange and check in one screen, and the preview takes most of the room because it's the report.</p>
+<div class="win" style="height:620px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="toprow"><span class="pill2">▤ Reports</span><span class="pill2 on">✎ Report Builder</span><span class="pill2">⚗ Performance</span><span class="pill2">↗ Google Ads</span><span class="pill2">▥ Profit &amp; Loss</span></div>
+<div class="bw">
+<div class="fields"><div class="srch">⌕ Find a field</div>
+<div class="grp">▾ Jobs</div>
+<div class="fd on"><span class="bx">✓</span>Job number<span class="ty">text</span></div>
+<div class="fd on"><span class="bx">✓</span>Scheduled date<span class="ty">date</span></div>
+<div class="fd on"><span class="bx">✓</span>Technician<span class="ty">person</span></div>
+<div class="fd"><span class="bx"></span>Job type<span class="ty">text</span></div>
+<div class="fd on"><span class="bx">✓</span>Total<span class="ty">money</span></div>
+<div class="fd"><span class="bx"></span>Status<span class="ty">choice</span></div>
+<div class="fd"><span class="bx"></span>Source<span class="ty">choice</span></div>
+<div class="grp">▾ Customer of the job</div>
+<div class="fd on"><span class="bx">✓</span>Name<span class="ty">text</span></div>
+<div class="fd"><span class="bx"></span>City<span class="ty">text</span></div>
+<div class="fd"><span class="bx"></span>Membership<span class="ty">choice</span></div>
+<div class="grp">▸ Branch</div><div class="grp">▸ Invoices</div><div class="grp">▸ Payments</div></div>
+<div class="right">
+<div class="namebar"><div class="in" style="height:34px"><b>Jobs by technician, this month</b></div><span class="opt">📅 <b>This month</b> ▾</span><span class="btn f">Save report</span></div>
+<div class="colbar"><span class="lb">Columns</span><span class="cc"><span class="h">⋮⋮</span>Job number<span class="x">✕</span></span><span class="cc"><span class="h">⋮⋮</span>Scheduled date<span class="x">✕</span></span><span class="cc gap">.</span><span class="cc"><span class="h">⋮⋮</span>Customer name<span class="x">✕</span></span><span class="cc drag"><span class="h">⋮⋮</span>Technician<span class="x">✕</span></span><span class="cc"><span class="h">⋮⋮</span>Total<span class="x">✕</span></span><span class="ex" style="margin-left:6px">Drag to reorder</span></div>
+<div class="opts"><span class="opt">⚲ Filter: <b>Status is Done</b> ✕</span><span class="opt add">＋ Filter</span><span class="opt">⇅ Sort: <b>Scheduled date, newest</b></span><span class="opt">▤ Group by: <b>Technician</b></span><span class="opt">Σ Totals: <b>Sum of Total</b></span></div>
+<div class="prev"><div class="ph"><b>Preview</b><span class="tiny">first 10 of 184 rows · updates as you build</span></div>
+<table><tr><th>Job number</th><th>Scheduled date</th><th class="new">Technician</th><th>Customer name</th><th class="n">Total</th></tr>
+<tr class="gr"><td colspan="4">Dana Ruiz · 4 jobs</td><td class="n">$1,840.00</td></tr>
+<tr><td>J-10482</td><td>Oct 8</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td><td class="n">$420.00</td></tr>
+<tr><td>J-10477</td><td>Oct 7</td><td class="new">Dana Ruiz</td><td>Priya Nair</td><td class="n">$615.00</td></tr>
+<tr><td>J-10461</td><td>Oct 3</td><td class="new">Dana Ruiz</td><td>Ana Torres</td><td class="n">$805.00</td></tr>
+<tr class="gr"><td colspan="4">Omar Price · 3 jobs</td><td class="n">$1,210.00</td></tr>
+<tr><td>J-10480</td><td>Oct 8</td><td class="new">Omar Price</td><td>Greg Hollis</td><td class="n">$390.00</td></tr>
+<tr><td>J-10466</td><td>Oct 5</td><td class="new">Omar Price</td><td>Rosa Lind</td><td class="n">$520.00</td></tr>
+<tr class="tot"><td colspan="4">Total · 184 jobs</td><td class="n">$71,330.00</td></tr></table></div>
+</div></div></div></div></div>
+
+<h2><span class="n">2</span>The preview is the builder: add and arrange columns on the table itself</h2>
+<p class="cap">There's no separate column list. "＋ Add column" sits at the end of the header and opens the searchable field list. You drag a header to move it. Clicking a header opens its menu: sort, group by, total, filter on it, remove. <b>Why:</b> the most direct, like a spreadsheet. But filters and grouping are hidden in header menus until you know to look, and a new user faces an empty table with one button.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px;position:relative"><div class="t">Reports</div>
+<div class="namebar"><div class="in" style="height:34px"><b>Jobs by technician, this month</b></div><span class="opt">📅 <b>This month</b> ▾</span><span class="btn f">Save report</span></div>
+<div class="tiny">Status is Done · grouped by Technician · sum of Total</div>
+<div class="prev"><table><tr><th>Job number <span class="hm">▾</span></th><th>Scheduled date <span class="hm">▾</span></th><th class="new">Technician <span class="hm">▾</span></th><th>Customer name <span class="hm">▾</span></th><th class="n">Total <span class="hm">▾</span></th><th class="addcol">＋ Add column</th></tr>
+<tr class="gr"><td colspan="4">Dana Ruiz · 4 jobs</td><td class="n">$1,840.00</td><td></td></tr>
+<tr><td>J-10482</td><td>Oct 8</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td><td class="n">$420.00</td><td></td></tr>
+<tr><td>J-10477</td><td>Oct 7</td><td class="new">Dana Ruiz</td><td>Priya Nair</td><td class="n">$615.00</td><td></td></tr>
+<tr class="gr"><td colspan="4">Omar Price · 3 jobs</td><td class="n">$1,210.00</td><td></td></tr>
+<tr><td>J-10480</td><td>Oct 8</td><td class="new">Omar Price</td><td>Greg Hollis</td><td class="n">$390.00</td><td></td></tr>
+<tr class="tot"><td colspan="4">Total · 184 jobs</td><td class="n">$71,330.00</td><td></td></tr></table></div>
+<div class="menu" style="left:520px;top:146px"><span class="hl">Sort newest first</span><span>Sort oldest first</span><hr><span>Group by Technician ✓</span><span>Filter on Technician…</span><hr><span>Move left</span><span>Move right</span><span style="color:var(--bad)">Remove column</span></div>
+</div></div></div>
+
+<h2><span class="n">3</span>Four steps, with the preview beside every step</h2>
+<p class="cap">1 What to report on (Jobs, Customers…). 2 Columns: pick them, then order them in a list with drag handles. 3 Filters, sort, group and totals. 4 Name and save. The preview stays on the right throughout. <b>Why:</b> the easiest to follow for someone who has never built a report. But it's slower for someone who has, and going back a step to add one column is a detour.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:10px"><div class="t">Reports</div>
+<div class="steps"><span class="st done"><i>✓</i>What</span><span class="st on"><i>2</i>Columns</span><span class="st"><i>3</i>Filter, group, total</span><span class="st"><i>4</i>Name &amp; save</span><span class="sp"></span><span class="btn">Back</span><span class="btn f">Next</span></div>
+<div class="bw"><div style="width:380px;flex:0 0 auto;display:flex;flex-direction:column;gap:8px"><div class="srch">⌕ Add a field: Job type, Status, City…</div>
+<div class="olist"><div class="oi"><span class="h">⋮⋮</span><div><div class="nm">Job number</div><div class="sr">Jobs</div></div><span class="sp"></span><span class="x muted">✕</span></div>
+<div class="oi"><span class="h">⋮⋮</span><div><div class="nm">Scheduled date</div><div class="sr">Jobs</div></div><span class="sp"></span><span class="muted">✕</span></div>
+<div class="oi" style="background:var(--pric);margin:0 -12px;padding:0 12px"><span class="h">⋮⋮</span><div><div class="nm">Technician</div><div class="sr">Jobs · being moved</div></div><span class="sp"></span><span class="muted">✕</span></div>
+<div class="oi"><span class="h">⋮⋮</span><div><div class="nm">Customer name</div><div class="sr">Customer of the job</div></div><span class="sp"></span><span class="muted">✕</span></div>
+<div class="oi"><span class="h">⋮⋮</span><div><div class="nm">Total</div><div class="sr">Jobs · money</div></div><span class="sp"></span><span class="muted">✕</span></div></div></div>
+<div class="prev"><div class="ph"><b>Preview</b><span class="tiny">first 10 of 184</span></div><table><tr><th>Job number</th><th>Scheduled date</th><th class="new">Technician</th><th>Customer name</th><th class="n">Total</th></tr>
+<tr><td>J-10482</td><td>Oct 8</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td><td class="n">$420.00</td></tr>
+<tr><td>J-10480</td><td>Oct 8</td><td class="new">Omar Price</td><td>Greg Hollis</td><td class="n">$390.00</td></tr>
+<tr><td>J-10477</td><td>Oct 7</td><td class="new">Dana Ruiz</td><td>Priya Nair</td><td class="n">$615.00</td></tr>
+<tr><td>J-10466</td><td>Oct 5</td><td class="new">Omar Price</td><td>Rosa Lind</td><td class="n">$520.00</td></tr></table></div></div>
+</div></div></div>
+
+<h2><span class="n">4</span>Phone: as 1, stacked, with the preview on top <span class="rec">Recommended</span></h2>
+<p class="cap">The preview first, scrolling sideways. Below it, Columns as a list with drag handles, where "＋ Add field" opens the searchable fields in place. Then Filters, Sort, Group by and Totals, each a row showing what it's set to. Save stays at the bottom. <b>Why:</b> the same pieces as on a computer, and on a phone a list is easier to drag than chips.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Report Builder</span></div>
+<div class="pb" style="gap:8px"><div class="in" style="min-height:32px"><b>Jobs by technician</b></div>
+<div class="prev"><div class="ph"><b>Preview</b><span class="tiny">10 of 184</span></div><table><tr><th>Job</th><th class="new">Technician</th><th>Customer</th><th class="n">Total</th></tr><tr><td>J-10482</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td><td class="n">$420</td></tr><tr><td>J-10480</td><td class="new">Omar Price</td><td>Greg Hollis</td><td class="n">$390</td></tr><tr class="tot"><td colspan="3">Total</td><td class="n">$71,330</td></tr></table></div>
+<div class="sec"><div class="sh">Columns · 5<em>＋ Add field</em></div><div class="oi" style="height:34px"><span class="h">⋮⋮</span><span class="nm">Job number</span><span class="sp"></span><span class="muted">✕</span></div><div class="oi" style="height:34px;background:var(--pric);margin:0 -10px;padding:0 10px"><span class="h">⋮⋮</span><span class="nm">Technician</span><span class="sp"></span><span class="muted">✕</span></div><div class="oi" style="height:34px"><span class="h">⋮⋮</span><span class="nm">Customer name</span><span class="sp"></span><span class="muted">✕</span></div><div class="oi" style="height:34px"><span class="h">⋮⋮</span><span class="nm">Total</span><span class="sp"></span><span class="muted">✕</span></div></div>
+<div class="sec"><div class="oi" style="height:32px">Filter<span class="sp"></span><b>Status is Done</b></div><div class="oi" style="height:32px">Group by<span class="sp"></span><b>Technician</b></div><div class="oi" style="height:32px">Totals<span class="sp"></span><b>Sum of Total</b></div></div>
+<span class="btn f" style="width:100%">Save report</span></div></div></div></div>
+
+<h2><span class="n">5</span>Phone: as 2, the table with header menus</h2>
+<p class="cap">The preview fills the screen. Tap a header for its menu, or the ＋ at the end to add a column. <b>Why:</b> it matches option 2. But header menus and sideways dragging are fiddly with a thumb.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Report Builder</span></div>
+<div class="pb" style="gap:8px;position:relative"><div class="in" style="min-height:32px"><b>Jobs by technician</b></div>
+<div class="prev"><table><tr><th>Job ▾</th><th class="new">Technician ▾</th><th>Customer ▾</th><th class="addcol">＋</th></tr><tr><td>J-10482</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td><td></td></tr><tr><td>J-10480</td><td class="new">Omar Price</td><td>Greg Hollis</td><td></td></tr><tr><td>J-10477</td><td class="new">Dana Ruiz</td><td>Priya Nair</td><td></td></tr></table></div>
+<div class="menu" style="left:70px;top:76px"><span class="hl">Group by Technician</span><span>Sort A–Z</span><span>Filter on it…</span><span>Move left</span><span>Move right</span><span style="color:var(--bad)">Remove</span></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone: as 3, one step per screen</h2>
+<p class="cap">The four steps, each on its own screen, with a small preview strip at the top of each. <b>Why:</b> it matches option 3, and it's the easiest on a small screen. But it's the slowest to change one thing.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Report Builder</span></div>
+<div class="pb" style="gap:8px"><div class="steps" style="font-size:11px"><span class="st done"><i>✓</i></span><span class="st on"><i>2</i>Columns</span><span class="st"><i>3</i></span><span class="st"><i>4</i></span></div>
+<div class="prev"><table><tr><th>Job</th><th class="new">Technician</th><th>Customer</th></tr><tr><td>J-10482</td><td class="new">Dana Ruiz</td><td>Marcus Bell</td></tr></table></div>
+<div class="olist"><div class="oi"><span class="h">⋮⋮</span><span class="nm">Job number</span><span class="sp"></span><span class="muted">✕</span></div><div class="oi"><span class="h">⋮⋮</span><span class="nm">Technician</span><span class="sp"></span><span class="muted">✕</span></div><div class="oi"><span class="h">⋮⋮</span><span class="nm">Customer name</span><span class="sp"></span><span class="muted">✕</span></div></div>
+<div class="srch">⌕ Add a field</div><span class="sp"></span><span class="btn f" style="width:100%">Next: filter, group, total</span></div></div></div></div>
+</div>
