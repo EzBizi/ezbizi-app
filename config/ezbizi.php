@@ -289,6 +289,10 @@ return [
      * is not also a test of the puzzle, and WebFormOptionsTest turns it back
      * on to test exactly that.
      */
+    // Leads read by Grok (sorting, filling a missing name/ZIP, suggested
+    // replies). Off until /privacy/ names Leads text going to xAI.
+    'leads_ai_grok' => filter_var(env('LEADS_AI_GROK', false), FILTER_VALIDATE_BOOL),
+
     'web_form_captcha' => filter_var(env('EZBIZI_WEB_FORM_CAPTCHA', true), FILTER_VALIDATE_BOOL),
 
     /*

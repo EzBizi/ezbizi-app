@@ -4,6 +4,7 @@ namespace App\Services\Leads;
 
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Support\Ai\GrokCli;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -37,6 +38,11 @@ class LeadInsights
 
     public const CLASSIFICATIONS = [self::BOOK, self::SUPPORT, self::ARCHIVE];
 
+    private const REPLY_BRIEF = 'You write short text replies on behalf of a home-services business to a person '
+        .'who enquired. Reply to the LAST message from the customer. Be warm, specific and brief: at most '
+        .'three sentences, no greeting longer than their name, no sign-off, no promises of price or time '
+        .'that the conversation does not already contain.';
+
     public function __construct(
         private readonly ?BedrockRuntimeClient $client,
         private readonly string $model,
@@ -44,7 +50,88 @@ class LeadInsights
 
     public function enabled(): bool
     {
+        return $this->bedrock() || self::grok();
+    }
+
+    private function bedrock(): bool
+    {
         return $this->client !== null && $this->model !== '';
+    }
+
+    /**
+     * Grok through Jose's subscription (2026-10-09: "both ofc", suggested
+     * replies and sorting, plus "fill in the gaps" on LS calls). Switched on
+     * by LEADS_AI_GROK once /privacy/ names Leads text going to xAI.
+     */
+    private static function grok(): bool
+    {
+        return (bool) config('ezbizi.leads_ai_grok') && GrokCli::configured();
+    }
+
+    /**
+     * Whether a lead may be sorted inline, as its thread is written. Bedrock
+     * answers in about a second; Grok takes about eight, so on Grok the sorting
+     * runs in ezbizi:leads-read instead, off the sync's back.
+     */
+    public function inline(): bool
+    {
+        return $this->bedrock();
+    }
+
+    /**
+     * Grok's reading of a lead: the pile, one line, and what the customer said
+     * about themselves that the source did not give us (Jose, 2026-10-09: "fill
+     * in the gaps, like in the LS Calls, so we can get the names of the client
+     * by reading the transcript or their zip code"). Null when nothing has
+     * been said yet.
+     *
+     * @return array{classification: string, summary: string, name: ?string, zip: ?string}|null
+     *
+     * @throws \RuntimeException when Grok fails, so the caller retries later
+     */
+    public function read(Lead $lead): ?array
+    {
+        $thread = $this->thread($lead);
+
+        if ($thread === '' || ! self::grok()) {
+            return null;
+        }
+
+        $json = GrokCli::ask(
+            "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
+            ."inspections). Calls are machine transcripts and start with the business's own phone "
+            ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
+            ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
+            ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
+            ."a vendor selling something, a hang-up, or nothing to act on).\n"
+            ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
+            ."- name: the CUSTOMER's own full name only if they clearly say it; never a staff member, "
+            ."never the business; null if not said.\n"
+            ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise."
+            ."\n\n".$thread,
+            [
+                'type' => 'object',
+                'properties' => [
+                    'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
+                    'summary' => ['type' => 'string'],
+                    'name' => ['type' => ['string', 'null']],
+                    'zip' => ['type' => ['string', 'null']],
+                ],
+                'required' => ['classification', 'summary', 'name', 'zip'],
+                'additionalProperties' => false,
+            ],
+        );
+
+        $class = strtoupper(trim((string) ($json['classification'] ?? '')));
+        $name = trim((string) ($json['name'] ?? ''));
+        $zip = trim((string) ($json['zip'] ?? ''));
+
+        return [
+            'classification' => in_array($class, self::CLASSIFICATIONS, true) ? $class : self::SUPPORT,
+            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
+            'name' => $name !== '' ? mb_substr($name, 0, 120) : null,
+            'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
+        ];
     }
 
     /**
@@ -92,6 +179,22 @@ class LeadInsights
 
         if ($thread === '' || ! $this->enabled()) {
             return null;
+        }
+
+        if (! $this->bedrock()) {
+            try {
+                $json = GrokCli::ask(
+                    self::REPLY_BRIEF."\n\n".$thread,
+                    ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false],
+                );
+            } catch (Throwable $e) {
+                Log::warning('Grok did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+
+                return null;
+            }
+            $draft = trim((string) ($json['reply'] ?? ''));
+
+            return $draft === '' ? null : mb_substr($draft, 0, 1000);
         }
 
         $answer = $this->ask(

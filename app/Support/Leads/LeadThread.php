@@ -172,7 +172,7 @@ final class LeadThread
      */
     private function classifyOnce(Lead $lead): void
     {
-        if ($lead->classification !== null || ! $this->insights->enabled()) {
+        if ($lead->classification !== null || ! $this->insights->inline()) {
             return;
         }
 
