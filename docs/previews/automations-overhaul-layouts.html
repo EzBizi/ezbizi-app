@@ -148,6 +148,15 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
 .rule .sen i{font-style:normal;color:var(--muted);margin:0 4px}
 .rule .last{font-size:11.5px;color:var(--muted)}
 .rule .last b{color:var(--ok)} .rule .last b.bad{color:var(--bad)}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card2{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.card2 .hd2{display:flex;align-items:flex-start;gap:8px}
+.card2 .nm{font-weight:700;font-size:13px;flex:1}
+.card2 .sen{font-size:12px;color:#33404a}
+.card2 .sen b{color:var(--prid)}
+.card2 .ft{display:flex;gap:8px;font-size:11px;color:var(--muted)}
+.card2 .ft b{color:var(--ok)} .card2 .ft b.bad{color:var(--bad)}
+.card2.sel{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
 .rule.sel{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
 .sw{width:38px;height:22px;border-radius:11px;background:#c9d4d9;position:relative;flex:0 0 auto}
 .sw:after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:3px;left:3px}
@@ -195,15 +204,15 @@ td{padding:9px 10px;border-bottom:1px solid var(--line2)}
 <p class="need"><b>In every option:</b> every rule reads as a <b>sentence</b>: "When <b>a job is booked</b> → <b>text the office</b>", using the event's and the steps' own names. The on/off switch is the only status. "Off" is grey, not red, and "Needs attention" shows only when a rule was switched off by EzBizi or its last run failed. Each rule shows its <b>last run</b> (time and whether it worked) and its runs this week. The "Build" tab goes, so <b>New automation</b> is the one way in. In the builder, testing sits <b>next to Save</b> ("Try it on a recent event"), and "Run it now for real" moves inside the rule, away from Test, with its confirm. The help text is rewritten for users. Version history stays, behind a "History" link. Nothing changes on the server except one field each rule already has the data for: <b>last run</b>.</p>
 
 <h2><span class="n">1</span>Rules as sentences, opened beside the list, built as When → Only if → Then blocks <span class="rec">Recommended</span></h2>
-<p class="cap">The list is grouped by module (Jobs, Customers, Leads…) with a search box and All / On / Off / Needs attention. Clicking a rule opens it in a side panel: the sentence, its recent runs, and Edit, Test, Copy, Run now and Delete. The builder is three connected blocks, <b>When</b>, <b>Only if</b> and <b>Then</b>, each in plain words, with the name and Save in a bar at the top and Test beside Save. <b>Why:</b> you see what every rule does at a glance, the next step is one click instead of a hidden menu, and the builder reads like the sentence it makes.</p>
+<p class="cap">Cards across, as you asked on 2026-09-22, now grouped by module (Jobs, Customers, Leads…) with a search box and All / On / Off / Needs attention. Clicking a rule opens it in a side panel: the sentence, its recent runs, and Edit, Test, Copy, Run now and Delete. The builder is three connected blocks, <b>When</b>, <b>Only if</b> and <b>Then</b>, each in plain words, with the name and Save in a bar at the top and Test beside Save. <b>Why:</b> you see what every rule does at a glance, the next step is one click instead of a hidden menu, and the builder reads like the sentence it makes.</p>
 <div class="win" style="height:600px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
 <div class="page" style="gap:9px"><div class="rowb"><div><div class="t">Automations</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Rules that do the routine work for you.</div></div><span class="sp"></span><span class="btn f">＋ New automation</span></div>
 <div class="rowb"><span class="srch">⌕ Find a rule</span><span class="pill2 on">All 6</span><span class="pill2">On 4</span><span class="pill2">Off 2</span><span class="pill2" style="color:var(--cau)">Needs attention 1</span></div>
 <div class="grp">Jobs</div>
-<div class="rule sel"><div><div class="nm">Tell the office when a job is booked</div><div class="sen">When <b>a job is booked</b><i>→</i><b>text the office line</b></div></div><div class="last">Last run <b>2h ago ✓</b><br>14 runs this week</div><span class="tiny">Everywhere</span><span class="sw on"></span></div>
-<div class="rule"><div><div class="nm">Thank the customer after a sweep</div><div class="sen">When <b>a job is done</b><i>·</i>only if <b>type is Chimney sweep</b><i>→</i><b>send a review text</b></div></div><div class="last">Last run <b class="bad">yesterday ✗ failed</b><br>9 runs this week</div><span class="tiny">North branch</span><span class="sw on"></span></div>
+<div class="cards"><div class="card2 sel"><div class="hd2"><span class="nm">Tell the office when a job is booked</span><span class="sw on"></span></div><div class="sen">When <b>a job is booked</b> → <b>text the office line</b></div><div class="ft"><span>Last run <b>2h ago ✓</b></span><span>14 this week</span><span>Everywhere</span></div></div>
+<div class="card2"><div class="hd2"><span class="nm">Thank the customer after a sweep</span><span class="sw on"></span></div><div class="sen">When <b>a job is done</b>, only if <b>type is Chimney sweep</b> → <b>send a review text</b></div><div class="ft"><span>Last run <b class="bad">failed yesterday</b></span><span>9 this week</span></div></div></div>
 <div class="grp">Customers</div>
-<div class="rule"><div><div class="nm">Flag a customer with no work in 90 days</div><div class="sen">Every <b>Monday at 8:00</b><i>→</i><b>flag the customer</b></div></div><div class="last">Never run</div><span class="tiny">Everywhere</span><span class="sw"></span></div>
+<div class="cards"><div class="card2"><div class="hd2"><span class="nm">Flag a customer with no work in 90 days</span><span class="sw"></span></div><div class="sen">Every <b>Monday at 8:00</b> → <b>flag the customer</b></div><div class="ft"><span>Never run</span><span>Everywhere</span></div></div></div>
 </div>
 <div class="panel"><div class="phd"><b>Tell the office when a job is booked</b><span class="sp"></span><span class="sw on"></span></div>
 <div class="pbd"><div class="sen" style="font-size:13px">When <b style="color:var(--prid)">a job is booked</b> → <b style="color:var(--prid)">text the office line</b> “New job: {{customer}} on {{date}}”</div>

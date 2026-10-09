@@ -2975,7 +2975,7 @@ go to the same place; the builder is a long numbered form with developer copy, a
 menu. All options: a rule reads as a sentence (When … → …), the switch is the only status (Off grey; Needs attention
 only when EzBizi switched it off or the last run failed), last run and runs this week on each rule, the Build tab
 goes, Test sits beside Save in the builder, Run now moves inside the rule, copy for users. Server: a `last run` per
-rule. Desktop **1** grouped by module with search and All/On/Off/Needs attention, a rule opens in a side panel
+rule. Desktop **1** cards across (Jose 2026-09-22) grouped by module with search and All/On/Off/Needs attention, a rule opens in a side panel
 (sentence, recent runs, Edit/Try/Copy/Delete), the builder as When → Only if → Then blocks with the name and Save in
 a top bar (recommended); **2** a sortable table, the builder in a wide panel; **3** ideas to start from and a
 one-question-per-screen builder. Phone **4** (recommended) cards with the sentence, the rule opens over the list,
