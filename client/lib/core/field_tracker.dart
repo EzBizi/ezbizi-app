@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'api_client.dart';
@@ -57,10 +58,18 @@ class FieldTracker {
     }
   }
 
+  static bool _asked = false;
+
+  /// Asks once per run, and only on screen: a prompt raised from the
+  /// background brings the app to the front over the browser and strands an
+  /// OAuth sign-in (Android, 2026-10-09). A refusal means no tracking.
   static Future<bool> _permitted() async {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
+    if (permission == LocationPermission.denied &&
+        !_asked &&
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      _asked = true;
       permission = await Geolocator.requestPermission();
     }
 
