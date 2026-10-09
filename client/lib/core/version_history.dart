@@ -23,6 +23,7 @@ class VersionHistory {
         'Web Management › SEO Helper: a title or description with no real words, or an unfilled placeholder, is now flagged and can\'t be saved. X (Twitter) title, description and image are their own fields, and the overview and page scores now agree.',
         'Email: opening a message in a Google Workspace mailbox with read sync on now marks it read in Gmail too (that step was failing).',
         'Thumbtack: when Thumbtack rejects one phone number, the nightly phone-number sync skips it and sends the rest instead of failing for every connection.',
+        'HR: saving a drawn signature no longer fails for larger drawings.',
       ],
     ),
     VersionRelease(
