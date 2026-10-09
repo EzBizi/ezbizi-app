@@ -50,8 +50,10 @@ class LinkedInAndYouTubePublishingTest extends TestCase
         $this->assertNull(Publishers::refusalFor(SocialProvider::LinkedIn));
         $this->assertNull(Publishers::refusalFor(SocialProvider::YouTube));
 
-        // What is left unbuilt still says so.
-        $this->assertStringContainsString('not built yet', (string) Publishers::refusalFor(SocialProvider::X));
+        // Every network the catalogue offers can now be posted to.
+        foreach (SocialProvider::all() as $provider) {
+            $this->assertNull(Publishers::refusalFor($provider), $provider->value);
+        }
     }
 
     public function test_what_each_publisher_will_send_agrees_with_what_the_network_takes(): void

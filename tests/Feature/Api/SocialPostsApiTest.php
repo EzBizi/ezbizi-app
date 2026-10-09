@@ -119,27 +119,6 @@ class SocialPostsApiTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_a_connected_network_with_no_publisher_says_so_and_says_the_account_is_fine(): void
-    {
-        $t = $this->provisionTenant('A1-Group');
-        // X, and it has to be a network EzBizi genuinely cannot post to. This
-        // said facebook_page until 2026-09-01 and linkedin until 2026-10-09,
-        // each time until that network got a publisher and the test started
-        // asserting the opposite of the truth.
-        $row = $this->connection($t, 'company', $t['company']->id, provider: 'x');
-
-        $this->signedInAs($t['admin'])
-            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Hello'])
-            ->assertStatus(422)
-            ->assertJsonPath(
-                'errors.connections.0',
-                fn (string $m) => str_contains($m, 'not built yet')
-                    && str_contains($m, 'without reconnecting'),
-            );
-
-        $this->assertNothingWasWritten($t);
-    }
-
     /**
      * The gap a real post fell through on 2026-08-28.
      *
@@ -558,7 +537,7 @@ class SocialPostsApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
-        // X: a network with no publisher yet (LinkedIn was, until 2026-10-09).
+        // Every network has a publisher since 2026-10-09; X stands in for the newest.
         $this->connection($t, 'company', $t['company']->id, 'A-1 on X', 'x-a', 'x');
 
         $rows = collect($this->signedInAs($t['admin'])
@@ -570,11 +549,8 @@ class SocialPostsApiTest extends TestCase
         $this->assertTrue($rows['pinterest']['can_publish']);
         $this->assertNull($rows['pinterest']['cannot_publish_because']);
 
-        $this->assertFalse($rows['x']['can_publish']);
-        $this->assertStringContainsString(
-            'not built yet',
-            (string) $rows['x']['cannot_publish_because'],
-        );
+        $this->assertTrue($rows['x']['can_publish']);
+        $this->assertNull($rows['x']['cannot_publish_because']);
     }
 
     public function test_a_facebook_post_carries_the_link_facebook_gives_for_it(): void
