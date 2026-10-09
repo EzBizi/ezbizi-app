@@ -455,6 +455,52 @@ class ReportsApiTest extends TestCase
             ->assertJsonPath('data.count', 1);
     }
 
+    public function test_a_report_sorts_and_renames_its_columns(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        foreach (['Bravo', 'Alpha', 'Charlie'] as $title) {
+            $this->makeJob($tenant, ['title' => $title]);
+        }
+
+        $definition = [
+            'root' => 'jobs',
+            'columns' => [['resource' => 'jobs', 'column' => 'title', 'label' => 'Job']],
+            'filters' => [],
+            'sort' => [['resource' => 'jobs', 'column' => 'title', 'dir' => 'desc']],
+        ];
+
+        $preview = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => $definition])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(['Charlie', 'Bravo', 'Alpha'], array_column($preview['rows'], 'jobs.title'));
+        $this->assertSame('Job', $preview['columns'][0]['label']);
+    }
+
+    public function test_a_saved_report_downloads_as_csv(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, ['title' => 'Sweep']);
+
+        $report = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports', [
+                'company_id' => $tenant['company']->id,
+                'name' => 'Open jobs',
+                'definition' => $this->titlesDefinition(),
+            ])
+            ->json('data');
+
+        $response = $this->signedInAs($tenant['admin'])
+            ->get('/api/v1/reports/'.$report['id'].'/csv')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+
+        $this->assertStringContainsString('Open-jobs-', (string) $response->headers->get('Content-Disposition'));
+        $this->assertSame("Title\nSweep\n", $response->getContent());
+    }
+
     public function test_building_is_refused_without_the_build_permission(): void
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -215,7 +215,7 @@ final class ReportRunner
 
             if (isset($declared['php'])) {
                 $php[$key] = $this->phpOn($root, $column, $declared, $rootResource, $query);
-                $columns[] = ['key' => $key, 'label' => $declared['label'], 'type' => $declared['type']];
+                $columns[] = ['key' => $key, 'label' => $this->labelFor($column, $declared), 'type' => $declared['type']];
 
                 continue;
             }
@@ -242,7 +242,7 @@ final class ReportRunner
                         .' as '.$this->quote($key))
             );
 
-            $columns[] = ['key' => $key, 'label' => $declared['label'], 'type' => $declared['type']];
+            $columns[] = ['key' => $key, 'label' => $this->labelFor($column, $declared), 'type' => $declared['type']];
         }
 
         if ($columns === []) {
@@ -289,6 +289,30 @@ final class ReportRunner
                 $operator,
                 $bound,
             );
+        }
+
+        /*
+         * SORT (Jose, 2026-10-09, the builder brief). By the same expression a
+         * column is selected with, so a derived column sorts by the value it
+         * prints. Applied before the cap, so a capped report keeps the top of
+         * its order rather than an arbitrary 5,000.
+         */
+        foreach ($definition['sort'] ?? [] as $sort) {
+            $resource = $this->resourceFor($sort);
+            $declaredSort = $this->columnFor($resource, $sort);
+            $this->mayRead($user, $declaredSort);
+
+            // ponytail: a PHP column is computed after the fetch, so it cannot
+            // order the rows the database picks; sort it in PHP when wanted.
+            if (isset($declaredSort['php'])) {
+                throw new InvalidArgumentException("'{$declaredSort['label']}' is worked out after the rows are read, so it cannot be sorted on.");
+            }
+
+            $direction = ($sort['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
+            $query->orderByRaw((isset($declaredSort['sql'])
+                ? '('.$this->resolve($declaredSort['sql']).')'
+                : $this->quote($resource['table']).'.'.$this->quote($sort['column'])).' '.$direction);
         }
 
         // One more than the cap, so "there were more" is a fact rather than a
@@ -507,11 +531,19 @@ final class ReportRunner
     }
 
     /** @return list<string> */
+    /** A report's own name for a column ("Revenue" for Amount), or the map's. */
+    private function labelFor(array $column, array $declared): string
+    {
+        $label = trim(mb_substr((string) ($column['label'] ?? ''), 0, 60));
+
+        return $label !== '' ? $label : $declared['label'];
+    }
+
     private function resourcesUsed(array $definition): array
     {
         $keys = [];
 
-        foreach (array_merge($definition['columns'] ?? [], $definition['filters'] ?? []) as $item) {
+        foreach (array_merge($definition['columns'] ?? [], $definition['filters'] ?? [], $definition['sort'] ?? []) as $item) {
             $keys[] = $item['resource'] ?? '';
         }
 

@@ -1247,6 +1247,7 @@ Route::prefix('v1')
         Route::middleware('permission:reports.library.view')->group(function () {
             Route::get('reports', [ReportsController::class, 'index']);
             Route::post('reports/{id}/run', [ReportsController::class, 'run']);
+            Route::get('reports/{id}/csv', [ReportsController::class, 'csv']);
             Route::get('reports/{id}', [ReportsController::class, 'show']);
             Route::delete('reports/{id}', [ReportsController::class, 'destroy']);
         });
