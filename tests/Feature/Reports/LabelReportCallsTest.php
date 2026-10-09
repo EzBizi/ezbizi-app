@@ -11,6 +11,7 @@ use App\Support\Reports\Tagging\GrokTagger;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -102,6 +103,48 @@ class LabelReportCallsTest extends TestCase
 
         Http::assertSent(fn ($request) => $request['model'] === 'grok-4.6'
             && $request['response_format']['json_schema']['schema']['properties']['label']['enum'] === array_keys(CallLabels::EXISTING));
+    }
+
+    /**
+     * Grok through Jose's own subscription (2026-10-09: "Yes set it up"): the
+     * CLI on the box, headless, with nothing to act with, and the transcript
+     * in a file rather than on the command line.
+     */
+    public function test_grok_can_answer_through_the_cli_without_the_transcript_on_its_command_line(): void
+    {
+        config(['experimental_reports.tagging.grok.key' => null, 'experimental_reports.tagging.grok.cli_home' => '/var/lib/ezbizi-grok']);
+        Process::fake([
+            '*' => Process::result('{"usage":{"costUSD":0.007},"structuredOutput":{"label":"billing"}}'),
+        ]);
+
+        $grok = app(GrokTagger::class);
+
+        $this->assertTrue($grok->configured());
+        $this->assertSame('billing', $grok->tag('A secret about my invoice.', 'Why?', CallLabels::EXISTING));
+
+        Process::assertRan(function ($process) {
+            $command = implode(' ', (array) $process->command);
+
+            return ($process->environment['HOME'] ?? null) === '/var/lib/ezbizi-grok'
+                && str_contains($command, '--prompt-file')
+                && str_contains($command, '--max-turns 1')
+                && str_contains($command, '--disable-web-search')
+                && str_contains($command, '"enum":["complaint","reschedule","eta","billing","other"]')
+                && ! str_contains($command, 'secret');
+        });
+    }
+
+    /** An expired sign-in fails loudly, never as calls that had no label. */
+    public function test_a_failing_grok_cli_is_an_error_not_an_empty_label(): void
+    {
+        config(['experimental_reports.tagging.grok.cli_home' => '/var/lib/ezbizi-grok']);
+        Process::fake([
+            '*' => Process::result('', 'Error: 401 Unauthorized - please log in', 1),
+        ]);
+
+        $this->expectExceptionMessage('The Grok CLI failed (exit 1): Error: 401 Unauthorized');
+
+        app(GrokTagger::class)->tag('Hello.', 'Why?', CallLabels::EXISTING);
     }
 
     public function test_the_report_carries_each_providers_label(): void
