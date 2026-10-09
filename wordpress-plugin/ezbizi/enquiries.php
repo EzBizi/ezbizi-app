@@ -1061,7 +1061,7 @@ function ezbizi_booking_shortcode($atts) {
     $line = 'color-mix(in srgb,' . $accent . ' 45%,#fff)';
     $soft = 'color-mix(in srgb,' . $accent . ' 10%,#fff)';
     $head = function ($n, $text) {
-        return '<div class="ezb-head"><small>' . $n . '</small> <b>' . esc_html($text) . '</b></div>';
+        return '<div class="ezb-head"><b>' . esc_html($text) . '</b></div>';
     };
 
     return '<style>'
@@ -1071,10 +1071,10 @@ function ezbizi_booking_shortcode($atts) {
         // fixed size"); a step taller than the card scrolls inside it.
         . $s . ' .ezb-body{padding:24px 40px 32px;height:600px;box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column}'
         // A short step sits in the middle of the fixed card, not at its top.
-        . $s . ' .ezb-body>[data-step]{margin-top:auto;margin-bottom:auto;flex:0 0 auto}'
+        . $s . ' .ezb-body>[data-step]{flex:0 0 auto}'
         . $s . ' .ezb-back{background:none;border:0;color:' . $accent . ';cursor:pointer;padding:0;margin:0 0 8px;font-size:14px}'
         . $s . ' .ezb-head{text-align:center;padding:10px 0 12px;margin:0 0 14px;border-bottom:1px solid ' . $line . '}'
-        . $s . ' .ezb-head small{color:' . $accent . ';font-size:11px;vertical-align:middle;margin-right:6px}'
+        . $s . ' .ezb-head small{display:block;font-size:14px;margin-top:4px;opacity:.8}'
         . $s . ' .ezb-head b{font-size:22px}'
         . $s . ' .ezb-grid{display:grid;gap:10px;grid-template-columns:repeat(4,1fr)}'
         . $s . ' .ezb-times{grid-template-columns:repeat(3,1fr)}'
@@ -1098,15 +1098,15 @@ function ezbizi_booking_shortcode($atts) {
         . '</style>'
         . '<div class="ezbizi-booking" id="' . esc_attr($id) . '">'
         . '<div class="ezb-top">' . esc_html($atts['title']) . '</div><div class="ezb-body">'
-        . '<form data-step="zip" novalidate>' . $head('01', __('Your ZIP code', 'ezbizi'))
-        . '<label>' . esc_html__('Where do you need us?', 'ezbizi') . '<input name="zip" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" /></label>'
+        . '<form data-step="zip" novalidate>' . $head('', __('Please enter your ZIP code', 'ezbizi'))
+        . '<label>' . esc_html__('So we can show the days we come to your area.', 'ezbizi') . '<input name="zip" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" /></label>'
         . '<button class="ezb-go" type="submit">' . esc_html__('See available days', 'ezbizi') . '</button></form>'
         . '<div data-step="day" hidden><button type="button" class="ezb-back" data-to="zip">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
-        . $head('02', __('Choose a day', 'ezbizi')) . '<div class="ezb-grid ezb-days"></div></div>'
+        . $head('', __('Please pick a day that works for you', 'ezbizi')) . '<div class="ezb-grid ezb-days"></div></div>'
         . '<div data-step="time" hidden><button type="button" class="ezb-back" data-to="day">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
-        . '<div class="ezb-head"><small>03</small> <b class="ezb-dayname"></b></div><div class="ezb-grid ezb-times"></div></div>'
+        . '<div class="ezb-head"><b>' . esc_html__('Please choose an arrival window', 'ezbizi') . '</b><small class="ezb-dayname"></small></div><div class="ezb-grid ezb-times"></div></div>'
         . '<form data-step="details" hidden novalidate><button type="button" class="ezb-back" data-to="time">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
-        . $head('04', __('Your details', 'ezbizi')) . '<div class="ezb-pill"></div>'
+        . $head('', __('Please tell us how to reach you', 'ezbizi')) . '<div class="ezb-pill"></div>'
         . '<label>' . esc_html__('Your name', 'ezbizi') . '<input name="name" autocomplete="name" required placeholder="' . esc_attr__('Your full name', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Phone number', 'ezbizi') . '<input name="phone" type="tel" autocomplete="tel" required placeholder="' . esc_attr__('Best number to call or text', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Full service address', 'ezbizi') . '<input name="address" autocomplete="street-address" required placeholder="' . esc_attr__('Street, city, state', 'ezbizi') . '" /></label>'
@@ -1130,9 +1130,10 @@ Array.prototype.forEach.call(root.querySelectorAll('.ezb-back'),function(b){b.ad
 function load(){
   var z=q('[name=zip]').value.trim();note.textContent='...';
   return fetch(api+'/api/v1/web/booking/days?key='+encodeURIComponent(key)+'&zip='+encodeURIComponent(z),{headers:{'Accept':'application/json'}})
-  .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(x){
+  .then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d};});}).then(function(x){
+    if(x.status===404){note.textContent=" . wp_json_encode(__("We don't book online in that area yet. Please call us.", 'ezbizi')) . ";return;}
     if(!x.ok){note.textContent=x.d.message||" . wp_json_encode(__('That did not work. Please call us.', 'ezbizi')) . ";return;}
-    if(!x.d.days.length){note.textContent=" . wp_json_encode(__('No openings online right now. Please call us.', 'ezbizi')) . ";return;}
+    if(!x.d.days.length){note.textContent=" . wp_json_encode(__('We have no open times online in the next few weeks. Please call us.', 'ezbizi')) . ";return;}
     st.zip=z;var g=q('.ezb-days');g.innerHTML='';
     x.d.days.forEach(function(d){card(g,'<small>'+day(d.date,{weekday:'short'})+'</small><strong>'+day(d.date,{day:'numeric'})+'</strong><small>'+day(d.date,{month:'short'})+'</small>',function(){
       st.date=d.date;q('.ezb-dayname').textContent=day(d.date,{weekday:'long',month:'long',day:'numeric'});var t=q('.ezb-times');t.innerHTML='';
