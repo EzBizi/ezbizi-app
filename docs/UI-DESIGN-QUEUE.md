@@ -2965,6 +2965,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 71 · Reports · Performance · the inner tabs — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/reports-performance-inner-tabs-layouts.html`)
+
+Jose 2026-10-09, with four screenshots: *"I feel like this performance screen is a mess, specially the inner tabs, so
+please review them all and make a better ui ux"*. Today a call is small text with its own empty audio bar across the
+whole width and the talk time at the far edge; the line name repeats; Calls stacks up to three chip rows counted two
+ways; People's opened row mixes the "Answers for" setting with the calls. All options: one call row (time, who took it,
+caller with first words, line/source tags once, client and result badges, talk, one play button; player and transcript
+open under that row only), one Calls filter bar (Result, Client; reasons as badges, the explanation in an info tip),
+Convert to booked and the AI reason on the row. Desktop **1** same three tabs tidied, Overview tiles open Calls
+filtered (recommended); **2** list with the chosen call beside it; **3** one page, figures as the filters, people as
+chips. Phone **4** (recommended) as 1, calls as cards, one sideways filter strip; **5** short rows that open in place;
+**6** one page. Owner: Reports (`experimental_call_report.dart`).
+
 ### 70 · Empty screens: one way to say "nothing here yet" — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`client/lib/widgets/empty_state.dart`; owners adopt it, inbox 0103) (`docs/previews/empty-states-layouts.html`)
 
 From the full UI review (`docs/UI-AUDIT-2026-10-08.md`, across-the-app item 4): empty screens are drawn about six

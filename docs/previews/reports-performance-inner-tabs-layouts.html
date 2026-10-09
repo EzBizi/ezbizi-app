@@ -1,0 +1,356 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Performance inner tabs</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.toprow{display:flex;gap:8px;align-items:center}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.datebar{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.datebar .d{border:1px solid #b9c7cd;border-radius:10px;padding:4px 10px;background:#fff;font-weight:700}
+.datebar .src{margin-left:auto;color:var(--pri);font-weight:700;font-size:12px}
+.fbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.fbar .lb{font-size:11px;color:var(--muted);font-weight:700;margin-right:-6px}
+.seg span .c{font-weight:500;opacity:.75;margin-left:4px}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.crow{display:grid;grid-template-columns:44px 132px minmax(0,1fr) 196px 40px 30px;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid var(--line2);font-size:12.5px}
+.crow:first-child{border-top:0}
+.crow.hd{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:#fafcfd;padding:7px 14px}
+.crow .tm{color:var(--muted);font-variant-numeric:tabular-nums}
+.crow .wh{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .wh.no{color:var(--muted);font-weight:500}
+.crow .cl{min-width:0}
+.crow .cl b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .cl i{font-style:normal;display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .bd{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-start}
+.crow .tk{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.play{width:28px;height:28px;border-radius:50%;border:1px solid #b9c7cd;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--prid);background:#fff}
+.play.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.tag{display:inline-block;font-size:10.5px;font-weight:600;color:#45525b;background:#eef2f4;border-radius:5px;padding:0 6px;margin-right:4px;line-height:1.6}
+.p-bad{background:var(--badc);color:var(--bad)} .p-pri{background:var(--pric);color:var(--prid)}
+.player{grid-column:2/-1;display:flex;align-items:center;gap:10px;background:var(--ground);border-radius:8px;padding:8px 12px;font-size:11.5px}
+.player .trk{flex:1;height:4px;border-radius:2px;background:#d3dde2;position:relative}
+.player .trk:after{content:"";position:absolute;left:0;top:0;bottom:0;width:34%;background:var(--pri);border-radius:2px}
+.words{grid-column:2/-1;font-size:12px;color:#26343b;background:var(--ground);border-radius:8px;padding:8px 12px;margin-top:-4px}
+.words .sp{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:1px}
+.tile b{font-size:20px;line-height:1.2}
+.tile span{font-size:11.5px;color:var(--muted)}
+.tile em{font-style:normal;font-size:11px;color:var(--pri);font-weight:700;margin-top:4px}
+.tile.cau{border-left:3px solid var(--caue)} .tile.bad{border-left:3px solid #e8a2a2} .tile.ok{border-left:3px solid #8fc79c}
+.tile.on{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
+.ptbl .prow{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(6,minmax(0,.7fr)) 24px;gap:10px;align-items:center;padding:9px 14px;border-top:1px solid var(--line2);font-size:12.5px}
+.ptbl .prow:first-child{border-top:0}
+.ptbl .prow.hd{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:#fafcfd}
+.ptbl .prow > :not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.ptbl .prow .nm{display:flex;align-items:center;gap:8px;font-weight:600}
+.ptbl .open{background:#f7fafb;border-top:1px solid var(--line2);padding:6px 14px 10px 46px}
+.ptbl .open .oh{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);padding:4px 0 6px}
+.ptbl .open .crow{background:transparent;padding:6px 0;grid-template-columns:44px 110px minmax(0,1fr) 170px 40px 30px}
+.split{display:flex;gap:14px;min-height:0;flex:1}
+.split .l{width:560px;flex:0 0 auto}
+.split .r{flex:1;min-width:0}
+.crow.sel{background:var(--pric)}
+.l .crow{grid-template-columns:44px minmax(0,1fr) 150px 40px}
+.det{display:flex;flex-direction:column;gap:10px}
+.det .hh{display:flex;align-items:center;gap:8px}
+.det .hh b{font-size:15px}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 10px;font-size:12px}
+.kv span{color:var(--muted)}
+.people{display:flex;gap:8px;flex-wrap:wrap}
+.pchip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #c9d4d9;border-radius:999px;padding:3px 10px 3px 3px;font-size:12px;font-weight:600}
+.pchip .av{width:22px;height:22px;font-size:9.5px}
+.pchip em{font-style:normal;color:var(--muted);font-weight:500}
+.pchip.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+/* phone */
+.phn .under{display:flex;gap:18px;border-bottom:1px solid var(--line);padding:0 2px}
+.phn .under span{padding:7px 0 8px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.phn .under span.on{color:var(--pri);border-color:var(--pri)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:7px 0 8px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.chips{display:flex;gap:6px;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent)}
+.chips .pill2{height:28px;font-size:11.5px;padding:0 10px}
+.chips .dv{width:1px;background:#c9d4d9;margin:4px 2px}
+.ccard{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:3px 10px;font-size:12px}
+.ccard .l1{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ccard .l1 .tm{color:var(--muted)}
+.ccard .l2{font-weight:600}
+.ccard .l3{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ccard .play{grid-row:1/4;grid-column:2;align-self:center}
+.ccard .player,.ccard .words{grid-column:1/-1}
+.mrow{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.mrow:first-child{border-top:0}
+.mrow .g{flex:1;min-width:0}
+.mrow .g b{display:block;font-weight:600}
+.mrow .g span{display:block;font-size:11px;color:var(--muted)}
+.ptiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ptiles .tile{padding:8px 9px}
+.ptiles .tile b{font-size:17px}
+.ptiles .tile span{font-size:10.5px}
+.dropb{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:12px;font-weight:600}
+</style>
+<div class="wrap">
+<h1>Reports › Performance · the tabs inside it</h1>
+<p class="sub">Jose 2026-10-09: <i>"I feel like this performance screen is a mess, specially the inner tabs."</i> Today on a wide screen each call is a line of small text with its own empty audio bar stretched across the whole page and the talk time far away at the right edge. The caller's line name repeats ("A1 - New Client · A1 - New Client"). Calls has up to three rows of chips (All / Missed / Existing / Not booked / New, then New/Existing client, then Missed call / Voicemail / Blocked with a paragraph), counted two ways ("Missed 3", "Voicemail (3)"). People opens a grey box that mixes a setting ("Answers for") with the calls. Every name, number and line below is invented.</p>
+<p class="need"><b>In every option:</b> a call is <b>one row</b>: time, who took it, the caller with the first words they said, small tags for the line and source (once, never repeated), a <b>client</b> badge (New / Existing) and a <b>result</b> badge (Booked, Not booked, Voicemail, Missed, Blocked), talk time, and one ▶ button. The audio bar and the whole transcript open <b>under that row only</b> when you press ▶ or the words. Calls get <b>one filter bar</b> with two choices, <b>Result</b> and <b>Client</b>, each counted the same way. Why a call reached nobody is the row's badge, and its explanation moves into an ⓘ. Not booked keeps <b>Convert to booked</b> on the row. Existing calls keep the AI's reason as a badge, with Claude/Grok as a small switch at the end of the bar. On People, "Answers for" moves to the top of the opened row, apart from the calls. No figures change and nothing new is needed from the server.</p>
+
+<h2><span class="n">1</span>Same three tabs, every call one tidy row <span class="rec">Recommended</span></h2>
+<p class="cap">Overview, People and Calls stay. Calls becomes a table with the filter bar above. Overview's figures become white tiles you click to open Calls already filtered. A person's row opens their calls as the same rows. <b>Why:</b> it fixes what's messy (the stretched bars, the three chip rows, the repeated names) without moving anything you already know, and the same row reads the same on all three tabs.</p>
+<div class="win" style="height:640px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="toprow"><span class="pill2">▤ Reports</span><span class="pill2">✎ Report Builder</span><span class="pill2 on">⚗ Performance</span><span class="pill2">↗ Google Ads</span><span class="pill2">▥ Profit &amp; Loss</span></div>
+<div class="datebar"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span><span class="src">▤ Sources · 4 Workiz accounts</span></div>
+<div class="under"><span>Overview</span><span>People · 9</span><span class="on">Calls · 22</span></div>
+<div class="fbar"><span class="lb">Result</span><span class="seg"><span class="on">All<span class="c">22</span></span><span>Booked<span class="c">11</span></span><span>Not booked<span class="c">6</span></span><span>Reached nobody<span class="c">3</span></span></span>
+<span class="lb">Client</span><span class="seg"><span class="on">All</span><span>New<span class="c">15</span></span><span>Existing<span class="c">5</span></span></span><span class="sp"></span><span class="tiny">AI reasons: </span><span class="seg"><span class="on">Claude</span><span>Grok</span></span></div>
+<div class="tbl">
+<div class="crow hd"><span>Time</span><span>Took it</span><span>Caller · first words</span><span>Client · result</span><span style="text-align:right">Talk</span><span></span></div>
+<div class="crow"><span class="tm">08:55</span><span class="wh no">Nobody</span><div class="cl"><b>Wireless caller · (555) 014-2290</b><i><span class="tag">NJ</span><span class="tag">Main line</span></i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-neu">Voicemail</span></div><span class="tk">—</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:53</span><span class="wh">Dana Ruiz</span><div class="cl"><b>Marcus Bell</b><i><span class="tag">NJ</span><span class="tag">LS Ads</span>“Hi, I need my fireplace looked at before…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:12</span><span class="play on">❚❚</span>
+<div class="player"><span>1:04</span><span class="trk"></span><span>3:12</span><span class="b" style="color:var(--pri)">Convert to booked</span></div>
+<div class="words"><span class="sp">Dana Ruiz · 0:00</span>Thank you for calling Harbor Chimney, this is Dana, how can I help? — Hi, I need my fireplace looked at before winter, it smokes when we light it…</div></div>
+<div class="crow"><span class="tm">08:49</span><span class="wh">Omar Price</span><div class="cl"><b>Priya Nair</b><i><span class="tag">NY</span><span class="tag">Google profile</span>“Thank you for calling, this is Omar. How…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-ok">Booked</span></div><span class="tk">1:52</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:49</span><span class="wh">Lena Park</span><div class="cl"><b>(555) 017-4410</b><i>“Hello, thank you for calling. This is Lena…”</i></div><div class="bd"><span class="pill p-neu">Existing</span><span class="pill p-neu">Reschedule</span></div><span class="tk">3:11</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:46</span><span class="wh">Theo Grant</span><div class="cl"><b>Ana Torres</b><i><span class="tag">PHL</span><span class="tag">LS Ads</span>“To schedule an appointment, press one…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:01</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:40</span><span class="wh">Lena Park</span><div class="cl"><b>Greg Hollis</b><i><span class="tag">OH</span><span class="tag">LS Ads</span>“Chimney. To schedule an appointment, press…”</i></div><div class="bd"><span class="pill p-neu">Existing</span><span class="pill p-neu">Invoice question</span></div><span class="tk">4:59</span><span class="play">▶</span></div>
+</div></div></div></div>
+
+<p class="cap" style="margin-top:14px"><b>1 · Overview</b>: the figures as tiles. Each tile is a way into Calls, already filtered: "Not booked 6" opens Calls › Not booked. Then the two short lists, as today.</p>
+<div class="win" style="height:360px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="datebar"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span><span class="src">▤ Sources · 4 Workiz accounts</span></div>
+<div class="under"><span class="on">Overview</span><span>People · 9</span><span>Calls · 22</span></div>
+<div class="tiles"><div class="tile"><b>22</b><span>Calls</span><em>See calls ›</em></div><div class="tile ok"><b>11</b><span>Booked · 73% of new</span><em>See them ›</em></div><div class="tile cau"><b>6</b><span>Not booked</span><em>See them ›</em></div><div class="tile bad"><b>3</b><span>Reached nobody</span><em>See them ›</em></div><div class="tile"><b>15</b><span>New client</span><em>See them ›</em></div><div class="tile"><b>5</b><span>Existing client</span><em>See them ›</em></div></div>
+<div class="cols" style="gap:12px"><div class="card"><h3>Not booked <span class="tiny">6</span></h3><div class="mrow"><span class="tm muted">08:53</span><div class="g"><b>Marcus Bell · Dana Ruiz</b><span>NJ · LS Ads · 3:12</span></div><span class="btn sm">Convert to booked</span></div><div class="mrow"><span class="tm muted">08:46</span><div class="g"><b>Ana Torres · Theo Grant</b><span>PHL · LS Ads · 3:01</span></div><span class="btn sm">Convert to booked</span></div></div>
+<div class="card"><h3>Reached nobody <span class="tiny">3 · 2 new, 1 not known</span></h3><div class="mrow"><span class="muted">08:55</span><div class="g"><b>Wireless caller</b></div><span class="pill p-neu">Voicemail</span></div><div class="mrow"><span class="muted">07:45</span><div class="g"><b>Wireless caller</b></div><span class="pill p-neu">Voicemail</span></div></div></div>
+</div></div></div>
+
+<p class="cap" style="margin-top:14px"><b>1 · People</b>: the table as today, with the client badge under the name. An opened row first says what the person answers for (the setting, on its own line), then their calls as the same rows.</p>
+<div class="win" style="height:420px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="under"><span>Overview</span><span class="on">People · 9</span><span>Calls · 22</span></div>
+<div class="fbar"><span class="lb">Answers for</span><span class="seg"><span class="on">Everyone</span><span>New client</span><span>Existing client</span></span></div>
+<div class="tbl ptbl">
+<div class="prow hd"><span>Person</span><span>Rang</span><span>Answered ↓</span><span>New</span><span>Existing</span><span>Jobs</span><span>Avg talk</span><span></span></div>
+<div class="prow"><span class="nm"><span class="av">LP</span>Lena Park <span class="pill p-neu">Existing</span></span><span>5</span><span>4</span><span>0</span><span>4</span><span>1</span><span>3:03</span><span>⌄</span></div>
+<div class="prow" style="background:#f7fafb"><span class="nm"><span class="av">OP</span>Omar Price <span class="pill p-pri">New</span></span><span>4</span><span>3</span><span>3</span><span>0</span><span>2</span><span>2:45</span><span>⌃</span></div>
+<div class="open"><div class="oh">Answers for <span class="seg"><span class="on">New client</span><span>Existing client</span><span>Not set</span></span><span class="sp"></span>Jobs ÷ new calls answered: 67%</div>
+<div class="crow"><span class="tm">08:49</span><span class="wh">Answered</span><div class="cl"><b>Priya Nair</b><i>“Thank you for calling, this is Omar…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-ok">Booked</span></div><span class="tk">1:52</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:21</span><span class="wh no">Rang · Lena took it</span><div class="cl"><b>(555) 013-8812</b><i>“Hi, it's about the invoice from…”</i></div><div class="bd"><span class="pill p-neu">Existing</span></div><span class="tk">2:03</span><span class="play">▶</span></div></div>
+<div class="prow"><span class="nm"><span class="av">DR</span>Dana Ruiz <span class="pill p-pri">New</span></span><span>3</span><span>3</span><span>3</span><span>0</span><span>1</span><span>3:12</span><span>⌄</span></div>
+</div></div></div></div>
+
+<h2><span class="n">2</span>Calls as a list with the chosen call beside it</h2>
+<p class="cap">Calls: a narrow list on the left and the chosen call on the right, with its player, the whole transcript, the AI's reason, and Convert to booked. People: picking a person narrows the same list to them. <b>Why:</b> it uses a wide screen, and you can listen while you scan the list. But it's a bigger change, and below about 1100 pixels the right side has to become a panel.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="datebar"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span><span class="src">▤ Sources · 4 Workiz accounts</span></div>
+<div class="under"><span>Overview</span><span>People · 9</span><span class="on">Calls · 22</span></div>
+<div class="fbar"><span class="lb">Result</span><span class="seg"><span class="on">All<span class="c">22</span></span><span>Booked<span class="c">11</span></span><span>Not booked<span class="c">6</span></span><span>Reached nobody<span class="c">3</span></span></span><span class="lb">Client</span><span class="seg"><span class="on">All</span><span>New<span class="c">15</span></span><span>Existing<span class="c">5</span></span></span></div>
+<div class="split"><div class="l tbl">
+<div class="crow"><span class="tm">08:55</span><div class="cl"><b>Wireless caller</b><i>Nobody took it</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-neu">Voicemail</span></div><span class="tk">—</span></div>
+<div class="crow sel"><span class="tm">08:53</span><div class="cl"><b>Marcus Bell</b><i>Dana Ruiz · NJ · LS Ads</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:12</span></div>
+<div class="crow"><span class="tm">08:49</span><div class="cl"><b>Priya Nair</b><i>Omar Price · NY · Google profile</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-ok">Booked</span></div><span class="tk">1:52</span></div>
+<div class="crow"><span class="tm">08:49</span><div class="cl"><b>(555) 017-4410</b><i>Lena Park</i></div><div class="bd"><span class="pill p-neu">Existing</span><span class="pill p-neu">Reschedule</span></div><span class="tk">3:11</span></div>
+<div class="crow"><span class="tm">08:46</span><div class="cl"><b>Ana Torres</b><i>Theo Grant · PHL · LS Ads</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:01</span></div>
+<div class="crow"><span class="tm">08:40</span><div class="cl"><b>Greg Hollis</b><i>Lena Park · OH · LS Ads</i></div><div class="bd"><span class="pill p-neu">Existing</span></div><span class="tk">4:59</span></div>
+</div>
+<div class="r card det"><div class="hh"><b>Marcus Bell</b><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span><span class="sp"></span><span class="btn sm f">Convert to booked</span></div>
+<div class="kv"><span>When</span><b>Fri 08:53 · 3:12 talk</b><span>Took it</span><b>Dana Ruiz</b><span>Line</span><b>NJ · LS Ads</b><span>Number</span><b>(555) 014-7781</b></div>
+<div class="player" style="grid-column:auto"><span class="play on">❚❚</span><span>1:04</span><span class="trk"></span><span>3:12</span></div>
+<div class="words" style="margin:0"><span class="sp">Dana Ruiz · 0:00</span>Thank you for calling Harbor Chimney, this is Dana, how can I help?<span class="sp" style="margin-top:6px">Caller · 0:04</span>Hi, I need my fireplace looked at before winter, it smokes when we light it…</div></div>
+</div></div></div></div>
+
+<h2><span class="n">3</span>One page, no inner tabs: the figures are the filters</h2>
+<p class="cap">The figures sit on top and each one filters the list below. Clicking "Not booked 6" shows those six. Below them, the people are a row of name chips with their counts, and clicking one narrows the list to them. Under that, one list of calls. The full people table stays behind a "Table" switch. <b>Why:</b> no tabs at all, so there's nothing to get lost in. But the per-person numbers (rang, answered, conversion) are one click further away.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="t">Reports</div>
+<div class="datebar"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span><span class="src">▤ Sources · 4 Workiz accounts</span></div>
+<div class="tiles"><div class="tile"><b>22</b><span>All calls</span></div><div class="tile ok"><b>11</b><span>Booked · 73%</span></div><div class="tile cau on"><b>6</b><span>Not booked</span></div><div class="tile bad"><b>3</b><span>Reached nobody</span></div><div class="tile"><b>15</b><span>New client</span></div><div class="tile"><b>5</b><span>Existing client</span></div></div>
+<div class="people"><span class="pchip on"><span class="av">··</span>Everyone</span><span class="pchip"><span class="av">LP</span>Lena Park <em>4</em></span><span class="pchip"><span class="av">OP</span>Omar Price <em>3</em></span><span class="pchip"><span class="av">DR</span>Dana Ruiz <em>3</em></span><span class="pchip"><span class="av">TG</span>Theo Grant <em>2</em></span><span class="pchip"><span class="av">MC</span>Mia Chen <em>2</em></span><span class="sp"></span><span class="seg"><span class="on">List</span><span>Table</span></span></div>
+<div class="tbl">
+<div class="crow"><span class="tm">08:53</span><span class="wh">Dana Ruiz</span><div class="cl"><b>Marcus Bell</b><i><span class="tag">NJ</span><span class="tag">LS Ads</span>“Hi, I need my fireplace looked at…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:12</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:46</span><span class="wh">Theo Grant</span><div class="cl"><b>Ana Torres</b><i><span class="tag">PHL</span><span class="tag">LS Ads</span>“To schedule an appointment, press one…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">3:01</span><span class="play">▶</span></div>
+<div class="crow"><span class="tm">08:32</span><span class="wh">Mia Chen</span><div class="cl"><b>(555) 012-5530</b><i>“Thank you for calling. This is Mia…”</i></div><div class="bd"><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span></div><span class="tk">2:43</span><span class="play">▶</span></div>
+</div></div></div></div>
+
+<h2><span class="n">4</span>Phone: as 1, each call a small card <span class="rec">Recommended</span></h2>
+<p class="cap">The same three tabs. On Calls, the two filters become one sideways strip: the results, a divider, then New and Existing. Each call is a card: time, badges, talk time; then who took it and the caller; then the first words, with ▶ on the right. Pressing ▶ opens the player inside that card. <b>Why:</b> the same pieces as the computer, sized for a thumb, and nothing stretches.</p>
+<div class="phones">
+<div class="pcol"><span class="pl">Calls</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div>
+<div class="pb" style="gap:8px"><div class="datebar" style="font-size:12px"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span></div>
+<div class="under"><span>Overview</span><span>People</span><span class="on">Calls</span></div>
+<div class="chips"><span class="pill2 on">All 22</span><span class="pill2">Booked 11</span><span class="pill2">Not booked 6</span><span class="pill2">Nobody 3</span><span class="dv"></span><span class="pill2">New 15</span><span class="pill2">Existing 5</span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:55</span><span class="pill p-pri">New</span><span class="pill p-neu">Voicemail</span></div><div class="l2">Wireless caller</div><div class="l3">Nobody took it · NJ</div><span class="play">▶</span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:53</span><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span><span class="sp"></span><span class="tm">3:12</span></div><div class="l2">Dana Ruiz → Marcus Bell</div><div class="l3">“Hi, I need my fireplace looked at…”</div><span class="play on">❚❚</span>
+<div class="player" style="padding:6px 8px"><span>1:04</span><span class="trk"></span><span>3:12</span></div><span class="btn sm" style="grid-column:1/-1">Convert to booked</span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:49</span><span class="pill p-pri">New</span><span class="pill p-ok">Booked</span><span class="sp"></span><span class="tm">1:52</span></div><div class="l2">Omar Price → Priya Nair</div><div class="l3">“Thank you for calling, this is Omar…”</div><span class="play">▶</span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:49</span><span class="pill p-neu">Existing</span><span class="pill p-neu">Reschedule</span><span class="sp"></span><span class="tm">3:11</span></div><div class="l2">Lena Park → (555) 017-4410</div><div class="l3">“Hello, thank you for calling…”</div><span class="play">▶</span></div>
+</div></div></div>
+<div class="pcol"><span class="pl">Overview</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div>
+<div class="pb" style="gap:8px"><div class="datebar" style="font-size:12px"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span></div>
+<div class="under"><span class="on">Overview</span><span>People</span><span>Calls</span></div>
+<div class="ptiles"><div class="tile"><b>22</b><span>Calls</span></div><div class="tile ok"><b>11</b><span>Booked 73%</span></div><div class="tile cau"><b>6</b><span>Not booked</span></div><div class="tile bad"><b>3</b><span>Nobody</span></div><div class="tile"><b>15</b><span>New</span></div><div class="tile"><b>5</b><span>Existing</span></div></div>
+<div class="card" style="padding:10px 12px"><h3 style="font-size:14px">Not booked <span class="tiny">6</span></h3><div class="mrow"><div class="g"><b>Marcus Bell</b><span>08:53 · Dana Ruiz · 3:12</span></div><span class="btn sm">Convert</span></div><div class="mrow"><div class="g"><b>Ana Torres</b><span>08:46 · Theo Grant · 3:01</span></div><span class="btn sm">Convert</span></div><span class="tiny b" style="color:var(--pri)">See all 6 in Calls ›</span></div>
+</div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone: as 2, short rows that open in place</h2>
+<p class="cap">One line per call (time, caller, badges). Tap a call and it opens where it is, with the player, the transcript and Convert to booked. Filters are two buttons, Result and Client. <b>Why:</b> the most calls fit on the screen. But you have to open a call to hear or read anything.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div>
+<div class="pb" style="gap:8px"><div class="under"><span>Overview</span><span>People</span><span class="on">Calls</span></div>
+<div class="toprow"><span class="dropb">Result: All 22 ▾</span><span class="dropb">Client: All ▾</span></div>
+<div class="lst"><div class="mrow"><span class="muted">08:55</span><div class="g"><b>Wireless caller</b></div><span class="pill p-neu">Voicemail</span></div>
+<div class="mrow" style="background:var(--pric);margin:0 -12px;padding:9px 12px"><span class="muted">08:53</span><div class="g"><b>Marcus Bell</b><span>Dana Ruiz · NJ · LS Ads · 3:12</span></div><span class="pill p-cau">Not booked</span></div>
+<div style="padding:8px 0;display:flex;flex-direction:column;gap:6px"><div class="player"><span class="play on">❚❚</span><span class="trk"></span><span>3:12</span></div><div class="words" style="margin:0">Thank you for calling Harbor Chimney, this is Dana…</div><span class="btn sm">Convert to booked</span></div>
+<div class="mrow"><span class="muted">08:49</span><div class="g"><b>Priya Nair</b></div><span class="pill p-ok">Booked</span></div>
+<div class="mrow"><span class="muted">08:49</span><div class="g"><b>(555) 017-4410</b></div><span class="pill p-neu">Existing</span></div>
+<div class="mrow"><span class="muted">08:46</span><div class="g"><b>Ana Torres</b></div><span class="pill p-cau">Not booked</span></div>
+<div class="mrow"><span class="muted">08:40</span><div class="g"><b>Greg Hollis</b></div><span class="pill p-neu">Existing</span></div></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone: as 3, one page</h2>
+<p class="cap">The six figures as a 3-by-2 grid that filters, the people as a sideways strip of names, then the calls as cards. <b>Why:</b> it matches option 3. Same limit: the per-person numbers are behind a switch.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div>
+<div class="pb" style="gap:8px"><div class="datebar" style="font-size:12px"><span>‹</span><span class="d">Today · Fri, Oct 9 ▾</span><span>›</span></div>
+<div class="ptiles"><div class="tile"><b>22</b><span>Calls</span></div><div class="tile ok"><b>11</b><span>Booked</span></div><div class="tile cau on"><b>6</b><span>Not booked</span></div><div class="tile bad"><b>3</b><span>Nobody</span></div><div class="tile"><b>15</b><span>New</span></div><div class="tile"><b>5</b><span>Existing</span></div></div>
+<div class="chips"><span class="pchip on"><span class="av">··</span>Everyone</span><span class="pchip"><span class="av">LP</span>Lena <em>4</em></span><span class="pchip"><span class="av">OP</span>Omar <em>3</em></span><span class="pchip"><span class="av">DR</span>Dana <em>3</em></span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:53</span><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span><span class="sp"></span><span class="tm">3:12</span></div><div class="l2">Dana Ruiz → Marcus Bell</div><div class="l3">“Hi, I need my fireplace looked at…”</div><span class="play">▶</span></div>
+<div class="ccard"><div class="l1"><span class="tm">08:46</span><span class="pill p-pri">New</span><span class="pill p-cau">Not booked</span><span class="sp"></span><span class="tm">3:01</span></div><div class="l2">Theo Grant → Ana Torres</div><div class="l3">“To schedule an appointment, press one…”</div><span class="play">▶</span></div>
+</div></div></div></div>
+</div>
