@@ -2965,6 +2965,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 75 · A-1 booking page · more modern — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/a1-booking-page-layouts.html`)
+
+Jose 2026-10-09: *"How can we make this look more modern"* (a-1chimney.com/booking, the plugin's `[ezbizi_booking]`).
+Today: three titles for one question (page, orange card bar, step), a "12345" placeholder, half the fixed-size card
+empty under the first step, no sign of how many steps follow or what happens after. All options keep the fixed size
+(Jose 2026-10-08) and use it: one title per step, a step tracker (ZIP → Day → Time → Your details), a big ZIP box with
+a pin, tap-sized day and window cards, a foot line (no payment to book, we call to confirm, the phone number). Desktop
+**1** tracker on top and "how it works" filling the first step (recommended); **2** a dark reasons panel beside the
+steps; **3** one screen, ZIP with the days and windows under it. Phone **4** (recommended) as 1; **5** reasons as a
+strip; **6** one scrolling screen. Owner: Web (`wordpress-plugin/ezbizi/enquiries.php`). The chat bubble is already
+off this page and the reviews page (4fa6d6e0, plugin 1.26.10, Jose's ask the same day).
+
 ### 74 · Leads · calls in a lead's conversation — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/lead-thread-calls-layouts.html`)
 
 Jose 2026-10-09, with a screenshot of a lead's thread: *"i wonder if we can make this look a bit better"*. Today: "Call ·
