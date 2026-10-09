@@ -465,6 +465,7 @@ class AutomationEngineTest extends TestCase
         $this->assertSame(1, $rows[$ran->id]['runs_this_week']);
         $this->assertNull($rows[$idle->id]['last_run_status'], 'never run');
         $this->assertSame(0, $rows[$idle->id]['runs_this_week']);
+        $this->assertSame(['update_field'], $rows[$ran->id]['action_keys']);
     }
 
     public function test_nested_any_and_all_evaluate_as_written(): void

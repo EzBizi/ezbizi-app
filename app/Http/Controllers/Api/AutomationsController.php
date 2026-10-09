@@ -1038,6 +1038,8 @@ class AutomationsController extends Controller
             },
             // The last seven days, not the calendar week.
             'runs_this_week' => (int) ($week[$a->id] ?? 0),
+            // What it does, in order, as the catalogue's action keys.
+            'action_keys' => array_values(array_map(fn ($s) => (string) ($s['type'] ?? ''), $a->activeVersion?->actions ?? [])),
         ]);
 
         return response()->json(['data' => $automations]);
