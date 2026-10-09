@@ -21,6 +21,7 @@ use App\Support\Email\PictureTokens;
 use App\Support\Email\PictureUnavailable;
 use App\Support\Email\ReadState;
 use App\Support\Email\ReplyComposer;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -221,8 +222,16 @@ class MailboxMessagesController extends Controller
         // opening returns -- so making the person wait for it bought nothing.
         // The explicit buttons keep doing it in-request, because they DO
         // report `at_source` back.
+        // A deferred callback runs after the tenant middleware has cleared the
+        // context, and the Workspace reader reads a tenant-scoped connection --
+        // so it carries the mailbox's organization with it (production error,
+        // 2026-10-09).
         $openedId = $detail->summary->id;
-        defer(fn () => $this->alsoMarkAtSource($mailbox, $openedId));
+        $organization = $mailbox->organization;
+        defer(fn () => app(TenantContext::class)->run(
+            $organization,
+            fn () => $this->alsoMarkAtSource($mailbox, $openedId),
+        ));
 
         $seen = $this->readState->seenBy($mailbox, [$detail->summary->id], $user);
 

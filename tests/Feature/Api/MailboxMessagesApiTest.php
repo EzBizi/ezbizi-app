@@ -1146,6 +1146,33 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
     }
 
+    /**
+     * The mark runs AFTER the response, when the request's tenant has been
+     * cleared. Production, 2026-10-09: "No tenant in context, refusing to read
+     * App\Models\GoogleWorkspaceConnection unscoped" on every Workspace open.
+     */
+    public function test_the_deferred_mark_runs_inside_the_mailboxs_tenant(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => true]));
+
+        FakeMailboxReader::$tenantWhenAsked = null;
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>Hello.</p>'),
+        );
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk();
+
+        $this->assertSame($t['org']->id, FakeMailboxReader::$tenantWhenAsked);
+    }
+
     public function test_the_mark_as_read_button_also_reaches_the_service(): void
     {
         $this->withFakeProvider();
@@ -2091,6 +2118,8 @@ class MailboxMessagesApiTest extends TestCase
  */
 class FakeMailboxReader implements MailboxReader
 {
+    public static ?string $tenantWhenAsked = null;
+
     public static ?MessagePage $page = null;
 
     public static ?MessageDetail $detail = null;
@@ -2159,6 +2188,9 @@ class FakeMailboxReader implements MailboxReader
 
     public function canMarkReadAtSource(Mailbox $mailbox): bool
     {
+        // The real Workspace reader reads a tenant-scoped connection here.
+        self::$tenantWhenAsked = app(\App\Support\Tenancy\TenantContext::class)->id();
+
         return self::$canMarkAtSource;
     }
 
