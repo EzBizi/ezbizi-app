@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\ReportSenders;
+use App\Support\Reports\ReportCsv;
 use App\Support\Reports\ReportMap;
 use App\Support\Reports\ReportRunner;
 use App\Support\Scoping\PlaceInView;
@@ -218,6 +219,37 @@ class ReportsController extends Controller
             'count' => $result->count,
             'cap' => ReportRunner::ROW_CAP,
         ]]);
+    }
+
+    /**
+     * A saved report as a CSV file (the builder brief, 2026-10-09: until now
+     * CSV only came as an email attachment). The same rows as a run, written
+     * by the same ReportCsv the email uses, and audited like a run.
+     */
+    public function csv(Request $request, string $id): Response
+    {
+        $report = SavedReport::query()->findOrFail($id);
+        $this->authorize('view', $report);
+
+        try {
+            $result = $this->runner->run($report->definition, $request->user());
+        } catch (InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['definition' => $e->getMessage()]);
+        }
+
+        $this->audit->log('report.run', $report, [], [
+            'name' => $report->name,
+            'row_count' => $result->count,
+            'capped' => $result->capped,
+            'format' => 'csv',
+        ]);
+
+        $file = trim((string) preg_replace('/[^A-Za-z0-9]+/', '-', $report->name), '-') ?: 'report';
+
+        return response(ReportCsv::render($result), Response::HTTP_OK, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$file.'-'.now()->toDateString().'.csv"',
+        ]);
     }
 
     /**
