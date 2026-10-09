@@ -41,7 +41,7 @@ class MatchLeadsToJobs extends Command
     public function handle(TenantContext $tenant): int
     {
         $since = $this->option('all') ? null : now()->subDays((int) $this->option('days'));
-        $matched = 0;
+        $matched = $this->fillGoogleBookings($tenant, $since);
 
         $organizations = Lead::query()->withoutGlobalScopes()
             ->whereNull('job_id')->whereNotNull('phone_digits')
@@ -93,4 +93,65 @@ class MatchLeadsToJobs extends Command
 
         return self::SUCCESS;
     }
+
+    /**
+     * A Local Services BOOKING arrives from Google with no customer at all
+     * (655 of 655, measured 2026-10-09). The same booking lands in Workiz as a
+     * "Reserve with Google" job within a second or two, with the name, phone
+     * and address (Jose, 2026-10-09: "is there anyway to get information on
+     * these?"). Workiz's booked_at is the branch's wall clock, so the two
+     * instants differ by a whole number of hours; matched to within two
+     * minutes of one, and only when exactly one job fits.
+     */
+    private function fillGoogleBookings(TenantContext $tenant, ?Carbon $since): int
+    {
+        $filled = 0;
+        $orgs = Lead::query()->withoutGlobalScopes()
+            ->where('source', Lead::SOURCE_LOCAL_SERVICES)->where('lead_type', 'BOOKING')->whereNull('phone')
+            ->when($since, fn ($q) => $q->where('received_at', '>=', $since))
+            ->distinct()->pluck('organization_id');
+
+        foreach (Organization::query()->withoutGlobalScopes()->whereIn('id', $orgs)->get() as $organization) {
+            $tenant->run($organization, function () use ($since, &$filled) {
+                $leads = Lead::query()->where('source', Lead::SOURCE_LOCAL_SERVICES)->where('lead_type', 'BOOKING')
+                    ->whereNull('phone')->whereNotNull('received_at')
+                    ->when($since, fn ($q) => $q->where('received_at', '>=', $since))->get();
+                if ($leads->isEmpty()) {
+                    return;
+                }
+                $jobs = WorkizJob::query()->where('job_source', 'Reserve with Google')
+                    ->where('booked_at', '>=', $leads->min('received_at')->copy()->subDay())->get();
+
+                foreach ($leads as $lead) {
+                    $at = $lead->received_at->getTimestamp();
+                    $fits = $jobs->filter(function (WorkizJob $job) use ($at) {
+                        $wall = Carbon::parse((string) $job->getRawOriginal('booked_at'), 'UTC')->getTimestamp();
+                        $hours = round(($at - $wall) / 3600);
+
+                        return $hours >= 0 && $hours <= 12 && abs($at - $wall - $hours * 3600) <= 120;
+                    });
+                    if ($fits->count() !== 1) {
+                        continue;
+                    }
+                    $job = $fits->first();
+                    $p = (array) $job->payload;
+                    $phone = Lead::e164($p['Phone'] ?? null);
+                    $lead->forceFill([
+                        'contact_name' => $lead->contact_name ?: (trim(($p['FirstName'] ?? '').' '.($p['LastName'] ?? '')) ?: null),
+                        'phone' => $phone,
+                        'phone_digits' => Lead::digits($phone),
+                        'email' => $lead->email ?: (trim((string) ($p['Email'] ?? '')) ?: null),
+                        'postal_code' => $lead->postal_code ?: $job->postal_code,
+                        'job_id' => $lead->job_id ?? $job->job_id,
+                        'job_matched_by' => $lead->job_matched_by ?? 'google',
+                        'status' => $lead->status === Lead::STATUS_NEW ? Lead::STATUS_COMPLETED : $lead->status,
+                    ])->save();
+                    $filled++;
+                }
+            });
+        }
+
+        return $filled;
+    }
+
 }

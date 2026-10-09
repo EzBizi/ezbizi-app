@@ -125,4 +125,36 @@ class MatchLeadsToJobsTest extends TestCase
         $this->assertNull($mine->job_matched_by);
         $this->assertNull(Lead::withoutGlobalScopes()->find($late->id)->job_id);
     }
+
+    /** Jose, 2026-10-09: an LS Booking arrives empty; Workiz's Reserve with Google job has the customer. */
+    public function test_a_google_booking_is_filled_from_its_reserve_with_google_job(): void
+    {
+        $job = $this->job('600030001');
+        $this->inTenant($this->t['org'], function () use ($job) {
+            foreach ([['11:25:12', 'Chynna', '2158472619', $job->id], ['09:02:00', 'Logan', '2149068445', null]] as [$wall, $first, $phone, $jobId]) {
+                WorkizJob::create([
+                    'franchise_id' => $this->t['franchise']->id, 'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+                    'job_id' => $jobId, 'job_source' => 'Reserve with Google', 'postal_code' => '08108',
+                    // Workiz's booked_at is the branch's wall clock, not UTC.
+                    'booked_at' => "2026-09-28 {$wall}", 'status' => 'Submitted', 'synced_at' => now(),
+                    'payload' => ['FirstName' => $first, 'LastName' => 'Doe', 'Phone' => $phone],
+                ]);
+            }
+        });
+        $booking = $this->inTenant($this->t['org'], fn () => Lead::create([
+            'organization_id' => $this->t['org']->id, 'source' => 'local_services', 'remote_id' => 'b1',
+            'lead_type' => 'BOOKING', 'status' => Lead::STATUS_NEW,
+            'received_at' => Carbon::parse('2026-09-28 15:25:13'),   // 11:25:12 Eastern, a second later
+        ]));
+
+        $this->artisan('ezbizi:match-leads-to-jobs')->assertSuccessful();
+
+        $booking = $this->inTenant($this->t['org'], fn () => $booking->refresh());
+        $this->assertSame('Chynna Doe', $booking->contact_name);
+        $this->assertSame('+12158472619', $booking->phone);
+        $this->assertSame('08108', $booking->postal_code);
+        $this->assertSame($job->id, $booking->job_id);
+        $this->assertSame(Lead::STATUS_COMPLETED, $booking->status);
+    }
+
 }
