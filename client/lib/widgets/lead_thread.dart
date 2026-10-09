@@ -995,13 +995,15 @@ class _LeadThreadState extends State<LeadThread> {
     final latest = jobs.isEmpty
         ? ''
         : formatJobWhen(jobs.first['when'] as String?);
+    // Green: a known customer is good news (Jose, 2026-10-09).
+    final green = ToneColours.of(context, Tone.ok);
 
     return Container(
       key: const ValueKey('lead-customer'),
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: green.fill,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -1009,7 +1011,7 @@ class _LeadThreadState extends State<LeadThread> {
         children: [
           Row(
             children: [
-              Icon(Icons.person_outline, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.person_outline, size: 18, color: green.ink),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -1019,7 +1021,7 @@ class _LeadThreadState extends State<LeadThread> {
                     total == 0 ? 'No jobs yet' : total == 1 ? '1 job' : '$total jobs',
                     if (!_customerOpen && latest.isNotEmpty) 'last $latest',
                   ].join(' · '),
-                  style: theme.textTheme.titleSmall,
+                  style: theme.textTheme.titleSmall?.copyWith(color: green.ink),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
