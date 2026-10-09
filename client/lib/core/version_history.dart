@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0398',
+      date: '9 Oct 2026',
+      items: [
+        'Leads: website form messages show one field per line with a small icon, without the website\'s robot-check code. Ratings from the review link show as Bad Rating or Good Rating instead of Form.',
+        'Settings › Integrations: where another module is the place to connect (Newsletter, Marketing or Leads), there\'s now a button that opens it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0397',
       date: '8 Oct 2026',
       items: [
