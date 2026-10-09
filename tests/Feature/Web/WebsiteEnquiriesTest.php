@@ -496,6 +496,28 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertNull($lead->marketing_consent_at, 'an Elementor form records no marketing consent');
     }
 
+    /** Jose, 2026-10-09: no captcha token in the thread; a field per line with its mark; ratings named. */
+    public function test_a_form_reads_field_by_field_without_the_robot_check(): void
+    {
+        [$tenant, $token] = $this->siteWithToken();
+
+        $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
+            'host' => 'a-1chimney.com',
+            'fields' => ['First Name' => 'Laura', 'Phone Number' => '2162245383', 'cf-turnstile-response' => '1.XE0gJwM-long-token'],
+        ])->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
+            'host' => 'a-1chimney.com',
+            'fields' => ['Rating' => 'Not happy', 'What happened?' => 'Late'],
+        ])->assertCreated();
+
+        $this->inTenant($tenant['org'], function () {
+            $text = LeadConversation::query()->orderBy('created_at')->orderBy('id')->pluck('text')->all();
+            $this->assertContains("👤 First Name: Laura\n\n📞 Phone Number: 2162245383", $text);
+            $this->assertStringNotContainsString('turnstile', implode(' ', $text));
+            $this->assertSame(['BAD_RATING'], Lead::query()->whereNotNull('lead_type')->pluck('lead_type')->all());
+        });
+    }
+
     public function test_a_wrong_token_passes_nothing_on(): void
     {
         $this->siteWithToken();

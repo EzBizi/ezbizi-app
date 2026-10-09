@@ -1947,6 +1947,16 @@ class _SourceBadge extends StatelessWidget {
 /// The source tag's word: Google says which kind, as A1 Leads does - LS Call,
 /// LS Text or LS Booking (Jose, 2026-09-29).
 String leadSourceWord(Map<String, dynamic> lead) {
+  // The review link's faces form (Jose, 2026-10-09: "Bad Rating or Good
+  // Rating depending on the outcome").
+  if (lead['source'] == 'website_form') {
+    switch (lead['lead_type']) {
+      case 'BAD_RATING':
+        return 'Bad Rating';
+      case 'GOOD_RATING':
+        return 'Good Rating';
+    }
+  }
   if (lead['source'] != 'local_services') {
     return sourceBadgeWord(lead['source'] as String?);
   }

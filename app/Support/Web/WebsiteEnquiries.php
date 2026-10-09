@@ -237,6 +237,35 @@ final class WebsiteEnquiries
     }
 
     /**
+     * The site's own robot check (Cloudflare Turnstile, reCAPTCHA, hCaptcha)
+     * rides along as a form field; its token is noise in the thread (Jose,
+     * 2026-10-09: "it should be hidden").
+     */
+    public static function isRobotCheck(string $label): bool
+    {
+        return preg_match('/turnstile|recaptcha|captcha/i', $label) === 1;
+    }
+
+    /** An emoji before each field, by what the label says it is (Jose, 2026-10-09). */
+    public static function fieldMark(string $label): string
+    {
+        $mark = match (true) {
+            (bool) preg_match('/rating/i', $label) => '⭐',
+            (bool) preg_match('/e-?mail/i', $label) => '✉️',
+            (bool) preg_match('/phone|mobile|cell|tel/i', $label) => '📞',
+            (bool) preg_match('/name/i', $label) => '👤',
+            (bool) preg_match('/date|day/i', $label) => '📅',
+            (bool) preg_match('/time|window/i', $label) => '🕒',
+            (bool) preg_match('/address|street|city|state|zip|postal/i', $label) => '📍',
+            (bool) preg_match('/service|need|job|work/i', $label) => '🛠️',
+            (bool) preg_match('/note|message|comment|detail|describe|happened/i', $label) => '📝',
+            default => '▫️',
+        };
+
+        return $mark.' ';
+    }
+
+    /**
      * A submitted form, as one lead carrying one message.
      *
      * The fields are rendered into the message body rather than stored as their
@@ -251,13 +280,21 @@ final class WebsiteEnquiries
         $remoteId = 'form_'.Str::uuid()->toString();
         $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
+        // The review link's faces form sends a Rating: a rating, not an enquiry
+        // (Jose, 2026-10-09). Only "Not happy" comes here today; happy goes to Google.
+        if (isset($fields['Rating'])) {
+            $lead->forceFill([
+                'lead_type' => stripos((string) $fields['Rating'], 'not') === false ? 'GOOD_RATING' : 'BAD_RATING',
+            ])->save();
+        }
+
         $lines = [];
 
         foreach ($fields as $label => $value) {
             $value = trim((string) $value);
 
-            if ($value !== '') {
-                $lines[] = $label.': '.$value;
+            if ($value !== '' && ! self::isRobotCheck((string) $label)) {
+                $lines[] = self::fieldMark((string) $label).$label.': '.$value;
             }
         }
 
@@ -265,7 +302,8 @@ final class WebsiteEnquiries
             'channel' => self::CHANNEL_FORM,
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => now(),
-            'text' => implode("\n", $lines),
+            // A blank line between fields, so each reads on its own (Jose, 2026-10-09).
+            'text' => implode("\n\n", $lines),
             'attachments' => $attachments === [] ? null : $attachments,
         ]);
 
