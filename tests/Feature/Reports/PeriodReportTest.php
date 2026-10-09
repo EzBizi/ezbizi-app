@@ -45,7 +45,7 @@ class PeriodReportTest extends TestCase
 
         $html = app(PeriodReport::class)->html($f, '2026-09-21', '2026-09-27');
 
-        $this->assertStringContainsString('Connecticut · Weekly Report · Sep 21 – Sep 27, 2026', $html);
+        $this->assertStringContainsString('Alpha Co · Weekly Report · Sep 21 – Sep 27, 2026', $html);
         $this->assertStringContainsString($this->row('LS Ads', '2', '1', '1', '0', '0.0%', '$400.00', '$400.00'), $html);
         $this->assertStringContainsString($this->row('GMB', '0', '1', '100.0%', '$0.00', '—'), $html);
         $this->assertStringContainsString($this->row('Ann', '1', '1', '50.0%', '$400.00', '$400.00', '$400.00'), $html);
@@ -68,7 +68,7 @@ class PeriodReportTest extends TestCase
 
         $html = app(PeriodReport::class)->html($f, '2026-09-01', '2026-09-30');
 
-        $this->assertStringContainsString('Connecticut · Monthly Report · September 2026', $html);
+        $this->assertStringContainsString('Alpha Co · Monthly Report · September 2026', $html);
         $this->assertStringContainsString($this->row('7 Sep - 13 Sep', '$1,000.00', '$250.00', '$750.00'), $html);
         $this->assertStringContainsString($this->row('—', '—', '—', '—'), $html);
         $this->assertStringContainsString('Week 14 Sep - 20 Sep is not in the Airtable P&amp;L yet.', $html);

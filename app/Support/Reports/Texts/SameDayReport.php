@@ -40,7 +40,7 @@ final class SameDayReport
         $zone = self::zone($branch);
 
         $lines = [
-            "*{$branch->name} · Same-Day Report*",
+            '*'.BranchName::of($branch).' · Same-Day Report*',
             self::dateLabel($date),
             self::asOf($date, $zone),
             '',
@@ -97,7 +97,7 @@ final class SameDayReport
                 'new' => $f['reviews']['new'] ?? null,
             ];
 
-            $rows[] = "• *{$branch->name}:* {$row['jobs']} jobs · {$row['completed']} completed · "
+            $rows[] = '• *'.BranchName::of($branch).":* {$row['jobs']} jobs · {$row['completed']} completed · "
                 ."{$row['canceled']} canceled · ".self::money($row['sales']).' sales · '
                 .self::money($row['deposits']).' deposits · '.self::count($row['new']).' new reviews';
 

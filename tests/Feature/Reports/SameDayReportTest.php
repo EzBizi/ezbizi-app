@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Franchise;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Models\WorkizTeamMember;
+use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,7 +61,7 @@ class SameDayReportTest extends TestCase
         });
 
         $this->assertSame(implode("\n", [
-            '*Alpha F1 · Same-Day Report*',
+            '*Alpha Co · Same-Day Report*',
             'Mon, Oct 5, 2026',
             '_Current through 9:00 PM EDT_',
             '',
@@ -126,9 +128,24 @@ class SameDayReportTest extends TestCase
             '*Total: 1 job*',
             '',
             '*Company summary*',
-            '• *Alpha F1:* 1 jobs · 1 completed · 0 canceled · $300.00 sales · $250.00 deposits · — new reviews',
+            '• *Alpha Co:* 1 jobs · 1 completed · 0 canceled · $300.00 sales · $250.00 deposits · — new reviews',
             '*All companies:* 1 jobs · 1 completed · 0 canceled · $300.00 sales · $250.00 deposits · — new reviews',
         ]), SameDayReport::summary($t['org'], '2026-10-05'));
+    }
+
+    /** Jose, 2026-10-09: "they all say main or texas, u cant tell which company they belong to". */
+    public function test_a_branch_is_named_by_its_company(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->assertSame('Alpha Co', BranchName::of($t['franchise']));
+
+        $second = $this->inTenant($t['org'], fn () => Franchise::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'name' => 'Texas', 'is_active' => true,
+        ]));
+
+        $this->assertSame('Alpha Co · Texas', BranchName::of($second));
+        $this->assertSame('Alpha Co · Alpha F1', BranchName::of($t['franchise']));
     }
 
     private function job($franchise, array $attributes): void
