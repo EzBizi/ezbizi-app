@@ -62,7 +62,9 @@ class LeadsRead extends Command
                     // and tag them appropriately ... this one is clearly not a
                     // lead"). Only a lead nobody has decided on yet.
                     $before = $lead->status;
-                    $junk = $answer['classification'] === LeadInsights::ARCHIVE && $before === Lead::STATUS_NEW;
+                    // Its own flag, not ARCHIVE: Grok files a declined quote or a
+                    // service we may not offer as ARCHIVE too, and those are people.
+                    $junk = $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
 
                     $lead->forceFill([
                         'status' => $junk ? Lead::STATUS_NOT_A_LEAD : $before,

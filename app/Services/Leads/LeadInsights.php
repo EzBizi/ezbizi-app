@@ -85,7 +85,7 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, zip: ?string}|null
+     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
@@ -107,7 +107,10 @@ class LeadInsights
             ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
             ."- name: the CUSTOMER's own full name only if they clearly say it; never a staff member, "
             ."never the business; null if not said.\n"
-            ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise."
+            ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
+            ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
+            ."something, a robocall, a wrong number, or a job applicant. A real person asking about any "
+            ."service, even one we may not offer, or who declined a price, is false."
             ."\n\n".$thread,
             [
                 'type' => 'object',
@@ -116,8 +119,9 @@ class LeadInsights
                     'summary' => ['type' => 'string'],
                     'name' => ['type' => ['string', 'null']],
                     'zip' => ['type' => ['string', 'null']],
+                    'not_a_lead' => ['type' => 'boolean'],
                 ],
-                'required' => ['classification', 'summary', 'name', 'zip'],
+                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead'],
                 'additionalProperties' => false,
             ],
         );
@@ -131,6 +135,7 @@ class LeadInsights
             'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
             'name' => $name !== '' ? mb_substr($name, 0, 120) : null,
             'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
+            'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
         ];
     }
 

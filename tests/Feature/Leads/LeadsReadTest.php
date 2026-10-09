@@ -48,7 +48,7 @@ class LeadsReadTest extends TestCase
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'classification' => 'BOOK', 'summary' => 'Wants a chimney inspection.',
-            'name' => 'Kassandra Stone', 'zip' => '19020',
+            'name' => 'Kassandra Stone', 'zip' => '19020', 'not_a_lead' => false,
         ]]))]);
 
         $named = $this->callLead('Already Known', 'Hi this is Kassandra, zip 19020, I need an inspection');
@@ -71,7 +71,7 @@ class LeadsReadTest extends TestCase
     public function test_spam_is_tagged_not_a_lead(): void
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
-            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null,
+            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null, 'not_a_lead' => true,
         ]]))]);
         $form = $this->inTenant($this->t['org'], function () {
             $lead = Lead::create([
