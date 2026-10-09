@@ -48,7 +48,9 @@ final class NumberNames
             array_push($spellings, '+1'.$d, $d, '1'.$d, "($a) $b-$c", "$a-$b-$c", "$a.$b.$c", "+1 ($a) $b-$c", "$a $b $c");
         }
 
-        // In order of precedence: the first kind to claim a number keeps it.
+        // In order of precedence: the first kind to claim a number keeps it,
+        // and within customers the oldest record, so duplicates resolve the
+        // same way every time.
         $found = [];
         $claim = function (iterable $rows, string $kind, string $nameField, string $phoneField) use (&$found, $byDigits) {
             foreach ($rows as $row) {
@@ -61,7 +63,7 @@ final class NumberNames
             }
         };
 
-        $claim(Customer::query()->whereIn('phone', $spellings)->get(['id', 'name', 'phone']), self::CUSTOMER, 'name', 'phone');
+        $claim(Customer::query()->whereIn('phone', $spellings)->oldest()->get(['id', 'name', 'phone']), self::CUSTOMER, 'name', 'phone');
         $claim(
             Lead::query()
                 ->whereIn('phone_digits', array_merge($tens, array_map(fn ($d) => '1'.$d, $tens)))
