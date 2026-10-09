@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 72 · Reports · Report Builder with a live preview — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/report-builder-preview-layouts.html`)
+### 72 · Reports · Report Builder with a live preview — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — building once Reports' `POST /reports/preview` (78d536fc) is on main (`docs/previews/report-builder-preview-layouts.html`)
 
 Jose 2026-10-09, relayed by the desk: *"i also want a preview view, as you select the items and be able to order them
 too"*. Today: a module tree, then a name, a Columns list with no reordering, plain filter rows and Save; nothing shows
@@ -2977,8 +2977,20 @@ builder (add column at the end of the header, header menus); **3** four steps wi
 (recommended) as 1 stacked, preview on top, columns as a drag list; **5** the table with header menus; **6** one step
 per screen. Reports owns the backend (preview rows, grouping, totals) and is listing the options against Workiz's
 builder; the list fills these menus and does not move the layout.
+Build notes from Reports (2026-10-09), all accepted by preview and save:
+- `POST /api/v1/reports/preview` `{definition}` → `{data: {columns:[{key,label,type}], rows (first 25), count, capped}}`;
+  422 `errors.definition` in words; 403 without reports.build. Column order = `definition.columns` order (78d536fc).
+- `columns[].label` renames a column; `sort: [{resource, column, dir}]` several keys; a computed column refuses to
+  sort (422); `GET /api/v1/reports/{id}/csv` downloads a saved report (cfb7f7b5).
+- filters `{resource, column, op, value}`: eq ne lt lte gt gte contains (one value), in / not_in (list), between
+  ([from, to]), empty / not_empty (none), period (today … last_year, weeks from Monday, org timezone); `match:
+  'all'|'any'` (59d8a2dd).
+- `group: [{resource, column, bucket?: day|week|month, label?}]` (max 2), `totals: [{fn: count}]` or
+  `[{resource, column, fn: count|sum|avg|min|max, label?}]`. With either, `columns` is ignored: columns = group keys
+  then totals, rows = one per group (largest first), `total` = grand total; totals alone → rows empty. Money in minor
+  units (2e1ae9d7).
 
-### 71 · Reports · Performance · the inner tabs — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/reports-performance-inner-tabs-layouts.html`)
+### 71 · Reports · Performance · the inner tabs — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-inner-tabs-layouts.html`)
 
 Jose 2026-10-09, with four screenshots: *"I feel like this performance screen is a mess, specially the inner tabs, so
 please review them all and make a better ui ux"*. Today a call is small text with its own empty audio bar across the
@@ -2990,6 +3002,10 @@ Convert to booked and the AI reason on the row. Desktop **1** same three tabs ti
 filtered (recommended); **2** list with the chosen call beside it; **3** one page, figures as the filters, people as
 chips. Phone **4** (recommended) as 1, calls as cards, one sideways filter strip; **5** short rows that open in place;
 **6** one page. Owner: Reports (`experimental_call_report.dart`).
+
+Built: the bar keeps Jose's word Missed (his tile name) rather than "Reached nobody", and the figures keep his
+2026-10-05 order (seven tiles), restyled white. The ▶ on a row opens the recording under it and plays at once
+(RecordingPlaybackBar's new `autoplay`); one open at a time, closing stops it. AI reasons stay a line under the row.
 
 ### 70 · Empty screens: one way to say "nothing here yet" — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`client/lib/widgets/empty_state.dart`; owners adopt it, inbox 0103) (`docs/previews/empty-states-layouts.html`)
 

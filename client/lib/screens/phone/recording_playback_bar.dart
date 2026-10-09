@@ -33,6 +33,7 @@ class RecordingPlaybackBar extends StatefulWidget {
     required this.player,
     required this.load,
     this.dense = false,
+    this.autoplay = false,
   });
 
   final RecordingPlayer player;
@@ -44,6 +45,10 @@ class RecordingPlaybackBar extends StatefulWidget {
   /// A tighter version for a message row, where the bar sits inside a card
   /// that already has its own padding.
   final bool dense;
+
+  /// Starts playing as soon as the bar is drawn, for a list that opens the
+  /// bar from its own play button (Reports' calls, UI queue 71).
+  final bool autoplay;
 
   @override
   State<RecordingPlaybackBar> createState() => _RecordingPlaybackBarState();
@@ -74,6 +79,16 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
 
   /// Retrying while Windows has nowhere to play to - see [_waitForOutput].
   Timer? _waiting;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoplay) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _press();
+      });
+    }
+  }
 
   @override
   void dispose() {

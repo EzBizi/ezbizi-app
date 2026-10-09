@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
@@ -156,8 +157,8 @@ void main() {
 
     // Both reasons, counted, and neither answered call. Spam is not a
     // reason any more: the server drops it (Jose, 2026-10-05).
-    expect(find.text('Missed call (1)'), findsOneWidget);
-    expect(find.text('Voicemail (1)'), findsOneWidget);
+    expect(find.text('Missed call 1'), findsOneWidget);
+    expect(find.text('Voicemail 1'), findsOneWidget);
     expect(find.byKey(const ValueKey('nobody-spam')), findsNothing);
     expect(find.textContaining('Burst pipe'), findsOneWidget);
     expect(find.textContaining('Silent line'), findsOneWidget);
@@ -175,7 +176,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('missed-client-new')));
+    await tester.tap(find.byKey(const ValueKey('calls-filter-new')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Burst pipe'), findsOneWidget);
@@ -412,6 +413,58 @@ void main() {
     // Ada has two calls and one recording between them. A missing recording is
     // an ordinary state, not a failure, and must not draw a dead transport.
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+  });
+
+  // ── one row per call (UI queue 71) ────────────────────────────
+
+  testWidgets('a recording opens under its call only when played', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+
+    // It was an empty bar under every call, stretched across the page.
+    expect(find.byType(RecordingPlaybackBar), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('listen-rec-1')));
+    await tester.pump();
+    expect(find.byType(RecordingPlaybackBar), findsOneWidget);
+  });
+
+  testWidgets('Booked narrows Calls to the calls that became a job', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+
+    await tester.tap(find.byKey(const ValueKey('calls-filter-booked')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Blocked drain'), findsOneWidget);
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+  });
+
+  testWidgets('a line name ending in its queue says the queue once', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      width: 1400,
+      view: 'Calls',
+      report: () => {
+        ..._report,
+        'calls': [
+          for (final call in _report['calls'] as List)
+            if ((call as Map)['id'] == 'c1')
+              {...call, 'caller_label': 'NJ - LS Ads - A1 - New Client'}
+            else
+              call,
+        ],
+      },
+    );
+
+    // "NJ - LS Ads - A1 - New Client · A1 - New Client" was the row; the
+    // queue is the New client badge.
+    expect(find.text('NJ · LS Ads'), findsOneWidget);
+    expect(find.textContaining('A1 - New Client'), findsNothing);
   });
 
   // ── the sticky header ──────────────────────────────────────────
