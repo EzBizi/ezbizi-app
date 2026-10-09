@@ -663,23 +663,24 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
-  testWidgets('Experimental is still reachable when Builder is absent', (
+  testWidgets('a phone reaches Performance beside the Builder', (
     tester,
   ) async {
-    // The chips SHIFT when Builder is missing, so an index remembered from the
-    // three-chip layout would land on the wrong destination. Resolved by name.
-    //
-    // Builder is dropped by WIDTH here rather than by permission, because
-    // Experimental needs `reports.build` too - dropping the permission would
-    // drop both chips and leave this test with nothing to shift.
+    // This was "Experimental is still reachable when Builder is absent", with
+    // Builder dropped by WIDTH. A phone has the Builder since UI queue 72, so
+    // nothing shifts by width any more; what stays is that the chip is found
+    // by name, past the edge of a phone's strip.
     await _pumpReports(tester, reports: [_report], width: 375);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    final chip = find.widgetWithText(ChoiceChip, 'Performance');
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
     await tester.pumpAndSettle();
 
-    // Reached the Experimental pane, not the Builder that used to sit at this
-    // index when all three chips were present. The day bar is the pane's own
-    // furniture and renders whether or not the request succeeds.
+    // Reached the Experimental pane, not the Builder beside it. The day bar
+    // is the pane's own furniture and renders whether or not the request
+    // succeeds.
     expect(find.byIcon(Icons.chevron_left), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Name this report'), findsNothing);
   });
@@ -702,15 +703,13 @@ void main() {
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
   });
 
-  testWidgets('a narrow screen says reports are built on a computer', (
-    tester,
-  ) async {
+  testWidgets('a phone builds reports too', (tester) async {
     await _pumpReports(tester, reports: [_report], width: 375);
 
-    // A phone runs what a desk built. It still holds reports.build here, and
-    // is told why the builder is absent rather than left wondering.
-    expect(find.text('New report'), findsNothing);
-    expect(find.textContaining('built on a computer'), findsOneWidget);
+    // It used to say reports are built on a computer. The builder stacks on
+    // a phone now, its preview on top (UI queue 72).
+    expect(find.text('New report'), findsOneWidget);
+    expect(find.textContaining('built on a computer'), findsNothing);
   });
   // ── each tab is its own grant (Jose, 2026-09-17) ───────────────
 

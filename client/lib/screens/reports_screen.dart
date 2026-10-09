@@ -20,14 +20,12 @@ import 'reports/work_hours_report_panel.dart';
 ///
 /// ── Two surfaces, not one that adapts ────────────────────────────
 ///
-/// Above [buildAbove] this is Jose's option 1 — a field tree beside the report.
-/// Below it, option 5: a phone RUNS what a desk built. That is two designs
-/// rather than a breakpoint on one, and it is UI/UX's ruling: an unlimited-hop
-/// field picker at 375px would be a worse copy of a control that already works,
-/// and offering it invites somebody to start a report they cannot finish.
-///
-/// A narrow screen therefore says so, rather than hiding the builder and
-/// leaving a person who holds `reports.build` wondering where it went.
+/// The builder works at any width (UI queue 72, 2026-10-09): above
+/// [ReportBuilder.sideBySide] the fields sit beside the report; narrower, a
+/// phone stacks the preview, the columns and the options. It replaces the
+/// earlier ruling that a phone only RUNS what a desk built, because the
+/// builder now shows its own result as it is made, so a report started on a
+/// phone can be finished there.
 ///
 /// ── Build and run are different surfaces, not one with a mode ────
 ///
@@ -176,8 +174,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final canExperiment = widget.session.me?.can('reports.build') ?? false;
-        final canBuildHere =
-            canExperiment && constraints.maxWidth >= ReportsScreen.buildAbove;
+        // Any width since UI queue 72: a phone has its own stacked builder.
+        final canBuildHere = canExperiment;
 
         return Padding(
           padding: const EdgeInsets.all(16),
@@ -222,9 +220,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   /// Builder is absent rather than disabled where it cannot be used - without
-  /// `reports.build`, and below the split where a phone runs what a desk
-  /// built. The same rule as the New report control: a chip leading to a
-  /// refusal tells somebody the app is for other people.
+  /// `reports.build`. The same rule as the New report control: a chip leading
+  /// to a refusal tells somebody the app is for other people.
   ///
   /// Experimental follows the same rule on the PERMISSION but not on the
   /// width. Its endpoint is gated on `reports.build` because the report names
@@ -400,8 +397,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // In place rather than a dialog: the development rules allow screens and
     // side panels only, and a table inside a modal is unreadable on a phone.
     final canExperiment = widget.session.me?.can('reports.build') ?? false;
-    final canBuildHere =
-        canExperiment && constraints.maxWidth >= ReportsScreen.buildAbove;
+    final canBuildHere = canExperiment;
 
     final chips = _chips(
       canBuildHere: canBuildHere,
@@ -567,10 +563,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ],
                 ),
         ),
-        if ((widget.session.me?.can('reports.build') ?? false) && !wide) ...[
-          const SizedBox(height: 12),
-          _builtOnAComputer(context),
-        ],
       ],
     );
   }
@@ -1039,14 +1031,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _builtOnAComputer(BuildContext context) {
-    return Text(
-      'Reports are built on a computer. You can run any of them here.',
-      style: Theme.of(context).textTheme.bodySmall,
-      textAlign: TextAlign.center,
     );
   }
 }
