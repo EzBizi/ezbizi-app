@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0401',
+      date: '9 Oct 2026',
+      items: [
+        'Android: anyone who refused location is no longer pulled out of the browser in the middle of a sign-in. EzBizi now asks for location only while it is on screen, and only once.',
+        'Communication: Messages, Recent calls and Voicemail now name the other person (a customer, lead or colleague) with the number under it, and leads are tagged Lead. A number with no name shows a phone icon.',
+        'Voicemail gives the transcription advice once above the list instead of under every message.',
+        'WhatsApp reports and their groups are named by company (e.g. Air 75, or A-1 Chimney · Texas) instead of just the branch.',
+        'Leads: Google Local Services bookings now show the customer\'s name, phone and ZIP, taken from the matching Reserve with Google booking in Workiz, and link to the job.',
+        'Recordings can now play at 1.5× or 2× speed. Calls in a lead\'s conversation are tidier: who called, how long and when at a glance, with the transcript underneath.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0400',
       date: '9 Oct 2026',
       items: [
