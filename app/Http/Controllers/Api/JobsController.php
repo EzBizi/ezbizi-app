@@ -235,12 +235,7 @@ class JobsController extends Controller
 
         $jobs = $query->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
-        $meta = [
-            'total'        => $jobs->total(),
-            'per_page'     => $jobs->perPage(),
-            'current_page' => $jobs->currentPage(),
-            'last_page'    => $jobs->lastPage(),
-        ];
+        $meta = $this->pageMeta($jobs);
 
         // On the first page only. "Load more" changes no count, and each one
         // is a query of its own.

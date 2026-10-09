@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
-import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'device_display.dart';
 import 'machine_card.dart';
@@ -39,12 +38,6 @@ class PcSpecsTab extends StatefulWidget {
   static const double splitAbove = 720;
 
   static const double panelWidth = 320;
-
-  /// A device silent longer than this draws as offline. Independent of the
-  /// server's own `monitoring.offline_after_seconds` (DeviceOfflineWorker) —
-  /// that setting decides when `monitoring.device_offline` FIRES, a much
-  /// heavier consequence than a dot's colour, so the two are free to differ.
-  static const Duration onlineWithin = Duration(minutes: 5);
 
   /// The exact sentence a capability without `specs` draws. A literal, not
   /// composed per-platform: the layout the owner chose (docs/previews/
@@ -129,18 +122,9 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
     });
   }
 
-  bool _isOnline(Map<String, dynamic> device) {
-    final seenRaw = device['last_seen_at'] as String?;
-    if (seenRaw == null) return false;
-    final seen = DateTime.tryParse(seenRaw);
-    if (seen == null) return false;
-    return DateTime.now().toUtc().difference(seen.toUtc()) <=
-        PcSpecsTab.onlineWithin;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final people = _groupByPerson(_devices);
+    final people = groupByPerson(_devices);
     final shown = _matching(people);
 
     // A selection survives a refresh but not a filter that hides it: a panel
@@ -167,7 +151,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
               const SizedBox(height: 12),
               _MachineGrid(
                 people: shown,
-                isOnline: _isOnline,
+                isOnline: isDeviceOnline,
                 session: widget.session,
                 selectedPersonId: _selectedPersonId,
                 onSelect: (id) => setState(
@@ -180,7 +164,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
           );
 
           final panel = selected == null
-              ? _GlancePanel(people: people, isOnline: _isOnline)
+              ? _GlancePanel(people: people, isOnline: isDeviceOnline)
               : _selectedDetail(selected);
 
           if (!wide) {
@@ -211,7 +195,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
 
   /// The people whose name, machine name or active window matches [_query].
   /// An empty query matches everybody rather than nobody.
-  List<_Person> _matching(List<_Person> people) {
+  List<MonitoringPerson> _matching(List<MonitoringPerson> people) {
     final needle = _query.trim().toLowerCase();
     if (needle.isEmpty) return people;
 
@@ -233,8 +217,8 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
     }).toList();
   }
 
-  Widget _selectedDetail(_Person person) {
-    final device = currentDeviceFor(person.devices, _isOnline);
+  Widget _selectedDetail(MonitoringPerson person) {
+    final device = currentDeviceFor(person.devices, isDeviceOnline);
     final specs = device['specs'];
     final screen = device['screen_context'];
 
@@ -251,7 +235,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
                 child: const Text('Show everyone'),
               ),
             ),
-            _PersonBody(person: person, isOnline: _isOnline),
+            _PersonBody(person: person, isOnline: isDeviceOnline),
             const SizedBox(height: 12),
             MachineDetail(
               title: machineTitle(device),
@@ -321,7 +305,7 @@ class _MachineGrid extends StatelessWidget {
     required this.wide,
   });
 
-  final List<_Person> people;
+  final List<MonitoringPerson> people;
   final bool Function(Map<String, dynamic>) isOnline;
   final Session session;
   final String? selectedPersonId;
@@ -376,7 +360,7 @@ class _MachineGrid extends StatelessWidget {
     );
   }
 
-  Widget _cardFor(_Person person, {required bool reserveActivityLine}) {
+  Widget _cardFor(MonitoringPerson person, {required bool reserveActivityLine}) {
     final device = currentDeviceFor(person.devices, isOnline);
     final specs = device['specs'];
     final map =
@@ -409,7 +393,7 @@ class _MachineGrid extends StatelessWidget {
   /// grid replaced it: the count of a person's OTHER sessions is not visible
   /// anywhere on a card that shows only their current machine, and it is how
   /// somebody notices they are still signed in on a machine they left.
-  String? _sessionsFor(_Person person) {
+  String? _sessionsFor(MonitoringPerson person) {
     final active = person.devices.where(isOnline).length;
     final earlier = person.devices.length - (active > 0 ? active : 1);
     final suffix = earlier > 0 ? ' · $earlier earlier' : '';
@@ -473,7 +457,7 @@ Map<String, dynamic> currentDeviceFor(
   bool Function(Map<String, dynamic>) isOnline,
 ) {
   final active = devices.where(isOnline).toList()..sort(_byAgentThenRecency);
-  return active.isNotEmpty ? active.first : _mostRecentlySeen(devices);
+  return active.isNotEmpty ? active.first : mostRecentlySeen(devices)!;
 }
 
 /// What to call a machine: the name it reports for itself, falling back to the
@@ -485,35 +469,6 @@ String machineTitle(Map<String, dynamic> device) {
     if (name is String && name.trim().isNotEmpty) return name;
   }
   return friendlyDeviceName(device);
-}
-
-/// One person and the devices they are signed in from, in the order the
-/// server returned them (most recently seen first).
-class _Person {
-  _Person(this.id, this.name);
-
-  final String id;
-  final String name;
-  final List<Map<String, dynamic>> devices = [];
-}
-
-List<_Person> _groupByPerson(List<Map<String, dynamic>> devices) {
-  final byId = <String, _Person>{};
-  final order = <String>[];
-
-  for (final device in devices) {
-    final user = device['user'] as Map<String, dynamic>? ?? const {};
-    final id = user['id'] as String? ?? 'unknown';
-    final name = user['name'] as String? ?? 'Unknown';
-
-    final person = byId.putIfAbsent(id, () {
-      order.add(id);
-      return _Person(id, name);
-    });
-    person.devices.add(device);
-  }
-
-  return [for (final id in order) byId[id]!];
 }
 
 bool _declaresSpecs(Map<String, dynamic> device) =>
@@ -531,7 +486,7 @@ bool _declaresSpecs(Map<String, dynamic> device) =>
 /// different from one another, and core/timestamps.dart's [formatStamp] is
 /// deliberately NOT this — its own doc comment says a wrong "2 hours ago" is
 /// worse than an exact stamp, which is the opposite tradeoff a glance-only
-/// roster wants. So this stays here rather than reaching for either.
+/// roster wants. So the monitoring tabs share their own, [relativeAge].
 ///
 /// Public, and deliberately: FloorPlanSummary says "seen 3m ago" about the
 /// same `last_seen_at` stamp this roster does, and the General map and PC
@@ -539,17 +494,8 @@ bool _declaresSpecs(Map<String, dynamic> device) =>
 /// bug you could only find by holding the two tabs side by side. One
 /// formatter, imported, not a third copy.
 String seenAgo(String? iso) {
-  if (iso == null) return 'never';
-
-  final at = DateTime.tryParse(iso)?.toLocal();
-  if (at == null) return 'never';
-
-  final ago = DateTime.now().difference(at);
-  if (ago.isNegative || ago.inMinutes < 1) return 'just now';
-  if (ago.inMinutes < 60) return '${ago.inMinutes}m ago';
-  if (ago.inHours < 24) return '${ago.inHours}h ago';
-  if (ago.inHours < 48) return 'yesterday';
-  return '${ago.inDays}d ago';
+  final at = iso == null ? null : DateTime.tryParse(iso);
+  return at == null ? 'never' : relativeAge(at);
 }
 
 /// The module's human label, read from the session's own catalogue — the
@@ -575,7 +521,7 @@ String _moduleLabel(Session session, String key) {
 /// have none within [window]. Used to collapse the glance panel's "Desktop
 /// app" list to one line per person — their newest agent — while dropping
 /// anyone whose only agent device has gone quiet for longer than [window].
-Map<String, dynamic>? _mostRecentAgentWithin(_Person person, Duration window) {
+Map<String, dynamic>? _mostRecentAgentWithin(MonitoringPerson person, Duration window) {
   final cutoff = DateTime.now().toUtc().subtract(window);
   Map<String, dynamic>? best;
   DateTime? bestSeen;
@@ -616,7 +562,7 @@ num? _diskFreeGb(Map<String, dynamic> device) {
 class _PersonBody extends StatelessWidget {
   const _PersonBody({required this.person, required this.isOnline});
 
-  final _Person person;
+  final MonitoringPerson person;
   final bool Function(Map<String, dynamic>) isOnline;
 
   @override
@@ -634,7 +580,7 @@ class _PersonBody extends StatelessWidget {
     // signed out. Everything else folds into the stale group below.
     final shown = active.isNotEmpty
         ? active
-        : [_mostRecentlySeen(person.devices)];
+        : [mostRecentlySeen(person.devices)!];
     final shownIds = shown.map((d) => d['id']).toSet();
     final stale = [
       for (final device in person.devices)
@@ -672,27 +618,6 @@ class _PersonBody extends StatelessWidget {
       ],
     );
   }
-}
-
-/// The device to show for a person nobody is currently signed in as — max by
-/// `last_seen_at`, so the tile is never empty just because everyone is
-/// offline. A missing or unparseable stamp sorts as the oldest possible,
-/// the same treatment [seenAgo] gives it ("never").
-Map<String, dynamic> _mostRecentlySeen(List<Map<String, dynamic>> devices) {
-  var best = devices.first;
-  var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
-      DateTime.fromMillisecondsSinceEpoch(0);
-
-  for (final device in devices.skip(1)) {
-    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-    if (seen.isAfter(bestSeen)) {
-      best = device;
-      bestSeen = seen;
-    }
-  }
-
-  return best;
 }
 
 /// Agent devices (see [isDesktopAgent]) sort before everything else; within
@@ -771,29 +696,6 @@ String _chipLabel(Map<String, dynamic> device) {
   return platform.isEmpty ? label : '$platform $label';
 }
 
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.online});
-
-  final bool online;
-
-  @override
-  Widget build(BuildContext context) {
-    // A bolt and a struck-through bolt, not two coloured circles: colour was
-    // the ONLY thing separating online from offline here, which fails anyone
-    // who cannot tell this green from this grey, and fails everyone in a
-    // screenshot pasted into a ticket. The shape now carries the fact and the
-    // colour reinforces it.
-    return Icon(
-      online ? Icons.flash_on : Icons.flash_off,
-      size: 13,
-      color: online
-          ? EzBiziTheme.clockIn(context)
-          : Theme.of(context).colorScheme.outlineVariant,
-      semanticLabel: online ? 'Online' : 'Offline',
-    );
-  }
-}
-
 class _DeviceRow extends StatelessWidget {
   const _DeviceRow({super.key, required this.device, required this.online});
 
@@ -824,7 +726,7 @@ class _DeviceRow extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: _StatusDot(online: online),
+            child: StatusDot(online: online),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -948,7 +850,7 @@ class SpecsLine extends StatelessWidget {
 class _GlancePanel extends StatelessWidget {
   const _GlancePanel({required this.people, required this.isOnline});
 
-  final List<_Person> people;
+  final List<MonitoringPerson> people;
   final bool Function(Map<String, dynamic>) isOnline;
 
   /// Below this an agent device's free space earns a spot in the disk-low
@@ -969,7 +871,7 @@ class _GlancePanel extends StatelessWidget {
     final theme = Theme.of(context);
     final onlinePeople = people.where((p) => p.devices.any(isOnline)).length;
 
-    final agentDevices = <(_Person, Map<String, dynamic>)>[
+    final agentDevices = <(MonitoringPerson, Map<String, dynamic>)>[
       for (final person in people)
         for (final device in person.devices)
           if (_declaresSpecs(device)) (person, device),
@@ -985,7 +887,7 @@ class _GlancePanel extends StatelessWidget {
     // rows here. Each line is that person's own most-recently-seen agent
     // device, and a device that has not reported in over a day drops out
     // entirely rather than sitting here as permanent, meaningless noise.
-    final recentDesktopApps = <(_Person, Map<String, dynamic>)>[];
+    final recentDesktopApps = <(MonitoringPerson, Map<String, dynamic>)>[];
     for (final person in people) {
       final device = _mostRecentAgentWithin(person, recentAgentWindow);
       if (device != null) recentDesktopApps.add((person, device));
@@ -1072,7 +974,7 @@ class _GlancePanel extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          _StatusDot(online: isOnline(entry.$2)),
+                          StatusDot(online: isOnline(entry.$2)),
                         ],
                       ),
                     ),

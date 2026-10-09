@@ -597,10 +597,11 @@ class ActionRunner
      * THAT IS WHY THE EXPLICIT `MailTransport::Platform` CHECK EXISTS BELOW
      * rather than leaning on this throw. Anybody deleting it as redundant
      * should read the return path rather than the method name: all three wrong
-     * beliefs — that asTenant binds a tenant to their own domain, that
-     * `isTenantChoosable()` prevents it, that `canSend()` checks verification —
-     * were reasoned from a name or from a neighbouring guard, and none of them
-     * covered the resolver landing on Platform with nobody having chosen it.
+     * beliefs — that asTenant binds a tenant to their own domain, that a
+     * tenant-choosable flag on the transport prevents it, that `canSend()`
+     * checks verification — were reasoned from a name or from a neighbouring
+     * guard, and none of them covered the resolver landing on Platform with
+     * nobody having chosen it.
      *
      * The throw is still real and still caught, because an identity that DOES
      * require proof and lacks it raises — right for a controller and wrong

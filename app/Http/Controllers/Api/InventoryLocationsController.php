@@ -8,7 +8,6 @@ use App\Models\InventoryBalance;
 use App\Models\InventoryLocation;
 use App\Models\User;
 use App\Models\Vehicle;
-use App\Support\Fleet\VehicleVisibility;
 use App\Support\Inventory\InventoryLocationKind;
 use App\Support\Inventory\InventoryLocationStatus;
 use App\Support\Inventory\InventoryVisibility;
@@ -151,10 +150,7 @@ class InventoryLocationsController extends Controller
                 return $row;
             }),
             'meta' => [
-                'total' => $locations->total(),
-                'per_page' => $locations->perPage(),
-                'current_page' => $locations->currentPage(),
-                'last_page' => $locations->lastPage(),
+                ...$this->pageMeta($locations),
                 ...$this->tiles($user, $scope, $withMoney),
             ],
         ]);
@@ -465,7 +461,7 @@ class InventoryLocationsController extends Controller
 
     private function vehicleIsVisible(User $user, Vehicle $vehicle): bool
     {
-        return VehicleVisibility::constrain(
+        return InventoryVisibility::constrain(
             Vehicle::query()->whereKey($vehicle->getKey()),
             $user,
             ViewScope::forUser($user),
@@ -499,7 +495,7 @@ class InventoryLocationsController extends Controller
             'company_id' => ['nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['nullable', 'uuid', $this->existsInTenant('franchises')],
             'name' => $this->nameRules($request),
-            'kind' => ['required', 'string', Rule::in(InventoryLocationKind::values())],
+            'kind' => ['required', 'string', Rule::enum(InventoryLocationKind::class)],
             'vehicle_id' => $this->vehicleIdRules($request),
         ];
     }
@@ -511,8 +507,8 @@ class InventoryLocationsController extends Controller
             'company_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
             'name' => $this->nameRules($request, $location),
-            'kind' => ['sometimes', 'string', Rule::in(InventoryLocationKind::values())],
-            'status' => ['sometimes', 'string', Rule::in(InventoryLocationStatus::values())],
+            'kind' => ['sometimes', 'string', Rule::enum(InventoryLocationKind::class)],
+            'status' => ['sometimes', 'string', Rule::enum(InventoryLocationStatus::class)],
             'vehicle_id' => $this->vehicleIdRules($request, $location),
         ];
     }

@@ -144,6 +144,65 @@ final class GoogleToken
         return $access;
     }
 
+    /**
+     * Trade a consent callback's code for a grant: the one copy for the
+     * Google Ads, Business Profile and YouTube connections.
+     *
+     * `code_verifier` is sent only when one is given. YouTube connects with
+     * PKCE; the other two do not.
+     *
+     * @param  string  $service  the `config/services.php` key, as for forConnection()
+     * @param  string  $network  the name a refusal shows the customer
+     *
+     * @throws SocialOAuthRefused
+     */
+    public static function exchange(
+        string $service,
+        string $network,
+        string $code,
+        string $redirectUri,
+        ?string $verifier = null,
+    ): SocialOAuthGrant {
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
+                'https://oauth2.googleapis.com/token',
+                [
+                    'client_id' => (string) config("services.{$service}.client_id"),
+                    'client_secret' => (string) config("services.{$service}.client_secret"),
+                    'code' => $code,
+                    ...($verifier === null ? [] : ['code_verifier' => $verifier]),
+                    'grant_type' => 'authorization_code',
+                    'redirect_uri' => $redirectUri,
+                ],
+            );
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed($network);
+        }
+
+        if ($response->failed()) {
+            throw SocialOAuthRefused::exchangeFailed($network);
+        }
+
+        $access = $response->json('access_token');
+        $refresh = $response->json('refresh_token');
+
+        if (! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed($network);
+        }
+
+        if (! is_string($refresh) || $refresh === '') {
+            throw SocialOAuthRefused::noLastingPermission($network);
+        }
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: $refresh,
+            expiresIn: is_numeric($response->json('expires_in'))
+                ? (int) $response->json('expires_in')
+                : null,
+        );
+    }
+
     private static function label(string $service): string
     {
         return match ($service) {

@@ -223,11 +223,10 @@ class DashboardController extends Controller
     /**
      * What to render: saved order honoured, new reachable keys appended.
      *
-     * Same algorithm as the client's `panelsInSavedOrder`. A saved key that is
-     * not currently reachable is skipped here (not drawn) and kept in the
-     * preference. A reachable key the saved order has never heard of is
-     * appended — dropping the unnamed ones would make every new tab invisible
-     * to everybody who had ever rearranged their dashboard.
+     * A saved key that is not currently reachable is skipped here (not drawn)
+     * and kept in the preference. A reachable key the saved order has never
+     * heard of is appended — dropping the unnamed ones would make every new tab
+     * invisible to everybody who had ever rearranged their dashboard.
      *
      * @return list<array{key: string, presentation?: string, options?: array}>
      */

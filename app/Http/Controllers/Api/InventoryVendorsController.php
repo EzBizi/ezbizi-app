@@ -65,12 +65,7 @@ class InventoryVendorsController extends Controller
             'data' => collect($vendors->items())->map(
                 fn (InventoryVendor $vendor) => $this->present($vendor),
             ),
-            'meta' => [
-                'total' => $vendors->total(),
-                'per_page' => $vendors->perPage(),
-                'current_page' => $vendors->currentPage(),
-                'last_page' => $vendors->lastPage(),
-            ],
+            'meta' => $this->pageMeta($vendors),
         ]);
     }
 

@@ -17,9 +17,6 @@ class UiStrings {
     'shell.settings': 'Settings',
     'shell.your_account': 'Your account',
     'shell.sign_out': 'Sign out',
-    'shell.email': 'Email',
-    'shell.password': 'Password',
-    'shell.language': 'Language',
     'shell.find_module': 'Find a module',
     'shell.clear_filter': 'Clear',
     'shell.rearrange': 'Rearrange',
@@ -77,7 +74,6 @@ class UiStrings {
         '{total} again.',
     'time_clock.clock_in': 'Clock In',
     'time_clock.clock_out': 'Clock Out',
-    'time_clock.tab': 'Work Hours',
     'time_clock.total': 'Total',
     'time_clock.days_worked': 'Days worked',
     'time_clock.average_per_day': 'Average per day',
@@ -128,9 +124,6 @@ class UiStrings {
     'time_clock.using_business_hours':
         'No schedule of their own — these are the business hours.',
     'time_clock.ended_by_hr': 'Ended by HR',
-    'time_clock.off': 'Clock in is switched off for this organization.',
-    'time_clock.already_in': 'You are already clocked in.',
-    'time_clock.not_in': 'You are not clocked in.',
     'time_clock.reminder_title': 'Your shift is ending',
     'time_clock.reminder_body':
         'Your shift ends at {time}. Clock out, or extend it.',

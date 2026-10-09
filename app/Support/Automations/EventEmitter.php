@@ -88,28 +88,6 @@ class EventEmitter
     }
 
     /**
-     * Every trigger key any module declares, grouped by module.
-     *
-     * Keys only. What the automation builder OFFERS is the catalogue endpoint,
-     * which carries each trigger's label and description as well — this is the
-     * engine's view, and the engine routes on the key alone.
-     *
-     * @return array<string, string[]> module key => trigger keys
-     */
-    public function availableTriggers(): array
-    {
-        $triggers = [];
-
-        foreach ($this->registry->all() as $key => $module) {
-            if ($module->triggers !== []) {
-                $triggers[$key] = $module->triggerKeys();
-            }
-        }
-
-        return $triggers;
-    }
-
-    /**
      * Emit only if the surrounding transaction commits.
      *
      * For callers that are NOT already inside one. Without a transaction an

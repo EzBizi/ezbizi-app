@@ -109,10 +109,7 @@ class InventoryItemsController extends Controller
                 ],
             ),
             'meta' => [
-                'total' => $items->total(),
-                'per_page' => $items->perPage(),
-                'current_page' => $items->currentPage(),
-                'last_page' => $items->lastPage(),
+                ...$this->pageMeta($items),
                 'tiles' => $this->tiles($user, $scope, $stock),
             ],
         ]);
@@ -392,7 +389,7 @@ class InventoryItemsController extends Controller
             'franchise_id' => ['nullable', 'uuid', $this->existsInTenant('franchises')],
             'sku' => $this->skuRules($request),
             'name' => ['required', 'string', 'max:191'],
-            'unit' => ['required', 'string', Rule::in(InventoryUnit::values())],
+            'unit' => ['required', 'string', Rule::enum(InventoryUnit::class)],
             'reorder_at' => ['nullable', 'numeric', 'min:0'],
         ];
     }
@@ -405,8 +402,8 @@ class InventoryItemsController extends Controller
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
             'sku' => $this->skuRules($request, $item),
             'name' => ['sometimes', 'string', 'max:191'],
-            'unit' => ['sometimes', 'string', Rule::in(InventoryUnit::values())],
-            'status' => ['sometimes', 'string', Rule::in(InventoryItemStatus::values())],
+            'unit' => ['sometimes', 'string', Rule::enum(InventoryUnit::class)],
+            'status' => ['sometimes', 'string', Rule::enum(InventoryItemStatus::class)],
             'reorder_at' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ];
     }

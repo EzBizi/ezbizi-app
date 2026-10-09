@@ -4,7 +4,6 @@ namespace App\Support\Dashboard\Widgets\Hr;
 
 use App\Models\Onboarding;
 use App\Models\User;
-use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -31,28 +30,15 @@ use Illuminate\Database\Eloquent\Builder;
  * uses, copied deliberately so the panel and the list it summarises cannot
  * disagree about who can see what.
  */
-class OnboardingsInFlight implements Widget
+class OnboardingsInFlight
 {
     use ScopesToPlaces;
 
-    public const KEY = 'hr.onboardings_in_flight';
-
-    public function key(): string { return self::KEY; }
-
-    public function label(): string { return 'Onboardings in flight'; }
-
-    public function permission(): string { return 'hr.view'; }
-
-    public function options(User $user): array
-    {
-        // Nothing to configure. An onboarding is unfinished or it is not, and a
-        // period would hide the oldest one — which is the one that needs
-        // chasing and the whole reason to look.
-        return [];
-    }
-
     public function resolve(User $user, array $options): array
     {
+        // No period. An onboarding is unfinished or it is not, and a period
+        // would hide the oldest one — which is the one that needs chasing and
+        // the whole reason to look.
         $places = $this->placesInView($user);
 
         $counts = $this->inFlight($places)

@@ -226,22 +226,6 @@ class _RolesScreenState extends State<RolesScreen> {
     );
   }
 
-  /// The server's own sentence about a refusal, in preference to the generic
-  /// one. Every rule this endpoint enforces — the last administrator, a
-  /// permission the editor does not hold themselves — explains itself, and
-  /// "could not save" throws away the only part worth reading.
-  String _refusal(ApiResponse response) {
-    final errors = response.body['errors'] as Map<String, dynamic>?;
-
-    if (errors == null || errors.isEmpty) return response.message;
-
-    final first = errors.values.first;
-
-    return first is List && first.isNotEmpty
-        ? first.first as String
-        : response.message;
-  }
-
   Future<void> _create() async {
     final name = await _askForName(
       title: 'New role',
@@ -256,7 +240,7 @@ class _RolesScreenState extends State<RolesScreen> {
     if (!mounted) return;
 
     if (!response.ok) {
-      _snack(_refusal(response), isError: true);
+      _snack(response.reason, isError: true);
       return;
     }
 
@@ -354,7 +338,7 @@ class _RolesScreenState extends State<RolesScreen> {
     // this person was not entitled to change, so the row that comes back is the
     // one worth going and reading rather than the one we can assemble.
 
-    if (!response.ok) return _refusal(response);
+    if (!response.ok) return response.reason;
 
     if (mounted) _snack('Saved ${role.name}');
 
@@ -397,7 +381,7 @@ class _RolesScreenState extends State<RolesScreen> {
     if (!mounted) return;
 
     if (!response.ok) {
-      _snack(_refusal(response), isError: true);
+      _snack(response.reason, isError: true);
       return;
     }
 

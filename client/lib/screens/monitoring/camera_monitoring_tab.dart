@@ -11,6 +11,7 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'camera_view.dart';
+import 'note_card.dart';
 
 /// Camera Monitoring — the tile grid of connected cameras (spec §"Sub-project
 /// 3"), the last of the three Monitoring sub-tabs to get a real screen.
@@ -174,7 +175,7 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
   @override
   Widget build(BuildContext context) {
     if (!_canView) {
-      return _NoteCard(CameraMonitoringTab.noPermissionNote);
+      return NoteCard(CameraMonitoringTab.noPermissionNote);
     }
 
     return AsyncBody(
@@ -277,22 +278,6 @@ class _EmptyState extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _NoteCard extends StatelessWidget {
-  const _NoteCard(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
       ),
     );
   }

@@ -6,7 +6,6 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/fleet_screen.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -121,7 +120,6 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(FleetScreen), findsOneWidget);
     expect(find.byType(TextField), findsWidgets);

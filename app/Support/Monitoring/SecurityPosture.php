@@ -49,9 +49,8 @@ final class SecurityPosture
      * The areas of this machine that Windows is unhappy about, keyed by area.
      *
      * Empty for a healthy machine AND for one that has reported nothing, which
-     * is why [needsAttention] is the question callers ask rather than counting
-     * this themselves: "no unhealthy areas" is true of a machine nobody has
-     * heard from, and that is not the same fact.
+     * is why callers ask [reported] first: "no unhealthy areas" is true of a
+     * machine nobody has heard from, and that is not the same fact.
      *
      * @param  array<string, mixed>|null  $specs
      * @return array<string, string>
@@ -75,16 +74,6 @@ final class SecurityPosture
         }
 
         return $found;
-    }
-
-    /**
-     * Whether this machine's reported defences want somebody's attention.
-     *
-     * @param  array<string, mixed>|null  $specs
-     */
-    public static function needsAttention(?array $specs): bool
-    {
-        return self::unhealthyAreas($specs) !== [];
     }
 
     /**

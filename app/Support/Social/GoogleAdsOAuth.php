@@ -44,11 +44,6 @@ final class GoogleAdsOAuth implements SocialOAuth
         return 'google-ads';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;
@@ -123,43 +118,7 @@ final class GoogleAdsOAuth implements SocialOAuth
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://oauth2.googleapis.com/token',
-                [
-                    'client_id'     => (string) config('services.google_ads.client_id'),
-                    'client_secret' => (string) config('services.google_ads.client_secret'),
-                    'code'          => $code,
-                    'grant_type'    => 'authorization_code',
-                    'redirect_uri'  => $this->redirectUri(),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('Google Ads');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('Google Ads');
-        }
-
-        $access  = $response->json('access_token');
-        $refresh = $response->json('refresh_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('Google Ads');
-        }
-
-        if (! is_string($refresh) || $refresh === '') {
-            throw SocialOAuthRefused::noLastingPermission('Google Ads');
-        }
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: $refresh,
-            expiresIn: is_numeric($response->json('expires_in'))
-                ? (int) $response->json('expires_in')
-                : null,
-        );
+        return GoogleToken::exchange('google_ads', 'Google Ads', $code, $this->redirectUri());
     }
 
     /**

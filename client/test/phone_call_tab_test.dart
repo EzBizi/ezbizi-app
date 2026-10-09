@@ -7,7 +7,6 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/call_tab.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +18,6 @@ void main() {
   testWidgets('the desk is not Coming soon', (tester) async {
     await _pump(tester, numbers: const []);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });

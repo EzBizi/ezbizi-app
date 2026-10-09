@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -62,11 +63,6 @@ final class ThumbtackOAuth implements SocialOAuth
     public function routeKey(): string
     {
         return 'thumbtack';
-    }
-
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
     }
 
     /**

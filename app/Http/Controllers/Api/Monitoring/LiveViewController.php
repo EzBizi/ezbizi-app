@@ -5,13 +5,10 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Models\MonitoringScreenshot;
-use App\Models\User;
-use App\Support\Access\ScopeReach;
 use App\Support\Monitoring\LiveFrameStore;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Tenancy\TenantContext;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
@@ -98,7 +95,6 @@ class LiveViewController extends Controller
 
     public function __construct(
         private readonly TenantContext $tenant,
-        private readonly ScopeReach $reach,
     ) {}
 
     /**
@@ -113,7 +109,7 @@ class LiveViewController extends Controller
     {
         $this->authorize('viewAny', MonitoringScreenshot::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -151,7 +147,7 @@ class LiveViewController extends Controller
             'device_key' => ['required', 'string', 'max:64'],
         ]);
 
-        $device = $this->resolveOwnDevice($request, $data['device_key']);
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404);
@@ -184,7 +180,7 @@ class LiveViewController extends Controller
             'device_key' => ['required', 'string', 'max:64'],
         ]);
 
-        $device = $this->resolveOwnDevice($request, $data['device_key']);
+        $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
 
         if ($device === null) {
             abort(404, 'No registered device for this session — send a heartbeat first.');
@@ -224,7 +220,7 @@ class LiveViewController extends Controller
     {
         $this->authorize('viewAny', MonitoringScreenshot::class);
 
-        $device = $this->visibleDevice($request->user(), $id);
+        $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
         if ($device === null) {
             abort(404);
@@ -265,34 +261,5 @@ class LiveViewController extends Controller
     private function frameAtKey(string $deviceId): string
     {
         return "monitoring:live-frame-at:{$deviceId}";
-    }
-
-    /**
-     * §3: the same device-belongs-to-a-person reach ScreenshotsController's
-     * `visibleTo` applies to `monitoring_screenshots` rows, one relation
-     * shallower — here the query is against `monitored_devices` directly,
-     * the way `DevicesController::index` scopes the roster. A sibling
-     * org's device is already excluded by `BelongsToTenant`'s global scope;
-     * this is the reach check ON TOP of that, over people within the tenant.
-     */
-    private function visibleDevice(User $actor, string $id): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()
-            ->whereHas('user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor))
-            ->find($id);
-    }
-
-    /**
-     * The same three-key (org, user, device_key) resolution
-     * `ScreenshotsController::store` and `HeartbeatController::store` use —
-     * an agent's own device, from its own session, never anyone else's.
-     */
-    private function resolveOwnDevice(Request $request, string $deviceKey): ?MonitoredDevice
-    {
-        return MonitoredDevice::query()->where([
-            'organization_id' => $this->tenant->idOrFail(),
-            'user_id' => $request->user()->getKey(),
-            'device_key' => $deviceKey,
-        ])->first();
     }
 }

@@ -195,10 +195,7 @@ class HrOnboardingsController extends Controller
         return response()->json([
             'data' => collect($onboardings->items())->map(fn (Onboarding $o) => $this->summarise($o)),
             'meta' => [
-                'total'        => $onboardings->total(),
-                'per_page'     => $onboardings->perPage(),
-                'current_page' => $onboardings->currentPage(),
-                'last_page'    => $onboardings->lastPage(),
+                ...$this->pageMeta($onboardings),
                 'tiles'        => [
                     Onboarding::IN_PROGRESS => $tiles[Onboarding::IN_PROGRESS] ?? 0,
                     Onboarding::SUBMITTED => $tiles[Onboarding::SUBMITTED] ?? 0,

@@ -43,13 +43,13 @@ class FloorPlansController extends Controller
 {
     /**
      * A device silent longer than this is offline. Five minutes, the same
-     * window the client draws with — PcSpecsTab.onlineWithin and
-     * DesktopMonitoringTab.onlineWithin are each `Duration(minutes: 5)`. Kept
-     * as its own copy here for the same reason those two are separate: the
+     * window the client draws with — `deviceOnlineWithin` (client/lib/screens/
+     * monitoring/device_display.dart) is `Duration(minutes: 5)`. Kept as its
+     * own copy here for the same reason the client keeps its own: the
      * threshold that colours a dot is an independent knob from the one that
      * FIRES `monitoring.device_offline` (DeviceOfflineWorker's cutoff), and
      * they are free to agree without being wired together. "Seen within the
-     * window" mirrors the client's `now - last_seen_at <= onlineWithin`.
+     * window" mirrors the client's `now - last_seen_at <= deviceOnlineWithin`.
      */
     private const ONLINE_WINDOW_MINUTES = 5;
 

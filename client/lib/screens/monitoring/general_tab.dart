@@ -9,6 +9,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import 'floor_plan_canvas.dart';
 import 'floor_plan_summary.dart';
+import 'note_card.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
@@ -1128,7 +1129,7 @@ class _GeneralTabState extends State<GeneralTab> {
   @override
   Widget build(BuildContext context) {
     if (!_canView) {
-      return _NoteCard(GeneralTab.noPermissionNote);
+      return NoteCard(GeneralTab.noPermissionNote);
     }
 
     return AsyncBody(
@@ -1191,7 +1192,7 @@ class _GeneralTabState extends State<GeneralTab> {
   Widget _selectedArea(BuildContext context) {
     final id = _selectedPlanId;
     if (id == null) {
-      return _NoteCard(GeneralTab.selectPrompt);
+      return NoteCard(GeneralTab.selectPrompt);
     }
 
     final theme = Theme.of(context);
@@ -2017,22 +2018,6 @@ class _EmptyState extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _NoteCard extends StatelessWidget {
-  const _NoteCard(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
       ),
     );
   }

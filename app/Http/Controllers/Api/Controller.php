@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
 /**
  * Base for API controllers (plan §11.4).
  *
@@ -20,4 +22,20 @@ abstract class Controller
      * endpoint, but is worth naming so nobody removes it as unused.
      */
     use \Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
+    /**
+     * The four pagination keys every paged list sends in `meta`. Spread it
+     * (`[...$this->pageMeta($page), 'tiles' => ...]`) where more keys follow.
+     *
+     * @return array{total: int, per_page: int, current_page: int, last_page: int}
+     */
+    protected function pageMeta(LengthAwarePaginator $page): array
+    {
+        return [
+            'total'        => $page->total(),
+            'per_page'     => $page->perPage(),
+            'current_page' => $page->currentPage(),
+            'last_page'    => $page->lastPage(),
+        ];
+    }
 }

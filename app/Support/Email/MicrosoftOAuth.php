@@ -2,9 +2,9 @@
 
 namespace App\Support\Email;
 
+use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 
 /**
  * Talking to Microsoft about a sign-in — and nothing else.
@@ -56,7 +56,7 @@ final class MicrosoftOAuth
     private const TIMEOUT = 10;
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function redirectUri(): string
     {
@@ -64,7 +64,8 @@ final class MicrosoftOAuth
         $parts      = $configured === '' ? false : parse_url($configured);
 
         if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
-            throw MicrosoftOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Microsoft 365',
                 'The web address Microsoft is meant to return people to has not been set up, so '
                 .'there is nowhere for the sign-in to come back to.',
             );
@@ -74,7 +75,8 @@ final class MicrosoftOAuth
         $host   = strtolower((string) $parts['host']);
 
         if ($scheme !== 'https' && ! in_array($host, ['localhost', '127.0.0.1', '[::1]'], true)) {
-            throw MicrosoftOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Microsoft 365',
                 'The web address Microsoft is meant to return people to is not a secure (https) '
                 .'address, and Microsoft will not send anybody to an insecure one.',
             );
@@ -83,7 +85,8 @@ final class MicrosoftOAuth
         if (($parts['path'] ?? '') !== self::CALLBACK_PATH
             || isset($parts['query'])
             || isset($parts['fragment'])) {
-            throw MicrosoftOAuthRefused::notConfigured(
+            throw MailOAuthRefused::notConfigured(
+                'Microsoft 365',
                 'The web address Microsoft is meant to return people to does not point at this '
                 .'EzBizi installation\'s sign-in page, so a sign-in would end up somewhere '
                 .'else.',
@@ -94,7 +97,7 @@ final class MicrosoftOAuth
     }
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function authorizeUrl(string $state, string $verifier, string $loginHint): string
     {
@@ -111,24 +114,14 @@ final class MicrosoftOAuth
             ]),
             'prompt'                => 'consent',
             'state'                 => $state,
-            'code_challenge'        => $this->challengeFor($verifier),
+            'code_challenge'        => Pkce::challenge($verifier),
             'code_challenge_method' => 'S256',
             'login_hint'            => $loginHint,
         ]);
     }
 
-    private function challengeFor(string $verifier): string
-    {
-        return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
-    }
-
-    public function newVerifier(): string
-    {
-        return Str::random(96);
-    }
-
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function exchange(string $code, string $verifier): MicrosoftOAuthGrant
     {
@@ -142,22 +135,22 @@ final class MicrosoftOAuth
                 'redirect_uri'  => $this->redirectUri(),
             ]);
         } catch (ConnectionException) {
-            throw MicrosoftOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Microsoft');
         }
 
         if ($response->failed()) {
-            throw MicrosoftOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Microsoft');
         }
 
         $refresh = $response->json('refresh_token');
         $access  = $response->json('access_token');
 
         if (! is_string($access) || $access === '') {
-            throw MicrosoftOAuthRefused::exchangeFailed();
+            throw MailOAuthRefused::exchangeFailed('Microsoft');
         }
 
         if (! is_string($refresh) || $refresh === '') {
-            throw MicrosoftOAuthRefused::noLastingPermission();
+            throw MailOAuthRefused::noLastingPermission('Microsoft');
         }
 
         return new MicrosoftOAuthGrant(

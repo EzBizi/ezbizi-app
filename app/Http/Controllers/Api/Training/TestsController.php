@@ -93,12 +93,7 @@ class TestsController extends Controller
             'data' => collect($tests->items())->map(
                 fn (TrainingTest $t) => $this->present($t),
             ),
-            'meta' => [
-                'total' => $tests->total(),
-                'per_page' => $tests->perPage(),
-                'current_page' => $tests->currentPage(),
-                'last_page' => $tests->lastPage(),
-            ],
+            'meta' => $this->pageMeta($tests),
         ]);
     }
 

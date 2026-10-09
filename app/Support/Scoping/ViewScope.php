@@ -252,18 +252,6 @@ class ViewScope
     }
 
     /**
-     * The one franchise a new record belongs to, when the view leaves no doubt.
-     *
-     * Null in a company or organization view, where the answer is a choice
-     * rather than a fact — work happens in exactly one place, and the app must
-     * not pick which on somebody's behalf.
-     */
-    public function defaultFranchiseId(): ?string
-    {
-        return $this->type === self::FRANCHISE ? $this->id : null;
-    }
-
-    /**
      * The model the settings cascade should resolve against for this view (§6).
      *
      * ── Why the VIEW scope and not the user's home franchise ─────

@@ -1779,7 +1779,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             ),
           ),
         ),
-      SliverPersistentHeader(pinned: true, delegate: _PinnedRow(header, 43)),
+      PinnedHeaderSliver(child: SizedBox(height: 43, child: header)),
       SliverList(delegate: SliverChildListDelegate(rows)),
       SliverToBoxAdapter(
         child: Padding(
@@ -3528,25 +3528,4 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       ),
     );
   }
-}
-
-/// A row that stays at the top of its scroll view: the Overview's weekdays.
-class _PinnedRow extends SliverPersistentHeaderDelegate {
-  const _PinnedRow(this.child, this.height);
-
-  final Widget child;
-  final double height;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
-      SizedBox.expand(child: child);
-
-  @override
-  bool shouldRebuild(_PinnedRow old) => true;
 }

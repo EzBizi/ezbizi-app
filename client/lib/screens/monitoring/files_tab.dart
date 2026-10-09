@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/file_access_types.dart';
 import '../../core/file_browser_service.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import 'device_display.dart';
 
 /// Files — browse and download a monitored machine's files (the viewer half of
 /// 2026-10-01-monitoring-files). UI/UX's recommended layout: a device rail, a
@@ -139,7 +141,7 @@ class _FilesTabState extends State<FilesTab> {
         _listing = listing;
         _browsing = false;
       });
-    } on FileBrowserException catch (e) {
+    } on FileAccessException catch (e) {
       if (!mounted) return;
       setState(() {
         _browsing = false;
@@ -180,7 +182,7 @@ class _FilesTabState extends State<FilesTab> {
       // that did not happen.
       Files.download(file.name, file.bytes);
       setState(() => item.status = _DownloadStatus.ready);
-    } on FileBrowserException catch (e) {
+    } on FileAccessException catch (e) {
       if (!mounted) return;
       setState(() {
         item.status = _DownloadStatus.error;
@@ -234,7 +236,7 @@ class _FilesTabState extends State<FilesTab> {
     final user = device['user'] as Map<String, dynamic>? ?? const {};
     final name = user['name'] as String? ?? 'Unknown';
     final machine = device['label'] as String? ?? device['platform'] as String? ?? '';
-    final online = _isOnline(device);
+    final online = isDeviceOnline(device);
     final selected = _device != null && _device!['id'] == device['id'];
 
     return ListTile(
@@ -453,13 +455,6 @@ class _FilesTabState extends State<FilesTab> {
     if (entry.sizeBytes != null) parts.add(_humanSize(entry.sizeBytes!));
     if (entry.modifiedAt != null) parts.add(entry.modifiedAt!);
     return parts.join(' · ');
-  }
-
-  bool _isOnline(Map<String, dynamic> device) {
-    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '');
-    if (seen == null) return false;
-    return DateTime.now().toUtc().difference(seen.toUtc()) <
-        const Duration(minutes: 5);
   }
 
   String _offlineSentence(Map<String, dynamic> device) {

@@ -468,7 +468,6 @@ class EzBiziTheme {
   }
 
   static const Color accent = _cyan;
-  static const Color accentDark = _cyanDark;
 
   /// The fixed dark surface outside the app proper: the sign-in page's
   /// identity panel (auth_shell.dart draws the same three stops) and the Clock

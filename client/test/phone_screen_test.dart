@@ -5,7 +5,6 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/phone_screen.dart';
-import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:ezbizi_client/screens/phone/records_tab.dart';
 import 'package:flutter/material.dart';
@@ -71,7 +70,6 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(PhoneScreen), findsOneWidget);
     expect(_chips(tester), ['Phone', 'Users', 'Records', 'Reports', 'Settings']);

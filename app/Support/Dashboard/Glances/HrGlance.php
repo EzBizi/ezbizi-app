@@ -251,7 +251,7 @@ final class HrGlance extends DescribedGlance
     }
 
     /**
-     * Distinct people Headcount would consider, including inactive.
+     * Distinct people in this view, including inactive.
      *
      * Nested so unplaced people (organization view only) cannot invert into
      * "assigned nowhere means see everybody".

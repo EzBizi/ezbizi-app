@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import 'number_quality_pane.dart';
+import 'phone_refs.dart';
 
 /// Phone › Settings › Trust & caller identity.
 ///
@@ -42,8 +43,8 @@ class _TrustPaneState extends State<TrustPane> {
   bool _saving = false;
   String? _error;
 
-  List<_Conn> _connections = const [];
-  _Conn? _scope;
+  List<PhoneConnectionRef> _connections = const [];
+  PhoneConnectionRef? _scope;
 
   Map<String, String> _status = const {};
   _Attestation? _attestation;
@@ -84,7 +85,7 @@ class _TrustPaneState extends State<TrustPane> {
 
     if (!mounted) return;
 
-    final connections = _Conn.listFrom(results[0].body);
+    final connections = PhoneConnectionRef.listFrom(results[0].body);
 
     setState(() {
       _loading = false;
@@ -595,26 +596,6 @@ class _TrustPaneState extends State<TrustPane> {
     'unknown' || '' => 'Not started',
     _ => raw,
   };
-}
-
-class _Conn {
-  const _Conn(this.id, this.label);
-
-  final String id;
-  final String label;
-
-  static List<_Conn> listFrom(Map<String, dynamic> body) {
-    final rows = body['data'];
-    if (rows is! List) return const [];
-
-    return [
-      for (final row in rows.whereType<Map<String, dynamic>>())
-        _Conn(
-          row['id'].toString(),
-          (row['label'] ?? row['account_sid'] ?? 'Phone account').toString(),
-        ),
-    ];
-  }
 }
 
 class _Attestation {

@@ -35,7 +35,7 @@ class VehicleInsuranceController extends Controller
             'started_on' => ['nullable', 'date'],
             'expires_on' => ['nullable', 'date'],
             'premium_cents' => ['nullable', 'integer', 'min:0'],
-            'premium_period' => ['nullable', 'string', Rule::in(VehiclePremiumPeriod::values())],
+            'premium_period' => ['nullable', 'string', Rule::enum(VehiclePremiumPeriod::class)],
             'agent' => ['nullable', 'string', 'max:200'],
             'agent_phone' => ['nullable', 'string', 'max:50'],
             'listed_drivers' => ['nullable', 'string', 'max:2000'],

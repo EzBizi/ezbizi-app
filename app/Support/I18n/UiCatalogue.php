@@ -44,12 +44,6 @@ final class UiCatalogue
         return $this->strings($wanted);
     }
 
-    /** @return string[] */
-    public function localeCodes(): array
-    {
-        return UiLocale::query()->orderBy('code')->pluck('code')->all();
-    }
-
     private function known(string $code): bool
     {
         return UiLocale::query()->where('code', $code)->exists();

@@ -81,11 +81,7 @@ class EstimatesController extends Controller
             ->orderByDesc('created_at')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
-        $meta = [
-            'total'        => $page->total(),
-            'current_page' => $page->currentPage(),
-            'last_page'    => $page->lastPage(),
-        ];
+        $meta = $this->pageMeta($page);
 
         // The list's header, on the first page only (queue 32): each status's
         // count, and what was quoted and accepted per currency -- never summed

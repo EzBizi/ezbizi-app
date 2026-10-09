@@ -30,10 +30,10 @@ use Illuminate\Http\Request;
  * company a person happens to sit in, siblings included, which is the §3 leak
  * this endpoint exists not to have.
  *
- * InventoryVisibility/VehicleVisibility are the OTHER shape of reach in this
- * codebase — they constrain a query by a `company_id`/`franchise_id` column
- * the record carries itself, which a device does not have. They are the wrong
- * copy for this row for that reason, not because reach here is any looser.
+ * InventoryVisibility is the OTHER shape of reach in this codebase — it
+ * constrains a query by a `company_id`/`franchise_id` column the record
+ * carries itself, which a device does not have. It is the wrong copy for this
+ * row for that reason, not because reach here is any looser.
  */
 class DevicesController extends Controller
 {

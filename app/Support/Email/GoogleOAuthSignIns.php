@@ -5,6 +5,7 @@ namespace App\Support\Email;
 use App\Models\GoogleMailSignIn;
 use App\Models\Mailbox;
 use App\Models\User;
+use App\Support\Pkce;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -51,7 +52,7 @@ use Illuminate\Support\Str;
  * Deleting rather than tombstoning also means "already used", "never issued",
  * "expired" and "pointing at something since removed" are the same answer to
  * whoever is asking, which is the answer they should get: see
- * {@see GoogleOAuthRefused::noOpenSignIn}.
+ * {@see MailOAuthRefused::noOpenSignIn}.
  */
 final class GoogleOAuthSignIns
 {
@@ -101,7 +102,7 @@ final class GoogleOAuthSignIns
      *
      * @return array{url: string, flow: string, expires_at: \Illuminate\Support\Carbon}
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function begin(User $user, Mailbox $mailbox): array
     {
@@ -115,7 +116,7 @@ final class GoogleOAuthSignIns
          * above decorative.
          */
         $state    = Str::random(64);
-        $verifier = $this->google->newVerifier();
+        $verifier = Pkce::verifier();
 
         $url = $this->google->authorizeUrl($state, $verifier, $mailbox->address);
 
@@ -246,18 +247,18 @@ final class GoogleOAuthSignIns
      * deleting second would leave a stale row behind on the one path that
      * already knows it is stale.
      *
-     * @throws GoogleOAuthRefused when nothing open answers to this value
+     * @throws MailOAuthRefused when nothing open answers to this value
      */
     public function complete(string $state): GoogleMailSignIn
     {
         $row = GoogleMailSignIn::where('state_hash', $this->fingerprint($state))->first();
 
         if ($row === null || ! $this->burn($row)) {
-            throw GoogleOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Google');
         }
 
         if ($row->hasExpired()) {
-            throw GoogleOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Google');
         }
 
         return $row;

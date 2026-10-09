@@ -67,15 +67,6 @@ final class WorkizRecords
     }
 
     /**
-     * Whether a type's list has no date filter, so every run reads it whole.
-     * Timesheets come newest first and stop at the cursor instead.
-     */
-    public static function whole(string $type): bool
-    {
-        return in_array($type, ['time_off', 'event', 'custom_field'], true);
-    }
-
-    /**
      * The row for one record: the columns readers filter on, and the payload
      * less the free text.
      *

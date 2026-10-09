@@ -58,11 +58,6 @@ final class BusinessProfileOAuth implements SocialOAuth
         return 'business-profile';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;
@@ -117,43 +112,7 @@ final class BusinessProfileOAuth implements SocialOAuth
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://oauth2.googleapis.com/token',
-                [
-                    'client_id'     => (string) config('services.business_profile.client_id'),
-                    'client_secret' => (string) config('services.business_profile.client_secret'),
-                    'code'          => $code,
-                    'grant_type'    => 'authorization_code',
-                    'redirect_uri'  => $this->redirectUri(),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('Google Business Profile');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('Google Business Profile');
-        }
-
-        $access  = $response->json('access_token');
-        $refresh = $response->json('refresh_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('Google Business Profile');
-        }
-
-        if (! is_string($refresh) || $refresh === '') {
-            throw SocialOAuthRefused::noLastingPermission('Google Business Profile');
-        }
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: $refresh,
-            expiresIn: is_numeric($response->json('expires_in'))
-                ? (int) $response->json('expires_in')
-                : null,
-        );
+        return GoogleToken::exchange('business_profile', 'Google Business Profile', $code, $this->redirectUri());
     }
 
     /**

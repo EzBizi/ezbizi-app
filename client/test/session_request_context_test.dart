@@ -210,7 +210,6 @@ void main() {
       await session.adopt('token');
       await session.setScope('company:b');
       expect(session.me!.scope.id, 'a');
-      expect(session.unreachable, isTrue);
       await api.get('/jobs');
       expect(lastView, 'company:a');
     },

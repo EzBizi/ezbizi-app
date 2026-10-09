@@ -61,9 +61,4 @@ class InventorySale extends Model implements StatesRetention
     {
         return $this->hasMany(InventorySaleLine::class, 'sale_id');
     }
-
-    public function fulfillments(): HasMany
-    {
-        return $this->hasMany(InventorySaleFulfillment::class, 'sale_id');
-    }
 }

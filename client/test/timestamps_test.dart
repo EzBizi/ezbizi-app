@@ -139,8 +139,14 @@ void main() {
     });
 
     test('says so, rather than absorbing it', () {
-      expect(future.dateFormatKnown, isFalse);
-      expect(future.timeFormatKnown, isFalse);
+      expect(
+        DisplayFormats.known['date_format'],
+        isNot(contains(future.dateFormat)),
+      );
+      expect(
+        DisplayFormats.known['time_format'],
+        isNot(contains(future.timeFormat)),
+      );
 
       // What the settings screen prints under the row. It names the value, so
       // the reader can tell "the app is behind" from "my choice was ignored".

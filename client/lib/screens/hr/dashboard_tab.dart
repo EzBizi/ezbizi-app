@@ -221,56 +221,6 @@ class _DashboardTabState extends State<DashboardTab> {
     };
   }
 
-  Widget? _presentationMenu(Map<String, dynamic> glance) {
-    final options = _presentationsOf(glance);
-    if (options.isEmpty) return null;
-
-    final selected = glance['presentation'] as String? ?? 'text';
-    final label = glance['label'] as String? ?? 'this box';
-
-    return PopupMenuButton<String>(
-      tooltip: 'How to draw “$label”',
-      padding: EdgeInsets.zero,
-      iconSize: 18,
-      initialValue: options.contains(selected) ? selected : null,
-      icon: Icon(_iconFor(selected)),
-      onSelected: _setPresentation,
-      itemBuilder: (context) => [
-        for (final option in options)
-          PopupMenuItem(
-            value: option,
-            child: Text(_labelFor(option)),
-          ),
-      ],
-    );
-  }
-
-  static List<String> _presentationsOf(Map<String, dynamic> glance) {
-    final raw = glance['allowed_presentations'];
-    if (raw is! List || raw.isEmpty) return const [];
-
-    final options = [for (final item in raw) '$item'];
-    if (!options.contains('text')) options.add('text');
-    return options;
-  }
-
-  static String _labelFor(String presentation) => switch (presentation) {
-        'pie' => 'Pie',
-        'bar' => 'Bar',
-        'line' => 'Line',
-        'timeline' => 'Timeline',
-        'text' => 'Text',
-        _ => presentation,
-      };
-
-  static IconData _iconFor(String presentation) => switch (presentation) {
-        'pie' => Icons.pie_chart,
-        'bar' => Icons.bar_chart,
-        'line' => Icons.show_chart,
-        'timeline' => Icons.timeline,
-        _ => Icons.notes,
-      };
-
   @override
   Widget build(BuildContext context) {
     final glance = _glance;
@@ -338,7 +288,10 @@ class _DashboardTabState extends State<DashboardTab> {
             DashboardCard(
               title: glance['label'] as String? ?? 'Human Resources',
               icon: dashboardPanelIcon(glance['key'] as String? ?? 'hr'),
-              controls: _presentationMenu(glance),
+              controls: PresentationMenu.of(
+                glance,
+                onSelected: _setPresentation,
+              ),
               child: _GlanceBody(glance: glance),
             ),
         ],

@@ -2,12 +2,8 @@
 
 namespace App\Support\Fleet;
 
-use App\Support\Enums\HasValues;
-
 enum VehiclePaymentCategory: string
 {
-    use HasValues;
-
     case Purchase = 'purchase';
     case Loan = 'loan';
     case Registration = 'registration';

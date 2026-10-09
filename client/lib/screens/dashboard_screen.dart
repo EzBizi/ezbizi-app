@@ -378,69 +378,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (glance['hidden'] is bool) 'hidden': glance['hidden'],
   };
 
-  /// Compact, because the header already holds three 48-point move/drag
-  /// controls. Coming soon and an empty `allowed_presentations` draw nothing
-  /// — a disabled menu would invite somebody to work out why it does nothing.
-  ///
-  /// One option is the same case as none: `web_management` and
-  /// `business_profile` allow only `text`, and a menu whose single entry is
-  /// already ticked is a control that cannot change anything.
-  Widget? _presentationMenu(Map<String, dynamic> glance) {
-    final options = _presentationsOf(glance);
-    if (options.length < 2) return null;
-
-    final selected = glance['presentation'] as String? ?? 'text';
-    final label = glance['label'] as String? ?? 'this box';
-
-    return PopupMenuButton<String>(
-      tooltip: 'How to draw “$label”',
-      padding: EdgeInsets.zero,
-      iconSize: 18,
-      initialValue: options.contains(selected) ? selected : null,
-      icon: Icon(_iconFor(selected)),
-      onSelected: (value) => _setPresentation(glance['key'] as String, value),
-      itemBuilder: (context) => [
-        for (final option in options)
-          PopupMenuItem(
-            value: option,
-            child: Text(_labelFor(option)),
-          ),
-      ],
-    );
-  }
-
-  /// Exactly what the server allows, and nothing else.
-  ///
-  /// This used to append `text` to any list that omitted it, as an escape from
-  /// a chart. The server does not accept it back — `declaredPresentation`
-  /// drops a kind the glance never offered to the glance's default — so the
-  /// entry drew text on this frame and the next load put the chart back, with
-  /// no message. A glance that should offer text says so in its own
-  /// `PRESENTATIONS`; every live one already does.
-  static List<String> _presentationsOf(Map<String, dynamic> glance) {
-    final raw = glance['allowed_presentations'];
-    if (raw is! List) return const [];
-
-    return [for (final item in raw) '$item'];
-  }
-
-  static String _labelFor(String presentation) => switch (presentation) {
-        'pie' => 'Pie',
-        'bar' => 'Bar',
-        'line' => 'Line',
-        'timeline' => 'Timeline',
-        'text' => 'Text',
-        _ => presentation,
-      };
-
-  static IconData _iconFor(String presentation) => switch (presentation) {
-        'pie' => Icons.pie_chart,
-        'bar' => Icons.bar_chart,
-        'line' => Icons.show_chart,
-        'timeline' => Icons.timeline,
-        _ => Icons.notes,
-      };
-
   @override
   Widget build(BuildContext context) {
     final byKey = {for (final glance in _glances) glance['key'] as String: glance};
@@ -510,7 +447,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : null,
       // A Small box with figures draws its headline and no chart, so a menu
       // of charts would switch something that is not on screen.
-      controls: compact ? null : _presentationMenu(glance),
+      controls: compact
+          ? null
+          : PresentationMenu.of(
+              glance,
+              onSelected: (value) =>
+                  _setPresentation(glance['key'] as String, value),
+            ),
       size: size,
       body: _GlanceBody(glance: glance, size: size),
     );

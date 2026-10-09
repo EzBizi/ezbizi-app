@@ -42,10 +42,9 @@ final class JobsGlance extends DescribedGlance
         // Widgets and Job reads are tenant-scoped; callers (including tests)
         // may resolve outside a request the same way DashboardPeriod::for does.
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            // Finished work belongs on the pie — the JobsByStatus option defaults
-            // off for the old widget board, but this glance always shows the full
-            // vocabulary once any job exists.
-            $byStatus = $this->jobsByStatus->resolve($user, ['include_finished' => true]);
+            // Finished work belongs on the pie: the full vocabulary shows once
+            // any job exists.
+            $byStatus = $this->jobsByStatus->resolve($user, []);
             $total = (int) ($byStatus['total'] ?? 0);
 
             if ($total === 0) {

@@ -6,8 +6,8 @@ namespace App\Support\Social;
  * One network's authorization-code flow.
  *
  * Start and status are the same shape for every OAuth network. The callback
- * path is per network because each console registers one redirect URI,
- * character for character.
+ * path is each class's own CALLBACK_PATH constant, because each console
+ * registers one redirect URI, character for character.
  */
 interface SocialOAuth
 {
@@ -15,8 +15,6 @@ interface SocialOAuth
 
     /** Path segment in /social/{key}/start and the reserved callback. */
     public function routeKey(): string;
-
-    public function callbackPath(): string;
 
     /** @return string[] */
     public function scopes(): array;

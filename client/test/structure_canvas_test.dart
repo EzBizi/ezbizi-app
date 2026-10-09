@@ -1528,7 +1528,7 @@ void main() {
     testWidgets('a box the saved layout has never heard of is still drawn', (
       tester,
     ) async {
-      // The trap `panelsInSavedOrder` names, in canvas form: make the saved
+      // The saved-order trap, in canvas form: make the saved
       // layout the whole truth and every company added after somebody first
       // arranged their canvas is invisible to them for ever.
       await _pump(

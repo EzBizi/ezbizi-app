@@ -287,11 +287,6 @@ class PhoneReportTest extends TestCase
         $this->assertSame('this_month', $saved->json('data.period'));
         $this->assertNull($saved->json('data.from'));
         $this->assertSame([$number->id], $saved->json('data.number_ids'));
-
-        $this->signedInAs($admin)
-            ->getJson('/api/v1/phone/reports/'.$saved->json('data.id').'/run')
-            ->assertOk()
-            ->assertJsonPath('report.name', 'Missed calls this month');
     }
 
     public function test_two_reports_cannot_share_a_name(): void

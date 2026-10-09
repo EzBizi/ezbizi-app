@@ -131,6 +131,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -608,7 +609,6 @@ class StructureCanvas extends StatefulWidget {
     this.orientation = kStructureDefaultOrientation,
     this.onMoved,
     this.onArranged,
-    this.leading,
     this.actions,
     this.controls,
     this.note = defaultNote,
@@ -690,11 +690,6 @@ class StructureCanvas extends StatefulWidget {
   /// **MERGE this, do not replace with it.** It names only what is on screen,
   /// for the reason above. Null means no "Arrange for me" control is drawn.
   final void Function(Map<String, Offset> placed)? onArranged;
-
-  /// What goes in the box before its name — a logo, typically. Null falls back
-  /// to the glyph for the node's level, which is one of the things that tells
-  /// the four levels apart.
-  final Widget? Function(BuildContext context, StructureNode node)? leading;
 
   /// What goes after a name — the action menu, typically. Kept a builder because
   /// §4's answers live on the server's own payload, which the caller reads off
@@ -2697,7 +2692,6 @@ class _StructureCanvasState extends State<StructureCanvas>
             width: _borderFor(node),
           );
 
-    final leading = widget.leading?.call(context, node);
     final actions = widget.actions?.call(context, node);
 
     return Container(
@@ -2714,19 +2708,16 @@ class _StructureCanvasState extends State<StructureCanvas>
           // Left in, a reader would hear "Sunward — sub company, under
           // Everdoors, switched off" and then "Sunward", "Sub company ·
           // switched off" again: the same three facts, twice, in a worse
-          // order. The CALLER's leading and trailing widgets are untouched —
-          // they are controls, and taking a control out of the semantics tree
-          // is how a menu becomes unreachable.
-          leading ??
-              ExcludeSemantics(
-                child: Icon(
-                  _glyphFor(node),
-                  size: node.kind == structureOrganization ? 22 : 20,
-                  color: node.isActive
-                      ? scheme.onSurfaceVariant
-                      : scheme.outline,
-                ),
-              ),
+          // order. The CALLER's trailing widgets are untouched — they are
+          // controls, and taking a control out of the semantics tree is how a
+          // menu becomes unreachable.
+          ExcludeSemantics(
+            child: Icon(
+              _glyphFor(node),
+              size: node.kind == structureOrganization ? 22 : 20,
+              color: node.isActive ? scheme.onSurfaceVariant : scheme.outline,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: ExcludeSemantics(
@@ -2959,14 +2950,5 @@ class StructureConnectorPainter extends CustomPainter {
   bool shouldRepaint(StructureConnectorPainter old) =>
       old.color != color ||
       old.faceHeight != faceHeight ||
-      old.links.length != links.length ||
-      _differs(old.links, links);
-
-  static bool _differs(List<(Rect, Rect)> a, List<(Rect, Rect)> b) {
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].$1 != b[i].$1 || a[i].$2 != b[i].$2) return true;
-    }
-
-    return false;
-  }
+      !listEquals(old.links, links);
 }

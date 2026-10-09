@@ -6,7 +6,6 @@ use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\User;
 use App\Support\Contracts\FieldDefinition;
-use App\Support\Dashboard\Widget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
@@ -16,22 +15,9 @@ use Illuminate\Support\Carbon;
  * Until a template marks a date field with `is_expiry`, there is nothing to
  * count. The panel says so rather than guessing that every date is a licence.
  */
-class ExpiringCertifications implements Widget
+class ExpiringCertifications
 {
     use ScopesToPlaces;
-
-    public const KEY = 'hr.certifications';
-
-    public function key(): string { return self::KEY; }
-
-    public function label(): string { return 'Expiring certifications'; }
-
-    public function permission(): string { return 'hr.view'; }
-
-    public function options(User $user): array
-    {
-        return ['days' => $this->periodOption(60)];
-    }
 
     public function resolve(User $user, array $options): array
     {

@@ -9,7 +9,6 @@ use App\Models\MailboxGrant;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -269,8 +268,8 @@ final class MailboxAccess
      * Jose, 2026-10-06: "assign emails to specific people, instead of just
      * roles". A person grant answers the same question a role grant does --
      * may this account open this inbox -- so it is read in the same place,
-     * and the three checks here (isGranted, granted, constrainToGranted) all
-     * go through this one query and cannot drift apart.
+     * and the two checks here (isGranted, granted) both go through this one
+     * query and cannot drift apart.
      *
      * It is only the GRANT half. The Email permission still comes from the
      * person's role, and reach still applies (readRefusal checks both first),
@@ -363,30 +362,6 @@ final class MailboxAccess
             ->whereIn('id', $this->grantsOf($user)->select('mailbox_id'))
             ->orderBy('address')
             ->get();
-    }
-
-    /**
-     * The same filter, in SQL, for a query that has to paginate.
-     *
-     * ── Why it exists beside readable() ──────────────────────────
-     *
-     * A list cannot be filtered row by row in PHP and paginated at the same
-     * time: the count would describe the page before the filter. The same
-     * argument ScopeReach::constrain makes, and the same mitigation — the two
-     * live next to each other and neither decides anything on its own. Reach is
-     * still applied in PHP afterwards, because it is a question about a subtree
-     * that only the User can answer.
-     */
-    public function constrainToGranted(Builder $query, User $user): void
-    {
-        if ($user->isAdministrator()) {
-            return;     // holds every inbox, and owns no rows — see isGranted
-        }
-
-        // Always a real predicate, never dropped: somebody with no grants must
-        // match no mailbox, and a silently absent WHERE is how that becomes
-        // "all of them". grantsOf always constrains on at least user_id.
-        $query->whereIn('id', $this->grantsOf($user)->select('mailbox_id'));
     }
 
     /**

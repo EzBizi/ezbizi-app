@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/files.dart';
+import '../core/theme.dart';
 
 /// What a suggestion is about and what came with it: the sidebar tab it names
 /// and its attached screenshots or notes, each one a chip that downloads it.
@@ -96,4 +97,73 @@ IconData fileIcon(String? mimeOrName) {
   }
   if (s.contains('pdf')) return Icons.picture_as_pdf_outlined;
   return Icons.description_outlined;
+}
+
+/// A rail section's heading and how many rows sit under it. Shared by the
+/// author's tab and the staff queue, like [suggestionPill].
+Widget suggestionBand(BuildContext context, String label, int count) {
+  final theme = Theme.of(context);
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+    child: Row(
+      children: [
+        Text(label, style: theme.textTheme.labelSmall),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+          decoration: BoxDecoration(
+            border: Border.all(color: EzBiziTheme.edge(context)),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text('$count', style: theme.textTheme.labelSmall),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The state in words — never the raw key. `new` gets an outline rather
+/// than a fill because it is the one state with nothing decided about it
+/// yet; the other three borrow the same colours the rest of the app already
+/// uses for the same idea (`EzBiziTheme.clockIn` for a good outcome, the
+/// real `errorContainer` for a refusal) rather than inventing new ones.
+///
+/// One copy for the author's tab and the staff queue, so the two halves of
+/// one table read as one product.
+Widget suggestionPill(BuildContext context, String status) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+
+  final (label, fg, bg, outlined) = switch (status) {
+    'reviewing' => (
+      'In review',
+      scheme.primary,
+      scheme.primaryContainer.withValues(alpha: 0.35),
+      false,
+    ),
+    'approved' => (
+      'Approved',
+      EzBiziTheme.clockIn(context),
+      EzBiziTheme.clockIn(context).withValues(alpha: 0.12),
+      false,
+    ),
+    'denied' => (
+      'Denied',
+      scheme.onErrorContainer,
+      scheme.errorContainer,
+      false,
+    ),
+    _ => ('New', scheme.onSurface, scheme.surface, true),
+  };
+
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(999),
+      border: outlined ? Border.all(color: scheme.outline) : null,
+    ),
+    child: Text(label, style: theme.textTheme.labelSmall?.copyWith(color: fg)),
+  );
 }

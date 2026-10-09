@@ -37,16 +37,4 @@ trait ReportsOverAPeriod
         // nobody has a use for a ten-year rolling count on a dashboard.
         return now()->subDays(max(1, min($days, 365)));
     }
-
-    protected function periodOption(int $default = 30): array
-    {
-        return [
-            'label'   => 'Period',
-            'type'    => 'enum',
-            'options' => [7, 30, 90, 365],
-            'default' => $default,
-            'help'    => 'A rolling window, not a calendar month — so the first of the '
-                .'month does not look like business fell off a cliff.',
-        ];
-    }
 }

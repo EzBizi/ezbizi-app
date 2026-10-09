@@ -451,7 +451,7 @@ class SettingsController extends Controller
         // with each of those companies' PARENT ids — which is the inverse of the
         // rule. It let somebody assigned to one franchise write settings on the
         // company above it AND on that company's parent, cascading to every
-        // sibling branch they have no authority over at all. ReachesCompanies
+        // sibling branch they have no authority over at all. User::canActOnCompany
         // walks the other way, deliberately: the assignment must sit AT or ABOVE
         // the company, because §4 says authority flows down a subtree and never
         // up out of one.

@@ -85,10 +85,7 @@ class InventoryPurchaseOrdersController extends Controller
                 fn (InventoryPurchaseOrder $order) => $this->presentOrder($order, $user),
             ),
             'meta' => [
-                'total' => $orders->total(),
-                'per_page' => $orders->perPage(),
-                'current_page' => $orders->currentPage(),
-                'last_page' => $orders->lastPage(),
+                ...$this->pageMeta($orders),
                 // Across every page, before the filter: a tapped tile lands on
                 // a list as long as the number it showed.
                 'tiles' => collect(self::TILES)->mapWithKeys(fn (string $tile) => [

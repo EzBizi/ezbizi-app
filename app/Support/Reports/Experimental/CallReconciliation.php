@@ -2,6 +2,8 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Support\Phone\NumberNames;
+
 /**
  * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
  *
@@ -126,7 +128,7 @@ final class CallReconciliation
         $bookedPhones = [];
 
         foreach ($booked as $job) {
-            if (($phone = self::phoneKey($job['phone'] ?? null)) !== null) {
+            if (($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
                 $bookedPhones[$phone] = true;
             }
         }
@@ -396,16 +398,8 @@ final class CallReconciliation
             return true;
         }
 
-        $phone = self::phoneKey($call['from'] ?? null);
+        $phone = NumberNames::lastTen($call['from'] ?? null);
 
         return $phone !== null && isset($bookedPhones[$phone]);
-    }
-
-    /** The last ten digits, so "+1 (212) 555-1212" and "2125551212" agree. */
-    private static function phoneKey(?string $phone): ?string
-    {
-        $digits = preg_replace('/\D+/', '', (string) $phone);
-
-        return strlen($digits) >= 10 ? substr($digits, -10) : null;
     }
 }

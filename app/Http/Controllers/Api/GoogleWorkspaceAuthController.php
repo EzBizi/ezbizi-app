@@ -9,10 +9,10 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\GoogleOAuth;
-use App\Support\Email\GoogleOAuthRefused;
 use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\GoogleWorkspaceSignIns;
+use App\Support\Email\MailOAuthRefused;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -179,7 +179,7 @@ class GoogleWorkspaceAuthController extends Controller
                 $target['type'],
                 $target['id'],
             );
-        } catch (GoogleOAuthRefused $e) {
+        } catch (MailOAuthRefused $e) {
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
 

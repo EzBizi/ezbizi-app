@@ -63,8 +63,7 @@ import '../../widgets/structure_canvas.dart';
 /// by hand, or restored from a backup taken before this feature existed — so
 /// nothing about its shape is promised. A screen that threw because somebody's
 /// stored arrangement was a string would be a screen nobody could open and
-/// nobody could fix, which is the reason `savedPanelOrder` reads its list the
-/// same way.
+/// nobody could fix.
 ///
 /// A bad entry costs its own box and nothing else. Bailing on the whole list
 /// because one row lost its `y` would throw away an arrangement over a box that

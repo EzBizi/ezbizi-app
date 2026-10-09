@@ -104,7 +104,6 @@ class DashboardGrid extends StatefulWidget {
     this.onHide,
     this.customizing = false,
     this.spacing = 16,
-    this.fourColumnsFrom = 900,
   });
 
   final List<DashboardPanel> panels;
@@ -125,7 +124,7 @@ class DashboardGrid extends StatefulWidget {
 
   /// The width at which four columns fit. Not a breakpoint table — cards are
   /// self-contained, and there is only ever one question to ask.
-  final double fourColumnsFrom;
+  static const double fourColumnsFrom = 900;
 
   /// How many columns a panel of [size] takes out of [columns].
   static int spanOf(String size, int columns) => switch (size) {
@@ -176,7 +175,9 @@ class _DashboardGridState extends State<DashboardGrid> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= widget.fourColumnsFrom ? 4 : 2;
+        final columns = constraints.maxWidth >= DashboardGrid.fourColumnsFrom
+            ? 4
+            : 2;
 
         // Widths from the column, not from Expanded flex: a flex share
         // divides what the row's OWN gaps leave, so a Medium beside two Smalls

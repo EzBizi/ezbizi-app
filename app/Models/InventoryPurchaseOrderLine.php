@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** One item on a purchase order. */
 #[Fillable([
@@ -44,10 +43,5 @@ class InventoryPurchaseOrderLine extends Model implements StatesRetention
     public function item(): BelongsTo
     {
         return $this->belongsTo(InventoryItem::class, 'item_id');
-    }
-
-    public function receiveLines(): HasMany
-    {
-        return $this->hasMany(InventoryReceiveLine::class, 'purchase_order_line_id');
     }
 }

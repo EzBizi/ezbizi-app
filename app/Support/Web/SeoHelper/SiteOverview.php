@@ -114,17 +114,6 @@ final class SiteOverview
     }
 
     /**
-     * How many OTHER pages in the list share this page's title, description and keyphrase.
-     *
-     * @param  list<array<string, mixed>>  $pages
-     * @return array{title: int, description: int, keyphrase: int}
-     */
-    public static function sharedWith(array $page, array $pages): array
-    {
-        return array_map('count', self::sharingPages($page, $pages));
-    }
-
-    /**
      * The OTHER pages sharing this page's title, description and keyphrase, as {id, name}.
      *
      * @param  list<array<string, mixed>>  $pages

@@ -948,9 +948,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             if (people.isEmpty)
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _StickyHeader(child: _headerRow(context)),
+              PinnedHeaderSliver(
+                child: SizedBox(height: 45, child: _headerRow(context)),
               ),
               SliverList.builder(
                 itemCount: ordered.length,
@@ -2112,40 +2111,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return inCalls && !inJobs ? 'not in Workiz' : null;
   }
-}
-
-/// Holds the column header at the top of the list while the people scroll.
-///
-/// A fixed height, because the header is one row of labels and measuring it
-/// would mean laying it out twice on every frame. It is stated in one place
-/// and the header's own padding is derived from nothing else.
-class _StickyHeader extends SliverPersistentHeaderDelegate {
-  const _StickyHeader({required this.child});
-
-  final Widget child;
-
-  static const double _height = 45;
-
-  @override
-  double get minExtent => _height;
-
-  @override
-  double get maxExtent => _height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return SizedBox(height: _height, child: child);
-  }
-
-  /// True whenever the header WIDGET differs, which it does on every sort
-  /// change — the arrow moves and the labels rebuild. Returning false would
-  /// pin a header showing the previous column's arrow forever.
-  @override
-  bool shouldRebuild(_StickyHeader old) => old.child != child;
 }
 
 /// A transcript's opening, quoted: the way into the rest of it.

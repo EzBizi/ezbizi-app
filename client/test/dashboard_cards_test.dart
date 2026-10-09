@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/dashboard_panels.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/dashboard_screen.dart';
@@ -565,50 +564,6 @@ void main() {
       // Not a disabled control, which invites somebody to work out why it does
       // nothing.
       expect(find.byType(IconButton), findsNothing);
-    });
-  });
-
-  group('the order, read defensively', () {
-    test('a panel the order says nothing about is appended, not dropped', () {
-      expect(
-        panelsInSavedOrder(const ['a', 'b', 'c'], const ['c']),
-        ['c', 'a', 'b'],
-      );
-    });
-
-    test('a name nothing draws any more is passed over', () {
-      expect(
-        panelsInSavedOrder(const ['a', 'b'], const ['gone', 'b', 'a']),
-        ['b', 'a'],
-      );
-    });
-
-    test('a name stored twice draws one card, not two', () {
-      expect(
-        panelsInSavedOrder(const ['a', 'b'], const ['b', 'b', 'a']),
-        ['b', 'a'],
-      );
-    });
-
-    test('never having chosen an order is the order it was built in', () {
-      expect(panelsInSavedOrder(const ['a', 'b'], const []), ['a', 'b']);
-    });
-
-    /// This is JSON out of a preferences blob an older version of the app wrote.
-    /// A dashboard that threw because of what is in it would be a screen nobody
-    /// could open and nobody could fix.
-    test('a stored order of the wrong shape is ignored rather than thrown on', () {
-      expect(savedPanelOrder(const {}, 'hr'), isEmpty);
-      expect(savedPanelOrder(const {'dashboard.order': 'hr'}, 'hr'), isEmpty);
-      expect(savedPanelOrder(const {'dashboard.order': {'hr': 7}}, 'hr'), isEmpty);
-      expect(
-        savedPanelOrder(const {
-          'dashboard.order': {
-            'hr': ['hr.headcount', 42, null],
-          },
-        }, 'hr'),
-        ['hr.headcount'],
-      );
     });
   });
 }

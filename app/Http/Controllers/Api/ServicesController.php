@@ -9,10 +9,10 @@ use App\Models\ServiceGroup;
 use App\Models\ServiceLabel;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
-use App\Support\Services\ServiceVisibility;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -57,7 +57,7 @@ class ServicesController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
-        $query = ServiceVisibility::constrain(Service::query(), $user, $scope)
+        $query = InventoryVisibility::constrain(Service::query(), $user, $scope)
             ->with(['group:id,name', 'label:id,name', 'company:id,name', 'franchise:id,name']);
 
         if (filled($request->query('search'))) {
@@ -78,12 +78,7 @@ class ServicesController extends Controller
             'data' => collect($services->items())->map(
                 fn (Service $service) => $this->present($service),
             ),
-            'meta' => [
-                'total' => $services->total(),
-                'per_page' => $services->perPage(),
-                'current_page' => $services->currentPage(),
-                'last_page' => $services->lastPage(),
-            ],
+            'meta' => $this->pageMeta($services),
         ]);
     }
 

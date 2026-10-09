@@ -6,7 +6,11 @@ use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A Google sign-in that will not be finished, and the sentence saying why (R8).
+ * A Google or Microsoft mail sign-in that will not be finished, and the
+ * sentence saying why (R8).
+ *
+ * `$provider` is the name the person knows the sign-in by - 'Google' or
+ * 'Microsoft' - the same way the social SocialOAuthRefused takes the network.
  *
  * ── Why this is not CannotReadMailbox ────────────────────────────
  *
@@ -24,14 +28,14 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * ── Every message here is read by a person in a browser ──────────
  *
- * These are not API errors a client parses. Google finishes a flow by
+ * These are not API errors a client parses. The provider finishes a flow by
  * redirecting a browser to this server, so whoever is looking at the result is
  * a human being on a page — and often the same administrator who pressed the
  * button thirty seconds earlier. So each sentence names what happened, says
  * whether anything was stored, and ends with what to do (R8). None of them
  * names a class, an OAuth error code or a status number.
  */
-final class GoogleOAuthRefused extends RuntimeException
+final class MailOAuthRefused extends RuntimeException
 {
     private function __construct(string $message, public readonly int $status)
     {
@@ -43,11 +47,13 @@ final class GoogleOAuthRefused extends RuntimeException
      *
      * 501, matching {@see MailboxFault::NotBuiltHere}: it is at EzBizi's end and
      * there is nothing for the person in front of the screen to press.
+     *
+     * @param  string  $provider  as the product is named: 'Google', 'Microsoft 365'
      */
-    public static function notConfigured(string $why): self
+    public static function notConfigured(string $provider, string $why): self
     {
         return new self(
-            'EzBizi cannot start a Google sign-in on this installation. '.$why
+            "EzBizi cannot start a {$provider} sign-in on this installation. ".$why
             .' This is at EzBizi\'s end — nothing is wrong with the address, and signing in '
             .'again would not help.',
             Response::HTTP_NOT_IMPLEMENTED,
@@ -69,10 +75,10 @@ final class GoogleOAuthRefused extends RuntimeException
      * 400 rather than 403, because nobody is being denied anything they might
      * be granted — the value simply does not name an open sign-in.
      */
-    public static function noOpenSignIn(): self
+    public static function noOpenSignIn(string $provider): self
     {
         return new self(
-            'This Google sign-in link is no longer valid. Sign-ins can only be finished once '
+            "This {$provider} sign-in link is no longer valid. Sign-ins can only be finished once "
             .'and they stop working after ten minutes, so this usually means the page was '
             .'opened twice or left sitting for a while. Nothing has been connected and '
             .'nothing has been changed. Go back to Email settings and start connecting the '
@@ -81,12 +87,17 @@ final class GoogleOAuthRefused extends RuntimeException
         );
     }
 
-    /** Google's consent screen came back with a refusal rather than a code. */
-    public static function declined(): self
+    /**
+     * The consent screen came back with a refusal rather than a code.
+     *
+     * @param  string  $button  the consent screen's own word for yes: Google's
+     *                          says "Allow", Microsoft's says "Accept"
+     */
+    public static function declined(string $provider, string $button): self
     {
         return new self(
-            'The sign-in was not completed at Google, so nothing has been connected. That is '
-            .'usually because the "Allow" button was not pressed, or the window was closed '
+            "The sign-in was not completed at {$provider}, so nothing has been connected. That is "
+            ."usually because the \"{$button}\" button was not pressed, or the window was closed "
             .'part-way through. Go back to Email settings and try connecting the address '
             .'again.',
             Response::HTTP_BAD_REQUEST,
@@ -108,7 +119,7 @@ final class GoogleOAuthRefused extends RuntimeException
      *  it is the last one who would notice. So the addresses are
      *  compared and a mismatch stops here — before anything is stored,
      *  and with the token that was just issued handed straight back to
-     *  Google to be revoked.
+     *  the provider to be revoked.
      * ═══════════════════════════════════════════════════════════════
      *
      * Both addresses are named. The sentence is unreadable without them —
@@ -118,16 +129,16 @@ final class GoogleOAuthRefused extends RuntimeException
      * nowhere: see GoogleMailAuthController, where the audit entry records the
      * mismatch and the MAILBOX address only.
      */
-    public static function wrongAccount(string $expected, string $signedInAs): self
+    public static function wrongAccount(string $provider, string $expected, string $signedInAs): self
     {
         return new self(
             sprintf(
                 'That sign-in was for %s, but this inbox is %s, so nothing has been connected '
-                .'and the permission has already been handed back to Google. Connecting them '
+                .'and the permission has already been handed back to %s. Connecting them '
                 .'would have let everybody with access to this shared inbox read the mail for '
-                .'%s. If you have more than one Google account, sign out of the others or use '
+                .'%s. If you have more than one %s account, sign out of the others or use '
                 .'a private window, then connect the address again and choose %s.',
-                $signedInAs, $expected, $signedInAs, $expected,
+                $signedInAs, $expected, $provider, $signedInAs, $provider, $expected,
             ),
             Response::HTTP_CONFLICT,
         );
@@ -136,41 +147,41 @@ final class GoogleOAuthRefused extends RuntimeException
     /**
      * Signed in as the right account, and did not allow enough to be useful.
      *
-     * Google lets somebody untick permissions on the consent screen. Accepting
-     * that quietly would store a credential that cannot read the mailbox, and
-     * the mailbox would read "connected" until the first person opened it and
-     * got a permission failure they had no way to connect to a tick box they
-     * cleared ten minutes earlier.
+     * The consent screen lets somebody untick permissions. Accepting that
+     * quietly would store a credential that cannot read the mailbox, and the
+     * mailbox would read "connected" until the first person opened it and got a
+     * permission failure they had no way to connect to a tick box they cleared
+     * ten minutes earlier.
      */
-    public static function permissionNotGiven(string $address): self
+    public static function permissionNotGiven(string $provider, string $address): self
     {
         return new self(
             sprintf(
                 'The sign-in for %s did not include permission to read and reply to the mail, '
                 .'so nothing has been connected — EzBizi would not have been able to show you '
-                .'anything. That usually means one of the tick boxes on the Google screen was '
+                .'anything. That usually means one of the tick boxes on the %s screen was '
                 .'cleared. Connect the address again and leave all of them ticked.',
-                $address,
+                $address, $provider,
             ),
             Response::HTTP_CONFLICT,
         );
     }
 
     /**
-     * Google would not complete the exchange.
+     * The provider would not complete the exchange.
      *
      * 502 rather than 400: by this point the person has done everything right
      * and the failure is between two servers. It is also the case most likely
      * to be transient, so the sentence says to try again rather than sending
      * anybody to check a setting.
      */
-    public static function exchangeFailed(): self
+    public static function exchangeFailed(string $provider): self
     {
         return new self(
-            'Google would not finish the sign-in, so nothing has been connected. Nothing is '
+            "{$provider} would not finish the sign-in, so nothing has been connected. Nothing is "
             .'wrong with the address and there is nothing to undo. Wait a moment and connect '
             .'it again; if it keeps happening, whoever looks after this EzBizi installation '
-            .'needs to check its Google registration.',
+            ."needs to check its {$provider} registration.",
             Response::HTTP_BAD_GATEWAY,
         );
     }
@@ -178,19 +189,20 @@ final class GoogleOAuthRefused extends RuntimeException
     /**
      * The exchange succeeded and produced no LASTING permission.
      *
-     * Google issues a refresh token on first consent and, after that, only when
-     * asked to consent again. This flow always asks — see
-     * {@see GoogleOAuth::authorizeUrl} — so an absent refresh token is a real
-     * anomaly rather than the ordinary second-time-round case, and storing the
-     * hour-long access token instead would produce an inbox that worked until
-     * lunchtime and then said the sign-in had been revoked.
+     * A refresh token comes on first consent and, after that, only when the
+     * person is asked to consent again. Both flows always ask — see
+     * {@see GoogleOAuth::authorizeUrl} and {@see MicrosoftOAuth::authorizeUrl} —
+     * so an absent refresh token is a real anomaly rather than the ordinary
+     * second-time-round case, and storing the hour-long access token instead
+     * would produce an inbox that worked until lunchtime and then said the
+     * sign-in had been revoked.
      */
-    public static function noLastingPermission(): self
+    public static function noLastingPermission(string $provider): self
     {
         return new self(
-            'Google allowed the sign-in but did not give EzBizi lasting permission, so nothing '
+            "{$provider} allowed the sign-in but did not give EzBizi lasting permission, so nothing "
             .'has been connected — a connection that expired within the hour would be worse '
-            .'than none. Open your Google account\'s security settings, remove EzBizi from the '
+            ."than none. Open your {$provider} account's security settings, remove EzBizi from the "
             .'apps that have access, then connect the address again.',
             Response::HTTP_BAD_GATEWAY,
         );

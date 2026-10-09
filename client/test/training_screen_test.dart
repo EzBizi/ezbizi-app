@@ -105,7 +105,7 @@ void main() {
   // own permission gate (`training.manage`), and its own storyboard editors
   // are covered in `training_builder_test.dart`, not here. This is only the
   // shell-level smoke check: granted the permission, the chip opens the real
-  // screen, never the retired `ComingSoonScreen` text.
+  // screen, never placeholder text.
   testWidgets('Settings is a real screen, not a placeholder', (tester) async {
     await _pumpScreen(tester, me: {'permissions': const ['training.view', 'training.manage']});
 

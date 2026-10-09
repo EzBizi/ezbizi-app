@@ -535,7 +535,7 @@ class _PageEditorState extends State<PageEditor> {
     );
   }
 
-  /// The next name for this page, worked out the way the server does it.
+  /// The next name for this page.
   ///
   /// Numbered from the names already present rather than from how many there
   /// are: removing field 2 of three must not hand field 3's name to a new field

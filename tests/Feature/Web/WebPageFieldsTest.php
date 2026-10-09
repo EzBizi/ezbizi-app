@@ -145,22 +145,6 @@ class WebPageFieldsTest extends TestCase
             ])->assertStatus(422);
     }
 
-    /**
-     * THE one that protects a live page: deleting field 2 of three must not let
-     * the next field take the name of field 3, which is pasted into a template
-     * somewhere and would silently start showing different words.
-     */
-    public function test_a_new_field_never_takes_a_name_already_in_use(): void
-    {
-        $this->assertSame(
-            'about_us_field_4',
-            PageFields::nextKey('/about-us', ['about_us_field_1', 'about_us_field_3']),
-        );
-
-        // The site root is "home" rather than an empty prefix.
-        $this->assertSame('home_field_1', PageFields::nextKey('/', []));
-    }
-
     /** A built-in always wins, or the catalogue would carry the key twice. */
     public function test_a_built_in_name_can_never_be_claimed(): void
     {
@@ -168,6 +152,9 @@ class WebPageFieldsTest extends TestCase
         $this->assertFalse(PageFields::isCustomKey('field_1'));
         $this->assertFalse(PageFields::isCustomKey('home_field_1_x'));
         $this->assertTrue(PageFields::isCustomKey('home_field_1'));
+        $this->assertTrue(PageFields::isTemplateKey('template_2'));
+        $this->assertFalse(PageFields::isTemplateKey('template_0'));
+        $this->assertFalse(PageFields::isTemplateKey('template_2_x'));
     }
 
     /**
@@ -280,23 +267,6 @@ class WebPageFieldsTest extends TestCase
                 'path' => '/about-us',
                 'values' => ['template_1' => 'Different here.'],
             ])->assertStatus(422);
-    }
-
-    /**
-     * The one that protects a shortcode already pasted into nine pages:
-     * deleting template 2 of three must not hand template 3's name to new words.
-     */
-    public function test_a_new_template_never_takes_a_name_already_in_use(): void
-    {
-        $this->assertSame(
-            'template_4',
-            PageFields::nextTemplateKey(['template_1', 'template_3']),
-        );
-
-        $this->assertSame('template_1', PageFields::nextTemplateKey([]));
-        $this->assertTrue(PageFields::isTemplateKey('template_2'));
-        $this->assertFalse(PageFields::isTemplateKey('template_0'));
-        $this->assertFalse(PageFields::isTemplateKey('template_2_x'));
     }
 
     /**

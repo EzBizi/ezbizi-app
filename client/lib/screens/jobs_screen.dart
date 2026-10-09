@@ -1303,23 +1303,12 @@ class _NewJobPanelState extends State<_NewJobPanel> {
     if (!response.ok) {
       setState(() {
         _busy = false;
-        _error = _firstError(response);
+        _error = response.reason;
       });
       return;
     }
 
     Navigator.of(context).pop(true);
-  }
-
-  String _firstError(ApiResponse response) {
-    final errors = response.body['errors'];
-
-    if (errors is Map && errors.isNotEmpty) {
-      final first = errors.values.first;
-      if (first is List && first.isNotEmpty) return first.first.toString();
-    }
-
-    return response.message;
   }
 
   @override

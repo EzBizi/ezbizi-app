@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
@@ -15,8 +16,8 @@ use App\Support\Jobs\EarnedStatuses;
 use App\Support\Jobs\JobServiceArea;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workiz\PhoneE164;
 use App\Support\Workiz\StateCode;
+use App\Support\Workiz\WorkizTwins;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -284,7 +285,7 @@ class ProjectWorkizRecords extends Command
              * A-1 gave Massachusetts its own Workiz account on 2026-10-05; its
              * clients are new numbers for ~800 people EzBizi holds through
              * Nationwide's, and creating them would have made ~800 twins. The
-             * rule is the one Customers set for folding twins (MergeWorkizTwins),
+             * rule is the one Customers set for folding twins (WorkizTwins),
              * applied before the twin exists. Ownership is not touched: moving a
              * customer to another branch is Customers' step, and audited there.
              */
@@ -341,8 +342,8 @@ class ProjectWorkizRecords extends Command
                     // Workiz sends bare digits and this column holds E.164 --
                     // the API, the database and Twilio all key on it, so a bare
                     // ten is the wrong value for calling somebody, not just an
-                    // unformatted one. See PhoneE164 for the production census.
-                    'phone' => Customer::realPhone(PhoneE164::from($client->phone)),
+                    // unformatted one.
+                    'phone' => Customer::realPhone(Lead::e164($client->phone)),
                     'address_line1' => $client->address,
                     'address_line2' => $client->unit,
                     'city' => $client->city,
@@ -432,11 +433,11 @@ class ProjectWorkizRecords extends Command
     private function samePerson(WorkizClient $client): array
     {
         $none = ['customer' => null, 'several' => [], 'zip_unreadable' => []];
-        $phone = Customer::realPhone(PhoneE164::from($client->phone));
+        $phone = Customer::realPhone(Lead::e164($client->phone));
         $name = $client->name ?: $client->company;
         $norm = fn (?string $value) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $value)));
         $zip = fn (?string $value) => substr(preg_replace('/\D+/', '', (string) $value), 0, 5);
-        $placeholder = fn (?string $street) => in_array(MergeWorkizTwins::street($street), MergeWorkizTwins::PLACEHOLDER_STREETS, true);
+        $placeholder = fn (?string $street) => in_array(WorkizTwins::street($street), WorkizTwins::PLACEHOLDER_STREETS, true);
 
         if ($phone === null || preg_match('/^\+1\d{10}$/', $phone) !== 1 || ($name ?? '') === '' || $placeholder($client->address)) {
             return $none;

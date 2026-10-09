@@ -357,10 +357,9 @@ class _NotificationBellState extends State<NotificationBell>
     // Unread-ness from the list as fetched, so a toast clicked twice does not
     // post the read twice. A failed read is not a reason to go nowhere: the
     // person clicked to see something, and the panel below still shows it.
-    final clicked = _items.cast<Map<String, dynamic>?>().firstWhere(
-      (item) => item?['id']?.toString() == payload,
-      orElse: () => null,
-    );
+    final clicked = _items
+        .where((item) => item['id']?.toString() == payload)
+        .firstOrNull;
     if (clicked != null && clicked['read_at'] == null) {
       await widget.api.post('/notifications/$payload/read', {});
     }
@@ -385,10 +384,9 @@ class _NotificationBellState extends State<NotificationBell>
   /// feed, and a notification that has since stopped being visible must not
   /// still navigate on a stale copy.
   ({String module, String? filter, String? record})? _destinationOf(String id) {
-    final current = _items.cast<Map<String, dynamic>?>().firstWhere(
-      (item) => item?['id']?.toString() == id,
-      orElse: () => null,
-    );
+    final current = _items
+        .where((item) => item['id']?.toString() == id)
+        .firstOrNull;
     final meta = current?['meta'] as Map<String, dynamic>?;
     final module = meta?['module'] as String?;
     if (module == null) return null;

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import '../../core/api_client.dart';
 import 'consent_window_io.dart'
     if (dart.library.js_interop) 'consent_window_web.dart' as impl;
 
@@ -71,3 +74,110 @@ abstract class ConsentWindow {
 typedef OpenConsentWindow = ConsentWindow? Function();
 
 ConsentWindow? openConsentWindow() => impl.open();
+
+/// The OAuth round trip behind a Connect button, shared by Marketing's connect
+/// panel and `ConnectAccount`: open the window, ask [startPath] for the sign-in
+/// address, send the window there, then poll the matching `/status` until the
+/// callback lands.
+///
+/// Returns the poll for the caller's State to cancel in dispose(), or null when
+/// none started. [onStart] and [onEnd] carry the caller's busy state; [onEnd]
+/// gets the sentence to show, or null when there is none.
+Future<Timer?> runConsentFlow({
+  required ApiClient api,
+  required OpenConsentWindow openConsent,
+  required String startPath,
+  required String label,
+  required String refusedFallback,
+  required bool Function() isMounted,
+  required void Function() onStart,
+  required void Function(String? error) onEnd,
+  required Future<void> Function() onConnected,
+  void Function(String url)? onUrl,
+}) async {
+  // Opened BEFORE the first await, deliberately. A window opened after an async
+  // gap is not attributable to the click any more, and every browser blocks it.
+  final window = openConsent();
+
+  if (window == null) {
+    onEnd(
+      'EzBizi could not open the $label sign-in window. On the web that is '
+      'usually the browser blocking new windows for this site — allow them and '
+      'press the button again.',
+    );
+    return null;
+  }
+
+  onStart();
+
+  final response = await api.post(startPath, const {});
+
+  if (!isMounted()) {
+    window.close();
+    return null;
+  }
+
+  if (!response.ok) {
+    window.close();
+    // `reason` rather than `message`: a 501 here carries the driver's sentence
+    // about what EzBizi has not set up yet, which is the only part somebody
+    // stuck can act on.
+    onEnd(response.reason);
+    return null;
+  }
+
+  final data = response.data;
+  final url = data is Map<String, dynamic> ? data['authorization_url'] : null;
+  final flow = data is Map<String, dynamic> ? data['flow'] : null;
+
+  if (url is! String || flow is! String) {
+    window.close();
+    onEnd('$label did not hand back a sign-in address.');
+    return null;
+  }
+
+  window.goTo(url);
+  onUrl?.call(url);
+
+  // Five minutes at two-second intervals. Somebody choosing between several
+  // Google accounts, or being asked for a second factor, is slower than a
+  // timeout tuned to the happy path.
+  var asks = 150;
+  final statusPath = startPath.replaceFirst('/start', '/status');
+
+  return Timer.periodic(const Duration(seconds: 2), (timer) async {
+    asks -= 1;
+
+    if (asks <= 0 || !isMounted()) {
+      timer.cancel();
+      if (isMounted()) onEnd(null);
+      return;
+    }
+
+    final status = await api.get(statusPath, {'flow': flow});
+
+    if (!isMounted()) {
+      timer.cancel();
+      return;
+    }
+
+    final data = status.data;
+    final state = data is Map<String, dynamic> ? data['state'] : null;
+    final message = data is Map<String, dynamic> ? data['message'] : null;
+
+    if (state == 'connected') {
+      timer.cancel();
+      window.close();
+      onEnd(null);
+      await onConnected();
+      return;
+    }
+
+    if (state == 'refused') {
+      timer.cancel();
+      window.close();
+      // The server's own sentence about why, not "something went wrong".
+      onEnd(message is String && message.isNotEmpty ? message : refusedFallback);
+    }
+  });
+}

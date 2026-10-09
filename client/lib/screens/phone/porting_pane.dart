@@ -9,6 +9,7 @@ import '../../widgets/address_fields.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
+import 'phone_refs.dart';
 
 /// Phone › Settings › Porting — numbers moving in from another carrier.
 ///
@@ -43,7 +44,7 @@ class _PortingPaneState extends State<PortingPane> {
   String? _error;
 
   List<_Port> _ports = const [];
-  List<_Conn> _connections = const [];
+  List<PhoneConnectionRef> _connections = const [];
   String? _connectionId;
 
   /// The tile picked (tiles over a table, Mia 2026-10-02): `progress`,
@@ -116,7 +117,7 @@ class _PortingPaneState extends State<PortingPane> {
     setState(() {
       _loading = false;
       _ports = results[0].ok ? _Port.listFrom(results[0].body) : const [];
-      _connections = results[1].ok ? _Conn.listFrom(results[1].body) : const [];
+      _connections = results[1].ok ? PhoneConnectionRef.listFrom(results[1].body) : const [];
       _error = results[0].ok ? null : results[0].reason;
       _connectionId ??= _connections.isEmpty ? null : _connections.first.id;
     });
@@ -528,26 +529,6 @@ class _PortingPaneState extends State<PortingPane> {
         ],
       ),
     );
-  }
-}
-
-class _Conn {
-  const _Conn(this.id, this.label);
-
-  final String id;
-  final String label;
-
-  static List<_Conn> listFrom(Map<String, dynamic> body) {
-    final rows = body['data'];
-    if (rows is! List) return const [];
-
-    return [
-      for (final row in rows.whereType<Map<String, dynamic>>())
-        _Conn(
-          row['id'].toString(),
-          (row['label'] ?? row['account_sid'] ?? 'Phone account').toString(),
-        ),
-    ];
   }
 }
 

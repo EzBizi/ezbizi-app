@@ -7,9 +7,9 @@ use App\Models\Franchise;
 use App\Models\ServiceGroup;
 use App\Models\ServiceLabel;
 use App\Models\User;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
-use App\Support\Services\ServiceVisibility;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -45,7 +45,7 @@ abstract class ServiceTaxonomyController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
-        $rows = ServiceVisibility::constrain($class::query(), $user, $scope)
+        $rows = InventoryVisibility::constrain($class::query(), $user, $scope)
             ->orderBy('name')
             ->get();
 

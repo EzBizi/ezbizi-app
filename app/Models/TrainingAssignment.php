@@ -110,11 +110,6 @@ class TrainingAssignment extends Model implements CarriesAutomationScope, HoldsP
         return $this->belongsTo(TrainingTest::class, 'test_id');
     }
 
-    public function assignedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assigned_by_user_id');
-    }
-
     /**
      * Where this assignment belongs, for §4 reach — the LEARNER'S place, not
      * this row's own `company_id`/`franchise_id`.

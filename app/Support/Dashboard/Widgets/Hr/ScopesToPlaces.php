@@ -117,21 +117,6 @@ trait ScopesToPlaces
     }
 
     /**
-     * People this view covers, by their assignment.
-     *
-     * Deliberately does NOT include people with no assignment at all — see
-     * countsUnplaced() for why they are a separate question with a separate
-     * answer rather than being folded in here.
-     */
-    protected function peopleInView(array $places): Builder
-    {
-        return User::query()->whereHas(
-            'assignments',
-            fn (Builder $a) => $this->constrainToPlaces($a, $places),
-        );
-    }
-
-    /**
      * Should this view also count people who are not assigned anywhere?
      *
      * HrPeopleController::visibleTo shows assignment-less people to somebody

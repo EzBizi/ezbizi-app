@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -35,11 +36,6 @@ final class XOAuth implements SocialOAuth
     public function routeKey(): string
     {
         return 'x';
-    }
-
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
     }
 
     public function scopes(): array

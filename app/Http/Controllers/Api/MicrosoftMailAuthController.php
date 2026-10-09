@@ -10,9 +10,9 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
+use App\Support\Email\MailOAuthRefused;
 use App\Support\Email\MicrosoftOAuth;
 use App\Support\Email\MicrosoftOAuthGrant;
-use App\Support\Email\MicrosoftOAuthRefused;
 use App\Support\Email\MicrosoftOAuthSignIns;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -63,7 +63,7 @@ class MicrosoftMailAuthController extends Controller
 
         try {
             $begun = $this->signIns->begin($user, $mailbox);
-        } catch (MicrosoftOAuthRefused $e) {
+        } catch (MailOAuthRefused $e) {
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
 
@@ -108,23 +108,23 @@ class MicrosoftMailAuthController extends Controller
 
         try {
             if ($state === '') {
-                throw MicrosoftOAuthRefused::noOpenSignIn();
+                throw MailOAuthRefused::noOpenSignIn('Microsoft');
             }
 
             $signIn = $this->signIns->complete($state);
 
             if ($request->query('error') !== null) {
-                throw MicrosoftOAuthRefused::declined();
+                throw MailOAuthRefused::declined('Microsoft', 'Accept');
             }
 
             $code = (string) $request->query('code', '');
 
             if ($code === '') {
-                throw MicrosoftOAuthRefused::exchangeFailed();
+                throw MailOAuthRefused::exchangeFailed('Microsoft');
             }
 
             return $this->finish($signIn, $code);
-        } catch (MicrosoftOAuthRefused $e) {
+        } catch (MailOAuthRefused $e) {
             if ($signIn !== null) {
                 $this->signIns->record($signIn, MicrosoftOAuthSignIns::REFUSED, $e->getMessage());
             }
@@ -134,14 +134,14 @@ class MicrosoftMailAuthController extends Controller
     }
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     private function finish(MicrosoftMailSignIn $signIn, string $code): Response
     {
         $organization = $signIn->organization;
 
         if ($organization === null) {
-            throw MicrosoftOAuthRefused::noLongerPermitted(
+            throw MailOAuthRefused::noLongerPermitted(
                 'The business this sign-in belongs to is no longer set up in EzBizi.',
             );
         }
@@ -150,7 +150,7 @@ class MicrosoftMailAuthController extends Controller
             $mailbox = Mailbox::find($signIn->mailbox_id);
 
             if ($mailbox === null) {
-                throw MicrosoftOAuthRefused::noLongerPermitted(
+                throw MailOAuthRefused::noLongerPermitted(
                     'That inbox is no longer connected to EzBizi — somebody disconnected it '
                     .'while this sign-in was open. Add the address again if it is still '
                     .'wanted.',
@@ -161,7 +161,7 @@ class MicrosoftMailAuthController extends Controller
 
             if ($user === null || ! $user->is_active
                 || $this->access->manageRefusal($user, $mailbox, 'connect this inbox') !== null) {
-                throw MicrosoftOAuthRefused::noLongerPermitted(
+                throw MailOAuthRefused::noLongerPermitted(
                     'The person who started it is no longer able to connect this inbox. '
                     .'Somebody who can manage mailboxes needs to connect the address.',
                 );
@@ -188,7 +188,7 @@ class MicrosoftMailAuthController extends Controller
     }
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     private function assertItIsTheRightAccount(MicrosoftOAuthGrant $grant, string $address): void
     {
@@ -197,7 +197,8 @@ class MicrosoftMailAuthController extends Controller
         if ($signedInAs !== strtolower($address)) {
             $this->microsoft->revoke($grant->refreshToken);
 
-            throw MicrosoftOAuthRefused::wrongAccount(
+            throw MailOAuthRefused::wrongAccount(
+                'Microsoft',
                 $address,
                 $signedInAs === null ? 'a Microsoft account EzBizi could not identify' : $signedInAs,
             );
@@ -206,12 +207,12 @@ class MicrosoftMailAuthController extends Controller
         if (! $grant->covers(MicrosoftOAuth::SCOPE_READ, MicrosoftOAuth::SCOPE_SEND)) {
             $this->microsoft->revoke($grant->refreshToken);
 
-            throw MicrosoftOAuthRefused::permissionNotGiven($address);
+            throw MailOAuthRefused::permissionNotGiven('Microsoft', $address);
         }
     }
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     private function store(Mailbox $mailbox, User $user, MicrosoftOAuthGrant $grant): void
     {
@@ -227,7 +228,7 @@ class MicrosoftMailAuthController extends Controller
                 ], actor: $user);
             });
         } catch (SubscriptionLapsedException) {
-            throw MicrosoftOAuthRefused::noLongerPermitted(
+            throw MailOAuthRefused::noLongerPermitted(
                 'This EzBizi subscription has ended, so nothing new can be saved until it is '
                 .'renewed. Mail is still arriving at the address in the meantime.',
             );
@@ -236,36 +237,6 @@ class MicrosoftMailAuthController extends Controller
 
     private function page(string $heading, string $sentence, int $status): Response
     {
-        $html = <<<HTML
-        <!doctype html>
-        <html lang="en">
-        <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>EzBizi — {$this->escape($heading)}</title>
-        <style>
-        body { margin: 0; padding: 2rem 1.25rem; background: #f6f7f9; color: #1c1e21;
-               font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-        main { max-width: 34rem; margin: 0 auto; background: #fff; border: 1px solid #e2e5e9;
-               border-radius: 10px; padding: 1.5rem; }
-        h1 { margin: 0 0 .75rem; font-size: 1.25rem; }
-        p { margin: 0; }
-        </style>
-        </head>
-        <body>
-        <main>
-        <h1>{$this->escape($heading)}</h1>
-        <p>{$this->escape($sentence)}</p>
-        </main>
-        </body>
-        </html>
-        HTML;
-
-        return response($html, $status)->header('Content-Type', 'text/html; charset=utf-8');
-    }
-
-    private function escape(string $value): string
-    {
-        return e(mb_substr($value, 0, 2000));
+        return response()->view('mail-auth.page', compact('heading', 'sentence'), $status);
     }
 }

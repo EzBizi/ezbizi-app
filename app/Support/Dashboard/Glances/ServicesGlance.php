@@ -7,8 +7,8 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
-use App\Support\Services\ServiceVisibility;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -27,7 +27,7 @@ final class ServicesGlance extends DescribedGlance
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user) {
             $scope = ViewScope::forUser($user);
-            $rows = ServiceVisibility::constrain(Service::query(), $user, $scope)
+            $rows = InventoryVisibility::constrain(Service::query(), $user, $scope)
                 ->with('group:id,name')
                 ->get(['id', 'group_id']);
 

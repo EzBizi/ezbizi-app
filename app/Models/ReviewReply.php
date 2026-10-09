@@ -73,11 +73,6 @@ class ReviewReply extends Model implements StatesRetention
         return $this->belongsTo(Review::class);
     }
 
-    public function publishedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'published_by_user_id');
-    }
-
     public function isPublished(): bool
     {
         return $this->status === self::STATUS_PUBLISHED;

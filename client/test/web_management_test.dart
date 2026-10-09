@@ -16,9 +16,7 @@ import 'package:http/testing.dart';
 ///
 /// Web Management left the coming-soon set on 2026-08-28, so the two tests that
 /// asserted it drew a placeholder moved here and became tests of what it draws
-/// instead. The layout test for the placeholder widget itself stayed behind in
-/// coming_soon_tabs_test.dart, because that widget is still the answer for the
-/// next module granted before it is built.
+/// instead.
 ///
 /// Two of these are about house rules rather than about websites: §6 forbids
 /// pop-ups, and §3 says a screen files on the VIEW rather than on reach. Both

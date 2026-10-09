@@ -159,7 +159,7 @@ class _IdentityCardState extends State<IdentityCard> {
 
     setState(() {
       _saving = false;
-      _error = response.ok ? null : _firstError(response) ?? response.message;
+      _error = response.ok ? null : response.reason;
     });
 
     if (!response.ok) return;
@@ -172,16 +172,6 @@ class _IdentityCardState extends State<IdentityCard> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Profile saved.')));
     }
-  }
-
-  String? _firstError(ApiResponse response) {
-    final errors = response.body['errors'] as Map<String, dynamic>?;
-
-    if (errors == null || errors.isEmpty) return null;
-
-    final first = errors.values.first;
-
-    return first is List && first.isNotEmpty ? first.first as String : null;
   }
 
   /// Pick, crop, upload.
@@ -236,7 +226,7 @@ class _IdentityCardState extends State<IdentityCard> {
     if (!response.ok) {
       setState(() {
         _avatarPreview = null;
-        _error = _firstError(response) ?? response.message;
+        _error = response.reason;
       });
       return;
     }

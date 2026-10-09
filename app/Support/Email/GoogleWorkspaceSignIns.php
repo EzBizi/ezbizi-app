@@ -5,6 +5,7 @@ namespace App\Support\Email;
 use App\Models\GoogleWorkspaceSignIn;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Pkce;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -32,7 +33,7 @@ final class GoogleWorkspaceSignIns
     /**
      * @return array{url: string, flow: string, expires_at: \Illuminate\Support\Carbon}
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function begin(
         User $user,
@@ -42,7 +43,7 @@ final class GoogleWorkspaceSignIns
         ?string $scopeId = null,
     ): array {
         $state    = Str::random(64);
-        $verifier = $this->google->newVerifier();
+        $verifier = Pkce::verifier();
         $url      = $this->google->workspaceAuthorizeUrl($state, $verifier, $domain);
         $scopeId  ??= $organization->getKey();
 
@@ -105,7 +106,7 @@ final class GoogleWorkspaceSignIns
      * Null means this callback is the per-inbox Gmail flow (or nothing). Thrown
      * refusal means it WAS a Workspace sign-in and is already spent.
      *
-     * @throws GoogleOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function completeIfPresent(string $state): ?GoogleWorkspaceSignIn
     {
@@ -116,11 +117,11 @@ final class GoogleWorkspaceSignIns
         }
 
         if (GoogleWorkspaceSignIn::whereKey($row->getKey())->delete() !== 1) {
-            throw GoogleOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Google');
         }
 
         if ($row->hasExpired()) {
-            throw GoogleOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Google');
         }
 
         return $row;

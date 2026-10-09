@@ -298,7 +298,6 @@ class DateRangePanel extends StatefulWidget {
     required this.formats,
     required this.onApply,
     required this.onCancel,
-    this.maxDays = 92,
     this.narrow = false,
   });
 
@@ -310,7 +309,7 @@ class DateRangePanel extends StatefulWidget {
 
   /// The longest span the report will run. Longer is refused here, in the
   /// same words, rather than sent to be refused.
-  final int maxDays;
+  static const int maxDays = 92;
 
   /// A phone: one month, the list over it, and the buttons at the foot.
   final bool narrow;
@@ -382,8 +381,9 @@ class _DateRangePanelState extends State<DateRangePanel> {
 
   String? get _problem {
     if (_span.to.isAfter(_today)) return 'Choose dates up to today.';
-    if (_span.days > widget.maxDays) {
-      return 'Choose ${widget.maxDays} days or fewer. This is ${_span.days}.';
+    if (_span.days > DateRangePanel.maxDays) {
+      return 'Choose ${DateRangePanel.maxDays} days or fewer. '
+          'This is ${_span.days}.';
     }
     return null;
   }

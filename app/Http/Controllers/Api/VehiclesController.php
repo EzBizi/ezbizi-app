@@ -20,7 +20,7 @@ use App\Support\Fleet\VehiclePaymentMethod;
 use App\Support\Fleet\VehicleRatePeriod;
 use App\Support\Fleet\VehicleRentalTerms;
 use App\Support\Fleet\VehicleStatus;
-use App\Support\Fleet\VehicleVisibility;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
@@ -39,7 +39,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Create is one transaction: vehicle + first ownership period. Sold/returned
  * close the open ownership on the same save; buy-back needs status + ownership
  * together. Money is stripped on every read unless the caller holds
- * fleet_management.financials. List always applies VehicleVisibility.
+ * fleet_management.financials. List always applies InventoryVisibility.
  */
 class VehiclesController extends Controller
 {
@@ -80,7 +80,7 @@ class VehiclesController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
-        $query = VehicleVisibility::constrain(Vehicle::query(), $user, $scope);
+        $query = InventoryVisibility::constrain(Vehicle::query(), $user, $scope);
 
         $statuses = $this->requestedStatuses($request);
         $query->whereIn('status', $statuses);
@@ -133,12 +133,7 @@ class VehiclesController extends Controller
             'data' => collect($vehicles->items())->map(
                 fn (Vehicle $v) => $this->present($v, $user),
             ),
-            'meta' => [
-                'total' => $vehicles->total(),
-                'per_page' => $vehicles->perPage(),
-                'current_page' => $vehicles->currentPage(),
-                'last_page' => $vehicles->lastPage(),
-            ],
+            'meta' => $this->pageMeta($vehicles),
         ]);
     }
 
@@ -408,8 +403,8 @@ class VehiclesController extends Controller
             'plate_state' => ['nullable', 'string', 'max:8'],
             'vin' => ['nullable', 'string', 'max:32', $vinUnique],
             'colour' => ['nullable', 'string', 'max:60'],
-            'body_type' => ['required', 'string', Rule::in(VehicleBodyType::values())],
-            'fuel_type' => ['required', 'string', Rule::in(VehicleFuelType::values())],
+            'body_type' => ['required', 'string', Rule::enum(VehicleBodyType::class)],
+            'fuel_type' => ['required', 'string', Rule::enum(VehicleFuelType::class)],
             'odometer_miles' => ['nullable', 'integer', 'min:0'],
             'odometer_updated_at' => ['nullable', 'date'],
             'next_service_on' => ['nullable', 'date'],
@@ -443,8 +438,8 @@ class VehiclesController extends Controller
             'plate_state' => ['sometimes', 'nullable', 'string', 'max:8'],
             'vin' => ['sometimes', 'nullable', 'string', 'max:32', $vinUnique],
             'colour' => ['sometimes', 'nullable', 'string', 'max:60'],
-            'body_type' => ['sometimes', 'string', Rule::in(VehicleBodyType::values())],
-            'fuel_type' => ['sometimes', 'string', Rule::in(VehicleFuelType::values())],
+            'body_type' => ['sometimes', 'string', Rule::enum(VehicleBodyType::class)],
+            'fuel_type' => ['sometimes', 'string', Rule::enum(VehicleFuelType::class)],
             'odometer_miles' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'odometer_updated_at' => ['sometimes', 'nullable', 'date'],
             'next_service_on' => ['sometimes', 'nullable', 'date'],
@@ -455,7 +450,7 @@ class VehiclesController extends Controller
             'toll_plan' => ['sometimes', 'nullable', 'string', 'max:255'],
             'toll_flat_rate_cents' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'status' => ['sometimes', 'string', Rule::in(VehicleStatus::values())],
+            'status' => ['sometimes', 'string', Rule::enum(VehicleStatus::class)],
             'ownership' => ['sometimes', 'array'],
             ...$this->ownershipFieldRules(kindRequired: false),
         ];
@@ -468,7 +463,7 @@ class VehiclesController extends Controller
             'ownership.kind' => [
                 $kindRequired ? 'required' : 'required_with:ownership',
                 'string',
-                Rule::in(VehicleOwnershipKind::values()),
+                Rule::enum(VehicleOwnershipKind::class),
             ],
             'ownership.counterparty' => ['nullable', 'string', 'max:200'],
             'ownership.registered_owner' => ['nullable', 'string', 'max:200'],
@@ -480,11 +475,11 @@ class VehiclesController extends Controller
             'ownership.loan_payoff_date' => ['nullable', 'date'],
             'ownership.transport_cost_cents' => ['nullable', 'integer', 'min:0'],
             'ownership.rental_rate_cents' => ['nullable', 'integer', 'min:0'],
-            'ownership.rental_rate_period' => ['nullable', 'string', Rule::in(VehicleRatePeriod::values())],
+            'ownership.rental_rate_period' => ['nullable', 'string', Rule::enum(VehicleRatePeriod::class)],
             'ownership.rental_deposit_cents' => ['nullable', 'integer', 'min:0'],
             'ownership.rental_account_number' => ['nullable', 'string', 'max:100'],
-            'ownership.rental_payment_terms' => ['nullable', 'string', Rule::in(VehicleRentalTerms::values())],
-            'ownership.rental_payment_method' => ['nullable', 'string', Rule::in(VehiclePaymentMethod::values())],
+            'ownership.rental_payment_terms' => ['nullable', 'string', Rule::enum(VehicleRentalTerms::class)],
+            'ownership.rental_payment_method' => ['nullable', 'string', Rule::enum(VehiclePaymentMethod::class)],
             'ownership.rental_agreement_number' => ['nullable', 'string', 'max:100'],
             'ownership.mileage_allowance' => ['nullable', 'integer', 'min:0'],
         ];

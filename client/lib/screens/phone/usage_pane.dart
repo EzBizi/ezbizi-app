@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/list_table.dart';
+import '../../widgets/share_bar.dart';
 
 /// Phone › Settings › Cost — what this company's phone service costs.
 ///
@@ -271,7 +272,7 @@ class _UsagePaneState extends State<UsagePane> {
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              _ShareBar(share: share(line.micros)),
+              ShareBar(share: share(line.micros)),
             ],
         ],
       ),
@@ -511,43 +512,6 @@ class _MoneyTiles extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// A share of the whole as a bar and a percentage.
-class _ShareBar extends StatelessWidget {
-  const _ShareBar({required this.share});
-
-  final double share;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 100,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: share.clamp(0, 1).toDouble(),
-              minHeight: 6,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '${(share * 100).round()}%',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
     );
   }
 }

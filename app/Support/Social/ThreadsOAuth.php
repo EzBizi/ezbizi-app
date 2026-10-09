@@ -28,11 +28,6 @@ final class ThreadsOAuth implements SocialOAuth
         return 'threads';
     }
 
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
-    }
-
     public function scopes(): array
     {
         return self::SCOPES;

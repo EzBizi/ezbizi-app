@@ -12,14 +12,12 @@ class VehiclePapers extends StatefulWidget {
     required this.attachableType,
     required this.attachableId,
     required this.canEdit,
-    this.addLabel = 'Add paper',
   });
 
   final ApiClient api;
   final String attachableType;
   final String attachableId;
   final bool canEdit;
-  final String addLabel;
 
   @override
   State<VehiclePapers> createState() => _VehiclePapersState();
@@ -193,7 +191,7 @@ class _VehiclePapersState extends State<VehiclePapers> {
             child: TextButton.icon(
               onPressed: _busy ? null : _add,
               icon: const Icon(Icons.upload_file, size: 18),
-              label: Text(widget.addLabel),
+              label: const Text('Add paper'),
             ),
           ),
         if (_error != null) ...[

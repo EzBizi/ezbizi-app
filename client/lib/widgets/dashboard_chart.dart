@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 /// A pie, bar, line, or timeline drawn from the server’s slices / series.
@@ -447,7 +448,10 @@ List<_Slice> _foldTail(List<_Slice> slices) {
   final tail = slices.skip(identities);
   final total = tail.fold<double>(0, (sum, s) => sum + s.total);
 
-  return [...slices.take(identities), _Slice('${tail.length} more', total)];
+  return [
+    ...slices.take(identities),
+    (label: '${tail.length} more', total: total),
+  ];
 }
 
 /// One colour per slot, and **never the same colour twice**.
@@ -582,9 +586,9 @@ List<_Slice> _readSlices(List<dynamic>? raw) {
   return [
     for (final item in raw)
       if (item is Map)
-        _Slice(
-          '${item['label'] ?? ''}',
-          (item['total'] as num?)?.toDouble() ?? 0,
+        (
+          label: '${item['label'] ?? ''}',
+          total: (item['total'] as num?)?.toDouble() ?? 0,
         ),
   ];
 }
@@ -605,7 +609,7 @@ List<_Series> _readSeries(List<dynamic>? series) {
       // Year buckets are `Y-m` (`2026-08`). DateTime.tryParse skips those.
       final at = DateTime.tryParse(atRaw) ?? DateTime.tryParse('$atRaw-01');
       if (at == null) continue;
-      points.add(_Point(at, (point['value'] as num?)?.toDouble() ?? 0));
+      points.add((at: at, value: (point['value'] as num?)?.toDouble() ?? 0));
     }
     if (points.isEmpty) continue;
     points.sort((a, b) => a.at.compareTo(b.at));
@@ -614,19 +618,9 @@ List<_Series> _readSeries(List<dynamic>? series) {
   return out;
 }
 
-class _Slice {
-  const _Slice(this.label, this.total);
+typedef _Slice = ({String label, double total});
 
-  final String label;
-  final double total;
-}
-
-class _Point {
-  const _Point(this.at, this.value);
-
-  final DateTime at;
-  final double value;
-}
+typedef _Point = ({DateTime at, double value});
 
 class _Series {
   const _Series(this.label, this.points);
@@ -887,41 +881,17 @@ class _DashboardChartPainter extends CustomPainter {
       old.highlighted != highlighted ||
       old.track != track ||
       old.onLine != onLine ||
-      !_sameSlices(old.slices, slices) ||
+      !listEquals(old.slices, slices) ||
       !_sameSeries(old.series, series) ||
-      !_sameColors(old.colors, colors);
-}
-
-bool _sameSlices(List<_Slice> a, List<_Slice> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i].label != b[i].label || a[i].total != b[i].total) return false;
-  }
-  return true;
+      !listEquals(old.colors, colors);
 }
 
 bool _sameSeries(List<_Series> a, List<_Series> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
-    if (a[i].label != b[i].label || !_samePoints(a[i].points, b[i].points)) {
+    if (a[i].label != b[i].label || !listEquals(a[i].points, b[i].points)) {
       return false;
     }
-  }
-  return true;
-}
-
-bool _samePoints(List<_Point> a, List<_Point> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i].at != b[i].at || a[i].value != b[i].value) return false;
-  }
-  return true;
-}
-
-bool _sameColors(List<Color> a, List<Color> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
   }
   return true;
 }

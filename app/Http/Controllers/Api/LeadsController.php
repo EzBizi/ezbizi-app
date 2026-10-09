@@ -395,10 +395,7 @@ class LeadsController extends Controller
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
             ], $leads->items()),
             'meta' => [
-                'total' => $leads->total(),
-                'per_page' => $leads->perPage(),
-                'current_page' => $leads->currentPage(),
-                'last_page' => $leads->lastPage(),
+                ...$this->pageMeta($leads),
                 'connections' => $this->connectionState(),
                 'unread_by_source' => (object) $unreadBySource->all(),
                 /*

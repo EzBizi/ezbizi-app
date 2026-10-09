@@ -41,21 +41,9 @@ class ServiceArea extends Model implements StatesRetention
         return $this->belongsTo(self::class, 'shares_with_id');
     }
 
-    /** Areas booking into this one's pool. */
-    public function sharers(): HasMany
-    {
-        return $this->hasMany(self::class, 'shares_with_id');
-    }
-
     public function zips(): HasMany
     {
         return $this->hasMany(ServiceAreaZip::class);
-    }
-
-    /** Specific dates that replace the weekly pattern. */
-    public function dateOverrides(): HasMany
-    {
-        return $this->hasMany(ServiceAreaDateOverride::class);
     }
 
     protected function casts(): array

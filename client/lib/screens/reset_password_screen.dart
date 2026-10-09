@@ -69,28 +69,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       _busy = false;
 
       if (!response.ok) {
-        _error = _firstError(response) ?? response.message;
+        _error = response.reason;
         return;
       }
 
       _done = true;
       _needsSecondFactor = response.body['needs_second_factor'] == true;
     });
-  }
-
-  /// The field-level message, which says what is actually wrong.
-  ///
-  /// The top-level one is generic; "The password must be at least 12
-  /// characters" is under `errors.password` and is the only sentence worth
-  /// showing somebody who is stuck.
-  String? _firstError(ApiResponse response) {
-    final errors = response.body['errors'] as Map<String, dynamic>?;
-
-    if (errors == null || errors.isEmpty) return null;
-
-    final first = errors.values.first;
-
-    return first is List && first.isNotEmpty ? first.first as String : null;
   }
 
   @override

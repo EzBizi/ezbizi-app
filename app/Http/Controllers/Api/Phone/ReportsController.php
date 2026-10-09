@@ -103,25 +103,6 @@ class ReportsController extends Controller
         return response()->json(['data' => $this->row($report)], Response::HTTP_CREATED);
     }
 
-    /** PATCH /api/v1/phone/reports/{report} */
-    public function update(Request $request, PhoneReport $report): JsonResponse
-    {
-        $this->authorize('viewAny', PhoneCall::class);
-
-        $input = $request->validate($this->rules($request, $report));
-
-        $report->fill([
-            'name' => trim((string) ($input['name'] ?? $report->name)),
-            'period' => $input['period'] ?? $report->period,
-            'from_date' => $input['from'] ?? null,
-            'to_date' => $input['to'] ?? null,
-            'group_by' => $input['group_by'] ?? $report->group_by,
-            'filters' => $this->filters($input),
-        ])->save();
-
-        return response()->json(['data' => $this->row($report->fresh())]);
-    }
-
     /** DELETE /api/v1/phone/reports/{report} */
     public function destroy(Request $request, PhoneReport $report): JsonResponse
     {
@@ -130,23 +111,6 @@ class ReportsController extends Controller
         $report->delete();
 
         return response()->json(['message' => 'That report is gone.']);
-    }
-
-    /** GET /api/v1/phone/reports/{report}/run */
-    public function runSaved(Request $request, PhoneReport $report): JsonResponse
-    {
-        $this->authorize('viewAny', PhoneCall::class);
-
-        return response()->json([
-            'data' => $this->answer($request->user(), [
-                'period' => $report->period,
-                'from' => $report->from_date?->toDateString(),
-                'to' => $report->to_date?->toDateString(),
-                'group_by' => $report->group_by,
-                ...(array) ($report->filters ?? []),
-            ]),
-            'report' => $this->row($report),
-        ]);
     }
 
     /**
@@ -283,15 +247,14 @@ class ReportsController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function rules(Request $request, ?PhoneReport $report = null): array
+    private function rules(Request $request): array
     {
         return [
             'name' => [
-                $report === null ? 'required' : 'sometimes',
+                'required',
                 'string', 'max:120',
                 Rule::unique('phone_reports', 'name')
-                    ->where('organization_id', $request->user()->organization_id)
-                    ->ignore($report?->id),
+                    ->where('organization_id', $request->user()->organization_id),
             ],
             'period' => ['sometimes', Rule::in(PhoneReport::PERIODS)],
             'from' => ['sometimes', 'nullable', 'date', 'required_if:period,custom'],

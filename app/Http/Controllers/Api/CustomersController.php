@@ -133,12 +133,7 @@ class CustomersController extends Controller
             ))
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
-        $meta = [
-            'total'        => $customers->total(),
-            'per_page'     => $customers->perPage(),
-            'current_page' => $customers->currentPage(),
-            'last_page'    => $customers->lastPage(),
-        ];
+        $meta = $this->pageMeta($customers);
 
         // First page only: "Load more" changes no count, and each is a query.
         if ($customers->currentPage() === 1) {

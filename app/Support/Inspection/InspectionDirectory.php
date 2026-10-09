@@ -39,11 +39,6 @@ final class InspectionDirectory
     /** @return array<string, GrantableInspection> */
     public function keyedByIdFor(Organization|string $organization): array
     {
-        $out = [];
-        foreach ($this->forOrganization($organization) as $item) {
-            $out[$item->id] = $item;
-        }
-
-        return $out;
+        return array_column($this->forOrganization($organization), null, 'id');
     }
 }

@@ -11,8 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Which EzBizi row an imported A1 Tools row became.
  *
- * Read by `training:import-a1-tools` to stay idempotent, and by whoever rolls
- * an import back. See the migration.
+ * ponytail: the A1 training importer is gone (git history); the table is kept as the import manifest. See the migration.
  */
 class TrainingImportKey extends Model implements StatesRetention
 {

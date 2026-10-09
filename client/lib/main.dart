@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/address.dart';
@@ -104,7 +105,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
   /// One gate across BOTH clients. Being out of date is a fact about the binary,
   /// not about a session, so a customer and a staff member running the same
   /// stale build must both be told — see core/version_gate.dart.
-  final VersionGate _versionGate = VersionGate();
+  final _versionGate = ValueNotifier<UpgradeRequired?>(null);
 
   /// An update that closes the app has something to interrupt only once
   /// somebody is signed in. On the sign-in screen it goes straight ahead.
@@ -151,12 +152,11 @@ class _EzBiziAppState extends State<EzBiziApp> {
     _session.addListener(_tellUpdaterWhoIsHere);
     _staffSession.addListener(_tellUpdaterWhoIsHere);
 
-    _versionGate
-      ..addListener(() => setState(() {}))
-      // Once, for every ApiClient in the process — including the ones the
-      // Development section and staff enrolment build for themselves, which a
-      // per-client registration here silently missed.
-      ..install();
+    _versionGate.addListener(() => setState(() {}));
+    // Once, for every ApiClient in the process — including the ones the
+    // Development section and staff enrolment build for themselves, which a
+    // per-client registration here silently missed.
+    installVersionGate(_versionGate);
 
     // A refresh used to sign people out, because the token lived only in
     // memory. It is picked back up here and verified before it is trusted.
@@ -245,12 +245,16 @@ class _EzBiziAppState extends State<EzBiziApp> {
      * refusal the server has already sent, so on the overwhelmingly common path
      * this is one null check.
      */
-    final blocked = _versionGate.notice;
+    final blocked = _versionGate.value;
 
     if (blocked != null) {
       return UpdateRequiredScreen(
         notice: blocked,
-        onTryAgain: _versionGate.clear,
+        // A way out, because the 426 can stop being true without this app
+        // hearing of it: a newer build installed over the top, a minimum
+        // lowered again, a proxy mid-deploy. If it is still true, the next
+        // request raises the gate again.
+        onTryAgain: () => _versionGate.value = null,
         // Offered only when there is a session to end. A sign-out button on a
         // sign-in screen is a control that does nothing to somebody who is
         // already out, which reads as the app being confused about who they are.
@@ -1638,9 +1642,9 @@ class _HomeShellState extends State<HomeShell> {
              *
              * A strip above the work, dismissed by acting on it, and never a
              * modal: somebody halfway through writing up a job should not have
-             * the app taken away because a release happened. The wall is
-             * VersionGate's job, and only once the server actually refuses this
-             * build — see core/desktop_update.dart for why both exist.
+             * the app taken away because a release happened. The wall is the
+             * version gate's job, and only once the server actually refuses
+             * this build — see core/desktop_update.dart for why both exist.
              */
             /*
              * A newer build, announced rather than sprung.
@@ -1652,9 +1656,9 @@ class _HomeShellState extends State<HomeShell> {
              * job should be able to say "not now". Postponing does not cancel
              * anything permanently: the next hourly sweep finds it again.
              *
-             * A strip above the work, never a modal. The wall is VersionGate's
-             * job, and only once the server actually refuses this build — see
-             * core/desktop_update.dart for why both exist.
+             * A strip above the work, never a modal. The wall is the version
+             * gate's job, and only once the server actually refuses this
+             * build — see core/desktop_update.dart for why both exist.
              */
             AnimatedBuilder(
               animation: DesktopUpdater.instance,
@@ -3006,12 +3010,7 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
 
   void _done() {
     final order = _order;
-    final changed =
-        order.length != _was.length ||
-        [for (var i = 0; i < order.length; i++) order[i] == _was[i]].contains(
-          false,
-        );
-    widget.onDone(changed ? order : null);
+    widget.onDone(listEquals(order, _was) ? null : order);
   }
 
   @override

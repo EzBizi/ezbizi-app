@@ -5,7 +5,6 @@ namespace App\Models;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One translated screen string in one locale (§8).
@@ -24,9 +23,4 @@ class UiString extends Model implements StatesRetention
     }
 
     protected $fillable = ['locale', 'key', 'text'];
-
-    public function uiLocale(): BelongsTo
-    {
-        return $this->belongsTo(UiLocale::class, 'locale', 'code');
-    }
 }

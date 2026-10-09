@@ -2,12 +2,8 @@
 
 namespace App\Support\Fleet;
 
-use App\Support\Enums\HasValues;
-
 enum VehicleServiceKind: string
 {
-    use HasValues;
-
     case Oil = 'oil';
     case Tires = 'tires';
     case Brakes = 'brakes';

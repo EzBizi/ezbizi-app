@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -29,11 +30,6 @@ final class YouTubeOAuth implements SocialOAuth
     public function routeKey(): string
     {
         return 'youtube';
-    }
-
-    public function callbackPath(): string
-    {
-        return self::CALLBACK_PATH;
     }
 
     public function scopes(): array
@@ -95,38 +91,7 @@ final class YouTubeOAuth implements SocialOAuth
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://oauth2.googleapis.com/token',
-                [
-                    'client_id'     => (string) config('services.youtube.client_id'),
-                    'client_secret' => (string) config('services.youtube.client_secret'),
-                    'code'          => $code,
-                    'code_verifier' => (string) $verifier,
-                    'grant_type'    => 'authorization_code',
-                    'redirect_uri'  => $this->redirectUri(),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('YouTube');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('YouTube');
-        }
-
-        $access  = $response->json('access_token');
-        $refresh = $response->json('refresh_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('YouTube');
-        }
-
-        if (! is_string($refresh) || $refresh === '') {
-            throw SocialOAuthRefused::noLastingPermission('YouTube');
-        }
-
-        return new SocialOAuthGrant(accessToken: $access, refreshToken: $refresh);
+        return GoogleToken::exchange('youtube', 'YouTube', $code, $this->redirectUri(), (string) $verifier);
     }
 
     public function identify(SocialOAuthGrant $grant): array

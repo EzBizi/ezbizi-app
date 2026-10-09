@@ -2,6 +2,7 @@
 
 namespace App\Support\Privacy;
 
+use App\Models\ContractSignature;
 use App\Models\User;
 
 /**
@@ -26,17 +27,14 @@ use App\Models\User;
  */
 class ConsentLedger
 {
-    public function __construct(private readonly DeclaringModels $models) {}
-
     public function forPerson(User $subject): array
     {
-        $consents = [];
-
-        foreach ($this->models->recordingConsent() as $class) {
-            foreach ($class::consentsGivenBy($subject) as $record) {
-                $consents[] = $record->toArray();
-            }
-        }
+        // ESIGN's consent is the one consent this product takes. A second kind
+        // is read here from the table that evidences it.
+        $consents = array_map(
+            fn (ConsentRecord $record) => $record->toArray(),
+            ContractSignature::consentsGivenBy($subject),
+        );
 
         // Newest first: "what is true now" is what a screen opens on, and a
         // consent statement is revised over time so the most recent wording is

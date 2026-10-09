@@ -5,6 +5,7 @@ namespace App\Support\Email;
 use App\Models\Mailbox;
 use App\Models\MicrosoftMailSignIn;
 use App\Models\User;
+use App\Support\Pkce;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -31,12 +32,12 @@ final class MicrosoftOAuthSignIns
     /**
      * @return array{url: string, flow: string, expires_at: \Illuminate\Support\Carbon}
      *
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function begin(User $user, Mailbox $mailbox): array
     {
         $state    = Str::random(64);
-        $verifier = $this->microsoft->newVerifier();
+        $verifier = Pkce::verifier();
 
         $url = $this->microsoft->authorizeUrl($state, $verifier, $mailbox->address);
 
@@ -94,18 +95,18 @@ final class MicrosoftOAuthSignIns
     }
 
     /**
-     * @throws MicrosoftOAuthRefused
+     * @throws MailOAuthRefused
      */
     public function complete(string $state): MicrosoftMailSignIn
     {
         $row = MicrosoftMailSignIn::where('state_hash', $this->fingerprint($state))->first();
 
         if ($row === null || ! $this->burn($row)) {
-            throw MicrosoftOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Microsoft');
         }
 
         if ($row->hasExpired()) {
-            throw MicrosoftOAuthRefused::noOpenSignIn();
+            throw MailOAuthRefused::noOpenSignIn('Microsoft');
         }
 
         return $row;

@@ -127,22 +127,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       // why a company cannot lose its last place, why a sub company cannot sit
       // under a sub company — and a generic "could not save" throws away the
       // only part worth reading.
-      _snack(_firstError(response) ?? response.message, isError: true);
+      _snack(response.reason, isError: true);
       return;
     }
 
     _snack(done);
     _load();
-  }
-
-  String? _firstError(ApiResponse response) {
-    final errors = response.body['errors'] as Map<String, dynamic>?;
-
-    if (errors == null || errors.isEmpty) return null;
-
-    final first = errors.values.first;
-
-    return first is List && first.isNotEmpty ? first.first as String : null;
   }
 
   void _snack(String message, {bool isError = false}) {

@@ -5,7 +5,6 @@ namespace App\Support\Dashboard\Widgets;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\User;
-use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -51,10 +50,5 @@ trait ScopesToReach
         return $franchise instanceof Franchise
             ? Job::allowedStatuses($franchise)
             : [];
-    }
-
-    protected function resolver(): SettingsResolver
-    {
-        return app(SettingsResolver::class);
     }
 }
