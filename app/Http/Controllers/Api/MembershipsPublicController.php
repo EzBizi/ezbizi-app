@@ -107,14 +107,21 @@ class MembershipsPublicController extends Controller
     }
 
     /** The sign-up page the offer links to. Signed, so the link is the permission. */
-    public function joinPage(string $customer): HttpResponse
+    public function joinPage(Request $request, string $customer): HttpResponse
     {
-        return $this->asCustomer($customer, fn (Customer $c) => $this->page($c));
+        return $this->asCustomer($customer, fn (Customer $c) => $this->page($c, $request->boolean('preview')));
     }
 
     public function join(Request $request, string $customer): HttpResponse
     {
         return $this->asCustomer($customer, function (Customer $c) use ($request) {
+            // A preview link (signed, so a customer cannot add or strip the
+            // flag) shows the page and joins nobody: for staff and tests
+            // (2026-10-09, after a test text enrolled a real customer).
+            if ($request->boolean('preview')) {
+                return $this->page($c, true, joinedInPreview: true);
+            }
+
             $this->enroll($c, $request->input('plan'));
 
             return $this->page($c);
@@ -338,13 +345,16 @@ class MembershipsPublicController extends Controller
             ->where('ends_on', '>=', CarbonImmutable::today()->toDateString())->latest('ends_on')->first();
     }
 
-    private function page(Customer $c): HttpResponse
+    private function page(Customer $c, bool $preview = false, bool $joinedInPreview = false): HttpResponse
     {
         return response()->view('memberships.join', [
             'customer' => $c,
             'company'  => $this->companyName($c),
-            'current'  => $this->current($c)?->load('plan'),
+            // A preview always shows the offer, even for a customer who is a member.
+            'current'  => $preview ? null : $this->current($c)?->load('plan'),
             'plans'    => MembershipPlan::query()->where('is_active', true)->orderBy('price_minor')->get(),
+            'preview'  => $preview,
+            'joinedInPreview' => $joinedInPreview,
         ]);
     }
 }

@@ -18,6 +18,7 @@ import '../screens/scheduling/availability_pane.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
 import 'side_panel.dart';
+import 'search_picker.dart';
 import 'status_pill.dart';
 
 /// The reply box's one-line height, which Send, Suggest and the emoji
@@ -397,6 +398,30 @@ class _LeadThreadState extends State<LeadThread> {
       'lost' => 'lost',
       _ => 'new',
     };
+
+    // A phone's line beside Book is a picker since Lost made the moves five
+    // (UI/UX, 2026-10-09): five equal segments shrank "Not a lead" and
+    // "Completed" to about 7px while "Lead" stayed full size.
+    if (fill) {
+      return SearchPickerField<String>(
+        key: const ValueKey('status-moves'),
+        value: current,
+        label: 'Status',
+        isDense: true,
+        options: const [
+          SearchOption(value: 'archived', label: 'Archive'),
+          SearchOption(value: 'not_a_lead', label: 'Not a lead'),
+          SearchOption(value: 'new', label: 'Lead'),
+          SearchOption(value: 'completed', label: 'Completed'),
+          SearchOption(value: 'lost', label: 'Lost'),
+        ],
+        onChanged: (picked) {
+          if (picked != null && picked != current) {
+            widget.onStatusChanged!(picked);
+          }
+        },
+      );
+    }
 
     // On a phone's one line beside Book there is not room for four words at
     // full size: a label shrinks to fit rather than breaking mid-word
@@ -2317,6 +2342,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'not_a_lead' => 'Not a lead',
     'completed' => 'Completed',
     'lost' => 'Lost',
+    'job_applicant' => 'Job applicant',
     _ => 'New',
   },
   key: key,
@@ -2326,6 +2352,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'not_a_lead' => Tone.caution,
     'completed' => Tone.ok,
     'lost' => Tone.neutral,
+    'job_applicant' => Tone.review,
     _ => Tone.info,
   },
 );

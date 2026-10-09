@@ -174,6 +174,26 @@ class PhoneCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// This person's availability as the server last said: `registered`,
+  /// `dnd`, `on_call`, `wrap_up`. Null until the Availability button has
+  /// read it.
+  String? get presence => _presence;
+  String? _presence;
+
+  /// Whether this person has a line to take calls on in the app. Someone
+  /// without one never takes a call here.
+  bool get presenceHasLine => _presenceHasLine;
+  bool _presenceHasLine = false;
+
+  /// Reported by the Availability button, which is what reads and writes
+  /// presence, so others (the desktop updater) can follow it.
+  void notePresence({required bool hasLine, required String state}) {
+    if (hasLine == _presenceHasLine && state == _presence) return;
+    _presenceHasLine = hasLine;
+    _presence = state;
+    notifyListeners();
+  }
+
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
 
@@ -419,7 +439,11 @@ class PhoneCallService extends ChangeNotifier {
   /// call — so the caller does not hear it stop ringing, they hear the line
   /// refuse them and land in voicemail while somebody is looking at an Answer
   /// button.
-  bool get busy => _onCall || _incomingFrom != null;
+  bool get busy => _onCall || _incomingFrom != null || _dialing;
+
+  /// Between Call pressed and the platform placing it: not yet `onCall`, but
+  /// closing the app now still drops the call being made.
+  bool _dialing = false;
 
   /// Bring the desk up again after it failed.
   ///
@@ -453,6 +477,8 @@ class PhoneCallService extends ChangeNotifier {
 
     callRefusal = null;
 
+    _dialing = true;
+    notifyListeners();
     try {
       await device.connect(to: to, callerId: callerId);
     } on CallRefused catch (refused) {
@@ -463,6 +489,8 @@ class PhoneCallService extends ChangeNotifier {
       notifyListeners();
 
       return;
+    } finally {
+      _dialing = false;
     }
 
     _onCall = true;

@@ -85,7 +85,7 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool, lost: bool}|null
+     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
@@ -109,9 +109,9 @@ class LeadInsights
             ."never the business; null if not said.\n"
             ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
             ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
-            ."something, a robocall, a wrong number, or a job applicant. A real person asking about any "
-            ."service, even one we may not offer, or who declined a price, is false.
-"
+            ."something, a robocall, or a wrong number. A real person asking about any "
+            ."service, even one we may not offer, or who declined a price, is false.\n"
+            ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
             ."- lost: true when a real customer will not book: they declined the price or said no, or "
             ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
             ."\n\n".$thread,
@@ -124,8 +124,9 @@ class LeadInsights
                     'zip' => ['type' => ['string', 'null']],
                     'not_a_lead' => ['type' => 'boolean'],
                     'lost' => ['type' => 'boolean'],
+                    'job_applicant' => ['type' => 'boolean'],
                 ],
-                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead', 'lost'],
+                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
                 'additionalProperties' => false,
             ],
         );
@@ -141,6 +142,7 @@ class LeadInsights
             'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
             'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
             'lost' => ($json['lost'] ?? false) === true,
+            'job_applicant' => ($json['job_applicant'] ?? false) === true,
         ];
     }
 

@@ -1,0 +1,240 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A-1 booking page</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.site{background:#1b1b1b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Crect width='120' height='40' fill='%23212121'/%3E%3Cpath d='M0 19h120M0 39h120M60 0v19M0 20v19M120 20v19' stroke='%23161616' stroke-width='2'/%3E%3C/svg%3E");border-radius:12px;padding:30px 20px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;color:#fff;font-family:Inter,"Segoe UI",sans-serif}
+.site .eyebrow{font-size:11px;letter-spacing:.14em;color:#c9c9c9;font-weight:700}
+.site h3{margin:0;font:800 30px/1.05 Impact,"Arial Narrow",sans-serif;letter-spacing:.02em;color:#f7931e;text-transform:uppercase;text-align:center}
+.site .lede{font-size:13.5px;color:#e6e6e6;text-align:center;max-width:460px;margin:0}
+.bk{width:560px;max-width:100%;background:#fff;border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,.35);overflow:hidden;color:#183a33;display:flex;flex-direction:column}
+.bk.fix{height:520px}
+.steps2{display:flex;gap:0;padding:14px 20px 0}
+.steps2 span{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#9aa6ac;position:relative}
+.steps2 span i{font-style:normal;width:26px;height:26px;border-radius:50%;border:2px solid #d6dde1;display:flex;align-items:center;justify-content:center;font-size:12px;background:#fff;z-index:1}
+.steps2 span:not(:first-child):before{content:"";position:absolute;top:13px;right:50%;width:100%;height:2px;background:#e3e8eb}
+.steps2 span.on{color:#183a33} .steps2 span.on i{border-color:#f7931e;background:#f7931e;color:#fff}
+.steps2 span.done{color:#183a33} .steps2 span.done i{border-color:#f7931e;color:#f7931e}
+.steps2 span.done:before,.steps2 span.on:before{background:#f7931e}
+.bkb{padding:22px 28px;display:flex;flex-direction:column;gap:12px;flex:1}
+.bkb h4{margin:0;font-size:21px;font-weight:800}
+.bkb .hint{margin:-6px 0 0;font-size:13px;color:#5b6672}
+.zip{display:flex;align-items:center;gap:10px;border:1.5px solid #c9d3dc;border-radius:12px;padding:0 14px;height:54px;font-size:20px;font-weight:700;letter-spacing:.12em;color:#183a33}
+.zip .pin{font-size:18px;color:#f7931e;letter-spacing:0}
+.zip .ph{color:#aab4ba;font-weight:600}
+.go{background:#f7931e;color:#1b1b1b;border-radius:12px;height:50px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:auto;padding-top:14px;border-top:1px solid #eef1f3}
+.how div{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;font-size:11.5px;color:#4a5761}
+.how b{font-size:12px;color:#183a33}
+.how .ic{width:34px;height:34px;border-radius:50%;background:#fff3e4;color:#c26a00;display:flex;align-items:center;justify-content:center;font-size:15px}
+.bkf{background:#f7f8f9;border-top:1px solid #eef1f3;padding:10px 20px;font-size:12px;color:#4a5761;display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+.bkf b{color:#c26a00}
+.days{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.days div{border:1.5px solid #e3e8eb;border-radius:12px;padding:10px 4px;text-align:center;font-size:11px;color:#5b6672;text-transform:uppercase;font-weight:700}
+.days div b{display:block;font-size:20px;color:#183a33;text-transform:none}
+.days div.on{border-color:#f7931e;background:#fff3e4}
+.days div.off{opacity:.4}
+.split{display:grid;grid-template-columns:230px minmax(0,1fr);width:760px;max-width:100%;height:500px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 14px 34px rgba(0,0,0,.35);color:#183a33}
+.brand{background:linear-gradient(160deg,#2a2a2a,#121212);color:#fff;padding:22px 18px;display:flex;flex-direction:column;gap:12px}
+.brand .lg{font:800 22px Impact,"Arial Narrow",sans-serif;color:#f7931e}
+.brand .pt{display:flex;gap:10px;font-size:12.5px;line-height:1.35}
+.brand .pt i{font-style:normal;color:#f7931e;font-size:14px}
+.brand .call{margin-top:auto;font-size:12px;color:#ccc}
+.brand .call b{display:block;color:#f7931e;font-size:16px}
+.one{width:560px;max-width:100%;background:#fff;border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,.35);padding:20px 24px;color:#183a33;display:flex;flex-direction:column;gap:12px;height:520px}
+.inline{display:flex;gap:8px}
+.inline .zip{flex:1;height:46px;font-size:17px}
+.inline .go{width:120px;height:46px}
+.times{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.times div{border:1.5px solid #e3e8eb;border-radius:10px;padding:9px 4px;text-align:center;font-size:12.5px;font-weight:700}
+.lab2{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#7b8790}
+.phn .site{border-radius:0;padding:18px 12px;flex:1;overflow:hidden;gap:10px}
+.phn .site h3{font-size:24px}
+.phn .bk,.phn .one{width:100%}
+.phn .bk.fix{height:470px}
+.phn .bkb{padding:16px}
+.phn .days{grid-template-columns:repeat(2,1fr)}
+.chatb{position:absolute;right:10px;bottom:12px;background:#f7931e;color:#1b1b1b;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:800;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+</style>
+<div class="wrap">
+<h1>A-1 booking page · more modern</h1>
+<p class="sub">Jose 2026-10-09: <i>"How can we make this look more modern"</i> (a-1chimney.com/booking). Today the page title says "Book your chimney service", the card's orange bar says "Book Chimney Service" again, and the step says "Please enter your ZIP code". That's three titles for one question. The ZIP box shows "12345". Under the button, half the card is empty: you asked on 2026-10-08 for one fixed size for every step, and the first step is the shortest. Nothing says how many steps follow, or what happens after booking. On a phone the chat bubble sat on the card (now off this page and the reviews page, as you asked). Every number and window below is invented.</p>
+<p class="need"><b>In every option:</b> the card stays <b>one fixed size</b> (your 2026-10-08 rule), and the space is used rather than left white. There's <b>one title per step</b>, with the repeated orange bar gone. A <b>step tracker</b> shows ZIP → Day → Time → Your details. The ZIP box is big, with a pin and a hint ("5 digits") instead of "12345". The days and windows are large tap-sized cards, and the chosen one is filled orange. At the foot: "No payment to book · We call to confirm · (888) 984-4344", all things the booking already does. There's no chat bubble on this page (done already, plugin 1.26.10, as you asked). Same fields and steps, and nothing changes on the server. It's the EzBizi plugin's booking widget, so every site using it gets it.</p>
+
+<h2><span class="n">1</span>A step tracker on top, "how it works" filling the space <span class="rec">Recommended</span></h2>
+<p class="cap">The orange bar becomes a slim tracker with four dots. Each step has one big title and one line of help. On the short first step, three small "how it works" points fill the bottom of the card. <b>Why:</b> the same simple flow, now clearly a few quick steps. The empty space answers "what happens next?", the question people have before they type their ZIP.</p>
+<div class="site"><span class="eyebrow">ONLINE BOOKING</span><h3>Book your chimney service</h3><p class="lede">Pick a day and an arrival window. We call you to confirm.</p>
+<div class="bk fix"><div class="steps2"><span class="on"><i>1</i>ZIP</span><span><i>2</i>Day</span><span><i>3</i>Time</span><span><i>4</i>Your details</span></div>
+<div class="bkb"><h4>Where should we come?</h4><p class="hint">Your ZIP code shows the days we're in your area.</p>
+<div class="zip"><span class="pin">📍</span><span class="ph">5-digit ZIP</span></div><div class="go">See available days →</div>
+<div class="how"><div><span class="ic">📅</span><b>Pick a window</b>Choose a day and an arrival window.</div><div><span class="ic">📞</span><b>We call to confirm</b>Before anyone comes out.</div><div><span class="ic">🧰</span><b>We arrive</b>A technician comes in your window.</div></div></div>
+<div class="bkf"><span>No payment to book</span><span>·</span><span>Prefer to talk? <b>(888) 984-4344</b></span></div></div></div>
+
+<p class="cap" style="margin-top:14px"><b>1 · the day step</b>: the tracker moves on, the days are big cards with the weekday and date, and the full days are greyed rather than missing.</p>
+<div class="site"><div class="bk fix"><div class="steps2"><span class="done"><i>✓</i>ZIP</span><span class="on"><i>2</i>Day</span><span><i>3</i>Time</span><span><i>4</i>Your details</span></div>
+<div class="bkb"><span class="tiny" style="color:#c26a00;font-weight:700">‹ ZIP 07030</span><h4>Pick a day</h4><p class="hint">These are the days we're near you.</p>
+<div class="days"><div>Mon<b>Oct 12</b>3 windows</div><div class="on">Tue<b>Oct 13</b>2 windows</div><div class="off">Wed<b>Oct 14</b>Full</div><div>Thu<b>Oct 15</b>4 windows</div><div>Fri<b>Oct 16</b>1 window</div><div>Mon<b>Oct 19</b>4 windows</div><div>Tue<b>Oct 20</b>3 windows</div><div>Wed<b>Oct 21</b>2 windows</div></div></div>
+<div class="bkf"><span>No payment to book</span><span>·</span><span>Prefer to talk? <b>(888) 984-4344</b></span></div></div></div>
+
+<h2><span class="n">2</span>Two halves: why us on the left, the booking on the right</h2>
+<p class="cap">A dark panel beside the steps carries the A-1 name, three short points and the phone number. The steps take the right side. <b>Why:</b> it looks like a modern booking app and puts reassurance beside every step. But it's wider, and on a phone the left panel has to become a strip on top.</p>
+<div class="site"><div class="split"><div class="brand"><span class="lg">A-1 CHIMNEY</span><div class="pt"><i>✓</i>Pick an arrival window that suits you</div><div class="pt"><i>✓</i>We call to confirm before anyone comes out</div><div class="pt"><i>✓</i>No payment to book</div><div class="call">Prefer to talk?<b>(888) 984-4344</b></div></div>
+<div style="display:flex;flex-direction:column"><div class="steps2"><span class="on"><i>1</i>ZIP</span><span><i>2</i>Day</span><span><i>3</i>Time</span><span><i>4</i>Details</span></div>
+<div class="bkb"><h4>Where should we come?</h4><p class="hint">Your ZIP code shows the days we're in your area.</p><div class="zip"><span class="pin">📍</span><span class="ph">5-digit ZIP</span></div><div class="go">See available days →</div></div></div></div></div>
+
+<h2><span class="n">3</span>One screen: ZIP on top, the days and windows appear under it</h2>
+<p class="cap">The ZIP sits in one line with its button. The days appear right under it, and the windows under the chosen day, all in the same fixed card, so only "Your details" is a second screen. <b>Why:</b> the fewest taps, and the card is never empty. But it's busier, and a phone has to scroll inside the card.</p>
+<div class="site"><div class="one"><div class="lab2">Your ZIP</div><div class="inline"><div class="zip"><span class="pin">📍</span>07030</div><div class="go">Update</div></div>
+<div class="lab2">Pick a day</div><div class="days"><div>Mon<b>Oct 12</b></div><div class="on">Tue<b>Oct 13</b></div><div class="off">Wed<b>Oct 14</b></div><div>Thu<b>Oct 15</b></div></div>
+<div class="lab2">Arrival window · Tue Oct 13</div><div class="times"><div>8–10 AM</div><div style="border-color:#f7931e;background:#fff3e4">10 AM–12 PM</div><div>1–3 PM</div></div>
+<div class="go" style="margin-top:auto">Next: your details →</div></div></div>
+
+<h2><span class="n">4</span>Phone: as 1 <span class="rec">Recommended</span></h2>
+<p class="cap">The same card across the phone, the tracker on top, the how-it-works points stacked, and no chat bubble.</p>
+<div class="phones"><div class="pcol"><div class="phn" style="position:relative"><div class="sb"></div>
+<div class="site"><span class="eyebrow">ONLINE BOOKING</span><h3>Book your chimney service</h3>
+<div class="bk fix"><div class="steps2" style="padding:12px 8px 0"><span class="on"><i>1</i>ZIP</span><span><i>2</i>Day</span><span><i>3</i>Time</span><span><i>4</i>You</span></div>
+<div class="bkb"><h4>Where should we come?</h4><p class="hint">Your ZIP shows the days we're near you.</p><div class="zip"><span class="pin">📍</span><span class="ph">5-digit ZIP</span></div><div class="go">See available days →</div>
+<div class="how" style="grid-template-columns:1fr"><div style="flex-direction:row;text-align:left"><span class="ic">📅</span><span><b>Pick a window.</b> A day and an arrival window.</span></div><div style="flex-direction:row;text-align:left"><span class="ic">📞</span><span><b>We call to confirm.</b></span></div></div></div>
+<div class="bkf"><span>No payment · <b>(888) 984-4344</b></span></div></div></div>
+</div></div></div>
+
+<h2><span class="n">5</span>Phone: as 2, the reasons as a strip on top</h2>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="site"><div class="bk fix"><div style="background:#1b1b1b;color:#fff;padding:10px 14px;font-size:11.5px;display:flex;gap:10px"><span style="color:#f7931e">✓</span>Pick your window <span style="color:#f7931e">✓</span>We call to confirm</div><div class="steps2" style="padding:12px 8px 0"><span class="on"><i>1</i>ZIP</span><span><i>2</i>Day</span><span><i>3</i>Time</span><span><i>4</i>You</span></div><div class="bkb"><h4>Where should we come?</h4><div class="zip"><span class="pin">📍</span><span class="ph">5-digit ZIP</span></div><div class="go">See available days →</div></div></div></div></div></div></div>
+
+<h2><span class="n">6</span>Phone: as 3, one screen that scrolls inside the card</h2>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="site"><div class="one" style="height:520px"><div class="lab2">Your ZIP</div><div class="inline"><div class="zip"><span class="pin">📍</span>07030</div></div><div class="lab2">Pick a day</div><div class="days" style="grid-template-columns:repeat(2,1fr)"><div>Mon<b>Oct 12</b></div><div class="on">Tue<b>Oct 13</b></div></div><div class="lab2">Arrival window</div><div class="times" style="grid-template-columns:1fr 1fr"><div>8–10 AM</div><div style="border-color:#f7931e;background:#fff3e4">10–12</div></div><div class="go" style="margin-top:auto">Next →</div></div></div></div></div></div>
+</div>

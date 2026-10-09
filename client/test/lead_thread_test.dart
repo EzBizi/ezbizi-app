@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,8 +32,9 @@ void main() {
   /// source is one line with the number, the viewing note is one line, and
   /// the conversation keeps the screen.
   // "Archiv-e": once Completed made the moves four, a phone's one line beside
-  // Book broke the longer words in half.
-  testWidgets('on a phone no status word breaks across lines', (tester) async {
+  // Book broke the longer words in half; at five (Lost) the segments shrank
+  // the long words to about 7px. A phone has one Status picker now.
+  testWidgets('on a phone the status is one picker beside Book', (tester) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
@@ -40,14 +42,12 @@ void main() {
       size: const Size(360, 780),
     );
 
-    final line = tester.getRect(find.byKey(const ValueKey('status-lead'))).height;
-    for (final key in ['status-archive', 'status-not-a-lead', 'status-completed']) {
-      expect(
-        tester.getRect(find.byKey(ValueKey(key))).height,
-        lessThanOrEqualTo(line),
-        reason: key,
-      );
-    }
+    expect(
+      find.byWidgetPredicate((w) => w is SearchPickerField<String>),
+      findsOneWidget,
+    );
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('on a phone the details fold away and the header stays short', (
@@ -1501,28 +1501,15 @@ void _statusTests() {
     expect(find.byKey(const ValueKey('status-moves')), findsNothing);
   });
 
-  testWidgets('on a phone the three share one row, the same size', (
-    tester,
-  ) async {
-    await pump(tester, size: const Size(390, 844));
+  testWidgets('on a phone the picker moves the lead', (tester) async {
+    final moved = await pump(tester, size: const Size(390, 844));
 
-    Rect segment(String key) => tester.getRect(
-      find.ancestor(
-        of: find.byKey(ValueKey(key)),
-        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-      ),
-    );
-    final archive = segment('status-archive');
-    final notALead = segment('status-not-a-lead');
-    final lead = segment('status-lead');
-    final completed = segment('status-completed');
-    expect(archive.top, notALead.top);
-    expect(notALead.top, lead.top);
-    expect(lead.top, completed.top);
-    // Thirds of the row, to the rounding of a third.
-    expect(archive.width, closeTo(notALead.width, 0.01));
-    expect(notALead.width, closeTo(lead.width, 0.01));
-    expect(archive.height, notALead.height);
+    await tester.tap(find.byKey(const ValueKey('status-moves')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lost').last);
+    await tester.pumpAndSettle();
+
+    expect(moved, ['lost']);
     expect(tester.takeException(), isNull);
   });
 }

@@ -149,6 +149,7 @@ class _AvailabilityButtonState extends State<AvailabilityButton>
       _hasLine = data['has_line'] == true;
       _state = (data['state'] ?? 'registered').toString();
     });
+    _service.notePresence(hasLine: _hasLine, state: _state);
   }
 
   Future<void> _toggle() async {
@@ -175,6 +176,7 @@ class _AvailabilityButtonState extends State<AvailabilityButton>
       _busy = false;
       if (response.ok) _state = next;
     });
+    if (response.ok) _service.notePresence(hasLine: _hasLine, state: next);
   }
 
   @override

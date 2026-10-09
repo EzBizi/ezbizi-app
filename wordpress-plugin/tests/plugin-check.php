@@ -897,6 +897,11 @@ check('a form with no ZIP question gets one (Jose, 2026-10-08)', str_contains($f
 check('and the ZIP goes with the enquiry', str_contains($form, 'v.zip=z[0]'), true);
 $booking = $GLOBALS['sc']['ezbizi_booking'](['title' => 'Book Garage Door Service']);
 check('the booking widget draws its title', str_contains($booking, '>Book Garage Door Service<'), true);
+// UI queue 75: where you are in the steps, in words and no numbers (Jose,
+// 2026-10-09, "no 01/02"), and a step's own display never outranks hidden -
+// the first build showed the ZIP step under the days.
+check('it shows where you are in the steps', str_contains($booking, 'class="ezb-track"') && str_contains($booking, '>Your details</li>'), true);
+check('a hidden step stays hidden', str_contains($booking, '[data-step][hidden]{display:none!important}'), true);
 check('it asks the ZIP first and reads the days of that area', str_contains($booking, 'data-step="zip"') && str_contains($booking, "'/api/v1/web/booking/days?key='"), true);
 check('it books behind the robot check and the Turnstile box', str_contains($booking, 'function ezSolve(api)') && str_contains($booking, 'class="cf-turnstile"'), true);
 check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);
@@ -1144,7 +1149,8 @@ echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
  * reach.
  */
 $footer = static function () {
-    unset($GLOBALS['ezbizi_chat_drawn']);
+    // A fresh page: nothing drawn, nothing asking for no bubble.
+    unset($GLOBALS['ezbizi_chat_drawn'], $GLOBALS['ezbizi_chat_hidden']);
     ob_start();
     do_action('wp_footer');
 
@@ -1158,6 +1164,21 @@ $GLOBALS['is_admin'] = false;
 
 check('a visitor gets the bubble without anybody placing it', str_contains($footer(), 'Talk to A-1'), true);
 check('floating, not in the flow', str_contains($footer(), 'position:fixed'), true);
+
+// No bubble on a page with the booking widget or the review faces (Jose,
+// 2026-10-09: "chat bubble should be disabled on that page as well as the
+// review one"). The shortcode runs in the content, before the footer.
+$footerAfter = static function (string $shortcode) {
+    unset($GLOBALS['ezbizi_chat_drawn'], $GLOBALS['ezbizi_chat_hidden']);
+    $GLOBALS['sc'][$shortcode]([]);
+    ob_start();
+    do_action('wp_footer');
+
+    return ob_get_clean();
+};
+check('a booking page has no bubble', str_contains($footerAfter('ezbizi_booking'), 'Talk to A-1'), false);
+check('nor has the reviews page', str_contains($footerAfter('ezbizi_review_faces'), 'Talk to A-1'), false);
+check('and the next page has it again', str_contains($footer(), 'Talk to A-1'), true);
 
 // Placed already: the shortcode ran, so the footer must keep out. Two bubbles
 // on one page is two conversations, and the visitor picks one at random.

@@ -1907,6 +1907,9 @@ function ezbizi_street_view_shortcode($atts) {
  * of offering a button to nowhere.
  */
 function ezbizi_review_faces_shortcode($atts) {
+    // No chat bubble on the reviews page (Jose, 2026-10-09); see the footer
+    // hook in enquiries.php.
+    $GLOBALS['ezbizi_chat_hidden'] = true;
     $p = ezbizi_preset('review_faces', $atts);
     $key = ezbizi_public_key();
 

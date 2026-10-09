@@ -154,11 +154,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Null when nothing is left out, so the request stays unnarrowed.
   String? get _allSources {
     if (_source != null) return null;
+    // Job applicants are never in All (the server leaves them out), so they
+    // are not one of All's toggles either.
+    final sources = _visibleSources.where((s) => s.$1 != 'job_applicant');
     final shown = [
-      for (final s in _visibleSources)
+      for (final s in sources)
         if (!_allLeftOut.contains(s.$1)) s.$1,
     ];
-    if (shown.length == _visibleSources.length) return null;
+    if (shown.length == sources.length) return null;
     return shown.isEmpty ? '-' : shown.join(',');
   }
 
@@ -184,6 +187,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('instagram', 'Instagram'),
     ('workiz', 'Workiz'),
     ('whatsapp', 'WhatsApp'),
+    // Not a source: people asking for a job, by Grok or by hand (Jose,
+    // 2026-10-09). Their own tab, out of All.
+    ('job_applicant', 'Job applicants'),
   ];
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
@@ -210,6 +216,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.assignment_outlined,
     // WhatsApp: no Material logo either; a chat bubble, like Messenger's.
     Icons.chat_outlined,
+    Icons.badge_outlined, // job applicants
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -234,10 +241,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
   ];
 
   bool _maySee(String source) =>
-      widget.session.me?.can(
-        'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
-      ) ??
-      false;
+      source == 'job_applicant' ||
+      (widget.session.me?.can(
+            'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
+          ) ??
+          false);
 
   void _setSource(String? source) {
     if (source == _source) return;
@@ -286,6 +294,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     'not_a_lead': 'Not a lead',
     'completed': 'Completed',
     'lost': 'Lost',
+    'job_applicant': 'Job applicant',
   };
 
   /// How often the list re-reads itself while somebody is looking at it.
@@ -691,7 +700,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   int _unreadIn(String? key) => key != null
       ? _unreadBySource[key] ?? 0
       : _visibleSources
-            .where((s) => !_allLeftOut.contains(s.$1))
+            .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
             .fold(0, (sum, s) => sum + (_unreadBySource[s.$1] ?? 0));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
@@ -946,7 +955,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ),
           ),
         ),
-        for (final s in _visibleSources)
+        for (final s in _visibleSources.where((s) => s.$1 != 'job_applicant'))
           FilterChip(
             key: ValueKey('all-source-${s.$1}'),
             tooltip: _allLeftOut.contains(s.$1)
