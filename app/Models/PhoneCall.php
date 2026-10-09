@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Automations\CarriesAutomationScope;
+use App\Support\Phone\TwilioGateway;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Twilio\Exceptions\RestException;
 
 /**
  * One Twilio call or voicemail leg we keep a record of (spec §11).
@@ -43,6 +45,48 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
      * people owed a callback.
      */
     public const STATUS_BLOCKED = 'blocked';
+
+    /**
+     * The purge's promise, kept: "the purge also asks Twilio to delete the
+     * recording" (personalDataHeld). Nothing called deleteRecording() until
+     * 2026-10-09, so an expired call left its audio on Twilio.
+     *
+     * Erasure deletes rows as models and arrives here through `deleting`;
+     * ezbizi:expire-data deletes through the query builder and calls
+     * forgetRecording() itself, row by row.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(fn (self $call) => $call->forgetRecording());
+    }
+
+    /**
+     * Ask Twilio to delete this call's recording.
+     *
+     * A recording Twilio no longer has (404) counts as gone. Any other failure
+     * throws, so the row and its SID survive for the next attempt rather than
+     * the SID vanishing while the audio stays. A call whose connection is gone
+     * has no credentials to ask with; closing a subaccount takes its media.
+     */
+    public function forgetRecording(): void
+    {
+        if (blank($this->recording_sid)) {
+            return;
+        }
+
+        $connection = PhoneConnection::query()->withoutGlobalScopes()->find($this->connection_id);
+        if ($connection === null) {
+            return;
+        }
+
+        try {
+            app(TwilioGateway::class)->deleteRecording($connection, (string) $this->recording_sid);
+        } catch (RestException $e) {
+            if ($e->getStatusCode() !== 404) {
+                throw $e;
+            }
+        }
+    }
 
     public static function personalDataPurpose(): string
     {

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AutomationEvent;
+use App\Models\PhoneCall;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\RetentionPolicy;
 use Illuminate\Console\Command;
@@ -114,14 +115,31 @@ class ExpireData extends Command
         }
 
         $deleted = 0;
+        $stuck = [];
 
         do {
-            $batch = DB::table($table)
-                ->whereIn('id', (clone $query)->limit(1000)->pluck($table.'.id'))
-                ->delete();
+            $ids = (clone $query)->whereNotIn($table.'.id', $stuck)->limit(1000)->pluck($table.'.id');
+            $seen = $ids->count();
 
-            $deleted += $batch;
-        } while ($batch > 0);
+            // A call's audio lives on Twilio, not in this row: delete it there
+            // first, and keep any row whose recording Twilio would not drop, so
+            // tomorrow's sweep asks again instead of losing the SID.
+            if ($class === PhoneCall::class) {
+                $failed = [];
+                foreach (PhoneCall::query()->withoutGlobalScopes()->whereIn('id', $ids)->whereNotNull('recording_sid')->get() as $call) {
+                    try {
+                        $call->forgetRecording();
+                    } catch (\Throwable $e) {
+                        $failed[] = $call->id;
+                        $this->warn("  kept call {$call->id}: Twilio did not delete {$call->recording_sid} ({$e->getMessage()})");
+                    }
+                }
+                $stuck = array_merge($stuck, $failed);
+                $ids = $ids->diff($failed);
+            }
+
+            $deleted += $ids->isEmpty() ? 0 : DB::table($table)->whereIn('id', $ids)->delete();
+        } while ($seen > 0);
 
         return $deleted;
     }

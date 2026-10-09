@@ -586,9 +586,16 @@ final class FakeTwilioGateway implements TwilioGateway
         return 'fake-recording-bytes';
     }
 
+    /** Recording SIDs whose delete fails, as a Twilio 500 would. */
+    public array $failDeleteRecordingFor = [];
+
     public function deleteRecording(PhoneConnection $connection, string $recordingSid): void
     {
         $this->record(__FUNCTION__, [$connection->id, $recordingSid]);
+
+        if (in_array($recordingSid, $this->failDeleteRecordingFor, true)) {
+            throw new RestException('Twilio is down.', 20500, 500);
+        }
     }
 
     public function clearTwimlApp(PhoneConnection $connection): void
