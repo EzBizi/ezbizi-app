@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Leads: website form messages show one field per line with a small icon, without the website\'s robot-check code. Ratings from the review link show as Bad Rating or Good Rating instead of Form.',
         'Settings › Integrations: where another module is the place to connect (Newsletter, Marketing or Leads), there\'s now a button that opens it.',
+        'Marketing › Posts: you can now publish to Bluesky and X (text and one picture). X accounts need connecting again to post pictures.',
+        'Online booking reads friendlier: no step numbers, each step asks in a full sentence, and a ZIP code we don\'t serve online now says so plainly.',
       ],
     ),
     VersionRelease(
