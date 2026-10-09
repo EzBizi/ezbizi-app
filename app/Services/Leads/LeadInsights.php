@@ -85,7 +85,7 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool}|null
+     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool, lost: bool}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
@@ -110,7 +110,10 @@ class LeadInsights
             ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
             ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
             ."something, a robocall, a wrong number, or a job applicant. A real person asking about any "
-            ."service, even one we may not offer, or who declined a price, is false."
+            ."service, even one we may not offer, or who declined a price, is false.
+"
+            ."- lost: true when a real customer will not book: they declined the price or said no, or "
+            ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
             ."\n\n".$thread,
             [
                 'type' => 'object',
@@ -120,8 +123,9 @@ class LeadInsights
                     'name' => ['type' => ['string', 'null']],
                     'zip' => ['type' => ['string', 'null']],
                     'not_a_lead' => ['type' => 'boolean'],
+                    'lost' => ['type' => 'boolean'],
                 ],
-                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead'],
+                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead', 'lost'],
                 'additionalProperties' => false,
             ],
         );
@@ -136,6 +140,7 @@ class LeadInsights
             'name' => $name !== '' ? mb_substr($name, 0, 120) : null,
             'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
             'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
+            'lost' => ($json['lost'] ?? false) === true,
         ];
     }
 

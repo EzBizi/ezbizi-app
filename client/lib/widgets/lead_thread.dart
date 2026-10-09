@@ -394,6 +394,7 @@ class _LeadThreadState extends State<LeadThread> {
       'archived' => 'archived',
       'not_a_lead' => 'not_a_lead',
       'completed' => 'completed',
+      'lost' => 'lost',
       _ => 'new',
     };
 
@@ -434,6 +435,12 @@ class _LeadThreadState extends State<LeadThread> {
         ButtonSegment(
           value: 'completed',
           label: label('Completed', 'status-completed'),
+        ),
+        // A real customer who declined or wants what we do not do (Jose,
+        // 2026-10-09).
+        ButtonSegment(
+          value: 'lost',
+          label: label('Lost', 'status-lost'),
         ),
       ],
       selected: {current},
@@ -2309,6 +2316,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'archived' => 'Archived',
     'not_a_lead' => 'Not a lead',
     'completed' => 'Completed',
+    'lost' => 'Lost',
     _ => 'New',
   },
   key: key,
@@ -2317,6 +2325,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'archived' => Tone.neutral,
     'not_a_lead' => Tone.caution,
     'completed' => Tone.ok,
+    'lost' => Tone.neutral,
     _ => Tone.info,
   },
 );

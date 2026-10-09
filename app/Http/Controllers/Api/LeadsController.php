@@ -276,7 +276,7 @@ class LeadsController extends Controller
              */
             $query->whereIn('leads.source', Lead::INBOX_SOURCES)
                 // Completed: the customer is owed nothing (Jose, 2026-10-01).
-                ->where('leads.status', '!=', Lead::STATUS_COMPLETED)
+                ->whereNotIn('leads.status', [Lead::STATUS_COMPLETED, Lead::STATUS_LOST])
                 ->where(function ($q) {
                     $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                         ->orWhereNull('leads.last_contact_from');

@@ -67,7 +67,10 @@ final class LeadThread
         if ($row->participant === LeadConversation::FROM_CONSUMER) {
             // They wrote again: whatever made it Completed is over, and
             // somebody owes them an answer.
-            if ($lead->status === Lead::STATUS_COMPLETED) {
+            // Archived, Not a lead and Lost too (Jose, 2026-10-09: "customers
+            // may also reach back ... should undo, so they aren't hidden").
+            // Booked stays: that lead already became a job.
+            if (in_array($lead->status, [Lead::STATUS_COMPLETED, Lead::STATUS_ARCHIVED, Lead::STATUS_NOT_A_LEAD, Lead::STATUS_LOST], true)) {
                 $lead->forceFill(['status' => Lead::STATUS_NEW])->save();
             }
 

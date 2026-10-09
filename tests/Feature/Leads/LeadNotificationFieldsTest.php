@@ -74,6 +74,17 @@ class LeadNotificationFieldsTest extends TestCase
         $this->assertSame(1, $this->raised('lead.customer_replied'), 'a text lead still has replies');
     }
 
+    /** Jose, 2026-10-09: a customer who writes again is not left hidden. */
+    public function test_writing_again_brings_a_set_aside_lead_back(): void
+    {
+        foreach ([Lead::STATUS_ARCHIVED, Lead::STATUS_NOT_A_LEAD, Lead::STATUS_LOST, Lead::STATUS_BOOKED] as $status) {
+            $lead = $this->lead('MESSAGE');
+            $lead->forceFill(['status' => $status])->save();
+            $this->said($lead, LeadConversation::CHANNEL_MESSAGE, ['text' => 'Hi again']);
+            $this->assertSame($status === Lead::STATUS_BOOKED ? Lead::STATUS_BOOKED : Lead::STATUS_NEW, $lead->fresh()->status, $status);
+        }
+    }
+
     public function test_the_notification_words(): void
     {
         $call = $this->lead('PHONE_CALL');

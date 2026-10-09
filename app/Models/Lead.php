@@ -324,6 +324,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public const STATUS_COMPLETED = 'completed';
 
+    /**
+     * A real customer we will not book: declined the price, or wants a
+     * service we do not offer (Jose, 2026-10-09: "make a new tag for those
+     * situations"). Not a lead is for non-customers; this is a person.
+     */
+    public const STATUS_LOST = 'lost';
+
     /** @var string[] */
     public const STATUSES = [
         self::STATUS_NEW,
@@ -331,6 +338,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::STATUS_ARCHIVED,
         self::STATUS_NOT_A_LEAD,
         self::STATUS_COMPLETED,
+        self::STATUS_LOST,
     ];
 
     public static function retention(): RetentionPolicy

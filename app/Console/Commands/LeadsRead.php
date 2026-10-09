@@ -65,9 +65,10 @@ class LeadsRead extends Command
                     // Its own flag, not ARCHIVE: Grok files a declined quote or a
                     // service we may not offer as ARCHIVE too, and those are people.
                     $junk = $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
+                    $lost = ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
 
                     $lead->forceFill([
-                        'status' => $junk ? Lead::STATUS_NOT_A_LEAD : $before,
+                        'status' => $junk ? Lead::STATUS_NOT_A_LEAD : ($lost ? Lead::STATUS_LOST : $before),
                         'classification' => $answer['classification'],
                         'summary' => $answer['summary'] !== '' ? $answer['summary'] : $lead->summary,
                         'classified_at' => now(),
@@ -75,10 +76,10 @@ class LeadsRead extends Command
                         'postal_code' => $lead->postal_code ?: $answer['zip'],
                     ])->save();
 
-                    if ($junk) {
+                    if ($junk || $lost) {
                         $events->emit('lead.status_changed', $lead, [
                             'before' => ['status' => $before],
-                            'after' => ['status' => Lead::STATUS_NOT_A_LEAD],
+                            'after' => ['status' => $lead->status],
                         ]);
                     }
 

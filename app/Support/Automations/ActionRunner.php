@@ -253,6 +253,7 @@ class ActionRunner
                 'archived' => 'Archived',
                 'not_a_lead' => 'Not a real enquiry',
                 'completed' => 'Completed',
+                'lost' => 'Lost (declined, or a service we do not offer)',
             ],
         ],
         Vehicle::class => [

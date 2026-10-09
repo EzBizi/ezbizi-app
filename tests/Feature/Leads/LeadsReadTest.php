@@ -48,7 +48,7 @@ class LeadsReadTest extends TestCase
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'classification' => 'BOOK', 'summary' => 'Wants a chimney inspection.',
-            'name' => 'Kassandra Stone', 'zip' => '19020', 'not_a_lead' => false,
+            'name' => 'Kassandra Stone', 'zip' => '19020', 'not_a_lead' => false, 'lost' => false,
         ]]))]);
 
         $named = $this->callLead('Already Known', 'Hi this is Kassandra, zip 19020, I need an inspection');
@@ -71,7 +71,7 @@ class LeadsReadTest extends TestCase
     public function test_spam_is_tagged_not_a_lead(): void
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
-            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null, 'not_a_lead' => true,
+            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null, 'not_a_lead' => true, 'lost' => false,
         ]]))]);
         $form = $this->inTenant($this->t['org'], function () {
             $lead = Lead::create([
@@ -90,6 +90,19 @@ class LeadsReadTest extends TestCase
         $this->artisan('ezbizi:leads-read')->assertSuccessful();
 
         $this->assertSame(Lead::STATUS_NOT_A_LEAD, $this->inTenant($this->t['org'], fn () => $form->refresh()->status));
+    }
+
+    public function test_a_customer_who_declined_is_lost_not_hidden_as_spam(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'ARCHIVE', 'summary' => 'Wanted a crown quote, then declined.', 'name' => null,
+            'zip' => null, 'not_a_lead' => false, 'lost' => true,
+        ]]))]);
+        $call = $this->callLead(null, 'How much for a new crown? ... oh that is too much, no thanks');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame(Lead::STATUS_LOST, $this->inTenant($this->t['org'], fn () => $call->refresh()->status));
     }
 
     public function test_nothing_is_sent_while_switched_off(): void
