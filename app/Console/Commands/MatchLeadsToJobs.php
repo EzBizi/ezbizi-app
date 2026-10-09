@@ -75,7 +75,14 @@ class MatchLeadsToJobs extends Command
                             ->first();
 
                         if ($job !== null) {
-                            $lead->forceFill(['job_id' => $job->job_id, 'job_matched_by' => 'phone'])->save();
+                            $lead->forceFill([
+                                'job_id' => $job->job_id,
+                                'job_matched_by' => 'phone',
+                                // It became a job: nobody owes it an answer
+                                // (Jose, 2026-10-09). A decision already made
+                                // (booked, archived, not a lead) stands.
+                                'status' => $lead->status === Lead::STATUS_NEW ? Lead::STATUS_COMPLETED : $lead->status,
+                            ])->save();
                             $matched++;
                         }
                     });

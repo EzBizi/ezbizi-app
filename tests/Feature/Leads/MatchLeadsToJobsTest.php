@@ -105,6 +105,7 @@ class MatchLeadsToJobsTest extends TestCase
         $lead = Lead::withoutGlobalScopes()->find($lead->id);
         $this->assertSame($early->id, $lead->job_id);
         $this->assertSame('phone', $lead->job_matched_by);
+        $this->assertSame(Lead::STATUS_COMPLETED, $lead->status, 'it became a job (Jose, 2026-10-09)');
     }
 
     public function test_nothing_outside_the_window_and_a_booked_lead_is_left_alone(): void
