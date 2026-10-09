@@ -13,6 +13,8 @@ use App\Models\ServiceArea;
 use App\Models\TrainingGuide;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\WorkizJob;
+use App\Models\WorkizRecord;
 use Carbon\CarbonImmutable;
 
 /**
@@ -349,6 +351,118 @@ final class ReportMap
              * jobs we did" is answerable. The others are starting points until
              * their junction tables are mapped.
              */
+            /*
+             * WORKIZ, as EzBizi mirrors it (the builder brief, 2026-10-09: "check
+             * workiz and their own report builder" - this is the data A-1 runs
+             * on, and the gap Workiz's own builder fills). Read from the
+             * copies the Workiz session lands every minute (jobs) and ten
+             * minutes (money), never from Workiz live.
+             *
+             * Workiz writes its times in each account's own clock, so these
+             * datetimes are the branch's wall time, not UTC.
+             *
+             * Money is in cents like every money column here, read out of the
+             * job as Workiz sent it; it needs jobs.financials like Jobs' own.
+             */
+            'workiz_jobs' => [
+                'model' => WorkizJob::class,
+                'table' => 'workiz_jobs',
+                'label' => 'Workiz jobs',
+                'module' => 'jobs',
+                'permission' => 'jobs.view',
+                'scope' => ['franchise_id' => 'franchise'],
+                'shared_because' => null,
+                'soft_deletes' => false,
+                'columns' => [
+                    'serial_id' => ['label' => 'Job #', 'type' => 'integer'],
+                    'status' => ['label' => 'Status', 'type' => 'string'],
+                    'sub_status' => ['label' => 'Sub-status', 'type' => 'string'],
+                    'job_type' => ['label' => 'Job type', 'type' => 'string'],
+                    'job_source' => ['label' => 'Source', 'type' => 'string'],
+                    'service_area' => ['label' => 'Service area', 'type' => 'string'],
+                    'city' => ['label' => 'City', 'type' => 'string'],
+                    'state' => ['label' => 'State', 'type' => 'string'],
+                    'postal_code' => ['label' => 'Zip code', 'type' => 'string'],
+                    'created_by' => ['label' => 'Created by', 'type' => 'string'],
+                    'booked_at' => ['label' => 'Created', 'type' => 'datetime', 'wall_clock' => true],
+                    'scheduled_for' => ['label' => 'Job date', 'type' => 'datetime', 'wall_clock' => true],
+                    'last_status_update' => ['label' => 'Status changed', 'type' => 'datetime', 'wall_clock' => true],
+                    'tech' => [
+                        'label' => 'Tech',
+                        'type' => 'string',
+                        // The first of the job's team, as Workiz lists it.
+                        'sql' => "json_unquote(json_extract(workiz_jobs.payload, '$.Team[0].Name'))",
+                    ],
+                    'total_minor' => [
+                        'label' => 'Total',
+                        'type' => 'money',
+                        'permission' => 'jobs.financials',
+                        'sql' => "round(json_extract(workiz_jobs.payload, '$.JobTotalPrice') * 100)",
+                    ],
+                    'amount_due_minor' => [
+                        'label' => 'Amount due',
+                        'type' => 'money',
+                        'permission' => 'jobs.financials',
+                        'sql' => "round(json_extract(workiz_jobs.payload, '$.JobAmountDue') * 100)",
+                    ],
+                ],
+                'relations' => [
+                    'job' => ['to' => 'jobs', 'local' => 'job_id', 'foreign' => 'id'],
+                    'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
+                ],
+            ],
+
+            /*
+             * Workiz's invoices, payments and estimates: one table, told apart
+             * by Type, so a report picks which with a filter (Type is payment).
+             * "Collected by" is the Workiz team member's name; 40% of payments
+             * come from logins Workiz's API does not name (measured
+             * 2026-10-06), and those read blank.
+             */
+            'workiz_records' => [
+                'model' => WorkizRecord::class,
+                'table' => 'workiz_records',
+                'label' => 'Workiz payments, invoices and estimates',
+                'module' => 'jobs',
+                'permission' => 'jobs.view',
+                'scope' => ['franchise_id' => 'franchise'],
+                'shared_because' => null,
+                'soft_deletes' => false,
+                'columns' => [
+                    'type' => ['label' => 'Type', 'type' => 'string'],
+                    'status' => ['label' => 'Status', 'type' => 'string'],
+                    'starts_at' => ['label' => 'Date', 'type' => 'datetime', 'wall_clock' => true],
+                    'amount_minor' => [
+                        'label' => 'Amount',
+                        'type' => 'money',
+                        'permission' => 'jobs.financials',
+                        'sql' => 'round(workiz_records.amount * 100)',
+                    ],
+                    'amount_due_minor' => [
+                        'label' => 'Amount due',
+                        'type' => 'money',
+                        'permission' => 'jobs.financials',
+                        'sql' => 'round(workiz_records.amount_due * 100)',
+                    ],
+                    'method' => [
+                        'label' => 'Method',
+                        'type' => 'string',
+                        'sql' => "json_unquote(json_extract(workiz_records.payload, '$.type'))",
+                    ],
+                    'collected_by' => [
+                        'label' => 'Collected by',
+                        'type' => 'string',
+                        'sql' => 'select t.name from workiz_team_members t '
+                            .'where t.remote_id = workiz_records.user_remote_id '
+                            .'and t.organization_id = workiz_records.organization_id limit 1',
+                    ],
+                ],
+                'relations' => [
+                    'job' => ['to' => 'jobs', 'local' => 'job_id', 'foreign' => 'id'],
+                    'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
+                ],
+            ],
+
             'leads' => [
                 'model' => Lead::class,
                 'table' => 'leads',
