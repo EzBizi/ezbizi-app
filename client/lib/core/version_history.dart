@@ -23,6 +23,7 @@ class VersionHistory {
         'WhatsApp reports and their groups are named by company (e.g. Air 75, or A-1 Chimney · Texas) instead of just the branch.',
         'Leads: Google Local Services bookings now show the customer\'s name, phone and ZIP, taken from the matching Reserve with Google booking in Workiz, and link to the job.',
         'Recordings can now play at 1.5× or 2× speed. Calls in a lead\'s conversation are tidier: who called, how long and when at a glance, with the transcript underneath.',
+        'Leads: Grok now reads new leads. It fills in a missing name or ZIP from the call transcript, suggests a reply, and marks obvious spam, vendor pitches, robocalls, wrong numbers and job applicants as Not a lead.',
       ],
     ),
     VersionRelease(
