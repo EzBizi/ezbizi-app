@@ -96,6 +96,31 @@ class ThumbtackPhoneNumbersTest extends TestCase
         });
     }
 
+    /** 2026-10-09: one number Thumbtack calls invalid refused the whole batch, every night. */
+    public function test_a_number_thumbtack_calls_invalid_is_dropped_and_the_rest_still_go_up(): void
+    {
+        Http::fake([
+            '*associate-phone-numbers-bulk-create' => Http::sequence()
+                ->push(['type' => 'about:blank', 'status' => 422, 'detail' => 'invalid phone number: +15552345678'], 422)
+                ->push(['phoneNumbers' => [['phoneNumberID' => '2', 'phoneNumber' => '+15559876543']]]),
+            '*associate-phone-numbers' => Http::response(['phoneNumbers' => []]),
+        ]);
+
+        $result = (new ThumbtackAssociatePhoneNumbers)->reconcile($this->connection(), [
+            '(555) 234-5678' => 'Ada Sweep',
+            '555-987-6543'   => 'Ben Flue',
+            '555-765-4321'   => 'Cy Damper',
+        ]);
+
+        $this->assertSame(1, $result['created']);
+        $this->assertSame(['+15552345678'], $result['skipped']);
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '-bulk-create')
+            && $request->data()['phoneNumbers'] === [
+                ['phoneNumber' => '+15559876543', 'name' => 'Ben Flue'],
+                ['phoneNumber' => '+15557654321', 'name' => 'Cy Damper'],
+            ]);
+    }
+
     public function test_a_single_new_number_uses_the_plain_endpoint_not_the_bulk_one(): void
     {
         Http::fake([

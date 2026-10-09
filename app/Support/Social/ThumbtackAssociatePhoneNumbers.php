@@ -86,7 +86,7 @@ final class ThumbtackAssociatePhoneNumbers
         $new = array_diff_key($wanted, $existing);
 
         if ($new !== []) {
-            $created = $this->createMany($connection, $new);
+            $created = $this->createMany($connection, $new, $skipped);
         }
 
         // Same number, different person.
@@ -136,9 +136,10 @@ final class ThumbtackAssociatePhoneNumbers
 
     /**
      * @param  array<string, string>  $numbers  E.164 => name
+     * @param  array<int, string>  $rejected  numbers Thumbtack called invalid, appended
      * @return int  how many were created
      */
-    public function createMany(SocialConnection $connection, array $numbers): int
+    public function createMany(SocialConnection $connection, array $numbers, array &$rejected = []): int
     {
         if (count($numbers) === 1) {
             $number = array_key_first($numbers);
@@ -162,7 +163,28 @@ final class ThumbtackAssociatePhoneNumbers
                 ], static fn ($v) => $v !== null);
             }
 
-            $body = $client->post($client->businessPath(self::PATH.'-bulk-create'), ['phoneNumbers' => $payload]);
+            // One number Thumbtack calls invalid (a new area code, 2026-10-09:
+            // +1227...) refuses the whole batch, every night. Drop it, name it,
+            // send the rest.
+            while (true) {
+                try {
+                    $body = $client->post($client->businessPath(self::PATH.'-bulk-create'), ['phoneNumbers' => $payload]);
+                    break;
+                } catch (RuntimeException $e) {
+                    if (preg_match('/invalid phone number: (\+\d+)/', $e->getMessage(), $m) !== 1) {
+                        throw $e;
+                    }
+                    $left = array_values(array_filter($payload, static fn ($row) => $row['phoneNumber'] !== $m[1]));
+                    if (count($left) === count($payload)) {
+                        throw $e;
+                    }
+                    $rejected[] = $m[1];
+                    $payload = $left;
+                    if ($payload === []) {
+                        continue 2;
+                    }
+                }
+            }
 
             $created += count((array) ($body['phoneNumbers'] ?? []));
         }
