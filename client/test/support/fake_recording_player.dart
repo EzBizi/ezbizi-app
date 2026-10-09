@@ -34,6 +34,15 @@ class FakeRecordingPlayer implements RecordingPlayer {
   RecordingPlayback _state = const RecordingPlayback();
 
   @override
+  double speed = 1;
+
+  @override
+  Future<void> setSpeed(double next) async {
+    speed = next;
+    _set(_state);
+  }
+
+  @override
   RecordingPlayback get state => _state;
 
   @override

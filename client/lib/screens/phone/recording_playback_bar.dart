@@ -34,6 +34,7 @@ class RecordingPlaybackBar extends StatefulWidget {
     required this.load,
     this.dense = false,
     this.autoplay = false,
+    this.knownLength,
   });
 
   final RecordingPlayer player;
@@ -49,6 +50,11 @@ class RecordingPlaybackBar extends StatefulWidget {
   /// Starts playing as soon as the bar is drawn, for a list that opens the
   /// bar from its own play button (Reports' calls, UI queue 71).
   final bool autoplay;
+
+  /// The recording's length when the caller already knows it - a call's own
+  /// duration - so the time reads "0:00 / 3:14" before anything is fetched
+  /// instead of "--:--".
+  final Duration? knownLength;
 
   @override
   State<RecordingPlaybackBar> createState() => _RecordingPlaybackBarState();
@@ -199,66 +205,88 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                IconButton(
-                  key: const Key('recording-play'),
-                  visualDensity: widget.dense ? VisualDensity.compact : null,
-                  tooltip: playing ? 'Pause' : 'Play',
-                  onPressed: _busy ? null : _press,
-                  icon: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(playing ? Icons.pause : Icons.play_arrow),
-                ),
+            LayoutBuilder(
+              builder: (context, box) => Row(
+                children: [
+                  IconButton(
+                    key: const Key('recording-play'),
+                    visualDensity: widget.dense ? VisualDensity.compact : null,
+                    tooltip: playing ? 'Pause' : 'Play',
+                    onPressed: _busy ? null : _press,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(playing ? Icons.pause : Icons.play_arrow),
+                  ),
 
-                Expanded(
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 6,
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 14,
+                        ),
                       ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 14,
+                      child: Slider(
+                        key: const Key('recording-scrub'),
+                        // Disabled rather than hidden. A transport that appears
+                        // only once audio is loaded moves the button under the
+                        // cursor at the moment somebody is aiming at it.
+                        value: scrubbable
+                            ? (_dragging ??
+                                  at.inMilliseconds
+                                          .clamp(0, total.inMilliseconds)
+                                          .toDouble() /
+                                      1000)
+                            : 0,
+                        max: scrubbable
+                            ? total.inMilliseconds.toDouble() / 1000
+                            : 1,
+                        onChanged: scrubbable
+                            ? (value) => setState(() => _dragging = value)
+                            : null,
+                        onChangeEnd: scrubbable ? _seek : null,
                       ),
                     ),
-                    child: Slider(
-                      key: const Key('recording-scrub'),
-                      // Disabled rather than hidden. A transport that appears
-                      // only once audio is loaded moves the button under the
-                      // cursor at the moment somebody is aiming at it.
-                      value: scrubbable
-                          ? (_dragging ??
-                                at.inMilliseconds
-                                    .clamp(0, total.inMilliseconds)
-                                    .toDouble() /
-                                    1000)
-                          : 0,
-                      max: scrubbable
-                          ? total.inMilliseconds.toDouble() / 1000
-                          : 1,
-                      onChanged: scrubbable
-                          ? (value) => setState(() => _dragging = value)
-                          : null,
-                      onChangeEnd: scrubbable ? _seek : null,
+                  ),
+
+                  Text(
+                    scrubbable
+                        ? '${_clock(_dragging == null ? at : Duration(seconds: _dragging!.round()))} / ${_clock(total)}'
+                        : switch (widget.knownLength) {
+                            final length? when length > Duration.zero =>
+                              '0:00 / ${_clock(length)}',
+                            _ => '--:--',
+                          },
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                ),
-
-                Text(
-                  scrubbable
-                      ? '${_clock(_dragging == null ? at : Duration(seconds: _dragging!.round()))} / ${_clock(total)}'
-                      : '--:--',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  // Faster, to get through a call (Jose, 2026-10-09). Three
+                  // where they fit; on a narrow bar one that steps 1, 1.5, 2.
+                  if (box.maxWidth >= 360)
+                    for (final rate in const [1.0, 1.5, 2.0])
+                      _speedButton(context, rate)
+                  else
+                    _speedButton(
+                      context,
+                      widget.player.speed,
+                      next: switch (widget.player.speed) {
+                        1.0 => 1.5,
+                        1.5 => 2.0,
+                        _ => 1.0,
+                      },
+                    ),
+                ],
+              ),
             ),
 
             if (_error != null)
@@ -274,6 +302,41 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
           ],
         );
       },
+    );
+  }
+
+  /// One speed. With [next], the single stepping button of a narrow bar:
+  /// it shows the speed playing and moves to [next].
+  Widget _speedButton(BuildContext context, double rate, {double? next}) {
+    final scheme = Theme.of(context).colorScheme;
+    final on = next == null ? widget.player.speed == rate : rate != 1;
+    final label = rate == rate.roundToDouble() ? '${rate.round()}×' : '$rate×';
+
+    return Tooltip(
+      message: next == null
+          ? 'Play at $label speed'
+          : 'Playing at $label - tap for faster',
+      child: InkWell(
+        key: ValueKey(
+          next == null ? 'recording-speed-$rate' : 'recording-speed-step',
+        ),
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => widget.player.setSpeed(next ?? rate),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          decoration: BoxDecoration(
+            color: on ? scheme.primaryContainer : null,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+              color: on ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
     );
   }
 

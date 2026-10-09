@@ -78,6 +78,13 @@ abstract class RecordingPlayer {
 
   Future<void> seek(Duration to);
 
+  /// How fast it plays: 1, 1.5 or 2 (Jose, 2026-10-09: "add 1.5, 2, speed,
+  /// so u can listen to them faster"). Kept by the player, which a screen
+  /// shares, so every recording on that screen plays at the speed picked.
+  double get speed;
+
+  Future<void> setSpeed(double speed);
+
   void dispose();
 }
 
@@ -120,12 +127,24 @@ class AudioplayersRecordingPlayer implements RecordingPlayer {
   late final List<StreamSubscription<Object?>> _subscriptions;
 
   RecordingPlayback _state = const RecordingPlayback();
+  double _speed = 1;
 
   @override
   RecordingPlayback get state => _state;
 
   @override
   Stream<RecordingPlayback> get changes => _changes.stream;
+
+  @override
+  double get speed => _speed;
+
+  @override
+  Future<void> setSpeed(double speed) async {
+    _speed = speed;
+    await _player.setPlaybackRate(speed);
+    // Same state, said again, so every transport redraws its speed.
+    _set(_state);
+  }
 
   @override
   Future<void> play(List<int> bytes) async {
@@ -137,6 +156,8 @@ class AudioplayersRecordingPlayer implements RecordingPlayer {
       await _player.stop();
       _set(const RecordingPlayback(playing: true));
       await _player.play(BytesSource(Uint8List.fromList(bytes)));
+      // A new source can start at normal speed; the one picked carries on.
+      if (_speed != 1) await _player.setPlaybackRate(_speed);
     } catch (error) {
       _set(const RecordingPlayback());
 

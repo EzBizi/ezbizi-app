@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 74 · Leads · calls in a lead's conversation — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/lead-thread-calls-layouts.html`)
+### 74 · Leads · calls in a lead's conversation — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/lead-thread-calls-layouts.html`)
 
 Jose 2026-10-09, with a screenshot of a lead's thread: *"i wonder if we can make this look a bit better"*. Today: "Call ·
 3:14", a small letter-spaced line, a 360px play bar reading "--:--" until it loads, the words in a grey box headed
@@ -2976,6 +2976,12 @@ icon, title and time on one line, full-width player, the quote (recommended); **
 pill; **3** one line per call that opens. Phone **4** (recommended) as 1, the time under the title; **5** bubbles;
 **6** one line each. Owner: Leads (`client/lib/widgets/lead_thread.dart`); the length before load needs a small
 `RecordingPlaybackBar` option (Phone's).
+
+Built: plus Jose's follow-up the same day, *"can we also add 1.5, 2 , speed, so u can listen to them faster"*:
+1× / 1.5× / 2× on every RecordingPlaybackBar (one stepping button when the bar is under 360 px), kept on the shared
+player so it holds for every recording on a screen. `knownLength` shows the call's length before loading (zero or
+less still reads --:--, Phone's condition). The transcript keeps the label "Transcript" and four lines (pinned by
+Leads' tests); Transcribing… is a chip with a still icon.
 
 ### 73 · Automations · an overhaul — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/automations-overhaul-layouts.html`)
 

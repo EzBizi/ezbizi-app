@@ -148,7 +148,7 @@ void main() {
 
     await _pump(tester, player: player, recordingGate: gate);
 
-    expect(find.text('Call · 2:05'), findsOneWidget);
+    expect(find.text('Customer called · 2:05'), findsOneWidget);
     expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);

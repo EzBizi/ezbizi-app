@@ -1602,29 +1602,29 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _transcript(ThemeData theme, String id, String text) {
     final open = _openTranscripts.contains(id);
 
+    // A quote with a thin rule rather than a grey box (UI queue 74): the
+    // words are the call's, and a box made them read as a separate panel.
     return Container(
       key: ValueKey('transcript-$id'),
       width: double.infinity,
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      padding: const EdgeInsets.only(left: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.outlineVariant, width: 3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.notes, size: 14, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 4),
-              Text('Transcript', style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurfaceVariant,
-              )),
-            ],
+          Text(
+            'Transcript',
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           open
               ? SelectableText(text, style: theme.textTheme.bodySmall)
               : Text(
@@ -1937,61 +1937,114 @@ class _LeadThreadState extends State<LeadThread> {
   }) {
     final id = c['id'] as String;
     final hasRecording = c['has_recording'] == true;
+    final ms = c['duration_ms'];
+    // Green when the customer called, blue when we did (UI queue 74).
+    final tone = ToneColours.of(
+      context,
+      who == 'Customer' ? Tone.ok : Tone.info,
+    );
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(11, 9, 11, 6),
+      // As wide as the thread allows, so every call lines up; a call with no
+      // words used to shrink to its play bar.
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'Call · ${formatDuration(c['duration_ms'] as num?)}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+          CircleAvatar(
+            radius: 17,
+            backgroundColor: tone.fill,
+            child: Icon(
+              who == 'Customer' ? Icons.call_received : Icons.call_made,
+              size: 18,
+              color: tone.ink,
             ),
           ),
-          Text(
-            hasRecording
-                ? '$who called · $when'
-                : '$who called · $when · no recording',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          if (hasRecording)
-            SizedBox(
-              width: 360,
-              child: RecordingPlaybackBar(
-                key: ValueKey('recording-$id'),
-                player: _player,
-                dense: true,
-                load: () => widget.api.getBytes(
-                  '/leads/${widget.lead['id']}/conversations/$id/recording',
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The time on the right while it fits; under the title when
+                // a phone's line is short.
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 2,
+                  children: [
+                    Text(
+                      '$who called · ${formatDuration(ms as num?)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      hasRecording ? when : '$when · no recording',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-          // The words, right under the recording (Jose, 2026-09-29): both
-          // voices in one text, machine-transcribed on our own server - so it
-          // is labelled as a transcript, not quoted. Four lines, then Show all.
+                if (hasRecording)
+                  RecordingPlaybackBar(
+                    key: ValueKey('recording-$id'),
+                    player: _player,
+                    dense: true,
+                    // The call's own length, so the bar reads 0:00 / 3:14
+                    // before anything is fetched.
+                    knownLength: ms is num
+                        ? Duration(milliseconds: ms.round())
+                        : null,
+                    load: () => widget.api.getBytes(
+                      '/leads/${widget.lead['id']}/conversations/$id/recording',
+                    ),
+                  ),
+                // The words, right under the recording (Jose, 2026-09-29): both
+                // voices in one text, machine-transcribed on our own server - so it
+                // is labelled as a transcript, not quoted. Four lines, then Show all.
           if ((c['transcript'] as String?)?.isNotEmpty ?? false)
             _transcript(theme, id, c['transcript'] as String)
           else if (c['transcript_pending'] == true)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Transcribing…',
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Container(
                 key: ValueKey('transcript-pending-$id'),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.hourglass_top,
+                      size: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Transcribing…',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+              ],
+            ),
+          ),
         ],
       ),
     );
