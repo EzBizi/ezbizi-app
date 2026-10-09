@@ -6,6 +6,7 @@ use App\Models\Automation;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\SavedReport;
 use App\Support\Reports\ReportMap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -403,6 +404,55 @@ class ReportsApiTest extends TestCase
                 'conditions' => null, 'actions' => [['type' => 'report.send', 'report_id' => $reportId]], 'created_at' => now()]);
             $rule->forceFill(['active_version_id' => $version->id])->save();
         });
+    }
+
+    /** Jose, 2026-10-09: "i also want a preview view, as you select the items". */
+    public function test_an_unsaved_definition_previews_its_first_rows_and_its_count(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        foreach (range(1, 30) as $i) {
+            $this->makeJob($tenant, ['title' => "Sweep {$i}"]);
+        }
+
+        $preview = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => $this->titlesDefinition()])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(25, $preview['rows']);
+        $this->assertSame(30, $preview['count']);
+        $this->assertSame('Title', $preview['columns'][0]['label']);
+        $this->assertSame(0, SavedReport::withoutGlobalScopes()->count());
+    }
+
+    /** The same gates as a run: building, and a column's own permission. */
+    public function test_a_preview_keeps_the_build_and_column_permissions(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, ['title' => 'Sweep']);
+
+        $reader = $this->userWithRole($tenant, 'Reader', ['reports.view', 'reports.builder.view', 'jobs.view']);
+
+        $this->signedInAs($reader)
+            ->postJson('/api/v1/reports/preview', ['definition' => $this->titlesDefinition()])
+            ->assertForbidden();
+
+        $builder = $this->userWithRole($tenant, 'Builder', ['reports.view', 'reports.build', 'reports.builder.view', 'jobs.view']);
+
+        $this->signedInAs($builder)
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'jobs',
+                'columns' => [['resource' => 'jobs', 'column' => 'amount_minor']],
+                'filters' => [],
+            ]])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.definition.0', "'Amount' needs the jobs.financials permission, which you do not have.");
+
+        $this->signedInAs($builder)
+            ->postJson('/api/v1/reports/preview', ['definition' => $this->titlesDefinition()])
+            ->assertOk()
+            ->assertJsonPath('data.count', 1);
     }
 
     public function test_building_is_refused_without_the_build_permission(): void
