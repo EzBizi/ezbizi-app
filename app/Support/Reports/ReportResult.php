@@ -13,5 +13,7 @@ final readonly class ReportResult
         /** True when the row cap cut the result short. */
         public bool $capped,
         public int $count,
+        /** A summary's sums over every row, keyed like its total columns; null for a plain report. */
+        public ?array $total = null,
     ) {}
 }

@@ -542,6 +542,56 @@ class ReportsApiTest extends TestCase
         CarbonImmutable::setTestNow();
     }
 
+    /** Group by and totals (the builder brief, items 10-11), with a grand total over every row. */
+    public function test_a_report_groups_and_totals_its_rows(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, ['status' => 'done', 'duration_minutes' => 30, 'created_at' => '2026-09-10 15:00:00']);
+        $this->makeJob($tenant, ['status' => 'done', 'duration_minutes' => 60, 'created_at' => '2026-10-02 15:00:00']);
+        $this->makeJob($tenant, ['status' => 'cancelled', 'duration_minutes' => 90, 'created_at' => '2026-10-03 15:00:00']);
+
+        $summary = fn (array $group) => $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'jobs',
+                'columns' => [],
+                'filters' => [],
+                'group' => $group,
+                'totals' => [
+                    ['fn' => 'count'],
+                    ['resource' => 'jobs', 'column' => 'duration_minutes', 'fn' => 'sum'],
+                    ['resource' => 'jobs', 'column' => 'duration_minutes', 'fn' => 'avg'],
+                ],
+            ]])
+            ->assertOk()
+            ->json('data');
+
+        $byStatus = $summary([['resource' => 'jobs', 'column' => 'status']]);
+
+        $this->assertSame(['jobs.status', 'count', 'jobs.duration_minutes:sum', 'jobs.duration_minutes:avg'], array_column($byStatus['columns'], 'key'));
+        $this->assertSame('Minutes (sum)', $byStatus['columns'][2]['label']);
+        $this->assertSame([['done', 2, 90], ['cancelled', 1, 90]], array_map(
+            fn ($row) => [$row['jobs.status'], (int) $row['count'], (int) $row['jobs.duration_minutes:sum']],
+            $byStatus['rows'],
+        ));
+        // The grand total is its own query, so the average is of all three jobs.
+        $this->assertSame(3, (int) $byStatus['total']['count']);
+        $this->assertSame(60.0, (float) $byStatus['total']['jobs.duration_minutes:avg']);
+
+        $byMonth = $summary([['resource' => 'jobs', 'column' => 'created_at', 'bucket' => 'month']]);
+        $this->assertSame(['2026-10-01' => 2, '2026-09-01' => 1], array_combine(
+            array_column($byMonth['rows'], 'jobs.created_at:month'),
+            array_map('intval', array_column($byMonth['rows'], 'count')),
+        ));
+
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'jobs', 'columns' => [], 'filters' => [],
+                'group' => [['resource' => 'jobs', 'column' => 'status', 'bucket' => 'month']],
+            ]])
+            ->assertUnprocessable();
+    }
+
     public function test_building_is_refused_without_the_build_permission(): void
     {
         $tenant = $this->provisionTenant('Alpha');

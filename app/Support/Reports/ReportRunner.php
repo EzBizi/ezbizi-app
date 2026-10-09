@@ -10,6 +10,7 @@ use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -208,7 +209,10 @@ final class ReportRunner
         $php = [];
         $phpFilters = [];
 
-        foreach ($definition['columns'] ?? [] as $column) {
+        // A summary (group by / totals) selects its own columns below.
+        $summary = ($definition['group'] ?? []) !== [] || ($definition['totals'] ?? []) !== [];
+
+        foreach ($summary ? [] : $definition['columns'] ?? [] as $column) {
             $resource = $this->resourceFor($column);
             $declared = $this->columnFor($resource, $column);
             $key = $column['resource'].'.'.$column['column'];
@@ -246,7 +250,7 @@ final class ReportRunner
             $columns[] = ['key' => $key, 'label' => $this->labelFor($column, $declared), 'type' => $declared['type']];
         }
 
-        if ($columns === []) {
+        if ($columns === [] && ! $summary) {
             throw new InvalidArgumentException('A report needs at least one column.');
         }
 
@@ -304,6 +308,14 @@ final class ReportRunner
                     $any ? $group->orWhereRaw($sql, $bindings) : $group->whereRaw($sql, $bindings);
                 }
             });
+        }
+
+        if ($summary) {
+            if ($phpFilters !== []) {
+                throw new InvalidArgumentException('A filter worked out after reading cannot narrow a summary.');
+            }
+
+            return $this->summarise($query, $definition, $user);
         }
 
         /*
@@ -546,6 +558,143 @@ final class ReportRunner
     }
 
     /** @return list<string> */
+    /** The sums a summary can show for a column. */
+    private const TOTALS = ['count', 'sum', 'avg', 'min', 'max'];
+
+    /**
+     * GROUP BY and TOTALS (the builder brief, items 10-11; what Workiz's own
+     * builder shows when grouped). Rows are one per group, the largest first
+     * by the first total; `total` is the same sums over every row, from a
+     * second query rather than added up here, so an average stays an average.
+     *
+     * Group keys: up to two columns; a date can be bucketed by day, week
+     * (Monday) or month, in the organization's timezone.
+     */
+    private function summarise(QueryBuilder $query, array $definition, User $user): ReportResult
+    {
+        $groups = array_slice($definition['group'] ?? [], 0, 2);
+        $columns = [];
+        $aggregates = [];
+        $keys = [];
+
+        foreach ($groups as $group) {
+            [$expression, $declared] = $this->expressionFor($group, $user, 'grouped by');
+            $bucket = $group['bucket'] ?? null;
+
+            if ($bucket !== null) {
+                if (! in_array($declared['type'] ?? '', ['date', 'datetime'], true)) {
+                    throw new InvalidArgumentException("'{$declared['label']}' is not a date, so it cannot be grouped by {$bucket}.");
+                }
+
+                if (($declared['type'] ?? '') === 'datetime') {
+                    // In the organization's clock; UTC where the database has no zone tables.
+                    $zone = DB::getPdo()->quote($this->zone($user));
+                    $expression = "coalesce(convert_tz({$expression}, '+00:00', {$zone}), {$expression})";
+                }
+
+                $expression = match ($bucket) {
+                    'day' => "date({$expression})",
+                    'week' => "date({$expression} - interval weekday({$expression}) day)",
+                    'month' => "date_format({$expression}, '%Y-%m-01')",
+                    default => throw new InvalidArgumentException("'{$bucket}' is not a way to group dates."),
+                };
+            }
+
+            $key = $group['resource'].'.'.$group['column'].($bucket ? ':'.$bucket : '');
+            $keys[] = [$key, $expression];
+            $columns[] = [
+                'key' => $key,
+                'label' => $this->labelFor($group, $declared).($bucket ? " ({$bucket})" : ''),
+                'type' => $bucket ? 'date' : $declared['type'],
+            ];
+        }
+
+        foreach ($definition['totals'] ?? [] as $total) {
+            $fn = $total['fn'] ?? 'count';
+
+            if (! in_array($fn, self::TOTALS, true)) {
+                throw new InvalidArgumentException("'{$fn}' is not a total this report can show.");
+            }
+
+            if ($fn === 'count' && empty($total['column'])) {
+                $aggregates[] = ['count', 'count(*)'];
+                $columns[] = ['key' => 'count', 'label' => trim((string) ($total['label'] ?? '')) ?: 'Count', 'type' => 'integer'];
+
+                continue;
+            }
+
+            [$expression, $declared] = $this->expressionFor($total, $user, 'totalled');
+
+            if ($fn !== 'count' && ! in_array($declared['type'] ?? '', ['integer', 'money', 'date', 'datetime'], true)) {
+                throw new InvalidArgumentException("'{$declared['label']}' is not a number, so it has no {$fn}.");
+            }
+
+            $key = $total['resource'].'.'.$total['column'].':'.$fn;
+            $aggregates[] = [$key, "{$fn}({$expression})"];
+            $columns[] = [
+                'key' => $key,
+                'label' => $this->labelFor($total, $declared).' ('.$fn.')',
+                'type' => $fn === 'count' ? 'integer' : $declared['type'],
+            ];
+        }
+
+        if ($aggregates === []) {
+            $aggregates[] = ['count', 'count(*)'];
+            $columns[] = ['key' => 'count', 'label' => 'Count', 'type' => 'integer'];
+        }
+
+        $select = fn (QueryBuilder $q) => $q->selectRaw(implode(', ', array_map(
+            fn (array $a) => $a[1].' as '.$this->quote($a[0]),
+            $aggregates,
+        )));
+
+        $grandTotal = (array) $this->withTimeout(fn () => $select(clone $query)->first());
+
+        if ($keys === []) {
+            return new ReportResult($columns, [], false, 0, $grandTotal);
+        }
+
+        $grouped = $select(clone $query);
+
+        foreach ($keys as [$key, $expression]) {
+            $grouped->selectRaw($expression.' as '.$this->quote($key))->groupByRaw($expression);
+        }
+
+        $grouped->orderByRaw($this->quote($aggregates[0][0]).' desc');
+
+        $rows = $this->withTimeout(
+            fn () => $grouped->limit(self::ROW_CAP + 1)->get()->map(fn ($row) => (array) $row)->all()
+        );
+        $capped = count($rows) > self::ROW_CAP;
+
+        // Group columns first, as they read.
+        $order = array_fill_keys(array_column($columns, 'key'), null);
+        $rows = array_map(fn (array $row) => array_merge($order, $row), array_slice($rows, 0, self::ROW_CAP));
+
+        return new ReportResult($columns, $rows, $capped, count($rows), $grandTotal);
+    }
+
+    /** @return array{0: string, 1: array} the SQL a column is read with, and its map entry */
+    private function expressionFor(array $item, User $user, string $use): array
+    {
+        $resource = $this->resourceFor($item);
+        $declared = $this->columnFor($resource, $item);
+        $this->mayRead($user, $declared);
+
+        if (isset($declared['php'])) {
+            throw new InvalidArgumentException("'{$declared['label']}' is worked out after the rows are read, so it cannot be {$use}.");
+        }
+
+        return [isset($declared['sql'])
+            ? '('.$this->resolve($declared['sql']).')'
+            : $this->quote($resource['table']).'.'.$this->quote($item['column']), $declared];
+    }
+
+    private function zone(User $user): string
+    {
+        return (string) app(SettingsResolver::class)->get('timezone', $user->organization);
+    }
+
     /** Dates a report can ask for by name, so a saved "Last month" moves on with the calendar. */
     public const PERIODS = [
         'today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month',
@@ -589,8 +738,7 @@ final class ReportRunner
      */
     private function period(string $name, array $declared, User $user): array
     {
-        $zone = (string) app(SettingsResolver::class)->get('timezone', $user->organization);
-        $now = CarbonImmutable::now($zone);
+        $now = CarbonImmutable::now($this->zone($user));
 
         [$from, $to] = match ($name) {
             'today' => [$now->startOfDay(), $now->endOfDay()],
@@ -624,11 +772,12 @@ final class ReportRunner
     {
         $keys = [];
 
-        foreach (array_merge($definition['columns'] ?? [], $definition['filters'] ?? [], $definition['sort'] ?? []) as $item) {
+        foreach (array_merge($definition['columns'] ?? [], $definition['filters'] ?? [], $definition['sort'] ?? [], $definition['group'] ?? [], $definition['totals'] ?? []) as $item) {
             $keys[] = $item['resource'] ?? '';
         }
 
-        return array_values(array_unique($keys));
+        // A plain count names no column, so no resource.
+        return array_values(array_filter(array_unique($keys), fn (string $key) => $key !== ''));
     }
 
     /**
