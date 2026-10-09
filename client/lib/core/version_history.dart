@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0399',
+      date: '9 Oct 2026',
+      items: [
+        'Leads: a new lead that turns into a job is now marked Completed automatically.',
+        'Marketing › Social Media: connect a YouTube channel and publish videos to it from Posts.',
+        'Reports › Performance is tidier: each call is one row with its badges and a play button, the recording opens only under the call you play, and Calls has one filter bar (Result and Client) instead of three rows of chips.',
+        'Report Builder: Workiz jobs and Workiz payments, invoices and estimates can now be reported on.',
+        'Automations: a saved WhatsApp step opens with its number, template and blanks, so the rule can be saved again.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0398',
       date: '9 Oct 2026',
       items: [
