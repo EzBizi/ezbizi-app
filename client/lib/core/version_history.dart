@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0402',
+      date: '9 Oct 2026',
+      items: [
+        'Leads: a Lost status for real customers who declined or want a service we don\'t offer (set by hand, or by Grok on new leads). Any Archived, Not a lead, Lost or Completed lead goes back to New when the customer writes again.',
+        'Job applicants who write in are marked Job applicant and kept in their own Leads tab, out of the lead counts.',
+        'Desktop app: if you take calls in EzBizi, automatic updates wait until you set Do Not Disturb, and never close the app during a call. The Install button in the update banner still works any time.',
+        'Memberships: staff can open a preview of the sign-up page that never signs anybody up.',
+        'Leads on a phone: a lead\'s status is one picker beside Book instead of a row of buttons.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0401',
       date: '9 Oct 2026',
       items: [
