@@ -138,9 +138,14 @@ class _EzBiziAppState extends State<EzBiziApp> {
      * found update waits a minute before it closes the app.
      */
     // Never closes the app under a live call (Jose, 2026-10-09).
+    // ...and only installs on its own once a person who takes calls here has
+    // set Do Not Disturb (Jose, 2026-10-09).
     DesktopUpdater.instance.guardCalls(
       PhoneCallService.current,
       () => PhoneCallService.current.busy,
+      availableForCalls: () =>
+          PhoneCallService.current.presenceHasLine &&
+          PhoneCallService.current.presence != 'dnd',
     );
     DesktopUpdater.instance.start();
     _session.addListener(_tellUpdaterWhoIsHere);
@@ -1682,6 +1687,10 @@ class _HomeShellState extends State<HomeShell> {
                                 (u.waitingForCall
                                     ? 'EzBizi ${u.available!.version} will install '
                                           'when your call ends.'
+                                    : u.waitingForDnd
+                                    ? 'EzBizi ${u.available!.version} is ready. It '
+                                          'installs when you set Do Not Disturb, '
+                                          'or install it now.'
                                     : left != null
                                     ? 'EzBizi ${u.available!.version} installs in '
                                           '$left seconds. The app closes and reopens.'
@@ -1705,7 +1714,7 @@ class _HomeShellState extends State<HomeShell> {
                               child: const Text('Not now'),
                             ),
                           FilledButton(
-                            onPressed: u.install,
+                            onPressed: () => u.install(),
                             child: Text(
                               u.error == null ? 'Update now' : 'Try again',
                             ),

@@ -174,6 +174,26 @@ class PhoneCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// This person's availability as the server last said: `registered`,
+  /// `dnd`, `on_call`, `wrap_up`. Null until the Availability button has
+  /// read it.
+  String? get presence => _presence;
+  String? _presence;
+
+  /// Whether this person has a line to take calls on in the app. Someone
+  /// without one never takes a call here.
+  bool get presenceHasLine => _presenceHasLine;
+  bool _presenceHasLine = false;
+
+  /// Reported by the Availability button, which is what reads and writes
+  /// presence, so others (the desktop updater) can follow it.
+  void notePresence({required bool hasLine, required String state}) {
+    if (hasLine == _presenceHasLine && state == _presence) return;
+    _presenceHasLine = hasLine;
+    _presence = state;
+    notifyListeners();
+  }
+
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
 

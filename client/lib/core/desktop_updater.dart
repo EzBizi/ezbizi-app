@@ -92,33 +92,55 @@ class DesktopUpdater extends ChangeNotifier {
   @visibleForTesting
   Future<String?> Function(AvailableUpdate) installer = DesktopUpdate.install;
 
+  /// True while an automatic install is held because this person takes calls
+  /// in the app and is Available.
+  ///
+  /// Jose, 2026-10-09: "it basically should be postponed until the user puts
+  /// himselff in the do not disturb state". Somebody Available is somebody a
+  /// customer can ring at any moment. The banner's Install still works.
+  bool waitingForDnd = false;
+
   bool Function() _inCall = _never;
+  bool Function() _available = _never;
   static bool _never() => false;
 
   /// Whether a call is live, asked right before every install — a call can
-  /// start during the [grace] minute — and listened to so a held update
-  /// resumes once the call is over. Wired to PhoneCallService at the root.
-  void guardCalls(Listenable source, bool Function() inCall) {
+  /// start during the [grace] minute — and whether this person is Available
+  /// to take one, asked before every AUTOMATIC install. Listened to so a held
+  /// update resumes once the call ends or they set Do Not Disturb. Wired to
+  /// PhoneCallService at the root.
+  void guardCalls(
+    Listenable source,
+    bool Function() inCall, {
+    bool Function()? availableForCalls,
+  }) {
     _callSource?.removeListener(_callChanged);
     _callSource = source..addListener(_callChanged);
     _inCall = inCall;
+    _available = availableForCalls ?? _never;
   }
 
   Listenable? _callSource;
 
   void _callChanged() {
-    if (!waitingForCall || _inCall()) return;
+    if (!(waitingForCall || waitingForDnd) || _inCall()) return;
+    if (waitingForDnd && signedIn && _available()) return;
     waitingForCall = false;
+    waitingForDnd = false;
     if (available != null) _beginCountdown();
   }
 
-  /// Holds the update until the call ends. True when it did.
-  bool _holdForCall() {
-    if (!_inCall()) return false;
+  /// Holds the update until the call ends or, for an automatic install, until
+  /// this person is not Available. True when it did.
+  bool _hold({required bool automatic}) {
+    final call = _inCall();
+    final dnd = !call && automatic && signedIn && _available();
+    if (!call && !dnd) return false;
     _countdown?.cancel();
     _countdown = null;
     secondsLeft = null;
-    waitingForCall = true;
+    waitingForCall = call;
+    waitingForDnd = dnd;
     notifyListeners();
     return true;
   }
@@ -183,7 +205,7 @@ class DesktopUpdater extends ChangeNotifier {
     // still give a signed-in person the grace period, because closing the app
     // under someone mid-task is a different thing entirely.
     if (atStartup || !signedIn) {
-      await install();
+      await install(automatic: true);
       return;
     }
 
@@ -191,7 +213,7 @@ class DesktopUpdater extends ChangeNotifier {
   }
 
   void _beginCountdown() {
-    if (_holdForCall()) return;
+    if (_hold(automatic: true)) return;
     _countdown?.cancel();
     secondsLeft = grace.inSeconds;
     notifyListeners();
@@ -208,7 +230,7 @@ class DesktopUpdater extends ChangeNotifier {
       t.cancel();
       _countdown = null;
       secondsLeft = null;
-      unawaited(install());
+      unawaited(install(automatic: true));
     });
   }
 
@@ -217,16 +239,22 @@ class DesktopUpdater extends ChangeNotifier {
   /// Returns having changed nothing visible on success: the installer closes
   /// this process, so there is nobody left to draw for. Only failure comes
   /// back here with somebody still looking at the screen.
-  Future<void> install() async {
+  ///
+  /// [automatic] is the updater acting on its own, which waits for Do Not
+  /// Disturb as well as for the call to end. The banner's Install button is a
+  /// person choosing, and waits only for the call.
+  Future<void> install({bool automatic = false}) async {
     final update = available;
 
     if (update == null || busy) return;
 
     // The last word, whoever asked: the startup sweep, the countdown, or the
     // Install button. A call that began during the minute stops it here.
-    if (_holdForCall()) return;
+    if (_hold(automatic: automatic)) return;
 
     _countdown?.cancel();
+    waitingForCall = false;
+    waitingForDnd = false;
     _countdown = null;
     secondsLeft = null;
     busy = true;

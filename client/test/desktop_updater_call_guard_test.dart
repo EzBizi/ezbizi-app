@@ -11,6 +11,7 @@ void main() {
   late DesktopUpdater updater;
   late ValueNotifier<bool> call;
   late List<String> installed;
+  late ValueNotifier<bool> availableForCalls;
 
   setUp(() {
     updater = DesktopUpdater.instance;
@@ -20,7 +21,13 @@ void main() {
       installed.add(u.version);
       return 'stubbed';
     };
-    updater.guardCalls(call, () => call.value);
+    availableForCalls = ValueNotifier(false);
+    updater.guardCalls(
+      Listenable.merge([call, availableForCalls]),
+      () => call.value,
+      availableForCalls: () => availableForCalls.value,
+    );
+    updater.signedIn = true;
     updater.available = const AvailableUpdate(version: '9.9.9', url: 'x');
     updater.waitingForCall = false;
   });
@@ -30,6 +37,8 @@ void main() {
     updater.installer = DesktopUpdate.install;
     updater.available = null;
     updater.waitingForCall = false;
+    updater.waitingForDnd = false;
+    updater.signedIn = false;
     updater.error = null;
   });
 
@@ -80,6 +89,42 @@ void main() {
     call.value = false;
     await tester.pump(DesktopUpdater.grace);
     await tester.pump();
+    expect(installed, ['9.9.9']);
+  });
+
+  /// Jose, 2026-10-09: "it basically should be postponed until the user puts
+  /// himselff in the do not disturb state".
+  testWidgets('an Available person is not updated until they set Do Not Disturb', (
+    tester,
+  ) async {
+    availableForCalls.value = true;
+
+    await updater.install(automatic: true);
+    expect(installed, isEmpty, reason: 'installed on its own while Available');
+    expect(updater.waitingForDnd, isTrue);
+    expect(updater.secondsLeft, isNull);
+
+    availableForCalls.value = false; // Do Not Disturb
+    expect(updater.secondsLeft, DesktopUpdater.grace.inSeconds);
+    await tester.pump(DesktopUpdater.grace);
+    await tester.pump();
+    expect(installed, ['9.9.9']);
+  });
+
+  test('the Install button still works for somebody Available', () async {
+    availableForCalls.value = true;
+
+    await updater.install();
+
+    expect(installed, ['9.9.9']);
+  });
+
+  test('nobody signed in installs straight away', () async {
+    availableForCalls.value = true;
+    updater.signedIn = false;
+
+    await updater.install(automatic: true);
+
     expect(installed, ['9.9.9']);
   });
 }
