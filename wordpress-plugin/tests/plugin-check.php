@@ -897,6 +897,11 @@ check('a form with no ZIP question gets one (Jose, 2026-10-08)', str_contains($f
 check('and the ZIP goes with the enquiry', str_contains($form, 'v.zip=z[0]'), true);
 $booking = $GLOBALS['sc']['ezbizi_booking'](['title' => 'Book Garage Door Service']);
 check('the booking widget draws its title', str_contains($booking, '>Book Garage Door Service<'), true);
+// UI queue 75: where you are in the steps, in words and no numbers (Jose,
+// 2026-10-09, "no 01/02"), and a step's own display never outranks hidden -
+// the first build showed the ZIP step under the days.
+check('it shows where you are in the steps', str_contains($booking, 'class="ezb-track"') && str_contains($booking, '>Your details</li>'), true);
+check('a hidden step stays hidden', str_contains($booking, '[data-step][hidden]{display:none!important}'), true);
 check('it asks the ZIP first and reads the days of that area', str_contains($booking, 'data-step="zip"') && str_contains($booking, "'/api/v1/web/booking/days?key='"), true);
 check('it books behind the robot check and the Turnstile box', str_contains($booking, 'function ezSolve(api)') && str_contains($booking, 'class="cf-turnstile"'), true);
 check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);

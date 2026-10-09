@@ -1068,12 +1068,35 @@ function ezbizi_booking_shortcode($atts) {
 
     return '<style>'
         . $s . '{max-width:660px;margin:0 auto;background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.12);overflow:hidden;font-family:inherit;color:#183a33}'
-        . $s . ' .ezb-top{background:' . $accent . ';color:' . $on . ';text-align:center;font-size:26px;font-weight:700;padding:22px 16px}'
+        // The page already says what this is, so the card names itself only
+        // to a screen reader; its top is where you are in the steps (UI queue
+        // 75: dots and words, no numbers - Jose, 2026-10-09, "no 01/02").
+        . $s . ' .ezb-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0;padding:0}'
+        . $s . ' .ezb-track{display:flex;list-style:none;margin:0;padding:20px 24px 6px}'
+        . $s . ' .ezb-track li{flex:1;position:relative;text-align:center;font-size:12px;font-weight:700;color:#9aa6ac;margin:0;padding:0}'
+        . $s . ' .ezb-track li:before{content:"";display:block;position:relative;z-index:1;width:10px;height:10px;margin:0 auto 6px;border-radius:50%;border:2px solid #d6dde1;background:#fff}'
+        . $s . ' .ezb-track li+li:after{content:"";position:absolute;top:6px;right:50%;width:100%;height:2px;background:#e3e8eb}'
+        . $s . ' .ezb-track li.on,' . $s . ' .ezb-track li.done{color:#183a33}'
+        . $s . ' .ezb-track li.on:before{border-color:' . $accent . ';background:' . $accent . '}'
+        . $s . ' .ezb-track li.done:before{border-color:' . $accent . '}'
+        . $s . ' .ezb-track li.on:after,' . $s . ' .ezb-track li.done:after{background:' . $accent . '}'
         // One fixed size for every step (Jose, 2026-10-08: "it needs to have a
         // fixed size"); a step taller than the card scrolls inside it.
-        . $s . ' .ezb-body{padding:24px 40px 32px;height:600px;box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column}'
+        . $s . ' .ezb-body{padding:16px 40px 24px;height:540px;box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column}'
         // A short step sits in the middle of the fixed card, not at its top.
         . $s . ' .ezb-body>[data-step]{flex:0 0 auto}'
+        // The first step is the shortest: what happens next fills its foot.
+        . $s . ' .ezb-body>[data-step=zip]{flex:1 0 auto;display:flex;flex-direction:column}'
+        // A step's own display must not outrank hidden, or two steps show.
+        . $s . ' [data-step][hidden]{display:none!important}'
+        . $s . ' .ezb-zipbox{position:relative;display:block}'
+        . $s . ' .ezb-zipbox svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);margin-top:3px;width:20px;height:20px;fill:' . $accent . '}'
+        . $s . ' .ezb-zipbox input{font-size:20px;font-weight:700;letter-spacing:.12em;padding:14px 14px 14px 44px}'
+        . $s . ' .ezb-how{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:auto;padding-top:18px;border-top:1px solid #eef1f3}'
+        . $s . ' .ezb-how div{text-align:center;font-size:12.5px;line-height:1.35;color:#4a5761}'
+        . $s . ' .ezb-how b{display:block;color:#183a33;font-size:13px;margin:6px 0 2px}'
+        . $s . ' .ezb-how svg{width:36px;height:36px;padding:8px;box-sizing:border-box;border-radius:50%;background:' . $soft . ';fill:' . $accent . '}'
+        . $s . ' .ezb-foot{background:#f7f8f9;border-top:1px solid #eef1f3;padding:12px 16px;text-align:center;font-size:13px;color:#4a5761}'
         . $s . ' .ezb-back{background:none;border:0;color:' . $accent . ';cursor:pointer;padding:0;margin:0 0 8px;font-size:14px}'
         . $s . ' .ezb-head{text-align:center;padding:10px 0 12px;margin:0 0 14px;border-bottom:1px solid ' . $line . '}'
         . $s . ' .ezb-head small{display:block;font-size:14px;margin-top:4px;opacity:.8}'
@@ -1081,7 +1104,7 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' .ezb-grid{display:grid;gap:10px;grid-template-columns:repeat(4,1fr)}'
         . $s . ' .ezb-times{grid-template-columns:repeat(3,1fr)}'
         . $s . ' .ezb-card{background:#fff;border:1px solid ' . $line . ';border-radius:12px;padding:16px 4px;cursor:pointer;color:inherit;font:inherit;text-align:center;line-height:1.3}'
-        . $s . ' .ezb-card:hover,' . $s . ' .ezb-card:focus{border-color:' . $accent . ';background:' . $soft . ';outline:none}'
+        . $s . ' .ezb-card:hover,' . $s . ' .ezb-card:focus,' . $s . ' .ezb-card.on{border-color:' . $accent . ';background:' . $soft . ';outline:none}'
         . $s . ' .ezb-card small{display:block;font-size:11px;text-transform:uppercase}'
         . $s . ' .ezb-card strong{display:block;font-size:22px;margin:4px 0}'
         . $s . ' .ezb-times .ezb-card{padding:12px 4px;font-weight:700;font-size:14px}'
@@ -1096,13 +1119,29 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' button{text-transform:none!important;letter-spacing:normal!important;box-shadow:none!important;font-family:inherit}'
         . $s . ' .ezb-back{border:0!important;background:none!important}'
         . $s . ' .ezb-done{text-align:center;padding:20px 0}'
-        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:18px 16px 24px;height:560px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}}'
+        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:12px 16px 20px;height:500px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}'
+        . $s . ' .ezb-track{padding:16px 8px 4px}' . $s . ' .ezb-track li{font-size:11px}'
+        . $s . ' .ezb-how{grid-template-columns:1fr;gap:10px}' . $s . ' .ezb-how div{display:flex;align-items:center;gap:10px;text-align:left}' . $s . ' .ezb-how b{display:inline;margin:0}}'
         . '</style>'
         . '<div class="ezbizi-booking" id="' . esc_attr($id) . '">'
-        . '<div class="ezb-top">' . esc_html($atts['title']) . '</div><div class="ezb-body">'
+        . '<h2 class="ezb-sr">' . esc_html($atts['title']) . '</h2>'
+        . '<ol class="ezb-track">'
+        . '<li class="on" data-for="zip">' . esc_html__('ZIP code', 'ezbizi') . '</li>'
+        . '<li data-for="day">' . esc_html__('Day', 'ezbizi') . '</li>'
+        . '<li data-for="time">' . esc_html__('Time', 'ezbizi') . '</li>'
+        . '<li data-for="details">' . esc_html__('Your details', 'ezbizi') . '</li></ol>'
+        . '<div class="ezb-body">'
         . '<form data-step="zip" novalidate>' . $head('', __('Please enter your ZIP code', 'ezbizi'))
-        . '<label>' . esc_html__('So we can show the days we come to your area.', 'ezbizi') . '<input name="zip" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" /></label>'
-        . '<button class="ezb-go" type="submit">' . esc_html__('See available days', 'ezbizi') . '</button></form>'
+        . '<label>' . esc_html__('So we can show the days we come to your area.', 'ezbizi')
+        . '<span class="ezb-zipbox"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
+        . '<input name="zip" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="' . esc_attr__('5-digit ZIP', 'ezbizi') . '" /></span></label>'
+        . '<button class="ezb-go" type="submit">' . esc_html__('See available days', 'ezbizi') . '</button>'
+        // What happens next, where the first step would otherwise be empty.
+        . '<div class="ezb-how">'
+        . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2zm-2 8h14v10H5z"/></svg><span><b>' . esc_html__('Pick a time', 'ezbizi') . '</b> ' . esc_html__('A day and an arrival window.', 'ezbizi') . '</span></div>'
+        . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg><span><b>' . esc_html__('We call to confirm', 'ezbizi') . '</b> ' . esc_html__('Before anyone comes out.', 'ezbizi') . '</span></div>'
+        . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span><b>' . esc_html__('We arrive', 'ezbizi') . '</b> ' . esc_html__('In the window you chose.', 'ezbizi') . '</span></div>'
+        . '</div></form>'
         . '<div data-step="day" hidden><button type="button" class="ezb-back" data-to="zip">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
         . $head('', __('Please pick a day that works for you', 'ezbizi')) . '<div class="ezb-grid ezb-days"></div></div>'
         . '<div data-step="time" hidden><button type="button" class="ezb-back" data-to="day">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
@@ -1117,17 +1156,20 @@ function ezbizi_booking_shortcode($atts) {
         . '<div class="ezb-done" data-step="done" hidden><b style="font-size:22px">' . esc_html__('Request received', 'ezbizi') . '</b>'
         . '<p class="ezb-when"></p><p>' . esc_html__('We will call you shortly to confirm your appointment.', 'ezbizi') . '</p></div>'
         . '<p class="ezb-note" role="status" aria-live="polite"></p>'
-        . '</div></div>'
+        . '</div><div class="ezb-foot">' . esc_html__('No payment to book · We call to confirm', 'ezbizi') . '</div></div>'
         . "<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");if(!root)return;
 var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ",st={},note=root.querySelector('.ezb-note');
 " . ezbizi_solver_js() . "
 function q(s){return root.querySelector(s);}
-function show(n){note.textContent='';Array.prototype.forEach.call(root.querySelectorAll('[data-step]'),function(e){e.hidden=e.getAttribute('data-step')!==n;});}
+var order=['zip','day','time','details'];
+function show(n){note.textContent='';Array.prototype.forEach.call(root.querySelectorAll('[data-step]'),function(e){e.hidden=e.getAttribute('data-step')!==n;});
+  var at=n==='done'?order.length:order.indexOf(n);
+  Array.prototype.forEach.call(root.querySelectorAll('.ezb-track li'),function(li,i){li.className=i<at?'done':(i===at?'on':'');});}
 function day(d,o){return new Date(d+'T12:00:00').toLocaleDateString('en-US',o);}
 function hm(t){var h=+t.slice(0,2),m=t.slice(3,5);return(h%12||12)+':'+m+' '+(h<12?'AM':'PM');}
 function win(w){return hm(w.start_time)+' - '+hm(w.end_time);}
-function card(parent,html,go){var b=document.createElement('button');b.type='button';b.className='ezb-card';b.innerHTML=html;b.addEventListener('click',go);parent.appendChild(b);}
+function card(parent,html,go){var b=document.createElement('button');b.type='button';b.className='ezb-card';b.innerHTML=html;b.addEventListener('click',function(){Array.prototype.forEach.call(parent.children,function(c){c.classList.toggle('on',c===b);});go();});parent.appendChild(b);}
 Array.prototype.forEach.call(root.querySelectorAll('.ezb-back'),function(b){b.addEventListener('click',function(){show(b.getAttribute('data-to'));});});
 function load(){
   var z=q('[name=zip]').value.trim();note.textContent='...';
@@ -1137,7 +1179,7 @@ function load(){
     if(!x.ok){note.textContent=x.d.message||" . wp_json_encode(__('That did not work. Please call us.', 'ezbizi')) . ";return;}
     if(!x.d.days.length){note.textContent=" . wp_json_encode(__('We have no open times online in the next few weeks. Please call us.', 'ezbizi')) . ";return;}
     st.zip=z;var g=q('.ezb-days');g.innerHTML='';
-    x.d.days.forEach(function(d){card(g,'<small>'+day(d.date,{weekday:'short'})+'</small><strong>'+day(d.date,{day:'numeric'})+'</strong><small>'+day(d.date,{month:'short'})+'</small>',function(){
+    x.d.days.forEach(function(d){var n=d.windows.length;card(g,'<small>'+day(d.date,{weekday:'short'})+'</small><strong>'+day(d.date,{day:'numeric'})+'</strong><small>'+day(d.date,{month:'short'})+'</small><small style=\"text-transform:none;opacity:.75\">'+n+' '+(n===1?" . wp_json_encode(__('window', 'ezbizi')) . ":" . wp_json_encode(__('windows', 'ezbizi')) . ")+'</small>',function(){
       st.date=d.date;q('.ezb-dayname').textContent=day(d.date,{weekday:'long',month:'long',day:'numeric'});var t=q('.ezb-times');t.innerHTML='';
       d.windows.forEach(function(w){card(t,win(w),function(){st.win=w;q('.ezb-pill').textContent=day(d.date,{weekday:'long',month:'long',day:'numeric'})+' · '+win(w);show('details');});});
       show('time');});});
