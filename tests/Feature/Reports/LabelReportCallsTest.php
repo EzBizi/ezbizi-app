@@ -112,7 +112,7 @@ class LabelReportCallsTest extends TestCase
      */
     public function test_grok_can_answer_through_the_cli_without_the_transcript_on_its_command_line(): void
     {
-        config(['experimental_reports.tagging.grok.key' => null, 'experimental_reports.tagging.grok.cli_home' => '/var/lib/ezbizi-grok']);
+        config(['experimental_reports.tagging.grok.key' => null, 'services.grok_cli.home' => '/var/lib/ezbizi-grok']);
         Process::fake([
             '*' => Process::result('{"usage":{"costUSD":0.007},"structuredOutput":{"label":"billing"}}'),
         ]);
@@ -137,7 +137,7 @@ class LabelReportCallsTest extends TestCase
     /** An expired sign-in fails loudly, never as calls that had no label. */
     public function test_a_failing_grok_cli_is_an_error_not_an_empty_label(): void
     {
-        config(['experimental_reports.tagging.grok.cli_home' => '/var/lib/ezbizi-grok']);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
         Process::fake([
             '*' => Process::result('', 'Error: 401 Unauthorized - please log in', 1),
         ]);

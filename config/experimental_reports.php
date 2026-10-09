@@ -44,9 +44,8 @@ return [
         'grok' => [
             'key' => env('XAI_API_KEY'),
             'model' => env('REPORT_TAG_GROK_MODEL', 'grok-4.6'),
-            // The Grok Build CLI's home on the box (it holds the signed-in
-            // subscription); when set, Grok is asked through the CLI, not the API.
-            'cli_home' => env('REPORT_TAG_GROK_CLI_HOME'),
+            // Through the CLI instead of the API when services.grok_cli.home
+            // is set (App\Support\Ai\GrokCli).
         ],
     ],
 
