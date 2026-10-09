@@ -331,6 +331,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public const STATUS_LOST = 'lost';
 
+    /**
+     * Somebody asking for a job, not a customer (Jose, 2026-10-09: "Job
+     * applicants should have their own tab in Leads and be marked as such").
+     * Shown only under its own tab; left out of every other list and count.
+     */
+    public const STATUS_JOB_APPLICANT = 'job_applicant';
+
     /** @var string[] */
     public const STATUSES = [
         self::STATUS_NEW,
@@ -339,6 +346,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::STATUS_NOT_A_LEAD,
         self::STATUS_COMPLETED,
         self::STATUS_LOST,
+        self::STATUS_JOB_APPLICANT,
     ];
 
     public static function retention(): RetentionPolicy

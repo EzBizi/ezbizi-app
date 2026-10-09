@@ -48,7 +48,7 @@ class LeadsReadTest extends TestCase
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'classification' => 'BOOK', 'summary' => 'Wants a chimney inspection.',
-            'name' => 'Kassandra Stone', 'zip' => '19020', 'not_a_lead' => false, 'lost' => false,
+            'name' => 'Kassandra Stone', 'zip' => '19020', 'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
         ]]))]);
 
         $named = $this->callLead('Already Known', 'Hi this is Kassandra, zip 19020, I need an inspection');
@@ -71,7 +71,7 @@ class LeadsReadTest extends TestCase
     public function test_spam_is_tagged_not_a_lead(): void
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
-            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null, 'not_a_lead' => true, 'lost' => false,
+            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null, 'not_a_lead' => true, 'lost' => false, 'job_applicant' => false,
         ]]))]);
         $form = $this->inTenant($this->t['org'], function () {
             $lead = Lead::create([
@@ -96,13 +96,45 @@ class LeadsReadTest extends TestCase
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'classification' => 'ARCHIVE', 'summary' => 'Wanted a crown quote, then declined.', 'name' => null,
-            'zip' => null, 'not_a_lead' => false, 'lost' => true,
+            'zip' => null, 'not_a_lead' => false, 'lost' => true, 'job_applicant' => false,
         ]]))]);
         $call = $this->callLead(null, 'How much for a new crown? ... oh that is too much, no thanks');
 
         $this->artisan('ezbizi:leads-read')->assertSuccessful();
 
         $this->assertSame(Lead::STATUS_LOST, $this->inTenant($this->t['org'], fn () => $call->refresh()->status));
+    }
+
+    /** Jose, 2026-10-09: "Job applicants should have their own tab in Leads and be marked as such". */
+    public function test_a_job_applicant_gets_their_own_tab(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'ARCHIVE', 'summary' => 'Looking for a chimney tech job.', 'name' => 'Andrew Jackson',
+            'zip' => null, 'not_a_lead' => true, 'lost' => false, 'job_applicant' => false, 'job_applicant' => true,
+        ]]))]);
+        // A website form, so the list shows it (a Local Services lead here has no connection).
+        $call = $this->inTenant($this->t['org'], function () {
+            $lead = Lead::create([
+                'organization_id' => $this->t['org']->id, 'source' => Lead::SOURCE_WEBSITE_FORM,
+                'remote_id' => uniqid(), 'status' => Lead::STATUS_NEW, 'received_at' => now(),
+            ]);
+            LeadConversation::create([
+                'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => uniqid(),
+                'channel' => 'FORM', 'participant' => LeadConversation::FROM_CONSUMER, 'occurred_at' => now(),
+                'text' => 'Hi I am applying for the technician position',
+            ]);
+
+            return $lead;
+        });
+        $this->assertCount(1, $this->signedInAs($this->t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data'),
+            'the control: listed while New');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame(Lead::STATUS_JOB_APPLICANT, $this->inTenant($this->t['org'], fn () => $call->refresh()->status));
+        $this->assertSame([], $this->getJson('/api/v1/leads')->assertOk()->json('data'), 'out of every other list');
+        $this->assertSame(['Andrew Jackson'], array_column(
+            $this->getJson('/api/v1/leads?source=job_applicant')->assertOk()->json('data'), 'contact_name'));
     }
 
     public function test_nothing_is_sent_while_switched_off(): void

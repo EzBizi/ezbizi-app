@@ -222,7 +222,7 @@ class LeadsController extends Controller
             ->where(fn ($q) => $q->whereNull('leads.read_at')
                 ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at'))
             ->reorder()
-            ->select(DB::raw("CASE WHEN leads.source = 'local_services' THEN "
+            ->select(DB::raw("CASE WHEN leads.status = 'job_applicant' THEN 'job_applicant' WHEN leads.source = 'local_services' THEN "
                 ."(CASE WHEN leads.lead_type = 'PHONE_CALL' THEN 'ls_call' WHEN leads.lead_type = 'BOOKING' THEN 'ls_booking' ELSE 'ls_text' END) "
                 .'ELSE leads.source END AS kind'))
             ->selectRaw('COUNT(*) AS n')
@@ -315,6 +315,14 @@ class LeadsController extends Controller
             // Google, split the way A1 Leads splits it (Jose, 2026-09-28):
             // "LS Call" and "LS Text" are Local Services leads by lead_type.
             $query->where(fn ($q) => self::whereKind($q, $source));
+        }
+
+        // Job applicants live only under their own tab (Jose, 2026-10-09).
+        $askedForApplicants = $source === 'job_applicant'
+            || in_array('job_applicant', explode(',', (string) $request->query('sources', '')), true)
+            || $request->query('status') === Lead::STATUS_JOB_APPLICANT;
+        if (! $askedForApplicants) {
+            $query->where('leads.status', '!=', Lead::STATUS_JOB_APPLICANT);
         }
 
         // All, narrowed to the sources ticked under it (Jose, 2026-09-29: "by
@@ -583,6 +591,7 @@ class LeadsController extends Controller
                 ->where(fn ($t) => $t->whereNull('leads.lead_type')->orWhereNotIn('leads.lead_type', ['PHONE_CALL', 'BOOKING'])),
             Lead::KIND_LS_BOOKING => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'BOOKING'),
+            Lead::STATUS_JOB_APPLICANT => $query->where('leads.status', Lead::STATUS_JOB_APPLICANT),
             default => $query->where('leads.source', $key),
         };
     }
