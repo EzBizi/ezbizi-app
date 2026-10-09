@@ -1,0 +1,281 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Automations overhaul</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.pill2{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.rowb{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.srch{height:32px;border:1px solid #b9c7cd;border-radius:10px;display:flex;align-items:center;padding:0 10px;color:#8a969e;font-size:12px;background:#fff;width:240px}
+.grp{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 2px 2px}
+.rule{display:grid;grid-template-columns:minmax(0,1fr) 150px 92px 44px;gap:12px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.rule .nm{font-weight:700;font-size:13.5px}
+.rule .sen{font-size:12.5px;color:#33404a;margin-top:2px}
+.rule .sen b{color:var(--prid);font-weight:700}
+.rule .sen i{font-style:normal;color:var(--muted);margin:0 4px}
+.rule .last{font-size:11.5px;color:var(--muted)}
+.rule .last b{color:var(--ok)} .rule .last b.bad{color:var(--bad)}
+.rule.sel{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
+.sw{width:38px;height:22px;border-radius:11px;background:#c9d4d9;position:relative;flex:0 0 auto}
+.sw:after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:3px;left:3px}
+.sw.on{background:var(--pri)} .sw.on:after{left:19px}
+.warn{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 12px;font-size:12px;color:var(--cau);display:flex;gap:8px;align-items:center}
+.panel .ph2{display:flex;align-items:center;gap:8px}
+.flow{display:flex;flex-direction:column;align-items:stretch;gap:0;max-width:680px}
+.blk{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.blk .kh{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.07em;color:var(--muted);text-transform:uppercase}
+.blk .kh .ic{width:24px;height:24px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
+.k-when{background:#00708f} .k-if{background:#8a6d1f} .k-then{background:#16662d}
+.blk .big{font-size:14px;font-weight:700}
+.blk .sub{font-size:12px;color:var(--muted)}
+.cond{display:inline-flex;align-items:center;gap:6px;background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px}
+.cond b{font-weight:700}
+.link{width:2px;height:16px;background:#c9d4d9;margin-left:26px}
+.step{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:start;border-top:1px solid var(--line2);padding-top:8px}
+.step:first-of-type{border-top:0;padding-top:0}
+.step .no{width:22px;height:22px;border-radius:50%;background:var(--okc);color:var(--ok);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.msg{background:var(--ground);border-radius:8px;padding:8px 10px;font-size:12px;color:#26343b}
+.msg u{text-decoration:none;background:var(--pric);color:var(--prid);border-radius:4px;padding:0 4px}
+.add{color:var(--pri);font-weight:700;font-size:12.5px}
+.topb{display:flex;align-items:center;gap:10px;background:var(--paper);border-bottom:1px solid var(--line);padding:10px 20px;margin:-18px -24px 6px}
+.topb .ttl{font-size:16px;font-weight:800}
+.testres{background:var(--okc);border:1px solid #8fc79c;border-radius:var(--r);padding:8px 12px;font-size:12px;color:var(--ok)}
+table{border-collapse:collapse;width:100%;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th{text-align:left;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;background:#fafcfd;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line2)}
+.tpl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.tpl b{font-size:13px}
+.tgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.steps{display:flex;gap:8px;align-items:center;font-size:12px}
+.st{display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600}
+.st i{font-style:normal;width:22px;height:22px;border-radius:50%;border:1.5px solid #b9c7cd;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.st.done i{background:var(--okc);border-color:#8fc79c;color:var(--ok)}
+.st.on{color:var(--ink)} .st.on i{background:var(--pri);border-color:var(--pri);color:#fff}
+.st+.st:before{content:"";width:26px;height:1px;background:#c9d4d9;margin-right:2px}
+.prule{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:12px}
+.prule .nm{font-weight:700;font-size:13px}
+.prule .sen b{color:var(--prid)}
+</style>
+<div class="wrap">
+<h1>Automations · an overhaul</h1>
+<p class="sub">Jose 2026-10-09: <i>"take a look at the Automations Tab and improve it… it's one of the screens we haven't been paying attention to and could use an ui-ux overhaul."</i> Today each rule is a card with its name, a red "Off" chip beside an off switch (it reads as an error), "Everywhere", and a line like "When Jobs › Created · version — · 0 runs". Nothing says what the rule <b>does</b>, when it last ran, or whether that worked. Tapping a card does nothing, so everything sits in a ⋮ menu where "Run it now for real" is next to "Test against a real event". "New automation" and a "Build" tab lead to the same place. The builder is one long form with numbered steps, written for a developer in places ("…before the engine stops the cascade", "Rules are yours — they never need a new release"), and testing a rule only exists in the list's menu. Every name below is invented.</p>
+<p class="need"><b>In every option:</b> every rule reads as a <b>sentence</b>: "When <b>a job is booked</b> → <b>text the office</b>", using the event's and the steps' own names. The on/off switch is the only status. "Off" is grey, not red, and "Needs attention" shows only when a rule was switched off by EzBizi or its last run failed. Each rule shows its <b>last run</b> (time and whether it worked) and its runs this week. The "Build" tab goes, so <b>New automation</b> is the one way in. In the builder, testing sits <b>next to Save</b> ("Try it on a recent event"), and "Run it now for real" moves inside the rule, away from Test, with its confirm. The help text is rewritten for users. Version history stays, behind a "History" link. Nothing changes on the server except one field each rule already has the data for: <b>last run</b>.</p>
+
+<h2><span class="n">1</span>Rules as sentences, opened beside the list, built as When → Only if → Then blocks <span class="rec">Recommended</span></h2>
+<p class="cap">The list is grouped by module (Jobs, Customers, Leads…) with a search box and All / On / Off / Needs attention. Clicking a rule opens it in a side panel: the sentence, its recent runs, and Edit, Test, Copy, Run now and Delete. The builder is three connected blocks, <b>When</b>, <b>Only if</b> and <b>Then</b>, each in plain words, with the name and Save in a bar at the top and Test beside Save. <b>Why:</b> you see what every rule does at a glance, the next step is one click instead of a hidden menu, and the builder reads like the sentence it makes.</p>
+<div class="win" style="height:600px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="rowb"><div><div class="t">Automations</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Rules that do the routine work for you.</div></div><span class="sp"></span><span class="btn f">＋ New automation</span></div>
+<div class="rowb"><span class="srch">⌕ Find a rule</span><span class="pill2 on">All 6</span><span class="pill2">On 4</span><span class="pill2">Off 2</span><span class="pill2" style="color:var(--cau)">Needs attention 1</span></div>
+<div class="grp">Jobs</div>
+<div class="rule sel"><div><div class="nm">Tell the office when a job is booked</div><div class="sen">When <b>a job is booked</b><i>→</i><b>text the office line</b></div></div><div class="last">Last run <b>2h ago ✓</b><br>14 runs this week</div><span class="tiny">Everywhere</span><span class="sw on"></span></div>
+<div class="rule"><div><div class="nm">Thank the customer after a sweep</div><div class="sen">When <b>a job is done</b><i>·</i>only if <b>type is Chimney sweep</b><i>→</i><b>send a review text</b></div></div><div class="last">Last run <b class="bad">yesterday ✗ failed</b><br>9 runs this week</div><span class="tiny">North branch</span><span class="sw on"></span></div>
+<div class="grp">Customers</div>
+<div class="rule"><div><div class="nm">Flag a customer with no work in 90 days</div><div class="sen">Every <b>Monday at 8:00</b><i>→</i><b>flag the customer</b></div></div><div class="last">Never run</div><span class="tiny">Everywhere</span><span class="sw"></span></div>
+</div>
+<div class="panel"><div class="phd"><b>Tell the office when a job is booked</b><span class="sp"></span><span class="sw on"></span></div>
+<div class="pbd"><div class="sen" style="font-size:13px">When <b style="color:var(--prid)">a job is booked</b> → <b style="color:var(--prid)">text the office line</b> “New job: {{customer}} on {{date}}”</div>
+<div class="tiny">Everywhere · version 3 · <span style="color:var(--pri);font-weight:700">History</span></div>
+<div class="lab">Recent runs</div>
+<div class="lst"><div class="li"><div class="g"><b>Ran · 2h ago</b><span>Job J-10482 · text sent</span></div><span class="pill p-ok">Worked</span></div><div class="li"><div class="g"><b>Ran · 5h ago</b><span>Job J-10480 · text sent</span></div><span class="pill p-ok">Worked</span></div><div class="li"><div class="g"><b>Skipped · yesterday</b><span>Only if: branch is North ✗</span></div><span class="pill p-neu">Skipped</span></div></div>
+<span class="tiny b" style="color:var(--pri)">All runs ›</span></div>
+<div class="pf"><span class="btn">Delete</span><span class="btn">Make a copy</span><span class="sp"></span><span class="btn">Try it on a recent event</span><span class="btn f">Edit</span></div></div>
+</div></div>
+
+<p class="cap" style="margin-top:14px"><b>1 · the builder</b>: the name and Save on top, then the three blocks joined by a line. Each block says its part in words and opens in place to change it. "Try it" runs it against a recent real event without doing anything, and shows the result right there.</p>
+<div class="win" style="height:640px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:8px"><div class="topb"><span class="muted">‹ Automations</span><span class="ttl">Thank the customer after a sweep</span><span class="tiny">✎</span><span class="sp"></span><span class="tiny">Everywhere ▾</span><span class="btn">Try it on a recent event</span><span class="btn f">Save</span></div>
+<div class="testres">✓ Tried on job J-10477 (Oct 7, Cap install): it would <b>not</b> run. Only if: type is Chimney sweep, but it was Cap install.</div>
+<div class="flow">
+<div class="blk"><div class="kh"><span class="ic k-when">⚡</span>When</div><div class="big">A job is done</div><div class="sub">Jobs · whenever a job's status becomes Done. <span class="add">Change</span></div></div>
+<div class="link"></div>
+<div class="blk"><div class="kh"><span class="ic k-if">?</span>Only if</div><div class="rowb"><span class="cond">Job type <b>is</b> Chimney sweep ✕</span><span class="cond">Customer phone <b>is not empty</b> ✕</span><span class="add">＋ Add a condition</span></div><div class="sub">All of these must be true.</div></div>
+<div class="link"></div>
+<div class="blk"><div class="kh"><span class="ic k-then">▶</span>Then</div>
+<div class="step"><span class="no">1</span><div><div class="big" style="font-size:13px">Send a text to the customer</div><div class="msg">Thanks for choosing Harbor Chimney, <u>{{customer first name}}</u>! How did <u>{{technician}}</u> do? Tap to leave a review.</div></div><span class="tiny">⋮</span></div>
+<span class="add">＋ Add a step</span></div>
+</div></div></div></div>
+
+<h2><span class="n">2</span>One table, the rule opens in a panel</h2>
+<p class="cap">A table: name, When, Then, last run, runs this week, and the switch, sortable and searchable. Clicking a row opens the whole builder in a wide side panel, so the list stays behind it. <b>Why:</b> the densest view, good once there are dozens of rules. But the sentences get cut to fit the columns, and the builder is squeezed into a panel.</p>
+<div class="win" style="height:420px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:9px"><div class="rowb"><div class="t">Automations</div><span class="sp"></span><span class="srch">⌕ Find a rule</span><span class="btn f">＋ New automation</span></div>
+<table><tr><th>Rule</th><th>When</th><th>Then</th><th>Last run</th><th>This week</th><th>On</th></tr>
+<tr><td><b>Tell the office when a job is booked</b></td><td>A job is booked</td><td>Text the office line</td><td style="color:var(--ok)">2h ago ✓</td><td>14</td><td><span class="sw on"></span></td></tr>
+<tr><td><b>Thank the customer after a sweep</b></td><td>A job is done</td><td>Text the customer a review link</td><td style="color:var(--bad)">yesterday ✗</td><td>9</td><td><span class="sw on"></span></td></tr>
+<tr><td><b>Flag a customer with no work in 90 days</b></td><td>Every Monday 8:00</td><td>Flag the customer</td><td class="muted">never</td><td>0</td><td><span class="sw"></span></td></tr>
+<tr><td><b>New lead → assign to the on-call rep</b></td><td>A lead comes in</td><td>Assign, then text the rep</td><td style="color:var(--ok)">20m ago ✓</td><td>31</td><td><span class="sw on"></span></td></tr></table>
+</div></div></div>
+
+<h2><span class="n">3</span>Ideas to start from, and a step-by-step builder</h2>
+<p class="cap">Under your rules is a row of ready-made ideas ("Text the office when a job is booked", "Ask for a review after a job", "Remind a customer the day before"), each one click to start. The builder asks one question per screen: When? Only if? Then? Name it. <b>Why:</b> the easiest for someone who has never built one, and the ideas show what is possible. But it's slower to change one thing, and going back a step is a detour.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Chimney</span></div><div class="shell"><div class="nav"><i></i><i></i><i class="on"></i></div>
+<div class="page" style="gap:10px"><div class="rowb"><div class="t">Automations</div><span class="sp"></span><span class="btn f">＋ New automation</span></div>
+<div class="rule"><div><div class="nm">Tell the office when a job is booked</div><div class="sen">When <b>a job is booked</b><i>→</i><b>text the office line</b></div></div><div class="last">Last run <b>2h ago ✓</b></div><span class="tiny">Everywhere</span><span class="sw on"></span></div>
+<div class="grp">Ideas to start from</div>
+<div class="tgrid"><div class="tpl"><b>Ask for a review after a job</b><span class="muted">When a job is done → text the customer a review link.</span><span class="add">Use this</span></div><div class="tpl"><b>Remind the customer the day before</b><span class="muted">The day before a visit → text the time window.</span><span class="add">Use this</span></div><div class="tpl"><b>A new lead goes to the on-call rep</b><span class="muted">When a lead comes in → assign it and text the rep.</span><span class="add">Use this</span></div></div>
+<div class="steps"><span class="st done"><i>✓</i>When</span><span class="st on"><i>2</i>Only if</span><span class="st"><i>3</i>Then</span><span class="st"><i>4</i>Name &amp; save</span></div>
+</div></div></div>
+
+<h2><span class="n">4</span>Phone: as 1, rules as cards, the rule opens in full <span class="rec">Recommended</span></h2>
+<p class="cap">Each rule is a card with its sentence, last run and switch. The filter is one sideways strip. Tapping a card opens the rule over the list, with its runs and buttons, and Edit opens the same three blocks, stacked. <b>Why:</b> the same sentence everywhere, and big targets for a thumb.</p>
+<div class="phones">
+<div class="pcol"><span class="pl">The list</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Automations</span><span class="sp"></span><span class="add">＋ New</span></div>
+<div class="pb" style="gap:8px"><div class="srch" style="width:auto">⌕ Find a rule</div>
+<div class="rowb" style="flex-wrap:nowrap;overflow:hidden"><span class="pill2 on">All 6</span><span class="pill2">On 4</span><span class="pill2">Off 2</span><span class="pill2" style="color:var(--cau)">Attention 1</span></div>
+<div class="grp">Jobs</div>
+<div class="prule"><span class="nm">Tell the office when a job is booked</span><span class="sw on"></span><span class="sen">When <b>a job is booked</b> → <b>text the office</b></span><span></span><span class="tiny">Last run 2h ago ✓ · 14 this week</span></div>
+<div class="prule"><span class="nm">Thank the customer after a sweep</span><span class="sw on"></span><span class="sen">When <b>a job is done</b> → <b>send a review text</b></span><span></span><span class="tiny" style="color:var(--bad)">Last run failed yesterday</span></div>
+<div class="grp">Customers</div>
+<div class="prule"><span class="nm">Flag a customer with no work in 90 days</span><span class="sw"></span><span class="sen">Every <b>Monday 8:00</b> → <b>flag the customer</b></span><span></span><span class="tiny">Never run</span></div>
+</div></div></div>
+<div class="pcol"><span class="pl">Building</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Thank after a sweep</span><span class="sp"></span><span class="btn f sm">Save</span></div>
+<div class="pb" style="gap:6px"><div class="blk"><div class="kh"><span class="ic k-when">⚡</span>When</div><div class="big">A job is done</div></div><div class="link"></div>
+<div class="blk"><div class="kh"><span class="ic k-if">?</span>Only if</div><span class="cond">Job type <b>is</b> Chimney sweep</span><span class="add">＋ Add a condition</span></div><div class="link"></div>
+<div class="blk"><div class="kh"><span class="ic k-then">▶</span>Then</div><div class="step"><span class="no">1</span><div class="big" style="font-size:12.5px">Text the customer</div><span></span></div><span class="add">＋ Add a step</span></div>
+<span class="btn" style="width:100%">Try it on a recent event</span></div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone: as 2, a compact list</h2>
+<p class="cap">One line per rule (name, last run, switch). Tap one to open it. <b>Why:</b> the most rules on screen. But the sentence is hidden until you open the rule.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Automations</span></div>
+<div class="pb"><div class="lst"><div class="li"><div class="g"><b>Tell the office when a job is booked</b><span>2h ago ✓</span></div><span class="sw on"></span></div><div class="li"><div class="g"><b>Thank the customer after a sweep</b><span style="color:var(--bad)">failed yesterday</span></div><span class="sw on"></span></div><div class="li"><div class="g"><b>Flag a customer with no work in 90 days</b><span>never run</span></div><span class="sw"></span></div><div class="li"><div class="g"><b>New lead → the on-call rep</b><span>20m ago ✓</span></div><span class="sw on"></span></div></div></div></div></div></div>
+
+<h2><span class="n">6</span>Phone: as 3, ideas and one question per screen</h2>
+<p class="cap">The ideas as a sideways strip under your rules, and the builder one question per screen. <b>Why:</b> it matches option 3. Same limit: slow for small changes.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">New automation</span></div>
+<div class="pb"><div class="steps" style="font-size:11px"><span class="st done"><i>✓</i></span><span class="st on"><i>2</i>Only if</span><span class="st"><i>3</i></span><span class="st"><i>4</i></span></div>
+<div class="blk"><div class="big">Only run it if…</div><span class="cond">Job type <b>is</b> Chimney sweep</span><span class="add">＋ Add a condition</span><div class="sub">Or skip this, and it runs every time.</div></div><span class="sp"></span><span class="btn f" style="width:100%">Next: what it does</span></div></div></div></div>
+</div>

@@ -2965,7 +2965,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 72 · Reports · Report Builder with a live preview — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — building once Reports' `POST /reports/preview` (78d536fc) is on main (`docs/previews/report-builder-preview-layouts.html`)
+### 73 · Automations · an overhaul — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/automations-overhaul-layouts.html`)
+
+Jose 2026-10-09: *"take a look at the Automations Tab and improve it… it's one of the screens we havent been paying
+attentions and could use an ui-ux overhaul"*. Today: cards with a red Off chip beside an off switch, "When Jobs ›
+Created · version — · 0 runs", nothing on what the rule does or its last run; a card tap does nothing, so
+everything is in a ⋮ menu (Run it now for real beside Test against a real event); New automation and a Build tab
+go to the same place; the builder is a long numbered form with developer copy, and testing exists only in the list's
+menu. All options: a rule reads as a sentence (When … → …), the switch is the only status (Off grey; Needs attention
+only when EzBizi switched it off or the last run failed), last run and runs this week on each rule, the Build tab
+goes, Test sits beside Save in the builder, Run now moves inside the rule, copy for users. Server: a `last run` per
+rule. Desktop **1** grouped by module with search and All/On/Off/Needs attention, a rule opens in a side panel
+(sentence, recent runs, Edit/Try/Copy/Delete), the builder as When → Only if → Then blocks with the name and Save in
+a top bar (recommended); **2** a sortable table, the builder in a wide panel; **3** ideas to start from and a
+one-question-per-screen builder. Phone **4** (recommended) cards with the sentence, the rule opens over the list,
+blocks stacked; **5** a compact list; **6** one question per screen. Owner: Automations.
+
+### 72 · Reports · Report Builder with a live preview — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/report-builder-preview-layouts.html`)
 
 Jose 2026-10-09, relayed by the desk: *"i also want a preview view, as you select the items and be able to order them
 too"*. Today: a module tree, then a name, a Columns list with no reordering, plain filter rows and Save; nothing shows
@@ -2989,6 +3005,13 @@ Build notes from Reports (2026-10-09), all accepted by preview and save:
   `[{resource, column, fn: count|sum|avg|min|max, label?}]`. With either, `columns` is ignored: columns = group keys
   then totals, rows = one per group (largest first), `total` = grand total; totals alone → rows empty. Money in minor
   units (2e1ae9d7).
+Built (`client/lib/screens/reports/report_builder.dart`): the preview asks again 350 ms after the last change and
+drops a stale answer; columns drag by the handle beside each chip (a chip sends avatar taps to its label) or by the
+row handle on a phone; tapping a column renames it; Filter / Sort / Group by / Totals open one editor in place under
+the row (no dialogs); grouping starts with a count. The width gate is gone: a phone builds too (stacked under
+900 px), so "Reports are built on a computer" is gone. Not built: dragging the preview's own headers, more than
+one sort key, CSV and Schedule email in the builder (CSV is a saved report's), editing a saved report. Money
+filter values are typed in dollars and sent in cents (asked Reports to confirm).
 
 ### 71 · Reports · Performance · the inner tabs — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-inner-tabs-layouts.html`)
 
