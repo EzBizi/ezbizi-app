@@ -606,4 +606,10 @@ return [
         'retire_deleted' => (bool) env('WORKIZ_RETIRE_DELETED', false),
     ],
 
+    // The Grok Build CLI's home on the box, signed in to Jose's Grok
+    // subscription (App\Support\Ai\GrokCli). Unset: nothing uses it.
+    'grok_cli' => [
+        'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
+    ],
+
 ];

@@ -2,9 +2,8 @@
 
 namespace App\Support\Reports\Tagging;
 
-use Illuminate\Support\Facades\File;
+use App\Support\Ai\GrokCli;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 /**
@@ -26,12 +25,12 @@ final class GrokTagger implements CallTagger
 
     public function configured(): bool
     {
-        return filled(config('experimental_reports.tagging.grok.key')) || filled(config('experimental_reports.tagging.grok.cli_home'));
+        return filled(config('experimental_reports.tagging.grok.key')) || GrokCli::configured();
     }
 
     public function tag(string $transcript, string $question, array $labels): ?string
     {
-        if (filled(config('experimental_reports.tagging.grok.cli_home'))) {
+        if (GrokCli::configured()) {
             return $this->viaCli($transcript, $question, $labels);
         }
 
@@ -72,56 +71,17 @@ final class GrokTagger implements CallTagger
 
     private function viaCli(string $transcript, string $question, array $labels): ?string
     {
-        $home = (string) config('experimental_reports.tagging.grok.cli_home');
-        $work = storage_path('app/grok-'.bin2hex(random_bytes(6)));
-        File::ensureDirectoryExists($work.'/cwd', 0700);
+        $label = GrokCli::ask(
+            CallLabels::instruction($question, $labels)
+                ."\n\nAnswer with the label only, as the JSON asked for.\n\nTranscript:\n\n".$transcript,
+            [
+                'type' => 'object',
+                'properties' => ['label' => ['type' => 'string', 'enum' => array_keys($labels)]],
+                'required' => ['label'],
+                'additionalProperties' => false,
+            ],
+        )['label'] ?? null;
 
-        try {
-            File::put($work.'/prompt.txt', CallLabels::instruction($question, $labels)
-                ."\n\nAnswer with the label only, as the JSON asked for.\n\nTranscript:\n\n".$transcript);
-
-            $result = Process::env(['HOME' => $home])
-                ->timeout(120)
-                ->run([
-                    $home.'/.grok/bin/grok',
-                    '--prompt-file', $work.'/prompt.txt',
-                    '--json-schema', json_encode([
-                        'type' => 'object',
-                        'properties' => ['label' => ['type' => 'string', 'enum' => array_keys($labels)]],
-                        'required' => ['label'],
-                        'additionalProperties' => false,
-                    ]),
-                    '--max-turns', '1',
-                    '--disable-web-search',
-                    '--no-subagents',
-                    '--tools', '',
-                    '--cwd', $work.'/cwd',
-                ]);
-        } finally {
-            File::deleteDirectory($work);
-        }
-
-        if (! $result->successful()) {
-            // Loud, and without the prompt: an expired sign-in must not read
-            // as calls that simply had no label. The error output is the
-            // CLI's own, cut short.
-            throw new RuntimeException('The Grok CLI failed (exit '.$result->exitCode().'): '
-                .mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
-        }
-
-        // `structuredOutput.label` (measured on the box, grok 1.0.50); else
-        // wherever the JSON put it. Checked against the list, so only one of
-        // ours can come back.
-        $label = json_decode($result->output(), true)['structuredOutput']['label'] ?? null;
-
-        if (! is_string($label)) {
-            if (! preg_match('/"label"\s*:\s*"([a-z_]+)"/', str_replace('\\"', '"', $result->output()), $m)) {
-                throw new RuntimeException('The Grok CLI answered without a label: '.mb_substr(trim($result->output()), 0, 200));
-            }
-
-            $label = $m[1];
-        }
-
-        return array_key_exists($label, $labels) ? $label : null;
+        return is_string($label) && array_key_exists($label, $labels) ? $label : null;
     }
 }
