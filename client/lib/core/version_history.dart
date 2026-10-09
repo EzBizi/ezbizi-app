@@ -22,6 +22,7 @@ class VersionHistory {
         'Reports › Performance is tidier: each call is one row with its badges and a play button, the recording opens only under the call you play, and Calls has one filter bar (Result and Client) instead of three rows of chips.',
         'Report Builder: Workiz jobs and Workiz payments, invoices and estimates can now be reported on.',
         'Automations: a saved WhatsApp step opens with its number, template and blanks, so the rule can be saved again.',
+        'The Report Builder now shows a live preview as you pick fields. Columns drag into order and can be renamed, filters, sorting, grouping and totals are built in, and it works on a phone too.',
       ],
     ),
     VersionRelease(
