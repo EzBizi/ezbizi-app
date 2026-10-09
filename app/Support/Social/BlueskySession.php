@@ -70,4 +70,53 @@ final class BlueskySession
             'refresh_jwt' => $refresh,
         ];
     }
+
+    /**
+     * A fresh pair from the stored refresh JWT.
+     *
+     * The refresh JWT ROTATES: the one sent here is spent, and only the one
+     * handed back works next time. The caller must store it before anything
+     * else can fail, and must hold a lock while it does (BlueskyPublisher).
+     *
+     * A 400 or 401 means the refresh JWT is expired or revoked — the app
+     * password was deleted, or the account went quiet for months. That is the
+     * one answer that is about the connection rather than the moment, so it is
+     * the one returned as HTTP_CONFLICT for the caller to mark the row broken.
+     *
+     * @return array{did: string, handle: string, access_jwt: string, refresh_jwt: string}
+     *
+     * @throws SocialOAuthRefused
+     */
+    public function refresh(string $refreshJwt): array
+    {
+        try {
+            $response = Http::timeout(self::TIMEOUT)
+                ->acceptJson()
+                ->withToken($refreshJwt)
+                ->post(self::PDS.'/xrpc/com.atproto.server.refreshSession');
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('Bluesky');
+        }
+
+        if (in_array($response->status(), [400, 401], strict: true)) {
+            throw SocialOAuthRefused::noLongerPermitted(
+                'Bluesky no longer accepts this connection — the app password may have been '
+                .'deleted. Connect the account again with a new app password.'
+            );
+        }
+
+        $access = $response->json('accessJwt');
+        $refresh = $response->json('refreshJwt');
+
+        if ($response->failed() || ! is_string($access) || $access === '' || ! is_string($refresh) || $refresh === '') {
+            throw SocialOAuthRefused::exchangeFailed('Bluesky');
+        }
+
+        return [
+            'did'         => trim((string) $response->json('did')),
+            'handle'      => trim((string) $response->json('handle')),
+            'access_jwt'  => $access,
+            'refresh_jwt' => $refresh,
+        ];
+    }
 }
