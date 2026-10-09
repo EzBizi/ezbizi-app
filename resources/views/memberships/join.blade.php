@@ -38,6 +38,7 @@ p{margin:0}
 button{border:0;border-radius:10px;background:#00708F;color:#fff;font:inherit;font-weight:700;padding:10px 20px;cursor:pointer}
 button:hover{background:#00485C}
 button:focus-visible{outline:3px solid #00B4D8;outline-offset:2px}
+.preview{background:#FFF4D6;color:#7A5200;border-radius:10px;padding:10px 14px;font-size:13px}
 .done{background:#E1F2E5;color:#16662D;border-radius:10px;padding:12px 14px}
 @media (max-width:480px){
   .plan > div:first-child{flex:1 1 100%}
@@ -49,6 +50,9 @@ button:focus-visible{outline:3px solid #00B4D8;outline-offset:2px}
 <body><main>
 <div class="band"><b>{{ $company }}</b><span class="via">via EzBizi</span></div>
 <div class="body">
+@if ($preview ?? false)
+  <div class="preview">Preview: Join here signs nobody up.@if ($joinedInPreview ?? false) You tapped Join; in a real link this customer would now be a member.@endif</div>
+@endif
 @if ($current)
   <div class="done"><strong>You're a member, {{ $customer->name }}.</strong><br>{{ $current->plan->name }}, until {{ $current->ends_on->format('F j, Y') }}. We'll remind you a month before then to book your next visit.</div>
 @elseif ($plans->isEmpty())
