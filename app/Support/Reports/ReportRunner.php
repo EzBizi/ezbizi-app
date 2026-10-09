@@ -586,7 +586,7 @@ final class ReportRunner
                     throw new InvalidArgumentException("'{$declared['label']}' is not a date, so it cannot be grouped by {$bucket}.");
                 }
 
-                if (($declared['type'] ?? '') === 'datetime') {
+                if (($declared['type'] ?? '') === 'datetime' && empty($declared['wall_clock'])) {
                     // In the organization's clock; UTC where the database has no zone tables.
                     $zone = DB::getPdo()->quote($this->zone($user));
                     $expression = "coalesce(convert_tz({$expression}, '+00:00', {$zone}), {$expression})";
@@ -755,9 +755,12 @@ final class ReportRunner
             default => throw new InvalidArgumentException("'{$name}' is not a period this report knows."),
         };
 
-        return ($declared['type'] ?? '') === 'date'
-            ? [$from->toDateString(), $to->toDateString()]
-            : [$from->utc()->toDateTimeString(), $to->utc()->toDateTimeString()];
+        return match (true) {
+            ($declared['type'] ?? '') === 'date' => [$from->toDateString(), $to->toDateString()],
+            // Stored in the place's own clock (Workiz), so compared as it reads.
+            ! empty($declared['wall_clock']) => [$from->toDateTimeString(), $to->toDateTimeString()],
+            default => [$from->utc()->toDateTimeString(), $to->utc()->toDateTimeString()],
+        };
     }
 
     /** A report's own name for a column ("Revenue" for Amount), or the map's. */

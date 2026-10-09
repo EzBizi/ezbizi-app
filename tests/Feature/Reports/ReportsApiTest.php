@@ -7,6 +7,7 @@ use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SavedReport;
+use App\Models\WorkizJob;
 use App\Support\Reports\ReportMap;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -590,6 +591,57 @@ class ReportsApiTest extends TestCase
                 'group' => [['resource' => 'jobs', 'column' => 'status', 'bucket' => 'month']],
             ]])
             ->assertUnprocessable();
+    }
+
+    /**
+     * Workiz as reportable data (the builder brief, item 17). Workiz stamps
+     * are the place's own clock, so "today" is read as it is written: a job
+     * booked at 1 am local is today's, which a UTC reading would drop.
+     */
+    public function test_workiz_jobs_report_their_source_and_total_in_local_time(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-09 12:00', 'America/New_York'));
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([['LS Ads', 250.5, '2026-10-09 01:00:00'], ['LS Ads', 100, '2026-10-09 09:00:00'], ['GMB', 75, '2026-10-08 23:00:00']] as $i => [$source, $total, $at]) {
+                WorkizJob::query()->create([
+                    'franchise_id' => $tenant['franchise']->id,
+                    'remote_id' => "JOB-{$i}",
+                    'job_source' => $source,
+                    'booked_at' => $at,
+                    'payload' => ['JobTotalPrice' => $total, 'Team' => [['id' => 'USR-1', 'Name' => 'Ann']]],
+                    'synced_at' => now(),
+                ]);
+            }
+        });
+
+        $data = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'workiz_jobs',
+                'columns' => [],
+                'filters' => [['resource' => 'workiz_jobs', 'column' => 'booked_at', 'op' => 'period', 'value' => 'today']],
+                'group' => [['resource' => 'workiz_jobs', 'column' => 'job_source']],
+                'totals' => [['fn' => 'count'], ['resource' => 'workiz_jobs', 'column' => 'total_minor', 'fn' => 'sum']],
+            ]])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame([['LS Ads', 2, 35050]], array_map(
+            fn ($row) => [$row['workiz_jobs.job_source'], (int) $row['count'], (int) $row['workiz_jobs.total_minor:sum']],
+            $data['rows'],
+        ));
+
+        $tech = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'workiz_jobs',
+                'columns' => [['resource' => 'workiz_jobs', 'column' => 'tech']],
+                'filters' => [],
+            ]])
+            ->json('data.rows.0');
+        $this->assertSame('Ann', $tech['workiz_jobs.tech']);
+
+        CarbonImmutable::setTestNow();
     }
 
     public function test_building_is_refused_without_the_build_permission(): void
