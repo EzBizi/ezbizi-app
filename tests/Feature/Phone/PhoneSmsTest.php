@@ -215,6 +215,55 @@ class PhoneSmsTest extends TestCase
         });
     }
 
+    /**
+     * Jose, 2026-10-09: a thread with nobody filed on it read as a bare
+     * number. The number is named by a customer with that phone first, then a
+     * colleague, matched on digits because phones are stored as typed.
+     */
+    public function test_messages_name_the_other_number_by_customer_then_colleague(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk names', ['phone.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $desk) {
+            [, $line] = $this->openLine($t, e164: '+12035551021');
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $line->id,
+                'role_id' => $desk->role_id,
+            ]);
+
+            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 708-9100']);
+            Customer::create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'number' => 'C-sms-peer',
+                'name' => 'Phone-Only Customer',
+                'phone' => '+15557650000',
+            ]);
+
+            foreach (['+13087089100', '+15557650000', '+15550009999'] as $i => $peer) {
+                PhoneMessage::query()->create([
+                    'connection_id' => $line->connection_id,
+                    'number_id' => $line->id,
+                    'twilio_sid' => 'SM'.str_repeat((string) $i, 32),
+                    'direction' => PhoneMessage::DIRECTION_OUTBOUND,
+                    'from_e164' => '+12035551021',
+                    'to_e164' => $peer,
+                    'body' => 'Thanks',
+                ]);
+            }
+        });
+
+        $names = collect($this->signedInAs($desk)->getJson('/api/v1/phone/messages')
+            ->assertOk()
+            ->json('data'))
+            ->pluck('peer_name', 'to_e164');
+
+        $this->assertSame('Chaim Perez', $names['+13087089100']);
+        $this->assertSame('Phone-Only Customer', $names['+15557650000']);
+        $this->assertNull($names['+15550009999']);
+    }
+
     public function test_messages_list_covers_lines_in_reach_and_filters_by_peer(): void
     {
         $t = $this->provisionTenant();

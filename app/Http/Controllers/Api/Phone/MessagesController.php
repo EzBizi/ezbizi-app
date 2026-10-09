@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
+use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
@@ -84,9 +85,20 @@ class MessagesController extends Controller
             ? []
             : Customer::query()->whereIn('id', $ids)->pluck('name', 'id')->all();
 
+        // Jose, 2026-10-09: a thread that is not filed against a customer still
+        // has somebody at the other end. Named by the number itself: a
+        // customer with that phone first, then a colleague.
+        $peerNames = $this->peerNames($messages
+            ->filter(fn (PhoneMessage $m) => ! isset($names[(string) $m->customer_id]))
+            ->map(fn (PhoneMessage $m) => $m->direction === 'outbound' ? $m->to_e164 : $m->from_e164)
+            ->unique()
+            ->values()
+            ->all());
+
         $rows = $messages
             ->map(fn (PhoneMessage $message) => $this->row($message) + [
                 'customer_name' => $names[(string) $message->customer_id] ?? null,
+                'peer_name' => $peerNames[$message->direction === 'outbound' ? $message->to_e164 : $message->from_e164] ?? null,
             ])
             ->all();
 
@@ -174,6 +186,53 @@ class MessagesController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /**
+     * Who is behind each number, keyed by the number as the messages carry it.
+     *
+     * Phones are stored as typed, mostly E.164 but some "(308) 708-9100", so
+     * they are compared on their last ten digits. Customers are asked for the
+     * usual spellings in one query; colleagues are few enough to read whole.
+     *
+     * @param  list<string>  $peers
+     * @return array<string, string>
+     */
+    private function peerNames(array $peers): array
+    {
+        $byDigits = [];
+        foreach ($peers as $peer) {
+            $digits = substr(preg_replace('/\D/', '', (string) $peer), -10);
+            if (strlen($digits) === 10) {
+                $byDigits[$digits] = $peer;
+            }
+        }
+        if ($byDigits === []) {
+            return [];
+        }
+
+        $spellings = [];
+        foreach (array_keys($byDigits) as $d) {
+            $a = substr($d, 0, 3);
+            $b = substr($d, 3, 3);
+            $c = substr($d, 6);
+            array_push($spellings, '+1'.$d, $d, '1'.$d, "($a) $b-$c", "$a-$b-$c", "$a.$b.$c", "+1 ($a) $b-$c");
+        }
+
+        $found = [];
+        $candidates = Customer::query()->whereIn('phone', $spellings)->get(['name', 'phone'])
+            ->concat(User::query()->whereNotNull('phone')->where('phone', '!=', '')->get(['name', 'phone']));
+
+        // Customers come first in the list, so a customer keeps the number.
+        foreach ($candidates as $who) {
+            $digits = substr(preg_replace('/\D/', '', (string) $who->phone), -10);
+            $peer = $byDigits[$digits] ?? null;
+            if ($peer !== null && ! isset($found[$peer]) && filled($who->name)) {
+                $found[$peer] = (string) $who->name;
+            }
+        }
+
+        return $found;
+    }
+
     private function row(PhoneMessage $message): array
     {
         return [

@@ -292,13 +292,20 @@ class PersonCell extends StatelessWidget {
         CircleAvatar(
           radius: 16,
           backgroundColor: theme.colorScheme.primaryContainer,
-          child: Text(
-            initials,
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
-          ),
+          // A name that is only a phone number has no initials ("+(").
+          child: RegExp(r'[A-Za-z]').hasMatch(initials)
+              ? Text(
+                  initials,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                )
+              : Icon(
+                  Icons.phone_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
         ),
         const SizedBox(width: 10),
         Flexible(

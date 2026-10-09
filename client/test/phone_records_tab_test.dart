@@ -323,6 +323,31 @@ void _tileTests() {
     expect(find.text('Answered'), findsWidgets);
   });
 
+  /// Jose, 2026-10-09: rows read only "+1 (305) 724-2199" with "+(" in the
+  /// circle. The server's name for the number leads, the number sits under
+  /// it, and a nameless number gets a phone icon rather than punctuation.
+  testWidgets('a thread is named by whoever has the number', (tester) async {
+    await _pump(
+      tester,
+      initialFilter: RecordsFilter.sms,
+      showFilters: false,
+      messages: [
+        {..._sms, 'customer_id': null, 'peer_name': 'Jose Demasi'},
+        {
+          ..._sms,
+          'id': 'm-unknown',
+          'from_e164': '+13055550188',
+          'customer_id': null,
+        },
+      ],
+    );
+
+    expect(find.text('Jose Demasi'), findsOneWidget);
+    expect(find.text('JD'), findsOneWidget);
+    expect(find.text('+(', findRichText: true), findsNothing);
+    expect(find.byIcon(Icons.phone_outlined), findsWidgets);
+  });
+
   testWidgets('Messages tiles: waiting on us, answered, today — and filter', (
     tester,
   ) async {

@@ -738,7 +738,7 @@ class _RecordsTabState extends State<RecordsTab> {
     );
     final latest = thread.latest;
     final number = formatPhoneNumber(thread.peer);
-    final name = thread.customerName;
+    final name = thread.name;
 
     return [
       PersonCell(name: name ?? number, sub: name == null ? null : number),
@@ -848,7 +848,7 @@ class _RecordsTabState extends State<RecordsTab> {
                     call != null
                         ? _callTitle(call)
                         : thread != null
-                        ? formatPhoneNumber(thread.peer)
+                        ? (thread.name ?? formatPhoneNumber(thread.peer))
                         : 'Records',
                     style: theme.textTheme.titleMedium,
                     overflow: TextOverflow.ellipsis,
@@ -1190,6 +1190,18 @@ class _Thread {
     }
     return null;
   }
+
+  /// The customer, else whoever the server found behind the number (a
+  /// customer with that phone, or a colleague). Null shows the number.
+  String? get name {
+    final customer = customerName;
+    if (customer != null) return customer;
+    for (final message in messages.reversed) {
+      final name = message.peerName;
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
 }
 
 /// How a call ended, as the Records tiles split them.
@@ -1204,10 +1216,14 @@ class _Message {
     required this.outbound,
     required this.createdAt,
     this.customerName,
+    this.peerName,
   });
 
   /// The customer the message is filed against, by name, when there is one.
   final String? customerName;
+
+  /// Who has the other number when the message is not filed against anyone.
+  final String? peerName;
 
   final String id;
   final String fromE164;
@@ -1224,5 +1240,6 @@ class _Message {
     outbound: json['direction'] == 'outbound',
     createdAt: json['created_at'] as String? ?? '',
     customerName: json['customer_name'] as String?,
+    peerName: json['peer_name'] as String?,
   );
 }
