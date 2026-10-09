@@ -43,6 +43,8 @@ final class Publishers
             SocialProvider::Bluesky   => new BlueskyPublisher,
             SocialProvider::X         => new XPublisher,
             SocialProvider::Pinterest => new PinterestPublisher,
+            SocialProvider::LinkedIn  => new LinkedInPublisher,
+            SocialProvider::YouTube   => new YouTubePublisher,
             SocialProvider::TikTok    => new TikTokPublisher(
                 toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),
             ),

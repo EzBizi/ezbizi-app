@@ -127,6 +127,56 @@ final class LinkedInOAuth implements SocialOAuth
         );
     }
 
+    /**
+     * A new access token from a stored refresh token.
+     *
+     * Only ever reached when the connection HAS a refresh token, and LinkedIn
+     * issues those to approved Marketing/Community Management partners alone.
+     * A Share-on-LinkedIn app gets a 60-day access token and nothing to renew
+     * it with, which is why the publisher asks for a reconnect rather than
+     * calling this when there is nothing to call it with.
+     *
+     * LinkedIn does not rotate the refresh token (it keeps its original
+     * 365-day life), so the one passed in is kept when none comes back.
+     */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
+                'https://www.linkedin.com/oauth/v2/accessToken',
+                [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                    'client_id'     => (string) config('services.linkedin.client_id'),
+                    'client_secret' => (string) config('services.linkedin.client_secret'),
+                ],
+            );
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
+        }
+
+        // An expired or revoked refresh token is `invalid_grant`. That one is
+        // about the grant, not the moment, so it is the only answer that
+        // means "connect it again".
+        if ($response->json('error') === 'invalid_grant') {
+            throw SocialOAuthRefused::noLongerPermitted('LinkedIn no longer accepts this connection. It needs connecting again.');
+        }
+
+        $access = $response->json('access_token');
+
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
+        }
+
+        $rotated = $response->json('refresh_token');
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
+    }
+
     public function identify(SocialOAuthGrant $grant): array
     {
         try {
