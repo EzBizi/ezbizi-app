@@ -122,10 +122,11 @@ class SocialPostsApiTest extends TestCase
     public function test_a_connected_network_with_no_publisher_says_so_and_says_the_account_is_fine(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        // LinkedIn, and it has to be a network EzBizi genuinely cannot post
-        // to. This said facebook_page until 2026-09-01, when Facebook got a
-        // publisher and the test started asserting the opposite of the truth.
-        $row = $this->connection($t, 'company', $t['company']->id, provider: 'linkedin');
+        // X, and it has to be a network EzBizi genuinely cannot post to. This
+        // said facebook_page until 2026-09-01 and linkedin until 2026-10-09,
+        // each time until that network got a publisher and the test started
+        // asserting the opposite of the truth.
+        $row = $this->connection($t, 'company', $t['company']->id, provider: 'x');
 
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Hello'])
@@ -557,7 +558,8 @@ class SocialPostsApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
-        $this->connection($t, 'company', $t['company']->id, 'A-1 on LinkedIn', 'li-a', 'linkedin');
+        // X: a network with no publisher yet (LinkedIn was, until 2026-10-09).
+        $this->connection($t, 'company', $t['company']->id, 'A-1 on X', 'x-a', 'x');
 
         $rows = collect($this->signedInAs($t['admin'])
             ->getJson('/api/v1/social/connections')
@@ -568,10 +570,10 @@ class SocialPostsApiTest extends TestCase
         $this->assertTrue($rows['pinterest']['can_publish']);
         $this->assertNull($rows['pinterest']['cannot_publish_because']);
 
-        $this->assertFalse($rows['linkedin']['can_publish']);
+        $this->assertFalse($rows['x']['can_publish']);
         $this->assertStringContainsString(
             'not built yet',
-            (string) $rows['linkedin']['cannot_publish_because'],
+            (string) $rows['x']['cannot_publish_because'],
         );
     }
 

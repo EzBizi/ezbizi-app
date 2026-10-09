@@ -36,7 +36,7 @@ final class GoogleToken
     /**
      * @param  string  $service  the `config/services.php` key holding the
      *                           OAuth client this connection was made with —
-     *                           `google_ads` or `business_profile`. They are
+     *                           `google_ads`, `business_profile` or `youtube`. They are
      *                           deliberately separate registrations, so the
      *                           refresh must be signed by the right one.
      *
@@ -149,6 +149,7 @@ final class GoogleToken
         return match ($service) {
             'google_ads' => 'Google Ads',
             'business_profile' => 'Business Profile',
+            'youtube' => 'YouTube',
             default => 'Google',
         };
     }
