@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0403',
+      date: '9 Oct 2026',
+      items: [
+        'Thumbtack: the phone-number sync now renews an expired sign-in instead of failing.',
+        'When call history expires or is erased, EzBizi now also deletes the call\'s recording from Twilio, as its privacy notes always said.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0402',
       date: '9 Oct 2026',
       items: [
