@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppReportBatch;
+use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use Illuminate\Support\Carbon;
 
@@ -72,8 +73,8 @@ final class WhatsAppPeriodReports
             $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
 
             if ($branch !== null) {
-                $sent += $this->groups->deliverDocument($group->purpose, $branch->name.' '.$label,
-                    $report->forFranchise($branch, $from, $to), $this->filename($batch, $branch->name));
+                $sent += $this->groups->deliverDocument($group->purpose, BranchName::of($branch).' '.$label,
+                    $report->forFranchise($branch, $from, $to), $this->filename($batch, BranchName::of($branch)));
             }
         }
 

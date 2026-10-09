@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
 use App\Support\Audit\AuditLogger;
+use App\Support\Reports\Texts\BranchName;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -42,8 +43,11 @@ class WhatsAppGroupsController extends Controller
 
     public function index(): JsonResponse
     {
-        $daily = Franchise::query()->orderBy('name')->get()
-            ->mapWithKeys(fn (Franchise $f) => ['daily:'.$f->getKey() => $f->name.' - Same-Day Report']);
+        // "A-1 Chimney · Texas", not "Texas": Jose, 2026-10-09, could not tell
+        // which company a branch belonged to. Sorted so a company's branches sit together.
+        $daily = Franchise::query()->get()
+            ->mapWithKeys(fn (Franchise $f) => ['daily:'.$f->getKey() => BranchName::of($f).' - Same-Day Report'])
+            ->sort();
 
         return response()->json([
             'data' => WhatsAppGroup::query()->with('members:id,name,phone')->orderBy('subject')->get()

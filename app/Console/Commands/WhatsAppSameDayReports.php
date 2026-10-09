@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\WhatsAppGroup;
+use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Tenancy\TenantContext;
@@ -46,7 +47,7 @@ class WhatsAppSameDayReports extends Command
                     if ($branch !== null) {
                         $sent += $this->once($group->getKey(), $date, fn () => $groups->deliver(
                             $group->purpose,
-                            $branch->name.' Same-Day Report for '.Carbon::parse($date)->format('M j'),
+                            BranchName::of($branch).' Same-Day Report for '.Carbon::parse($date)->format('M j'),
                             SameDayReport::forFranchise($branch, $date),
                         ));
                     }
