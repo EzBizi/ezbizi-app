@@ -2965,6 +2965,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 74 · Leads · calls in a lead's conversation — **sent to Jose 2026-10-09, recommended 1 and 4** (`docs/previews/lead-thread-calls-layouts.html`)
+
+Jose 2026-10-09, with a screenshot of a lead's thread: *"i wonder if we can make this look a bit better"*. Today: "Call ·
+3:14", a small letter-spaced line, a 360px play bar reading "--:--" until it loads, the words in a grey box headed
+Transcript; cards of different widths. All options: every call as wide as the thread, an icon and colour for who
+called (customer green, us blue), the time on the right, the player showing the call's real length before it loads,
+the words as a quote with a rule (3 lines, Read all), Transcribing… as a small chip. Desktop **1** a card with the
+icon, title and time on one line, full-width player, the quote (recommended); **2** calls as chat bubbles with a play
+pill; **3** one line per call that opens. Phone **4** (recommended) as 1, the time under the title; **5** bubbles;
+**6** one line each. Owner: Leads (`client/lib/widgets/lead_thread.dart`); the length before load needs a small
+`RecordingPlaybackBar` option (Phone's).
+
 ### 73 · Automations · an overhaul — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/automations-overhaul-layouts.html`)
 
 Jose 2026-10-09: *"take a look at the Automations Tab and improve it… it's one of the screens we havent been paying
