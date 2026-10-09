@@ -431,7 +431,7 @@ f.addEventListener('submit',function(e){
   var b=f.querySelector('button');b.disabled=true;
   var fields={},files={},v={},first='',last='';
   Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
-    if(i.disabled||i.classList.contains('ezbizi-consent-box')||i.classList.contains('ezbizi-antibot-box'))return;
+    if(i.disabled||i.classList.contains('ezbizi-consent-box')||i.classList.contains('ezbizi-antibot-box')||i.closest('.cf-turnstile'))return;
     var n=i.name,low=n.toLowerCase(),val=i.value;
     if(i.type==='file'){if(i.files&&i.files[0])files[n]=i.files[0];return;}
     if(i.type==='checkbox'||i.type==='radio'){
