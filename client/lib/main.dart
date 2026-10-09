@@ -137,6 +137,11 @@ class _EzBiziAppState extends State<EzBiziApp> {
      * open. See core/desktop_updater.dart for the hourly sweep and for why a
      * found update waits a minute before it closes the app.
      */
+    // Never closes the app under a live call (Jose, 2026-10-09).
+    DesktopUpdater.instance.guardCalls(
+      PhoneCallService.current,
+      () => PhoneCallService.current.busy,
+    );
     DesktopUpdater.instance.start();
     _session.addListener(_tellUpdaterWhoIsHere);
     _staffSession.addListener(_tellUpdaterWhoIsHere);
@@ -1674,7 +1679,10 @@ class _HomeShellState extends State<HomeShell> {
                         Expanded(
                           child: Text(
                             u.error ??
-                                (left != null
+                                (u.waitingForCall
+                                    ? 'EzBizi ${u.available!.version} will install '
+                                          'when your call ends.'
+                                    : left != null
                                     ? 'EzBizi ${u.available!.version} installs in '
                                           '$left seconds. The app closes and reopens.'
                                     : 'EzBizi ${u.available!.version} is ready to '
@@ -1691,7 +1699,7 @@ class _HomeShellState extends State<HomeShell> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         else ...[
-                          if (left != null)
+                          if (left != null && !u.waitingForCall)
                             TextButton(
                               onPressed: u.postpone,
                               child: const Text('Not now'),

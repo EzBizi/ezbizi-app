@@ -79,6 +79,50 @@ class DesktopUpdater extends ChangeNotifier {
 
   bool get supported => DesktopUpdate.supported;
 
+  /// True while an update is ready but held because a call is live.
+  ///
+  /// Jose, 2026-10-09: "this should never happen if you are on a call on the
+  /// communication system". The installer closes the app, and the softphone
+  /// IS the app — so an install mid-call hangs up on the customer. Held with
+  /// no countdown; when the call ends the normal [grace] starts.
+  bool waitingForCall = false;
+
+  /// What actually runs the installer. A test swaps it for one that records
+  /// the call instead of closing the test runner.
+  @visibleForTesting
+  Future<String?> Function(AvailableUpdate) installer = DesktopUpdate.install;
+
+  bool Function() _inCall = _never;
+  static bool _never() => false;
+
+  /// Whether a call is live, asked right before every install — a call can
+  /// start during the [grace] minute — and listened to so a held update
+  /// resumes once the call is over. Wired to PhoneCallService at the root.
+  void guardCalls(Listenable source, bool Function() inCall) {
+    _callSource?.removeListener(_callChanged);
+    _callSource = source..addListener(_callChanged);
+    _inCall = inCall;
+  }
+
+  Listenable? _callSource;
+
+  void _callChanged() {
+    if (!waitingForCall || _inCall()) return;
+    waitingForCall = false;
+    if (available != null) _beginCountdown();
+  }
+
+  /// Holds the update until the call ends. True when it did.
+  bool _holdForCall() {
+    if (!_inCall()) return false;
+    _countdown?.cancel();
+    _countdown = null;
+    secondsLeft = null;
+    waitingForCall = true;
+    notifyListeners();
+    return true;
+  }
+
   /// Begin. Safe to call more than once; only the first call does anything.
   void start() {
     if (_running || !DesktopUpdate.supported) return;
@@ -147,6 +191,7 @@ class DesktopUpdater extends ChangeNotifier {
   }
 
   void _beginCountdown() {
+    if (_holdForCall()) return;
     _countdown?.cancel();
     secondsLeft = grace.inSeconds;
     notifyListeners();
@@ -177,6 +222,10 @@ class DesktopUpdater extends ChangeNotifier {
 
     if (update == null || busy) return;
 
+    // The last word, whoever asked: the startup sweep, the countdown, or the
+    // Install button. A call that began during the minute stops it here.
+    if (_holdForCall()) return;
+
     _countdown?.cancel();
     _countdown = null;
     secondsLeft = null;
@@ -184,7 +233,7 @@ class DesktopUpdater extends ChangeNotifier {
     error = null;
     notifyListeners();
 
-    final failure = await DesktopUpdate.install(update);
+    final failure = await installer(update);
 
     busy = false;
     error = failure;
