@@ -771,6 +771,31 @@ class HrOnboardingTest extends TestCase
         $this->assertNull($field('i9_form')['tax_form_kind']);
     }
 
+    /**
+     * A real drawing fits (production, 2026-10-09: 1406 "Data too long for
+     * column 'saved_signature'" — TEXT held 64 KB of what is a 400 KB PNG
+     * once encrypted).
+     */
+    public function test_a_full_size_saved_signature_fits(): void
+    {
+        [$alpha] = $this->scenario();
+        $img = imagecreatetruecolor(400, 150);
+        mt_srand(7);
+        for ($x = 0; $x < 400; $x++) {
+            for ($y = 0; $y < 150; $y++) {
+                imagesetpixel($img, $x, $y, mt_rand(0, 0xFFFFFF));
+            }
+        }
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+        $this->assertGreaterThan(64 * 1024, strlen($bytes), 'Not big enough to have overflowed TEXT.');
+        $png = 'data:image/png;base64,'.base64_encode($bytes);
+
+        $this->as($alpha['admin'])->putJson('/api/v1/me/signature', ['drawing' => $png])->assertOk();
+        $this->assertSame($png, $this->as($alpha['admin'])->getJson('/api/v1/me/signature')->json('data.drawing'));
+    }
+
     /** Finished onboardings are their own archive (a Suggestion Jose said to build, 2026-10-01). */
     public function test_finished_onboardings_list_apart_from_those_in_progress(): void
     {
