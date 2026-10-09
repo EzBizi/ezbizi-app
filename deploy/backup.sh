@@ -516,12 +516,19 @@ all_ok "${PIPESTATUS[@]}" || errors+=("app-archive")
 # `storage` remains in the application archive above to preserve the existing
 # backup exactly. This second encrypted archive gives customer files the
 # independently verifiable, versioned manifest that a restore can prove.
-if ! encrypt_private_files \
-    /var/www/ezbizi/storage/app/private \
+#
+# The builder refuses a tree that changes under it, and monitoring screenshots
+# land every few minutes, so it reads a hard-linked copy: files added or pruned
+# meanwhile leave the copy alone, and an in-place write still fails the check.
+PRIVATE_STAGE="$RUN_WORK/private-stage"
+if ! cp -al /var/www/ezbizi/storage/app/private "$PRIVATE_STAGE" \
+  || ! encrypt_private_files \
+    "$PRIVATE_STAGE" \
     "$RUN_WORK/private-files-${RUN_ID}.tar.gz.gpg" \
     "$KEYFILE"; then
   errors+=("private-files-archive")
 fi
+rm -rf -- "$PRIVATE_STAGE"
 
 # ── 3. server configuration ──────────────────────────────────────
 #

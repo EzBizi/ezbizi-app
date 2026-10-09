@@ -30,6 +30,10 @@ Type=oneshot
 ExecStart=-/usr/local/bin/ezbizi-backup.sh
 ExecStart=-/usr/local/bin/ezbizi-restore-check.sh
 
+# The restore check's 100-byte default rejects monitoring screenshot paths
+# (126-157 bytes) that the backup writes as plain USTAR. 255 is USTAR's own cap.
+Environment=EZBIZI_PRIVATE_MAX_PATH_BYTES=255
+
 # A dump plus a full restore of a database this size is seconds today. The
 # ceiling is generous so growth does not silently start killing the run.
 TimeoutStartSec=3600
