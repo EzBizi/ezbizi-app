@@ -35,6 +35,10 @@ tools reach the whole tenant API:
   mcp, api-keys, sessions);
 - `call_api(method, path, query, body, view)` — dispatched through the kernel
   with the caller's own token, so every middleware and policy runs.
+  It returns JSON `{status, complete, body}` and never cuts a body: over 100,000
+  characters a list pages (`offset`/`limit`, `next_offset`) and an object comes
+  back as an `outline` of its keys; `pick` (a dot path such as `data.schema`)
+  returns one part.
 
 Claude Code:
 

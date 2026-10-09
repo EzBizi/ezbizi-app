@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\McpController;
 use App\Models\AuditEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -141,7 +142,7 @@ class ApiKeysAndMcpTest extends TestCase
         $this->app['auth']->forgetGuards();
         $refused = $this->callApi($cannot, ['method' => 'GET', 'path' => 'vehicles/summary']);
         $this->assertTrue($refused['isError'], $refused['content'][0]['text']);
-        $this->assertStringStartsWith('HTTP 403', $refused['content'][0]['text']);
+        $this->assertSame(403, json_decode($refused['content'][0]['text'], true)['status']);
     }
 
     public function test_mcp_keeps_read_only_and_blocked_paths(): void
@@ -157,7 +158,8 @@ class ApiKeysAndMcpTest extends TestCase
         }
 
         $me = $this->callApi($key, ['method' => 'GET', 'path' => 'me']);
-        $this->assertStringStartsWith('HTTP 200', $me['content'][0]['text']);
+        $this->assertSame(200, json_decode($me['content'][0]['text'], true)['status']);
+        $this->assertTrue(json_decode($me['content'][0]['text'], true)['complete']);
     }
 
     private function level(string $key, string $method, string $path): ?string
@@ -357,5 +359,70 @@ class ApiKeysAndMcpTest extends TestCase
         $row = $this->lastChange($t['admin']);
         $this->assertFalse($row['revertable']);
         $this->signedInAs($t['admin'])->postJson("/api/v1/api-keys/activity/{$row['id']}/revert")->assertStatus(422);
+    }
+
+    /** Every call_api result parses, and says whether it is all of the answer. */
+    private function apiResult(string $key, array $arguments): array
+    {
+        $text = $this->callApi($key, $arguments)['content'][0]['text'];
+        $this->assertJson($text);
+
+        return json_decode($text, true);
+    }
+
+    public function test_a_large_answer_is_never_cut_into_broken_json(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin']);
+        $whole = $this->signedInAs($t['admin'])->getJson('/api/v1/me')->json();
+        $this->app['auth']->forgetGuards();
+
+        McpController::$maxChars = 200;
+        try {
+            // An object too big to send comes back as an outline of its keys.
+            $big = $this->apiResult($key, ['method' => 'GET', 'path' => 'me']);
+            $this->assertFalse($big['complete']);
+            $this->assertArrayHasKey('data', $big['outline']);
+
+            // Picking part of it returns that part exactly.
+            $name = $this->apiResult($key, ['method' => 'GET', 'path' => 'me', 'pick' => 'data.name']);
+            $this->assertTrue($name['complete']);
+            $this->assertSame($whole['data']['name'], $name['body']);
+
+            $missing = $this->apiResult($key, ['method' => 'GET', 'path' => 'me', 'pick' => 'data.nope']);
+            $this->assertFalse($missing['complete']);
+            $this->assertStringContainsString('Nothing at pick', $missing['error']);
+        } finally {
+            McpController::$maxChars = 100_000;
+        }
+    }
+
+    public function test_a_long_list_pages_until_every_item_is_read(): void
+    {
+        $t = $this->provisionTenant();
+        foreach (range(1, 12) as $i) {
+            $this->signedInAs($t['admin'])->postJson('/api/v1/customers', [
+                'owning_franchise_id' => $t['franchise']->id, 'name' => "Customer number {$i} with a longish name",
+            ])->assertCreated();
+        }
+        $key = $this->keyFor($t['admin']);
+
+        McpController::$maxChars = 1500;
+        try {
+            [$seen, $offset, $calls] = [[], 0, 0];
+            do {
+                $page = $this->apiResult($key, ['method' => 'GET', 'path' => 'customers', 'query' => ['per_page' => 50], 'pick' => 'data', 'offset' => $offset]);
+                $this->assertGreaterThan(0, $page['returned']);
+                $seen = [...$seen, ...array_column($page['body'], 'id')];
+                $offset = $page['next_offset'] ?? null;
+                $calls++;
+            } while ($offset !== null && $calls < 20);
+
+            $this->assertGreaterThan(1, $calls, 'the cap should have forced more than one page');
+            $this->assertTrue($page['complete']);
+            $this->assertCount(12, array_unique($seen));
+        } finally {
+            McpController::$maxChars = 100_000;
+        }
     }
 }
