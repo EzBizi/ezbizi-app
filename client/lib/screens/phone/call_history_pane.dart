@@ -310,7 +310,10 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         children: [
           Flexible(
             child: Text(
-              row.peerName ?? row.customerName ?? formatPhoneNumber(peer),
+              row.peerName ??
+                  row.customerName ??
+                  row.callerName ??
+                  formatPhoneNumber(peer),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium,
@@ -327,12 +330,16 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ),
             ),
           ],
-          if (row.peerName != null) ...[
+          if (row.peerName != null || row.callerKind == 'colleague') ...[
             const SizedBox(width: 6),
             const StatusPill('Teammate'),
-          ] else if (row.customerId != null) ...[
+          ] else if (row.customerId != null ||
+              row.callerKind == 'customer') ...[
             const SizedBox(width: 6),
             const StatusPill('Customer', tone: Tone.info),
+          ] else if (row.callerKind == 'lead') ...[
+            const SizedBox(width: 6),
+            const StatusPill('Lead', tone: Tone.review),
           ],
         ],
       ),
@@ -374,6 +381,8 @@ class CallRow {
     this.answeredByName,
     this.customerId,
     this.customerName,
+    this.callerName,
+    this.callerKind,
     this.durationSeconds,
     this.menuKey,
     this.extensionDialed,
@@ -448,6 +457,12 @@ class CallRow {
   final String? customerId;
   final String? customerName;
 
+  /// Who has the number when the exact match found nobody: a customer by
+  /// another spelling, a lead or a colleague (`customer`, `lead`,
+  /// `colleague`). Jose, 2026-10-09.
+  final String? callerName;
+  final String? callerKind;
+
   final int? durationSeconds;
 
   /// What the caller pressed in the menu, and any extension they typed.
@@ -468,6 +483,8 @@ class CallRow {
     answeredByName: json['answered_by_name'] as String?,
     customerId: json['customer_id'] as String?,
     customerName: json['customer_name'] as String?,
+    callerName: json['caller_name'] as String?,
+    callerKind: json['caller_kind'] as String?,
     durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
     menuKey: json['menu_key'] as String?,
     extensionDialed: json['extension_dialed'] as String?,

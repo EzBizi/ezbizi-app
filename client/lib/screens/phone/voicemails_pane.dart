@@ -343,6 +343,25 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
           child: _tileRow(),
         ),
+        if (_messages.any((m) => m.transcript?.trim().isNotEmpty != true))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: Text(
+              (widget.session.me?.can('phone.edit') ?? false)
+                  ? 'Some voicemails have no transcript. Turn on "Write down '
+                        'voicemail messages" under Communication → Settings → '
+                        'General; it covers every line, and Twilio charges for '
+                        'each message transcribed. The recording is the record '
+                        'either way.'
+                  : 'Some voicemails have no transcript. An administrator can '
+                        'switch transcription on in Communication settings. The '
+                        'recording is the record either way.',
+              key: const Key('voicemail-transcript-note'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         Expanded(child: _cards(theme)),
       ],
     );
@@ -410,11 +429,25 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
           children: [
             Row(
               children: [
+                // Who left it, with the number under (Jose, 2026-10-09).
                 Expanded(
-                  child: Text(
-                    formatPhoneNumber(message.from),
-                    style: theme.textTheme.titleSmall,
-                  ),
+                  child: message.name == null
+                      ? Text(
+                          formatPhoneNumber(message.from),
+                          style: theme.textTheme.titleSmall,
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(message.name!, style: theme.textTheme.titleSmall),
+                            Text(
+                              formatPhoneNumber(message.from),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
 
                 // WHEN it was left. A list of messages with no times in it
@@ -496,17 +529,14 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
             //
             // Shown, not hidden behind a control. A transcript you have to ask
             // for is one nobody reads, and reading is faster than listening.
+            //
+            // Jose, 2026-10-09: the sentence repeated under all 148 cards. It
+            // is said once above the list (_transcriptNote); a card says only
+            // that it has none.
             Text(
               message.transcript?.trim().isNotEmpty == true
                   ? message.transcript!
-                  : (widget.session.me?.can('phone.edit') ?? false)
-                  ? 'No transcript. Turn on "Write down voicemail messages" '
-                        'under Communication → Settings → General; it covers '
-                        'every line, and Twilio charges for each message '
-                        'transcribed. The recording is the record either way.'
-                  : 'No transcript. An administrator can switch transcription '
-                        'on in Communication settings. The recording is the '
-                        'record either way.',
+                  : 'No transcript',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: message.transcript?.trim().isNotEmpty == true
                     ? null
@@ -572,10 +602,15 @@ class _Voicemail {
     required this.recordingSid,
     required this.dealt,
     required this.createdAt,
+    this.name,
   });
 
   final String id;
   final String from;
+
+  /// Who has the number: the customer on file, else the server's lookup
+  /// (another spelling, a lead, a colleague). Null shows the number alone.
+  final String? name;
   /// The MESSAGE, written down — not the call it was left on.
   ///
   /// `transcript` is live transcription of the whole conversation, which on a
@@ -596,5 +631,9 @@ class _Voicemail {
     transcript: json['voicemail_transcript'] as String?,
     recordingSid: json['recording_sid'] as String?,
     dealt: json['dealt_at'] != null,
+    name:
+        json['customer_name'] as String? ??
+        json['caller_name'] as String? ??
+        json['peer_name'] as String?,
   );
 }

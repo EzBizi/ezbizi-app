@@ -12,6 +12,7 @@ use App\Models\PhoneRingGroup;
 use App\Models\User;
 use App\Support\Phone\ClientIdentity;
 use App\Support\Phone\DialPlan;
+use App\Support\Phone\NumberNames;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwimlRenderer;
@@ -278,8 +279,13 @@ class CallsController extends Controller
         $customerNames = $this->customerNamesById(array_values($customerIds));
         $colleagues = $this->colleagueNames($calls);
 
+        // Jose, 2026-10-09: most rows were a bare number. The same lookup
+        // Messages uses: a customer by any spelling of the phone, a lead, a
+        // colleague.
+        $callers = app(NumberNames::class)->for($calls->map(fn (PhoneCall $call) => $this->outsideNumber($call)));
+
         $rows = $calls
-            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues, $customerNames))
+            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues, $customerNames, $callers))
             ->all();
 
         return response()->json($tiles === null
@@ -1233,7 +1239,7 @@ class CallsController extends Controller
     /**
      * @param  array<string, string>  $colleagues
      */
-    private function row(PhoneCall $call, array $customerIds = [], array $colleagues = [], array $customerNames = []): array
+    private function row(PhoneCall $call, array $customerIds = [], array $colleagues = [], array $customerNames = [], array $callers = []): array
     {
         $outside = $this->outsideNumber($call);
 
@@ -1291,6 +1297,11 @@ class CallsController extends Controller
             // The name beside the id, so a history row can say who rather
             // than a number (UI/UX's Dial redesign, 2026-09-30).
             'customer_name' => $customerNames[$customerIds[$outside] ?? ''] ?? null,
+
+            // Who has the number when the exact match above found nobody:
+            // kind is customer, lead or colleague (NumberNames).
+            'caller_name' => $callers[$outside]['name'] ?? null,
+            'caller_kind' => $callers[$outside]['kind'] ?? null,
 
             // What they pressed in the menu, and any extension they typed.
             'menu_key' => $call->menu_key,

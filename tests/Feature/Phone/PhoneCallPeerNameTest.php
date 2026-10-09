@@ -101,6 +101,58 @@ class PhoneCallPeerNameTest extends TestCase
         $this->assertSame('Marta Delgado', $this->firstRow($t, $desk)['customer_name']);
     }
 
+    /**
+     * Jose, 2026-10-09: most Recent calls and every voicemail were a bare
+     * number. A lead with the number, a customer whose phone is typed another
+     * way, and a colleague all name it; a customer outranks a lead.
+     */
+    public function test_a_number_is_named_by_a_lead_a_typed_customer_or_a_colleague(): void
+    {
+        [$t, $number, $desk] = $this->line();
+
+        $this->inTenant($t['org'], function () use ($t, $desk) {
+            \App\Models\Lead::create([
+                'organization_id' => $t['org']->getKey(),
+                'company_id' => $t['company']->getKey(),
+                'source' => \App\Models\Lead::SOURCE_WEBSITE_CHAT,
+                'remote_id' => 'chat-names',
+                'contact_name' => 'Lena Lead',
+                'phone' => '561-476-1114',
+                'phone_digits' => '5614761114',
+                'status' => \App\Models\Lead::STATUS_NEW,
+                'received_at' => now(),
+            ]);
+            \App\Models\Customer::factory()->create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'name' => 'Typed Customer',
+                'phone' => '(561) 336-5352',
+            ]);
+            \App\Models\Lead::create([
+                'organization_id' => $t['org']->getKey(),
+                'company_id' => $t['company']->getKey(),
+                'source' => \App\Models\Lead::SOURCE_WEBSITE_CHAT,
+                'remote_id' => 'chat-loses',
+                'contact_name' => 'Should Not Win',
+                'phone_digits' => '5613365352',
+                'status' => \App\Models\Lead::STATUS_NEW,
+                'received_at' => now(),
+            ]);
+            $desk->update(['name' => 'Chaim Perez', 'phone' => '(308) 708-9100']);
+        });
+
+        foreach (['+15614761114', '+15613365352', '+13087089100', '+15550009999'] as $to) {
+            $this->callTo($t, $number, $to);
+        }
+
+        $rows = collect($this->signedInAs($desk)->getJson('/api/v1/phone/calls')->assertOk()->json('data'))
+            ->keyBy('to_e164');
+
+        $this->assertSame(['Lena Lead', 'lead'], [$rows['+15614761114']['caller_name'], $rows['+15614761114']['caller_kind']]);
+        $this->assertSame(['Typed Customer', 'customer'], [$rows['+15613365352']['caller_name'], $rows['+15613365352']['caller_kind']]);
+        $this->assertSame(['Chaim Perez', 'colleague'], [$rows['+13087089100']['caller_name'], $rows['+13087089100']['caller_kind']]);
+        $this->assertNull($rows['+15550009999']['caller_name']);
+    }
+
     /** The control: a number nobody holds names nobody. */
     public function test_a_call_to_a_stranger_names_nobody(): void
     {
