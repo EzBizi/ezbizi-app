@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\User;
 use App\Support\Web\SeoHelper\PageAnalysis;
 use App\Support\Web\SeoHelper\SiteOverview;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -199,6 +200,85 @@ class SeoHelperTest extends TestCase
             ->assertStatus(502)->assertJsonFragment(['message' => 'a-1chimney.com answered 500.']);
     }
 
+    // ── Rodrigo's audit, 2026-10-09 ─────────────────────────────────
+
+    public function test_a_lone_percent_description_is_bad_outright(): void
+    {
+        $r = PageAnalysis::run($this->page(['description' => '%']), self::HTML);
+
+        $this->assertSame('bad', array_column($r['seo'], 'status', 'key')['description_malformed']);
+        $this->assertSame('bad', $r['score']);
+        $this->assertSame('bad', PageAnalysis::score(PageAnalysis::metadataChecks($r['seo'])));
+        $this->assertFalse(PageAnalysis::malformed('Chimney repair 100%'));
+        $this->assertTrue(PageAnalysis::malformed('%%excerpt%%'));
+    }
+
+    public function test_a_red_check_keeps_a_page_from_scoring_good(): void
+    {
+        $checks = [...array_fill(0, 9, ['key' => 'x', 'status' => 'good']), ['key' => 'h1', 'status' => 'bad']];
+
+        $this->assertSame('ok', PageAnalysis::score($checks));
+    }
+
+    public function test_the_page_view_carries_the_overviews_score(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->linkedSite();
+        $row = $this->row(7, 'chimney repair newark', 'Fast, safe chimney repair in Newark from a licensed crew. Crowns, flues and flashing fixed the same week you call.');
+        Http::fake([
+            'a-1chimney.com/wp-json/ezbizi/v1/seo/7' => Http::response($row),
+            'a-1chimney.com/wp-json/ezbizi/v1/seo*' => Http::response(['total' => 1, 'site' => [], 'pages' => [$row]]),
+            'a-1chimney.com/chimney-repair-newark*' => Http::response(self::HTML),
+        ]);
+
+        $overview = $this->signedInAs($editor)->getJson("/api/v1/web/sites/{$site}/seo-helper")->assertOk()->json('data');
+        $page = $this->getJson("/api/v1/web/sites/{$site}/seo-helper/7")->assertOk()->json('data.analysis');
+
+        $this->assertSame('metadata', $overview['pages'][0]['score_scope']);
+        $this->assertSame($overview['pages'][0]['score'], $page['metadata_score']);
+        $this->assertSame(PageAnalysis::RULES, $page['rules']);
+    }
+
+    public function test_a_different_x_title_and_an_old_year_are_said(): void
+    {
+        $r = PageAnalysis::run($this->page(['social_title' => 'About A1 Chimney', 'twitter_title' => 'The 2023 Best Chimney Co.', 'year' => 2026]), null);
+        $status = array_column($r['seo'], 'text', 'key');
+
+        $this->assertStringContainsString('The 2023 Best Chimney Co.', $status['twitter_title']);
+        $this->assertSame('The X title still says 2023.', $status['old_year']);
+    }
+
+    public function test_a_social_title_template_stuck_in_an_old_year_is_a_site_issue(): void
+    {
+        $issues = SiteOverview::build([], ['social_page_title_template' => '2023 Best %%title%% in the USA'], 2026)['site_issues'];
+
+        $this->assertSame('stale_year_pages when shared', $issues[0]['key']);
+        $this->assertSame(['field' => 'social_page_title_template', 'value' => '%%currentyear%% Best %%title%% in the USA'], $issues[0]['fix']);
+    }
+
+    public function test_saving_a_malformed_description_is_refused_before_the_site_hears_of_it(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->linkedSite();
+        Http::fake();
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/seo-helper/7", ['description' => '%'])
+            ->assertUnprocessable()->assertJsonValidationErrors('description');
+        Http::assertNothingSent();
+    }
+
+    public function test_a_missing_page_is_not_a_refused_account(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->linkedSite();
+        Http::fake([
+            'a-1chimney.com/wp-json/ezbizi/v1/seo/404' => Http::response(['code' => 'not_found'], 404),
+            'a-1chimney.com/wp-json/ezbizi/v1/seo/403' => Http::response(['code' => 'rest_forbidden'], 403),
+        ]);
+
+        $this->signedInAs($editor)->getJson("/api/v1/web/sites/{$site}/seo-helper/404")
+            ->assertNotFound()->assertJsonFragment(['reason' => 'not_found', 'site_status' => 404]);
+        $this->getJson("/api/v1/web/sites/{$site}/seo-helper/403")
+            ->assertStatus(502)->assertJsonFragment(['reason' => 'refused', 'site_status' => 403]);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
 
     private function page(array $over = []): array
@@ -219,7 +299,7 @@ class SeoHelperTest extends TestCase
         ];
     }
 
-    /** @return array{site: string, editor: \App\Models\User, tenant: array} */
+    /** @return array{site: string, editor: User, tenant: array} */
     private function linkedSite(): array
     {
         $tenant = $this->provisionTenant('Alpha');

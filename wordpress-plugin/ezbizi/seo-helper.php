@@ -28,6 +28,11 @@ function ezbizi_seo_keys() {
         'social_title' => '_yoast_wpseo_opengraph-title',
         'social_description' => '_yoast_wpseo_opengraph-description',
         'social_image' => '_yoast_wpseo_opengraph-image',
+        // X keeps its own overrides; empty means it uses the social ones above
+        // (Rodrigo's audit, 2026-10-09: About Us still said 2023 on X).
+        'twitter_title' => '_yoast_wpseo_twitter-title',
+        'twitter_description' => '_yoast_wpseo_twitter-description',
+        'twitter_image' => '_yoast_wpseo_twitter-image',
     );
 }
 
@@ -35,7 +40,9 @@ add_action('rest_api_init', function () {
     $can_edit = function ($request) {
         $id = (int) $request['id'];
 
-        return $id > 0 ? current_user_can('edit_post', $id) : current_user_can('edit_pages');
+        // A page that does not exist lets the route say 404, not a 403 that reads
+        // like a broken account (Rodrigo's audit F8, 2026-10-09).
+        return $id > 0 && get_post($id) ? current_user_can('edit_post', $id) : current_user_can('edit_pages');
     };
 
     register_rest_route('ezbizi/v1', '/seo', array(
@@ -105,7 +112,7 @@ function ezbizi_seo_save($request) {
 
         $value = $request[$field];
         $value = $field === 'noindex' ? (filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '')
-            : (in_array($field, array('canonical', 'social_image'), true) ? esc_url_raw((string) $value) : sanitize_text_field((string) $value));
+            : (in_array($field, array('canonical', 'social_image', 'twitter_image'), true) ? esc_url_raw((string) $value) : sanitize_text_field((string) $value));
 
         if ($value === '') {
             delete_post_meta($post->ID, $meta);
@@ -146,8 +153,16 @@ function ezbizi_seo_row($post) {
 
     if (function_exists('YoastSEO')) {
         try {
-            $meta = YoastSEO()->meta->for_post($post->ID);
-            $final = array('title' => (string) $meta->title, 'description' => (string) $meta->description);
+            $final = ezbizi_seo_printed($post->ID);
+
+            // The SEO plugin prints from its own per-page record. Values written
+            // straight to the meta (an import, another tool) leave that record
+            // behind, and the site's default printed instead: a lone "%" on 257
+            // pages (Rodrigo's audit F1, 2026-10-09). Rebuild it and read again.
+            if ($stored['description'] !== '' && $final['description'] !== ezbizi_seo_resolve($stored['description'], $post, 'description')) {
+                ezbizi_seo_reindex($post->ID);
+                $final = ezbizi_seo_printed($post->ID);
+            }
         } catch (\Throwable $e) {
             // Fall through to our own reading.
         }
@@ -171,6 +186,20 @@ function ezbizi_seo_row($post) {
     );
 }
 
+/** What the SEO plugin prints for a page: search, social and X. */
+function ezbizi_seo_printed($id) {
+    $meta = YoastSEO()->meta->for_post($id);
+
+    return array(
+        'title' => (string) $meta->title,
+        'description' => (string) $meta->description,
+        'social_title' => (string) $meta->open_graph_title,
+        'social_description' => (string) $meta->open_graph_description,
+        'twitter_title' => (string) $meta->twitter_title,
+        'twitter_description' => (string) $meta->twitter_description,
+    );
+}
+
 /** A title or description with the SEO plugin's %%variables%% filled in; the site default when empty. */
 function ezbizi_seo_resolve($text, $post, $kind) {
     if ($text === '' && $kind === 'title') {
@@ -190,6 +219,8 @@ function ezbizi_seo_site() {
         'plugin' => defined('WPSEO_VERSION') ? 'yoast ' . WPSEO_VERSION : null,
         'page_title_template' => ezbizi_seo_template('title-page'),
         'post_title_template' => ezbizi_seo_template('title-post'),
+        'social_page_title_template' => ezbizi_seo_template('social-title-page'),
+        'social_post_title_template' => ezbizi_seo_template('social-title-post'),
         'site_name' => get_bloginfo('name'),
         'search_engines_blocked' => ! get_option('blog_public'),
     );
@@ -203,7 +234,7 @@ function ezbizi_seo_site_save($request) {
         return new WP_Error('no_seo_plugin', 'This site has no SEO plugin settings to change.', array('status' => 409));
     }
 
-    foreach (array('page_title_template' => 'title-page', 'post_title_template' => 'title-post') as $field => $key) {
+    foreach (ezbizi_seo_site_fields() as $field => $key) {
         if ($request->has_param($field)) {
             $titles[$key] = sanitize_text_field((string) $request[$field]);
         }
@@ -217,6 +248,16 @@ function ezbizi_seo_site_save($request) {
     }
 
     return new WP_REST_Response(ezbizi_seo_site());
+}
+
+/** The site-wide title settings the Helper may change → where the SEO plugin keeps each. */
+function ezbizi_seo_site_fields() {
+    return array(
+        'page_title_template' => 'title-page',
+        'post_title_template' => 'title-post',
+        'social_page_title_template' => 'social-title-page',
+        'social_post_title_template' => 'social-title-post',
+    );
 }
 
 /** One of the SEO plugin's site-wide title settings, read from where it keeps them. */
@@ -245,11 +286,17 @@ function ezbizi_seo_rebuild($id) {
         ezbizi_queue_nginx_purge();
     }
 
+    ezbizi_seo_reindex($id);
+}
+
+/** Rebuild the SEO plugin's own record of one page from its meta. */
+function ezbizi_seo_reindex($id) {
     if (! function_exists('YoastSEO')) {
         return;
     }
 
     try {
+        clean_post_cache($id);
         $repository = YoastSEO()->classes->get('Yoast\WP\SEO\Repositories\Indexable_Repository');
         $builder = YoastSEO()->classes->get('Yoast\WP\SEO\Builders\Indexable_Builder');
         $builder->build_for_id_and_type($id, 'post', $repository->find_by_id_and_type($id, 'post', false));

@@ -2359,6 +2359,11 @@ check('arrows can sit outside the videos', str_contains($a1v, 'color:#ffd500') &
 check('with a dot per page', substr_count($a1v, 'aria-label="Page '), 2);
 check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?feature=x&v=abcdefghijk'), 'abcdefghijk');
 
+// Rodrigo's audit, 2026-10-09: X's own overrides are fields the Helper can read and clear,
+// and the social title templates can be corrected like the search ones.
+check('the SEO Helper carries the X title', ezbizi_seo_keys()['twitter_title'] ?? null, '_yoast_wpseo_twitter-title');
+check('and the social title template for pages', ezbizi_seo_site_fields()['social_page_title_template'] ?? null, 'social-title-page');
+
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"
     : "FAIL  {$failures} of {$checks} checks\n\n");

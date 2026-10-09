@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -78,6 +79,14 @@ class SeoHelperController extends Controller
         $this->authorize('update', $site);
         $input = $this->draft($request);
 
+        // A title or description that cannot be meant is refused before it prints
+        // on the site; analyze still shows it as a draft.
+        foreach (['title', 'description', 'social_title', 'social_description', 'twitter_title', 'twitter_description'] as $field) {
+            if (PageAnalysis::malformed((string) ($input[$field] ?? ''))) {
+                throw ValidationException::withMessages([$field => 'That is not a '.str_replace(['twitter_', '_'], ['X ', ' '], $field).'. Write words, or leave it empty to use the default.']);
+            }
+        }
+
         return $this->guard($site, function () use ($site, $page, $input) {
             $row = $this->seo->save($site, $page, $input);
             Cache::forget($this->key($site));
@@ -96,6 +105,8 @@ class SeoHelperController extends Controller
         $input = $request->validate([
             'page_title_template' => ['sometimes', 'string', 'max:300'],
             'post_title_template' => ['sometimes', 'string', 'max:300'],
+            'social_page_title_template' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'social_post_title_template' => ['sometimes', 'nullable', 'string', 'max:300'],
         ]);
 
         return $this->guard($site, function () use ($site, $input) {
@@ -118,6 +129,9 @@ class SeoHelperController extends Controller
             'social_title' => ['sometimes', 'nullable', 'string', 'max:300'],
             'social_description' => ['sometimes', 'nullable', 'string', 'max:500'],
             'social_image' => ['sometimes', 'nullable', 'url', 'max:500'],
+            'twitter_title' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'twitter_description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'twitter_image' => ['sometimes', 'nullable', 'url', 'max:500'],
         ]);
     }
 
@@ -128,8 +142,16 @@ class SeoHelperController extends Controller
 
         $sharing = SiteOverview::sharingPages($row, $others);
 
+        $analysis = PageAnalysis::run($page, $this->html($page['url']), array_map('count', $sharing));
+
         return $row + [
-            'analysis' => PageAnalysis::run($page, $this->html($page['url']), array_map('count', $sharing)),
+            'analysis' => $analysis + [
+                // The overview's score for this page: the same rules over the same
+                // checks, so the list and the page never disagree about the same thing.
+                'metadata_score' => PageAnalysis::score(PageAnalysis::metadataChecks($analysis['seo'])),
+                'rules' => PageAnalysis::RULES,
+                'analyzed_at' => now()->toIso8601String(),
+            ],
             // The pages behind a "shared" check, so the screen can name and open them.
             'shared_with' => $sharing,
         ];
@@ -172,13 +194,26 @@ class SeoHelperController extends Controller
         return 'seo-helper:pages:'.$site->getKey();
     }
 
-    /** A website we do not run answering badly is a 502 with a sentence, as in ContentController. */
+    /**
+     * A website we do not run answering badly is a 502 with a sentence, as in
+     * ContentController; a page it says does not exist is our 404. `reason` and
+     * `site_status` tell a missing page from a refused account (Rodrigo's audit F8).
+     */
     private function guard(WebSite $site, callable $work): JsonResponse
     {
         try {
             return response()->json($work());
         } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], Response::HTTP_BAD_GATEWAY);
+            $status = (int) $e->getCode();
+            $reason = match (true) {
+                $status === 404 => 'not_found',
+                in_array($status, [401, 403], true) => 'refused',
+                $status === 0 => 'unreachable',
+                default => 'site_error',
+            };
+
+            return response()->json(['message' => $e->getMessage(), 'reason' => $reason, 'site_status' => $status ?: null],
+                $status === 404 ? Response::HTTP_NOT_FOUND : Response::HTTP_BAD_GATEWAY);
         }
     }
 }

@@ -30,6 +30,18 @@ final class PageAnalysis
 
     public const BAD = 'bad';
 
+    /**
+     * Bumped when a rule changes, so a stored or cached result can be told from
+     * a current one. The overview and the page view run the same rules.
+     */
+    public const RULES = 2;
+
+    /** Checks bad enough that nothing else on the page can make it look healthy. */
+    private const BLOCKERS = ['title_malformed', 'description_malformed'];
+
+    /** Checks read from the live page, which the overview never fetches. */
+    private const LIVE = ['live', 'h1', 'text_length', 'intro_keyphrase', 'subheading_keyphrase', 'density', 'images', 'internal_links', 'outbound_links'];
+
     /** The elements a run of text belongs to. */
     private const BLOCKS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'div', 'td', 'th', 'blockquote', 'figcaption', 'dd', 'dt', 'section', 'article', 'body', 'main'];
 
@@ -38,7 +50,7 @@ final class PageAnalysis
 
     /**
      * @param  array{title: string, description: string, keyphrase: string, slug: string, noindex?: bool, canonical?: string, url?: string}  $page
-     *                                                                                                                                   the FINAL title and description, as printed
+     *                                                                                                                                              the FINAL title and description, as printed
      * @param  array{keyphrase?: int, title?: int, description?: int}  $shared  how many OTHER pages share each
      * @return array{score: string, seo: list<array{key: string, status: string, text: string}>, readability: list<array{key: string, status: string, text: string}>, words: int}
      */
@@ -80,6 +92,7 @@ final class PageAnalysis
         // ── Title and description as they print ──
         $t = mb_strlen($page['title']);
         $seo[] = match (true) {
+            self::malformed($page['title']) => self::check('title_malformed', self::BAD, 'The title prints as "'.$page['title'].'", which is not a title. Write one for this page.'),
             $t === 0 => self::check('title_length', self::BAD, 'This page has no search title.'),
             $t < 30 => self::check('title_length', self::OK, "The title is short ({$t} characters). There is room to say more."),
             $t <= 60 => self::check('title_length', self::GOOD, "The title is a good length ({$t} characters)."),
@@ -88,6 +101,8 @@ final class PageAnalysis
         };
         $d = mb_strlen($page['description']);
         $seo[] = match (true) {
+            // A lone "%" printed on 257 pages before anyone saw it (Rodrigo's audit, 2026-10-09).
+            self::malformed($page['description']) => self::check('description_malformed', self::BAD, 'The description prints as "'.$page['description'].'", which is not a description. Write one for this page.'),
             $d === 0 => self::check('description_length', self::BAD, 'Write a description, or search engines pick a sentence from the page themselves.'),
             $d < 70 => self::check('description_length', self::BAD, "The description is short ({$d} characters). Aim for 120 to 156."),
             $d < 120 => self::check('description_length', self::OK, "The description could be longer ({$d} characters). Aim for 120 to 156."),
@@ -110,6 +125,24 @@ final class PageAnalysis
 
         if (($page['canonical'] ?? '') !== '' && ($page['url'] ?? '') !== '' && rtrim($page['canonical'], '/') !== rtrim($page['url'], '/')) {
             $seo[] = self::check('canonical', self::OK, 'This page tells search engines to rank a different address instead.');
+        }
+
+        // ── What social networks and X show ──
+        $social = trim((string) ($page['social_title'] ?? ''));
+        $x = trim((string) ($page['twitter_title'] ?? ''));
+
+        if ($x !== '' && $social !== '' && $x !== $social) {
+            $seo[] = self::check('twitter_title', self::OK, "X shows a different title from other networks: \"{$x}\". Clear the X title to use the social one, or keep it on purpose.");
+        }
+
+        $year = (int) ($page['year'] ?? date('Y'));
+
+        foreach (['title' => 'search title', 'social_title' => 'social title', 'twitter_title' => 'X title', 'description' => 'description', 'social_description' => 'social description', 'twitter_description' => 'X description'] as $field => $label) {
+            if (preg_match('/\b(19|20)\d{2}\b/', (string) ($page[$field] ?? ''), $m) === 1 && (int) $m[0] < $year) {
+                $seo[] = self::check('old_year', self::OK, "The {$label} still says {$m[0]}.");
+
+                break;
+            }
         }
 
         $readability = [];
@@ -196,13 +229,46 @@ final class PageAnalysis
         ];
     }
 
-    /** @param  list<array{status: string}>  $checks */
+    /**
+     * Mostly-good checks score good, but never over a red one: a page with a bad
+     * check is at best ok, and a malformed title or description is bad outright.
+     *
+     * @param  list<array{key?: string, status: string}>  $checks
+     */
     public static function score(array $checks): string
     {
+        $statuses = array_column($checks, 'status', 'key');
+
+        if (array_intersect_key($statuses, array_flip(self::BLOCKERS)) !== []) {
+            return self::BAD;
+        }
+
         $points = array_sum(array_map(fn (array $c) => ['good' => 2, 'ok' => 1, 'bad' => 0][$c['status']], $checks));
         $share = $checks === [] ? 0 : $points / (2 * count($checks));
+        $score = $share >= 0.8 ? self::GOOD : ($share >= 0.55 ? self::OK : self::BAD);
 
-        return $share >= 0.8 ? self::GOOD : ($share >= 0.55 ? self::OK : self::BAD);
+        return $score === self::GOOD && in_array(self::BAD, array_column($checks, 'status'), true) ? self::OK : $score;
+    }
+
+    /**
+     * The checks the overview scores: what the page stores and prints, without
+     * reading the live page. The page view shows this too, beside its full
+     * score, so the two never disagree about the same thing.
+     *
+     * @param  list<array{key: string, status: string, text: string}>  $seo
+     * @return list<array{key: string, status: string, text: string}>
+     */
+    public static function metadataChecks(array $seo): array
+    {
+        return array_values(array_filter($seo, fn (array $c) => ! in_array($c['key'], self::LIVE, true)));
+    }
+
+    /** No letter or digit at all ("%", "-"), or a %%variable%% the SEO plugin did not fill in. */
+    public static function malformed(string $text): bool
+    {
+        $text = trim($text);
+
+        return $text !== '' && (preg_match('/[\p{L}\p{N}]/u', $text) !== 1 || preg_match('/%%[a-z_]+%%/i', $text) === 1);
     }
 
     private static function check(string $key, string $status, string $text): array

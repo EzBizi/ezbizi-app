@@ -61,10 +61,7 @@ final class SiteOverview
                 $shared[$kind] = $print === '' ? 0 : $counts[$kind][$print] - 1;
             }
 
-            $checks = array_values(array_filter(
-                PageAnalysis::run(self::analysable($page), null, $shared)['seo'],
-                fn (array $c) => $c['key'] !== 'live',
-            ));
+            $checks = PageAnalysis::metadataChecks(PageAnalysis::run(self::analysable($page), null, $shared)['seo']);
             $score = PageAnalysis::score($checks);
             $summary[$score]++;
             $summary['missing_description'] += (int) (trim((string) ($page['final']['description'] ?? '')) === '');
@@ -82,6 +79,8 @@ final class SiteOverview
                 'seo' => $page['seo'] ?? [],
                 'final' => $page['final'] ?? [],
                 'score' => $score,
+                // Stored and printed values only; the page view adds the live page.
+                'score_scope' => 'metadata',
                 // Only what needs doing; the good checks are for the page view.
                 'issues' => array_values(array_map(
                     fn (array $c) => ['key' => $c['key'], 'status' => $c['status'], 'text' => $c['text']]
@@ -91,7 +90,8 @@ final class SiteOverview
             ];
         }
 
-        return ['summary' => $summary, 'groups' => $groups, 'site_issues' => self::siteIssues($site, $year), 'pages' => $rows];
+        return ['summary' => $summary, 'groups' => $groups, 'site_issues' => self::siteIssues($site, $year), 'pages' => $rows,
+            'rules' => PageAnalysis::RULES, 'analyzed_at' => now()->toIso8601String()];
     }
 
     /**
@@ -110,6 +110,10 @@ final class SiteOverview
             'noindex' => (bool) ($page['seo']['noindex'] ?? false),
             'canonical' => (string) ($page['seo']['canonical'] ?? ''),
             'url' => (string) ($page['url'] ?? ''),
+            'social_title' => html_entity_decode((string) ($page['final']['social_title'] ?? ''), ENT_QUOTES, 'UTF-8'),
+            'social_description' => html_entity_decode((string) ($page['final']['social_description'] ?? ''), ENT_QUOTES, 'UTF-8'),
+            'twitter_title' => html_entity_decode((string) ($page['final']['twitter_title'] ?? ''), ENT_QUOTES, 'UTF-8'),
+            'twitter_description' => html_entity_decode((string) ($page['final']['twitter_description'] ?? ''), ENT_QUOTES, 'UTF-8'),
         ];
     }
 
@@ -166,7 +170,8 @@ final class SiteOverview
             $issues[] = ['key' => 'blocked', 'status' => PageAnalysis::BAD, 'text' => 'The whole website asks search engines not to index it (WordPress › Settings › Reading).'];
         }
 
-        foreach (['page_title_template' => 'pages', 'post_title_template' => 'posts'] as $key => $what) {
+        foreach (['page_title_template' => 'pages', 'post_title_template' => 'posts',
+            'social_page_title_template' => 'pages when shared', 'social_post_title_template' => 'posts when shared'] as $key => $what) {
             $template = (string) ($site[$key] ?? '');
 
             if (preg_match('/\b(19|20)\d{2}\b/', $template, $m) === 1 && (int) $m[0] !== $year) {

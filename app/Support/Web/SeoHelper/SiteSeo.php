@@ -4,6 +4,7 @@ namespace App\Support\Web\SeoHelper;
 
 use App\Models\WebSite;
 use App\Support\Web\SiteContent;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -18,7 +19,11 @@ use RuntimeException;
 final class SiteSeo
 {
     /** The fields a save may carry. */
-    public const FIELDS = ['title', 'description', 'keyphrase', 'noindex', 'canonical', 'social_title', 'social_description', 'social_image'];
+    public const FIELDS = ['title', 'description', 'keyphrase', 'noindex', 'canonical', 'social_title', 'social_description', 'social_image',
+        'twitter_title', 'twitter_description', 'twitter_image'];
+
+    /** The site-wide title templates a save may carry. */
+    public const SITE_FIELDS = ['page_title_template', 'post_title_template', 'social_page_title_template', 'social_post_title_template'];
 
     public function __construct(private readonly SiteContent $content) {}
 
@@ -68,7 +73,7 @@ final class SiteSeo
      */
     public function saveSite(WebSite $site, array $templates): array
     {
-        return $this->call($site, 'post', 'seo/site', array_intersect_key($templates, array_flip(['page_title_template', 'post_title_template'])));
+        return $this->call($site, 'post', 'seo/site', array_intersect_key($templates, array_flip(self::SITE_FIELDS)));
     }
 
     /**
@@ -80,7 +85,12 @@ final class SiteSeo
         return $this->call($site, 'post', 'seo/'.$id, array_intersect_key($fields, array_flip(self::FIELDS)));
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * The exception's code is the site's HTTP status, or 0 when it never answered,
+     * so a missing page, a refused account and a dead site read differently.
+     *
+     * @return array<string, mixed>
+     */
     private function call(WebSite $site, string $method, string $route, array $data = []): array
     {
         if (! $site->isServiceLinked() || $site->service_rest_url === null) {
@@ -88,14 +98,26 @@ final class SiteSeo
                 .$site->host.' and open its WordPress admin once.');
         }
 
-        $response = $this->http($site)->{$method}($this->content->restBase($site).'ezbizi/v1/'.$route, $data);
+        try {
+            $response = $this->http($site)->{$method}($this->content->restBase($site).'ezbizi/v1/'.$route, $data);
+        } catch (ConnectionException) {
+            throw new RuntimeException($site->host.' did not answer.', 0);
+        }
 
         if ($response->status() === 404 && str_contains((string) $response->body(), 'rest_no_route')) {
             throw new RuntimeException('The EzBizi plugin on '.$site->host.' is too old for the SEO Helper. It updates itself shortly.');
         }
 
+        if ($response->status() === 404) {
+            throw new RuntimeException('That page does not exist on '.$site->host.'.', 404);
+        }
+
+        if (in_array($response->status(), [401, 403], true)) {
+            throw new RuntimeException($site->host.' refused EzBizi\'s account ('.$response->status().'). Open the site\'s WordPress admin once so the plugin hands over a new one.', $response->status());
+        }
+
         if (! $response->successful()) {
-            throw new RuntimeException($site->host.' answered '.$response->status().'.');
+            throw new RuntimeException($site->host.' answered '.$response->status().'.', $response->status());
         }
 
         return (array) $response->json();

@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.11
+Stable tag: 1.26.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.12 =
+* FIX: The SEO Helper reads X's own title, description and image, and what
+  every network prints; a page whose SEO record fell behind its saved
+  description is rebuilt when read; a page that does not exist answers 404
+  instead of 403; the social title templates can be corrected.
 
 = 1.26.11 =
 * CHANGE: The booking widget shows where you are in the steps (ZIP code, Day,
