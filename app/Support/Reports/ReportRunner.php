@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -249,6 +250,15 @@ final class ReportRunner
             throw new InvalidArgumentException('A report needs at least one column.');
         }
 
+        /*
+         * FILTERS, joined by AND, or by OR when the report says `match: any`
+         * (the builder brief, 2026-10-09). Each SQL filter becomes one clause
+         * in a single group, so "any" cannot leak past the tenant and place
+         * scoping applied above.
+         */
+        $any = ($definition['match'] ?? 'all') === 'any';
+        $clauses = [];
+
         foreach ($definition['filters'] ?? [] as $filter) {
             $resource = $this->resourceFor($filter);
             $declaredFilter = $this->columnFor($resource, $filter);
@@ -257,16 +267,19 @@ final class ReportRunner
             // question the column would have, one row at a time.
             $this->mayRead($user, $declaredFilter);
 
-            $operator = self::OPERATORS[$filter['op'] ?? '']
-                ?? throw new InvalidArgumentException(
-                    "'".($filter['op'] ?? '')."' is not a filter this report can use."
-                );
-
+            $op = (string) ($filter['op'] ?? '');
             $value = $filter['value'] ?? null;
 
-            $bound = $operator === 'like' ? '%'.$value.'%' : $value;
-
             if (isset($declaredFilter['php'])) {
+                $operator = self::OPERATORS[$op]
+                    ?? throw new InvalidArgumentException("'{$declaredFilter['label']}' is worked out after the rows are read, so it can only be compared, not '{$op}'.");
+
+                // ponytail: PHP filters run after the fetch, so they can only
+                // narrow (AND); an "any" report including one is refused.
+                if ($any) {
+                    throw new InvalidArgumentException("'{$declaredFilter['label']}' cannot be one of several \"any\" filters.");
+                }
+
                 $key = $filter['resource'].'.'.$filter['column'];
                 $php[$key] ??= $this->phpOn($root, $filter, $declaredFilter, $rootResource, $query);
                 $phpFilters[] = [$key, $operator, $value];
@@ -274,21 +287,23 @@ final class ReportRunner
                 continue;
             }
 
-            if (isset($declaredFilter['sql'])) {
-                // The SAME expression as the select, so the rows a filter keeps
-                // are the rows whose printed value satisfies it. Two spellings
-                // of one derived value is how a report comes to exclude a row
-                // it then displays.
-                $query->whereRaw('('.$this->resolve($declaredFilter['sql']).') '.$operator.' ?', [$bound]);
+            // The SAME expression as the select, so the rows a filter keeps
+            // are the rows whose printed value satisfies it. Two spellings of
+            // one derived value is how a report comes to exclude a row it then
+            // displays.
+            $expression = isset($declaredFilter['sql'])
+                ? '('.$this->resolve($declaredFilter['sql']).')'
+                : $this->quote($resource['table']).'.'.$this->quote($filter['column']);
 
-                continue;
-            }
+            $clauses[] = $this->clause($expression, $op, $value, $declaredFilter, $user);
+        }
 
-            $query->where(
-                $resource['table'].'.'.$filter['column'],
-                $operator,
-                $bound,
-            );
+        if ($clauses !== []) {
+            $query->where(function ($group) use ($clauses, $any) {
+                foreach ($clauses as [$sql, $bindings]) {
+                    $any ? $group->orWhereRaw($sql, $bindings) : $group->whereRaw($sql, $bindings);
+                }
+            });
         }
 
         /*
@@ -531,6 +546,72 @@ final class ReportRunner
     }
 
     /** @return list<string> */
+    /** Dates a report can ask for by name, so a saved "Last month" moves on with the calendar. */
+    public const PERIODS = [
+        'today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month',
+        'last_7_days', 'last_30_days', 'last_90_days', 'this_year', 'last_year',
+    ];
+
+    /**
+     * One filter as SQL. The expression comes from the map, never the
+     * request; every value is bound.
+     *
+     * @return array{0: string, 1: list<mixed>}
+     */
+    private function clause(string $expression, string $op, mixed $value, array $declared, User $user): array
+    {
+        $list = fn () => array_values(array_filter((array) $value, fn ($v) => $v !== null && $v !== ''))
+            ?: throw new InvalidArgumentException("'{$declared['label']}' needs at least one value to match.");
+
+        return match ($op) {
+            'contains' => ["{$expression} like ?", ['%'.$value.'%']],
+            'in' => ["{$expression} in (".implode(',', array_fill(0, count($l = $list()), '?')).')', $l],
+            'not_in' => ["({$expression} is null or {$expression} not in (".implode(',', array_fill(0, count($l = $list()), '?')).'))', $l],
+            'between' => count((array) $value) === 2
+                ? ["{$expression} between ? and ?", array_values((array) $value)]
+                : throw new InvalidArgumentException("'{$declared['label']}' between needs two values."),
+            'empty' => ["({$expression} is null or {$expression} = '')", []],
+            'not_empty' => ["({$expression} is not null and {$expression} != '')", []],
+            'period' => ["{$expression} between ? and ?", $this->period((string) $value, $declared, $user)],
+            default => isset(self::OPERATORS[$op])
+                ? ["{$expression} ".self::OPERATORS[$op].' ?', [$value]]
+                : throw new InvalidArgumentException("'{$op}' is not a filter this report can use."),
+        };
+    }
+
+    /**
+     * A named period's first and last moment, in the organization's own
+     * timezone: "today" for a business in New York is not today in UTC. A
+     * datetime column is stored in UTC, so its bounds are converted; a date
+     * column is compared by date.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function period(string $name, array $declared, User $user): array
+    {
+        $zone = (string) app(SettingsResolver::class)->get('timezone', $user->organization);
+        $now = CarbonImmutable::now($zone);
+
+        [$from, $to] = match ($name) {
+            'today' => [$now->startOfDay(), $now->endOfDay()],
+            'yesterday' => [$now->subDay()->startOfDay(), $now->subDay()->endOfDay()],
+            'this_week' => [$now->startOfWeek(CarbonImmutable::MONDAY), $now->endOfWeek(CarbonImmutable::SUNDAY)],
+            'last_week' => [$now->subWeek()->startOfWeek(CarbonImmutable::MONDAY), $now->subWeek()->endOfWeek(CarbonImmutable::SUNDAY)],
+            'this_month' => [$now->startOfMonth(), $now->endOfMonth()],
+            'last_month' => [$now->subMonthNoOverflow()->startOfMonth(), $now->subMonthNoOverflow()->endOfMonth()],
+            'last_7_days' => [$now->subDays(6)->startOfDay(), $now->endOfDay()],
+            'last_30_days' => [$now->subDays(29)->startOfDay(), $now->endOfDay()],
+            'last_90_days' => [$now->subDays(89)->startOfDay(), $now->endOfDay()],
+            'this_year' => [$now->startOfYear(), $now->endOfYear()],
+            'last_year' => [$now->subYear()->startOfYear(), $now->subYear()->endOfYear()],
+            default => throw new InvalidArgumentException("'{$name}' is not a period this report knows."),
+        };
+
+        return ($declared['type'] ?? '') === 'date'
+            ? [$from->toDateString(), $to->toDateString()]
+            : [$from->utc()->toDateTimeString(), $to->utc()->toDateTimeString()];
+    }
+
     /** A report's own name for a column ("Revenue" for Amount), or the map's. */
     private function labelFor(array $column, array $declared): string
     {

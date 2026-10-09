@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SavedReport;
 use App\Support\Reports\ReportMap;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -499,6 +500,46 @@ class ReportsApiTest extends TestCase
 
         $this->assertStringContainsString('Open-jobs-', (string) $response->headers->get('Content-Disposition'));
         $this->assertSame("Title\nSweep\n", $response->getContent());
+    }
+
+    /** The builder brief's filters: one of, between, empty, a named period, and any/all. */
+    public function test_the_new_filters_keep_the_rows_they_name(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-09 12:00', 'America/New_York'));
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, ['title' => 'A', 'status' => 'done', 'duration_minutes' => 30, 'created_at' => '2026-10-09 14:00:00']);
+        $this->makeJob($tenant, ['title' => 'B', 'status' => 'scheduled', 'duration_minutes' => 90, 'created_at' => '2026-09-15 14:00:00']);
+        $this->makeJob($tenant, ['title' => 'C', 'status' => 'cancelled', 'duration_minutes' => 120, 'created_at' => '2026-08-01 14:00:00']);
+
+        $titles = function (array $filters, string $match = 'all') use ($tenant) {
+            $rows = $this->signedInAs($tenant['admin'])
+                ->postJson('/api/v1/reports/preview', ['definition' => [
+                    'root' => 'jobs',
+                    'columns' => [['resource' => 'jobs', 'column' => 'title']],
+                    'filters' => $filters,
+                    'match' => $match,
+                    'sort' => [['resource' => 'jobs', 'column' => 'title']],
+                ]])
+                ->assertOk()
+                ->json('data.rows');
+
+            return array_column($rows, 'jobs.title');
+        };
+
+        $f = fn (string $column, string $op, mixed $value = null) => ['resource' => 'jobs', 'column' => $column, 'op' => $op, 'value' => $value];
+
+        $this->assertSame(['A', 'C'], $titles([$f('status', 'in', ['done', 'cancelled'])]));
+        $this->assertSame(['B'], $titles([$f('status', 'not_in', ['done', 'cancelled'])]));
+        $this->assertSame(['A', 'B'], $titles([$f('duration_minutes', 'between', [30, 90])]));
+        $this->assertSame(['A'], $titles([$f('created_at', 'period', 'today')]));
+        $this->assertSame(['B'], $titles([$f('created_at', 'period', 'last_month')]));
+        $this->assertSame(['A', 'C'], $titles([$f('status', 'eq', 'done'), $f('status', 'eq', 'cancelled')], 'any'));
+        $this->assertSame([], $titles([$f('status', 'eq', 'done'), $f('status', 'eq', 'cancelled')]));
+        $this->assertSame([], $titles([$f('title', 'empty')]));
+        $this->assertSame(['A', 'B', 'C'], $titles([$f('title', 'not_empty')]));
+
+        CarbonImmutable::setTestNow();
     }
 
     public function test_building_is_refused_without_the_build_permission(): void
