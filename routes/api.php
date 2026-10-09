@@ -1240,6 +1240,7 @@ Route::prefix('v1')
         Route::middleware('permission:reports.builder.view')->group(function () {
             Route::get('reports/fields', [ReportsController::class, 'fields']);
             Route::post('reports', [ReportsController::class, 'store']);
+            Route::post('reports/preview', [ReportsController::class, 'preview']);
             Route::match(['put', 'patch'], 'reports/{id}', [ReportsController::class, 'update']);
         });
 

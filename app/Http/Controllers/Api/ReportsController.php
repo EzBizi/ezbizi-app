@@ -40,6 +40,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ReportsController extends Controller
 {
+    private const PREVIEW_ROWS = 25;
+
     public function __construct(
         private readonly ReportRunner $runner,
         private readonly AuditLogger $audit,
@@ -74,7 +76,7 @@ class ReportsController extends Controller
                  * which this is.
                  */
                 // Columns this person may not read are not offered either.
-                'columns'   => (object) array_filter(
+                'columns' => (object) array_filter(
                     $resource['columns'],
                     fn (array $column) => ! isset($column['permission'])
                         || $request->user()->hasPermission($column['permission']),
@@ -204,28 +206,60 @@ class ReportsController extends Controller
         // down. The empty third argument is $changes — a run alters nothing —
         // and the metadata is fourth.
         $this->audit->log('report.run', $report, [], [
-            'name'      => $report->name,
+            'name' => $report->name,
             'row_count' => $result->count,
-            'capped'    => $result->capped,
+            'capped' => $result->capped,
         ]);
 
         return response()->json(['data' => [
             'columns' => $result->columns,
-            'rows'    => $result->rows,
-            'capped'  => $result->capped,
-            'count'   => $result->count,
-            'cap'     => ReportRunner::ROW_CAP,
+            'rows' => $result->rows,
+            'capped' => $result->capped,
+            'count' => $result->count,
+            'cap' => ReportRunner::ROW_CAP,
+        ]]);
+    }
+
+    /**
+     * An UNSAVED definition, run for the builder's live table (Jose,
+     * 2026-10-09: "i also want a preview view, as you select the items").
+     * The same runner, so the same permission, column and row scoping as a
+     * saved report's run; only the first PREVIEW_ROWS rows travel, with the
+     * real count.
+     *
+     * Not audited, unlike run(): the builder asks on every tick of a field,
+     * and a preview shows no more than the first screenful.
+     * ponytail: the runner still reads up to ROW_CAP rows to count them; a
+     * COUNT query of its own if previews get slow.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('reports.build'), Response::HTTP_FORBIDDEN, 'Building reports needs the Build permission.');
+
+        $data = $request->validate(['definition' => ['required', 'array']]);
+
+        try {
+            $result = $this->runner->run($data['definition'], $request->user());
+        } catch (InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['definition' => $e->getMessage()]);
+        }
+
+        return response()->json(['data' => [
+            'columns' => $result->columns,
+            'rows' => array_slice($result->rows, 0, self::PREVIEW_ROWS),
+            'count' => $result->count,
+            'capped' => $result->capped,
         ]]);
     }
 
     private function validated(Request $request): array
     {
         $data = $request->validate([
-            'company_id'   => ['nullable', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
             'franchise_id' => ['nullable', 'uuid'],
-            'name'         => ['required', 'string', 'max:120'],
-            'description'  => ['nullable', 'string', 'max:2000'],
-            'definition'   => ['required', 'array'],
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'definition' => ['required', 'array'],
         ]);
 
         $data['company_id'] ??= null;
@@ -274,15 +308,15 @@ class ReportsController extends Controller
     private function present(SavedReport $report): array
     {
         return [
-            'id'           => $report->id,
-            'name'         => $report->name,
-            'description'  => $report->description,
-            'company_id'   => $report->company_id,
+            'id' => $report->id,
+            'name' => $report->name,
+            'description' => $report->description,
+            'company_id' => $report->company_id,
             'franchise_id' => $report->franchise_id,
-            'definition'   => $report->definition,
+            'definition' => $report->definition,
             // The map's own word for what the report counts ("Branches", not
             // "Franchises"), so the library's Covers column need not guess.
-            'root_label'   => ReportMap::get((string) ($report->definition['root'] ?? ''))['label'] ?? null,
+            'root_label' => ReportMap::get((string) ($report->definition['root'] ?? ''))['label'] ?? null,
         ];
     }
 }
