@@ -1144,7 +1144,8 @@ echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
  * reach.
  */
 $footer = static function () {
-    unset($GLOBALS['ezbizi_chat_drawn']);
+    // A fresh page: nothing drawn, nothing asking for no bubble.
+    unset($GLOBALS['ezbizi_chat_drawn'], $GLOBALS['ezbizi_chat_hidden']);
     ob_start();
     do_action('wp_footer');
 
@@ -1158,6 +1159,21 @@ $GLOBALS['is_admin'] = false;
 
 check('a visitor gets the bubble without anybody placing it', str_contains($footer(), 'Talk to A-1'), true);
 check('floating, not in the flow', str_contains($footer(), 'position:fixed'), true);
+
+// No bubble on a page with the booking widget or the review faces (Jose,
+// 2026-10-09: "chat bubble should be disabled on that page as well as the
+// review one"). The shortcode runs in the content, before the footer.
+$footerAfter = static function (string $shortcode) {
+    unset($GLOBALS['ezbizi_chat_drawn'], $GLOBALS['ezbizi_chat_hidden']);
+    $GLOBALS['sc'][$shortcode]([]);
+    ob_start();
+    do_action('wp_footer');
+
+    return ob_get_clean();
+};
+check('a booking page has no bubble', str_contains($footerAfter('ezbizi_booking'), 'Talk to A-1'), false);
+check('nor has the reviews page', str_contains($footerAfter('ezbizi_review_faces'), 'Talk to A-1'), false);
+check('and the next page has it again', str_contains($footer(), 'Talk to A-1'), true);
 
 // Placed already: the shortcode ran, so the footer must keep out. Two bubbles
 // on one page is two conversations, and the visitor picks one at random.

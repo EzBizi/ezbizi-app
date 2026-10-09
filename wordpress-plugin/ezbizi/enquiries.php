@@ -1045,6 +1045,8 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
  * same robot check and Turnstile box as every EzBizi form.
  */
 function ezbizi_booking_shortcode($atts) {
+    // No chat bubble on a booking page (Jose, 2026-10-09): it sat on the card.
+    $GLOBALS['ezbizi_chat_hidden'] = true;
     $key = ezbizi_public_key();
     $config = ezbizi_widget_config('form');
 
@@ -1193,7 +1195,9 @@ add_action('init', function () {
  * returns nothing and this costs a function call.
  */
 add_action('wp_footer', function () {
-    if (! empty($GLOBALS['ezbizi_chat_drawn'])) {
+    // Drawn already, or a page that wants none: the booking and review-faces
+    // widgets set ezbizi_chat_hidden as they render (Jose, 2026-10-09).
+    if (! empty($GLOBALS['ezbizi_chat_drawn']) || ! empty($GLOBALS['ezbizi_chat_hidden'])) {
         return;
     }
 
