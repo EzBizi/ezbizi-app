@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Http;
 final class PinterestPublisher implements SocialPublisher
 {
     private const API = 'https://api.pinterest.com/v5';
+    private const SANDBOX_API = 'https://api-sandbox.pinterest.com/v5';
     private const TIMEOUT = 30;
 
     public function publish(SocialConnection $connection, PostPayload $post): string
@@ -33,7 +34,11 @@ final class PinterestPublisher implements SocialPublisher
         }
 
         $token = $this->token($connection);
-        $board = $this->firstBoard($token);
+        // The sandbox lists none of its boards back (measured 2026-10-09), so
+        // it names one rather than searching.
+        $board = $this->sandbox() !== null && (string) config('services.pinterest.sandbox_board') !== ''
+            ? (string) config('services.pinterest.sandbox_board')
+            : $this->firstBoard($token);
 
         // Base64 in the body, not a URL. pull_by_url would mean publishing the
         // tenant's media to an unauthenticated public address first, which is a
@@ -90,8 +95,8 @@ final class PinterestPublisher implements SocialPublisher
             $request = Http::withToken($token)->timeout(self::TIMEOUT)->acceptJson();
 
             $response = $method === 'get'
-                ? $request->get(self::API.$path, $payload)
-                : $request->post(self::API.$path, array_filter($payload, fn ($v) => $v !== null));
+                ? $request->get($this->api().$path, $payload)
+                : $request->post($this->api().$path, array_filter($payload, fn ($v) => $v !== null));
         } catch (ConnectionException) {
             throw SocialPublishFailed::network('Pinterest', 'EzBizi could not reach it.');
         }
@@ -108,8 +113,25 @@ final class PinterestPublisher implements SocialPublisher
         return (array) $response->json();
     }
 
+    /** The sandbox token while the app is on Trial access, else null. */
+    private function sandbox(): ?string
+    {
+        $token = config('services.pinterest.sandbox_token');
+
+        return is_string($token) && $token !== '' ? $token : null;
+    }
+
+    private function api(): string
+    {
+        return $this->sandbox() !== null ? self::SANDBOX_API : self::API;
+    }
+
     private function token(SocialConnection $connection): string
     {
+        if (($sandbox = $this->sandbox()) !== null) {
+            return $sandbox;
+        }
+
         $credentials = $connection->getAttribute('credentials');
         $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
 

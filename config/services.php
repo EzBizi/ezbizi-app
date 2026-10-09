@@ -129,6 +129,12 @@ return [
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),
         'redirect' => env('PINTEREST_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/pinterest/callback',
+        // Trial access only: Pinterest refuses Pins on api.pinterest.com until
+        // Standard access, and its sandbox takes only the sandbox token the
+        // portal issues to the app owner. Set both to post there (the review
+        // demo); remove both once Standard access is granted.
+        'sandbox_token' => env('PINTEREST_SANDBOX_TOKEN'),
+        'sandbox_board' => env('PINTEREST_SANDBOX_BOARD'),
     ],
 
     /*
