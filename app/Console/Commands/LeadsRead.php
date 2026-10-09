@@ -57,13 +57,28 @@ class LeadsRead extends Command
                         continue;
                     }
 
+                    // Spam, a vendor, a wrong number: tagged Not a lead so it
+                    // leaves the queue (Jose, 2026-10-09: "check the forms ...
+                    // and tag them appropriately ... this one is clearly not a
+                    // lead"). Only a lead nobody has decided on yet.
+                    $before = $lead->status;
+                    $junk = $answer['classification'] === LeadInsights::ARCHIVE && $before === Lead::STATUS_NEW;
+
                     $lead->forceFill([
+                        'status' => $junk ? Lead::STATUS_NOT_A_LEAD : $before,
                         'classification' => $answer['classification'],
                         'summary' => $answer['summary'] !== '' ? $answer['summary'] : $lead->summary,
                         'classified_at' => now(),
                         'contact_name' => $lead->contact_name ?: $answer['name'],
                         'postal_code' => $lead->postal_code ?: $answer['zip'],
                     ])->save();
+
+                    if ($junk) {
+                        $events->emit('lead.status_changed', $lead, [
+                            'before' => ['status' => $before],
+                            'after' => ['status' => Lead::STATUS_NOT_A_LEAD],
+                        ]);
+                    }
 
                     $events->emit('lead.classified', $lead, ['after' => [
                         'classification' => $lead->classification,

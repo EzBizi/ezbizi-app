@@ -68,6 +68,30 @@ class LeadsReadTest extends TestCase
         $this->assertSame(2, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.classified')->count());
     }
 
+    public function test_spam_is_tagged_not_a_lead(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'ARCHIVE', 'summary' => 'Selling a domain name.', 'name' => null, 'zip' => null,
+        ]]))]);
+        $form = $this->inTenant($this->t['org'], function () {
+            $lead = Lead::create([
+                'organization_id' => $this->t['org']->id, 'source' => Lead::SOURCE_WEBSITE_FORM,
+                'remote_id' => uniqid(), 'status' => Lead::STATUS_NEW, 'received_at' => now(),
+            ]);
+            LeadConversation::create([
+                'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => uniqid(),
+                'channel' => 'FORM', 'participant' => LeadConversation::FROM_CONSUMER, 'occurred_at' => now(),
+                'text' => 'Why should you own IllinoisRoofingCompany.com? Price: $199',
+            ]);
+
+            return $lead;
+        });
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame(Lead::STATUS_NOT_A_LEAD, $this->inTenant($this->t['org'], fn () => $form->refresh()->status));
+    }
+
     public function test_nothing_is_sent_while_switched_off(): void
     {
         config()->set('ezbizi.leads_ai_grok', false);
