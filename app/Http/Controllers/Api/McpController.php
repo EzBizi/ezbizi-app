@@ -31,7 +31,13 @@ class McpController
 
     private const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-    private const MAX_BODY_CHARS = 100_000;
+    /**
+     * The most of a body one tool result carries. Public so a test can lower it.
+     * Over it, a list pages and an object becomes an outline of its keys — never
+     * a cut string, which an agent cannot parse (Rodrigo, 2026-10-09: the widgets
+     * answer was 133,769 characters and came back as broken JSON).
+     */
+    public static int $maxChars = 100_000;
 
     /** Never reachable through call_api: credentials, the platform, and this. */
     private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions'];
@@ -97,8 +103,10 @@ class McpController
             ],
             [
                 'name' => 'call_api',
-                'description' => 'Call one EzBizi API endpoint as the key owner and return its HTTP status '
-                    .'and JSON. Replace {placeholders} in the path with real ids.',
+                'description' => 'Call one EzBizi API endpoint as the key owner. Returns JSON: {status, complete, body}. '
+                    .'Replace {placeholders} in the path with real ids. A large answer is never cut: a list comes back '
+                    .'a page at a time (complete=false, next_offset), and an object too big to send comes back as '
+                    .'`outline` (its keys and sizes) — call again with `pick` set to the part you need.',
                 'inputSchema' => [
                     'type' => 'object',
                     'required' => ['method', 'path'],
@@ -109,6 +117,10 @@ class McpController
                         'body' => ['type' => 'object', 'description' => 'JSON body for writes.'],
                         'view' => ['type' => 'string', 'description' => 'Optional current view: '
                             .'"organization", "company:<id>" or "franchise:<id>".'],
+                        'pick' => ['type' => 'string', 'description' => 'Dot path to return only part of the answer, '
+                            .'e.g. "data.schema" or "data.items.0".'],
+                        'offset' => ['type' => 'integer', 'description' => 'Where a list (the answer, or what pick selects) starts.'],
+                        'limit' => ['type' => 'integer', 'description' => 'How many list items at most.'],
                     ],
                 ],
                 'annotations' => ['destructiveHint' => true],
@@ -171,12 +183,84 @@ class McpController
         );
 
         $status = $response->getStatusCode();
-        $text = (string) $response->getContent();
-        if (strlen($text) > self::MAX_BODY_CHARS) {
-            $text = substr($text, 0, self::MAX_BODY_CHARS)."\n…truncated; narrow the query or paginate.";
+        $result = ['status' => $status] + $this->shape((string) $response->getContent(), $args);
+
+        return $this->text($this->json($result), isError: $status >= 400);
+    }
+
+    /** What fits in one result, always as valid JSON, saying whether it is all of it. */
+    private function shape(string $raw, array $args): array
+    {
+        $value = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return strlen($raw) <= self::$maxChars
+                ? ['complete' => true, 'text' => $raw]
+                : ['complete' => false, 'text' => mb_strcut($raw, 0, self::$maxChars), 'note' => 'Not JSON; the first '.self::$maxChars.' of '.strlen($raw).' bytes.'];
         }
 
-        return $this->text("HTTP {$status}\n{$text}", isError: $status >= 400);
+        $pick = trim((string) ($args['pick'] ?? ''), '.');
+        if ($pick !== '') {
+            foreach (explode('.', $pick) as $key) {
+                if (! is_array($value) || ! array_key_exists($key, $value)) {
+                    return ['complete' => false, 'error' => "Nothing at pick \"{$pick}\".", 'outline' => is_array($value) ? $this->outline($value) : null];
+                }
+                $value = $value[$key];
+            }
+        }
+
+        if (is_array($value) && array_is_list($value)) {
+            return $this->page($value, max(0, (int) ($args['offset'] ?? 0)), isset($args['limit']) ? max(1, (int) $args['limit']) : null, $pick);
+        }
+
+        if (strlen($this->json($value)) <= self::$maxChars) {
+            return ['complete' => true, 'body' => $value];
+        }
+
+        return [
+            'complete' => false,
+            'note' => 'Too large to send whole. Call again with pick set to one of these keys'.($pick !== '' ? " (prefixed \"{$pick}.\")" : '').'; lists page with offset/limit.',
+            'outline' => $this->outline($value),
+        ];
+    }
+
+    /** As many list items as fit, from offset; the rest is one call away. */
+    private function page(array $items, int $offset, ?int $limit, string $pick): array
+    {
+        $slice = array_slice($items, $offset, $limit);
+
+        // The largest prefix that fits: a binary search, so a long list costs log n encodes.
+        [$low, $high] = [0, count($slice)];
+        while ($low < $high) {
+            $mid = intdiv($low + $high + 1, 2);
+            strlen($this->json(array_slice($slice, 0, $mid))) <= self::$maxChars ? $low = $mid : $high = $mid - 1;
+        }
+
+        $next = $offset + $low;
+        $result = ['complete' => $low === count($slice) && $next >= count($items), 'total' => count($items), 'offset' => $offset, 'returned' => $low, 'body' => array_slice($slice, 0, $low)];
+
+        if ($next < count($items)) {
+            $result['next_offset'] = $next;
+        }
+        if ($low === 0 && $slice !== []) {
+            $result['note'] = 'One item is too large to send whole; call again with pick "'.($pick !== '' ? $pick.'.' : '')."{$offset}\".";
+        }
+
+        return $result;
+    }
+
+    /** Each key with its type and size, so an agent can choose what to pick. */
+    private function outline(array $value): array
+    {
+        return collect($value)->map(fn ($v) => array_filter([
+            'type' => is_array($v) ? (array_is_list($v) ? 'list' : 'object') : get_debug_type($v),
+            'chars' => strlen($this->json($v)),
+            'items' => is_array($v) ? count($v) : null,
+        ], fn ($x) => $x !== null))->all();
+    }
+
+    private function json(mixed $value): string
+    {
+        return (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     private function allowed(string $path): bool
