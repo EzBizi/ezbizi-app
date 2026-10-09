@@ -1,3 +1,4 @@
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
@@ -105,6 +106,9 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
   final _composeController = TextEditingController();
   bool _sending = false;
+
+  /// Files are being dragged over the compose pane.
+  bool _dropping = false;
 
   /// The tab the new suggestion is about; null is "Something new / not sure".
   String? _composeModule;
@@ -620,7 +624,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     final theme = Theme.of(context);
     final canCancel = _rows.isNotEmpty;
 
-    return Column(
+    final pane = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // At the start of the line, and only when there is a list to go back
@@ -722,6 +726,69 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
         ),
       ],
     );
+
+    // Files dropped anywhere on the pane attach as Attach does (Rodrigo
+    // Mena's suggestion, 2026-10-07: "enable drag and drop files inside the
+    // suggestion tab"). The pane says so while something is held over it.
+    return DropTarget(
+      enable: !_sending,
+      onDragEntered: (_) => setState(() => _dropping = true),
+      onDragExited: (_) => setState(() => _dropping = false),
+      onDragDone: (details) => _drop(details.files),
+      child: Stack(
+        children: [
+          Positioned.fill(child: pane),
+          if (_dropping)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  key: const Key('suggestion-drop-hint'),
+                  margin: const EdgeInsets.all(12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withValues(
+                      alpha: 0.85,
+                    ),
+                    border: Border.all(color: theme.colorScheme.primary, width: 2),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'Drop to attach',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Dropped files, kept by the same rule as Attach: the kinds in [_accept]
+  /// and no more than [_maxFiles]. A folder is not a file.
+  Future<void> _drop(List<DropItem> items) async {
+    setState(() => _dropping = false);
+    final sorted = sortDrops(
+      [for (final item in items) if (item is! DropItemDirectory) item.name],
+      accept: _accept,
+      room: _maxFiles - _composeFiles.length,
+    );
+    final skipped = sorted.refused + items.whereType<DropItemDirectory>().length;
+    for (final item in items) {
+      if (item is DropItemDirectory || !sorted.keep.contains(item.name)) continue;
+      final bytes = await item.readAsBytes();
+      if (!mounted) return;
+      setState(() => _composeFiles.add(PickedBytes(item.name, bytes)));
+    }
+    if (!mounted) return;
+    setState(() {
+      _actionError = skipped == 0
+          ? null
+          : '$skipped ${skipped == 1 ? 'file was' : 'files were'} not added. '
+                'Pictures, PDFs, or .md and .txt notes, up to $_maxFiles.';
+    });
   }
 
   /// One compose box, reused for a new suggestion and for correcting an
@@ -1068,4 +1135,27 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       ),
     );
   }
+}
+
+/// Which dropped names to keep: the kinds [accept] lists (".png,.pdf,…"), and
+/// no more than [room]. Pure, so the rule is tested without a real drag.
+@visibleForTesting
+({Set<String> keep, int refused}) sortDrops(
+  List<String> names, {
+  required String accept,
+  required int room,
+}) {
+  final kinds = accept.split(',').map((k) => k.trim().toLowerCase()).toSet();
+  final keep = <String>{};
+  var refused = 0;
+  for (final name in names) {
+    final dot = name.lastIndexOf('.');
+    final kind = dot < 0 ? '' : name.substring(dot).toLowerCase();
+    if (keep.length < room && kinds.contains(kind)) {
+      keep.add(name);
+    } else {
+      refused++;
+    }
+  }
+  return (keep: keep, refused: refused);
 }

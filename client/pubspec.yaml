@@ -80,6 +80,7 @@ dependencies:
   # downloads at build time. The web build shows the PDF in the browser's own
   # viewer and never calls it, so pdf.js is never fetched from a CDN.
   printing: ^5.14.2
+  desktop_drop: 0.7.1
 
 dev_dependencies:
   flutter_test:
