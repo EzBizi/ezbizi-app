@@ -1674,6 +1674,60 @@ void main() {
     });
   });
 
+  /// Jose, 2026-10-09: opened rules showed the WhatsApp step with no number
+  /// or template, and would not save. The form keeps that step in its own
+  /// state, which nothing filled from the saved rule.
+  testWidgets('a saved WhatsApp step opens filled in and saves unchanged', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    const step = {
+      'type': 'whatsapp.send',
+      'from': '+18778536971',
+      'template': 'appointment_reminder',
+      'to_field': 'phone',
+      'parameters': ['{{ contact_name }}', 'tomorrow'],
+      'language': 'en',
+    };
+
+    await _pump(
+      tester,
+      _handler(
+        onUpdate: (body) => sent = body,
+        detail: {
+          ..._detail,
+          'actions': [step],
+        },
+        whatsAppTemplates: const [
+          {
+            'from': '+18778536971',
+            'label': 'EzBizi',
+            'templates': [
+              {
+                'name': 'appointment_reminder',
+                'parameters': 2,
+                'preview': 'Hi {{1}}, your visit is {{2}}.',
+              },
+            ],
+          },
+        ],
+      ),
+    );
+
+    await _tap(tester, find.byType(PopupMenuButton<String>));
+    await _tap(tester, find.text('Open and edit'));
+
+    expect(find.text('appointment_reminder'), findsWidgets);
+    expect(
+      tester.widget<TextField>(find.widgetWithText(TextField, 'Blank 2')).controller?.text,
+      'tomorrow',
+    );
+
+    await _tap(tester, find.text('Save changes'));
+
+    expect((sent!['actions'] as List).single, step);
+  });
+
   testWidgets('a saved rule can be read back, and its trigger cannot move', (
     tester,
   ) async {

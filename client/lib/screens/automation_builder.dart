@@ -266,6 +266,9 @@ class _ActionRow {
         'parameters': [
           for (final c in whatsAppValues) c.text,
         ],
+        // Kept when a saved step carried one, so a re-save does not reset it.
+        if (parameter('language').text.trim().isNotEmpty)
+          'language': parameter('language').text.trim(),
       },
       // Phone actions take no form fields — the subject of the event is enough.
       'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
@@ -858,6 +861,22 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             final other => '$other',
           };
         }
+      }
+
+      // The WhatsApp form keeps its own state, not parameter controllers, so a
+      // saved step opened with no number, template or blanks and could not be
+      // saved again (Jose, 2026-10-09).
+      if (row.type == 'whatsapp.send') {
+        final values = action['parameters'] is List
+            ? action['parameters'] as List
+            : const [];
+        row.whatsAppFrom = '${action['from'] ?? ''}';
+        row.whatsAppTemplate = '${action['template'] ?? ''}';
+        row.whatsAppParameters = values.length;
+        row.whatsAppValues.addAll([
+          for (final v in values)
+            TextEditingController(text: '${v ?? ''}')..addListener(_changed),
+        ]);
       }
 
       _attach(row);
