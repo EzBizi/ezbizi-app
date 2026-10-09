@@ -300,6 +300,8 @@ function ezbizi_seo_reindex($id) {
         $repository = YoastSEO()->classes->get('Yoast\WP\SEO\Repositories\Indexable_Repository');
         $builder = YoastSEO()->classes->get('Yoast\WP\SEO\Builders\Indexable_Builder');
         $builder->build_for_id_and_type($id, 'post', $repository->find_by_id_and_type($id, 'post', false));
+        // It also remembers what it printed earlier in this request.
+        YoastSEO()->classes->get('Yoast\WP\SEO\Memoizers\Meta_Tags_Context_Memoizer')->clear();
     } catch (\Throwable $e) {
         // The next save in the editor rebuilds it; the meta is written either way.
     }
