@@ -218,6 +218,7 @@ class ReportsController extends Controller
             'capped' => $result->capped,
             'count' => $result->count,
             'cap' => ReportRunner::ROW_CAP,
+            'total' => $result->total,
         ]]);
     }
 
@@ -281,6 +282,7 @@ class ReportsController extends Controller
             'rows' => array_slice($result->rows, 0, self::PREVIEW_ROWS),
             'count' => $result->count,
             'capped' => $result->capped,
+            'total' => $result->total,
         ]]);
     }
 
