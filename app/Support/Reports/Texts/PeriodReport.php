@@ -57,7 +57,7 @@ final class PeriodReport
     /** The page the PDF is printed from. */
     public function html(Franchise $branch, string $from, string $to): string
     {
-        return $this->page($this->title($branch->name, $from, $to), $this->branch($branch, $from, $to));
+        return $this->page($this->title(BranchName::of($branch), $from, $to), $this->branch($branch, $from, $to));
     }
 
     /** Every branch with Workiz jobs, after a company summary. */
@@ -77,7 +77,7 @@ final class PeriodReport
             $f = $this->figures($branch, $from, $to);
             $pnl = $this->profitAndLoss($branch, $from, $to);
             $summary[] = [
-                $branch->name,
+                BranchName::of($branch),
                 (string) array_sum(array_column($f['created'], 'all')),
                 (string) array_sum(array_column($f['closed'], 'done')),
                 (string) array_sum(array_column($f['closed'], 'canceled')),
@@ -88,7 +88,7 @@ final class PeriodReport
                 $pnl['income'] ? self::percent($pnl['net'] / $pnl['income']) : '—',
             ];
 
-            $body .= '<div style="page-break-before:always"><h1>'.e($branch->name).'</h1>'
+            $body .= '<div style="page-break-before:always"><h1>'.e(BranchName::of($branch)).'</h1>'
                 .$this->sections($f, $pnl).'</div>';
         }
 
