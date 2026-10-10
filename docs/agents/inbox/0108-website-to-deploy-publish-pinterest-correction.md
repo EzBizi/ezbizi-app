@@ -19,3 +19,12 @@ Gates at 710b8887:
 
 Verify live: `curl -s https://www.ezbizi.com/social-media/ | grep -c "four of the nine send today"` -> 1,
 and `grep -c "Pinterest and TikTok send today"` on `/` -> 0.
+
+---
+**Addendum 2026-10-10 (website daily):** still not live — `/` matches `ef8d1480`,
+`/social-media/` matches `7349e798`; production still has the Pinterest
+sandbox token set, so the correction stands. Publish `www/` at the commit that
+carries this addendum instead: it adds `/privacy/` + `/terms/` SMS frequency
+aligned to the app (Phone's `0101`) and two `sitemap.xml` lastmod dates.
+Gates there: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+ok - 4 terms, none present. Verify: `curl -s https://www.ezbizi.com/terms/ | grep -c "fewer than 5 messages per month"` -> 1.

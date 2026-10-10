@@ -91,7 +91,7 @@ touches apps, monitoring, social, Google or mail.
 | "We do not aggregate or anonymise Google user data … not combine it across customers" | `/privacy/` | No cross-organization read in `app/Services/Leads/`, `app/Support/Leads/`, `app/Services/Ads/`. **Filed with Google against `ezbizi-506117`, so a reviewer can re-read it.** Any benchmark, "average in your industry" or analytics rollup is a COMPLIANCE change and the policy moves first. |
 | "cost, clicks, impressions, interactions and conversions, and the value of those conversions" ("such as") | `/privacy/` | `app/Services/Ads/CampaignPerformance.php` — `REQUIRED_METRICS` + `OPTIONAL_METRICS`. **Went short on 2026-09-24** (`5b27593b` added six optional metrics) and was caught 09-28; now "such as", so a further widening cannot make it an incomplete list. A new *kind* of data (not a metric) still needs a clause. |
 | "— if your organization turns it on — a copy of a notification" | `/privacy/` | `SettingRegistry` → `notifications.email_enabled` → `default:`. **Flipped `true` → `false` on 2026-09-28** (Jose's ruling, deployed by `0.0.0304`), which made "unless your organization turns it off" false from that deploy until this fix. If the default goes back to `true`, the word goes back to "unless". |
-| "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. **RUN 2026-09-22, AND THE ROW FAILED ITS OWN TEST ON ITS FIRST RUN.** STOP and HELP do match, word for word, in all three. The frequency string does not: the site says *"typically fewer than five a month"* and `sms_codes_card.dart:328` says *"typically fewer than 5 messages per month"*. Both are true and they are not the same words, which is the state this row was written to forbid. **It was NOT corrected on the site, deliberately**, and the reason is the only interesting part: the toll-free campaign is in carrier review, the consent language cited in a campaign filing is part of that filing, and nobody here knows which of the two wordings was filed. Editing a published consent sentence mid-review to match an app is a change to evidence somebody is currently reading. **The next person to answer this owns the campaign, not this page** — asked as `0059`. Align to whichever was filed; do not align to whichever is prettier. |
+| "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. **RUN 2026-09-22, AND THE ROW FAILED ITS OWN TEST ON ITS FIRST RUN.** STOP and HELP do match, word for word, in all three. The frequency string does not: the site says *"typically fewer than five a month"* and `sms_codes_card.dart:328` says *"typically fewer than 5 messages per month"*. Both are true and they are not the same words, which is the state this row was written to forbid. **It was NOT corrected on the site, deliberately**, and the reason is the only interesting part: the toll-free campaign is in carrier review, the consent language cited in a campaign filing is part of that filing, and nobody here knows which of the two wordings was filed. Editing a published consent sentence mid-review to match an app is a change to evidence somebody is currently reading. **The next person to answer this owns the campaign, not this page** — asked as `0059`. Align to whichever was filed; do not align to whichever is prettier. **ANSWERED 2026-10-08 by Phone (`0101`): neither wording was filed** (the toll-free verification has no frequency sentence and is TWILIO_REJECTED anyway). **Aligned 2026-10-10:** `/privacy/` and `/terms/` now read *"typically fewer than 5 messages per month"*, the app's words. All three now match. |
 | "Either stops the texts; neither needs a password" | `/terms/` | `SmsCodesController::disable()` takes only `$request->user()`. Load-bearing: add a confirmation step and this page is false. |
 | "Facebook Pages, Instagram, Threads and TikTok send today" · "TikTok drafts, not the profile" · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
@@ -2638,6 +2638,30 @@ networks a customer connects.
 **Deliberately unpublished:** Report Builder, HR signature fix, plus everything
 held on 10-08. Flagged to Marketing as `0107`: the sandbox token routes every
 tenant's Pinterest post to the app owner's sandbox.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, version 0.0.0363; WordPress directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
+
+## 2026-10-10: nothing shipped, and the Pinterest correction is still unpublished
+
+**`main` has not moved since `c30238b2` (2026-10-09 19:07); production is
+`0.0.0404` at `25dbe9b3`.** Five pages, `robots.txt` and `sitemap.xml` were
+byte-identical to `www/`; `/` matches `ef8d1480` and `/social-media/` matches
+`7349e798` exactly — a stale deploy, not a hand edit. **So `710b8887` is not
+live and the site still says Pinterest sends.** Re-measured on production:
+`services.pinterest.sandbox_token` still set; Pinterest `failed` 2, `sent` 1
+(sandbox); `facebook_page` `sent` 1; nothing for LinkedIn/YouTube/X/Bluesky.
+The correction is still right. `0108` (publish ask) is still in the inbox.
+
+**Changed: SMS frequency aligned to the app**, on Phone's `0101` — see the
+SMS row in *Load-bearing sentences*. `/privacy/` and `/terms/` "Last updated"
+and `dateModified` moved to 2026-10-10, and their `sitemap.xml` `lastmod`
+(which had lagged the page edits since 10-02 / 09-03) moved with them.
 
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
