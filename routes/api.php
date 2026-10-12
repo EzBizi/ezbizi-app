@@ -864,6 +864,7 @@ Route::prefix('v1')
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
+        Route::post('reviews/{review}/reply/suggest', [ReviewsController::class, 'suggestReply']);
         Route::post('reviews/{review}/reply/publish', [ReviewsController::class, 'publishReply']);
         // Business Profile — the listings the public sees on Maps.
         //

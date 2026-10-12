@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
@@ -54,6 +55,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// could be open on several rows at once is a dialog with extra steps.
   String? _confirmingPublishId;
   final _draft = TextEditingController();
+
+  /// The words AI suggested, while the box still holds them unchanged.
+  String? _aiDraft;
   bool _busy = false;
 
   @override
@@ -122,19 +126,42 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final data = response.data as Map<String, dynamic>? ?? const {};
     final created = (data['created'] as num?)?.toInt() ?? 0;
 
-    setState(() => _notice = created > 0
-        ? '$created new ${created == 1 ? 'review' : 'reviews'}.'
-        : 'Nothing new.');
+    setState(
+      () => _notice = created > 0
+          ? '$created new ${created == 1 ? 'review' : 'reviews'}.'
+          : 'Nothing new.',
+    );
 
     await _load();
+  }
+
+  /// Grok's words into the box, for a person to edit (AI item 11).
+  Future<void> _suggest(Map<String, dynamic> review) async {
+    setState(() => _busy = true);
+    final response = await widget.api.post(
+      '/reviews/${review['id']}/reply/suggest',
+      const {},
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!response.ok) {
+      setState(() => _notice = response.message);
+      return;
+    }
+    final body = (response.data as Map)['body'] as String? ?? '';
+    setState(() {
+      _draft.text = body;
+      _aiDraft = body;
+    });
   }
 
   Future<void> _saveDraft(Map<String, dynamic> review) async {
     if (_draft.text.trim().isEmpty) return;
 
     setState(() => _busy = true);
-    final response = await widget.api
-        .put('/reviews/${review['id']}/reply', {'body': _draft.text.trim()});
+    final response = await widget.api.put('/reviews/${review['id']}/reply', {
+      'body': _draft.text.trim(),
+    });
     if (!mounted) return;
     setState(() => _busy = false);
 
@@ -143,7 +170,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       return;
     }
 
-    setState(() => _notice = 'Draft saved. Nothing is public until you publish it.');
+    setState(
+      () => _notice = 'Draft saved. Nothing is public until you publish it.',
+    );
     await _load();
   }
 
@@ -162,14 +191,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     setState(() => _confirmingPublishId = null);
 
     setState(() => _busy = true);
-    final response =
-        await widget.api.post('/reviews/${review['id']}/reply/publish', const {});
+    final response = await widget.api.post(
+      '/reviews/${review['id']}/reply/publish',
+      const {},
+    );
     if (!mounted) return;
     setState(() => _busy = false);
 
-    setState(() => _notice = response.ok
-        ? 'Reply published.'
-        : response.message);
+    setState(
+      () => _notice = response.ok ? 'Reply published.' : response.message,
+    );
 
     await _load();
   }
@@ -197,9 +228,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilterChip(
-                label: Text(_unanswered > 0
-                    ? 'Unanswered ($_unanswered)'
-                    : 'Unanswered'),
+                label: Text(
+                  _unanswered > 0 ? 'Unanswered ($_unanswered)' : 'Unanswered',
+                ),
                 selected: _onlyUnanswered,
                 onSelected: (v) {
                   setState(() => _onlyUnanswered = v);
@@ -231,8 +262,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing
                     ? const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.sync, size: 18),
                 label: Text(_syncing ? 'Fetching…' : 'Fetch new'),
               ),
@@ -250,7 +283,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               children: [
-                Expanded(child: Text(_notice!, style: theme.textTheme.bodySmall)),
+                Expanded(
+                  child: Text(_notice!, style: theme.textTheme.bodySmall),
+                ),
                 IconButton(
                   icon: const Icon(Icons.close, size: 16),
                   onPressed: () => setState(() => _notice = null),
@@ -278,16 +313,19 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
     if (!_connected) {
       title = 'No Business Profile connected';
-      body = 'Reviews come from a Google Business Profile this organization '
+      body =
+          'Reviews come from a Google Business Profile this organization '
           'connects itself. Until one is connected there is nothing to show — '
           'this is not a business without reviews.';
     } else if (_onlyUnanswered) {
       title = 'Everything has been answered';
-      body = 'No review is waiting for a reply. Turn off the Unanswered filter '
+      body =
+          'No review is waiting for a reply. Turn off the Unanswered filter '
           'to read the rest.';
     } else {
       title = 'No reviews yet';
-      body = 'Nothing has been left on the connected profile for these filters.';
+      body =
+          'Nothing has been left on the connected profile for these filters.';
     }
 
     return Center(
@@ -302,17 +340,23 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               color: theme.colorScheme.outline,
             ),
             const SizedBox(height: 12),
-            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 8),
             Text(
               body,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
             // §4, same as Leads: do not draw a button whose only outcome
             // is a 403.
-            if (!_connected && (widget.session.me?.can('reviews.edit') ?? false)) ...[
+            if (!_connected &&
+                (widget.session.me?.can('reviews.edit') ?? false)) ...[
               const SizedBox(height: 18),
               // Same reasoning as Leads: the module that reads the profile is
               // the one that offers to connect it, gated on `reviews.edit`.
@@ -347,8 +391,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             padding: const EdgeInsets.all(16),
             child: Text(
               '$_total ${_total == 1 ? 'review' : 'reviews'}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           );
         }
@@ -374,7 +419,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  (review['reviewer_name'] as String?)?.trim().isNotEmpty == true
+                  (review['reviewer_name'] as String?)?.trim().isNotEmpty ==
+                          true
                       ? review['reviewer_name'] as String
                       : 'A Google user',
                   style: theme.textTheme.titleSmall,
@@ -388,14 +434,25 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   child: Text('edited', style: theme.textTheme.bodySmall),
                 ),
               if (published)
-                Icon(Icons.check_circle, size: 16, color: theme.colorScheme.primary)
+                Icon(
+                  Icons.check_circle,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                )
               else if (reply != null)
-                Icon(Icons.edit_note, size: 18, color: theme.colorScheme.outline),
+                Icon(
+                  Icons.edit_note,
+                  size: 18,
+                  color: theme.colorScheme.outline,
+                ),
             ],
           ),
           if ((review['comment'] as String?)?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 6),
-            Text(review['comment'] as String, style: theme.textTheme.bodyMedium),
+            Text(
+              review['comment'] as String,
+              style: theme.textTheme.bodyMedium,
+            ),
           ],
           if (published) ...[
             const SizedBox(height: 10),
@@ -408,10 +465,15 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Your published reply', style: theme.textTheme.labelSmall),
+                  Text(
+                    'Your published reply',
+                    style: theme.textTheme.labelSmall,
+                  ),
                   const SizedBox(height: 4),
-                  Text(reply!['body'] as String? ?? '',
-                      style: theme.textTheme.bodySmall),
+                  Text(
+                    reply!['body'] as String? ?? '',
+                    style: theme.textTheme.bodySmall,
+                  ),
                 ],
               ),
             ),
@@ -420,8 +482,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             const SizedBox(height: 8),
             Text(
               reply['failure_reason'] as String,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.error),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ],
           if (!published) ...[
@@ -439,8 +502,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 ),
               )
             else ...[
+              if (_aiDraft != null && _draft.text == _aiDraft)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: AiMark.badge(
+                    'Draft by AI',
+                    tooltip:
+                        'Written by AI from the review. Edit it before you publish.',
+                  ),
+                ),
               TextField(
                 controller: _draft,
+                onChanged: (_) => setState(() {}),
                 maxLines: 4,
                 maxLength: 4096,
                 decoration: const InputDecoration(
@@ -452,10 +525,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               Row(
                 children: [
                   TextButton(
-                    onPressed: _busy ? null : () => setState(() => _openId = null),
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _openId = null),
                     child: const Text('Cancel'),
                   ),
                   const Spacer(),
+                  TextButton.icon(
+                    key: ValueKey('review-ai-draft-${review['id']}'),
+                    icon: const Icon(Icons.auto_awesome, size: 16),
+                    label: const Text('Draft with AI'),
+                    onPressed: _busy ? null : () => _suggest(review),
+                  ),
                   TextButton(
                     onPressed: _busy ? null : () => _saveDraft(review),
                     child: const Text('Save draft'),
@@ -488,7 +569,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                             onPressed: _busy
                                 ? null
                                 : () => setState(
-                                    () => _confirmingPublishId = null),
+                                    () => _confirmingPublishId = null,
+                                  ),
                             child: const Text('Not yet'),
                           ),
                           const Spacer(),
