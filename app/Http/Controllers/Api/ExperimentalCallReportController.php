@@ -188,7 +188,7 @@ class ExperimentalCallReportController extends Controller
             ]);
         }
 
-        $legs = $calls->forPeriod($start, $end);
+        $legs = $calls->forPeriod($start, $end, outbound: true);
 
         $conversions = CallReportConversion::query()
             ->with('converter:id,name')

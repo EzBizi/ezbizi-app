@@ -146,9 +146,14 @@ final class RingCentralCallLog
      * reused; only today is read live. `ezbizi:warm-call-log` reads yesterday
      * each night, so a week or a month is normally all cache.
      *
+     * Inbound only unless $outbound: Jose, 2026-10-12, wants missed calls told
+     * apart "between inbound and outbound", and only the report shows
+     * outbound ones. Transcription, labels and the missed-call alert stay on
+     * customers calling in.
+     *
      * @return list<array<string, mixed>>
      */
-    public function forPeriod(CarbonImmutable $start, CarbonImmutable $end): array
+    public function forPeriod(CarbonImmutable $start, CarbonImmutable $end, bool $outbound = false): array
     {
         $calls = [];
         $today = CarbonImmutable::now($start->getTimezone())->startOfDay();
@@ -161,13 +166,14 @@ final class RingCentralCallLog
                 : $fetch())];
         }
 
-        return $calls;
+        return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));
     }
 
     /** One finished day's cache key; the zone is in it because a day's edges are. */
     public static function dayKey(CarbonImmutable $day): string
     {
-        return 'ringcentral-calls:'.$day->toDateString().':'.$day->getTimezone()->getName();
+        // v2: both directions since 2026-10-12; a v1 day holds inbound only.
+        return 'ringcentral-calls-v2:'.$day->toDateString().':'.$day->getTimezone()->getName();
     }
 
     /**
@@ -182,7 +188,6 @@ final class RingCentralCallLog
                 ->acceptJson()
                 ->get($server.'/restapi/v1.0/account/~/call-log', [
                     'view' => 'Detailed',
-                    'direction' => 'Inbound',
                     'dateFrom' => $from,
                     'dateTo' => $to,
                     'perPage' => 1000,
@@ -270,6 +275,7 @@ final class RingCentralCallLog
 
         return [
             'id' => isset($record['id']) ? (string) $record['id'] : null,
+            'direction' => (string) ($record['direction'] ?? 'Inbound'),
             'started_at' => $record['startTime'] ?? null,
             'from' => $record['from']['phoneNumber'] ?? null,
 

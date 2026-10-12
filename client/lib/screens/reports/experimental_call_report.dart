@@ -107,6 +107,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Why a missed call reached nobody, when the list is narrowed to one.
   String? _nobodyFilter;
 
+  /// Inbound or outbound, inside Missed (Jose, 2026-10-12: "on missed calls
+  /// i want also to differentiate between inbound and outbound calls").
+  String? _directionFilter;
+
   /// 'new' or 'existing' client, or null for both: the second half of the
   /// Calls bar.
   String? _clientFilter;
@@ -744,9 +748,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           )
           .toList();
 
-  /// The calls that reached nobody.
-  List<Map<String, dynamic>> _nobody(List<Map<String, dynamic>> calls) =>
-      calls.where((c) => c['outcome'] != 'answered').toList();
+  /// The calls that reached nobody: customers calling in. Outbound calls
+  /// nobody picked up are listed beside them in Missed, never counted as a
+  /// missed customer.
+  List<Map<String, dynamic>> _nobody(List<Map<String, dynamic>> calls) => calls
+      .where((c) => c['outcome'] != 'answered' && !_isOutbound(c))
+      .toList();
+
+  /// Our calls out that nobody picked up.
+  List<Map<String, dynamic>> _outbound(List<Map<String, dynamic>> calls) =>
+      calls.where(_isOutbound).toList();
+
+  static bool _isOutbound(Map<String, dynamic> c) =>
+      c['direction'] == 'Outbound';
 
   Widget _notBookedCard(
     BuildContext context,
@@ -1037,8 +1051,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     ) => switch (result) {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
-      'missed' => _nobody(from),
-      _ => from,
+      'missed' => [..._nobody(from), ..._outbound(from)],
+      _ => from.where((c) => !_isOutbound(c)).toList(),
     };
 
     final mine = byClient(_clientFilter);
@@ -1087,6 +1101,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             _result = key;
             _labelFilter = null;
             _nobodyFilter = null;
+            _directionFilter = null;
           }),
       ]),
       group('Client', [
@@ -1111,6 +1126,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ),
       ]),
       if (_result == 'missed')
+        group('Direction', [
+          chip(
+            'every-direction',
+            'All',
+            _directionFilter == null,
+            () => _directionFilter = null,
+          ),
+          chip(
+            'inbound',
+            'Inbound ${_nobody(mine).length}',
+            _directionFilter == 'inbound',
+            () => _directionFilter = 'inbound',
+          ),
+          chip(
+            'outbound',
+            'Outbound ${_outbound(mine).length}',
+            _directionFilter == 'outbound',
+            () {
+              _directionFilter = 'outbound';
+              _nobodyFilter = null;
+            },
+          ),
+        ]),
+      if (_result == 'missed' && _directionFilter != 'outbound')
         group('Why', [
           for (final entry in _outcomes.entries)
             // A reason with no calls is still offered, at zero, so the
@@ -1162,9 +1201,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           'not_booked' => _notBooked(context, mine, conversions),
           'missed' => _everyCall(
             context,
-            _nobodyFilter == null
-                ? shown
-                : shown.where((c) => c['outcome'] == _nobodyFilter).toList(),
+            shown
+                .where(
+                  (c) => switch (_directionFilter) {
+                    'inbound' => !_isOutbound(c),
+                    'outbound' => _isOutbound(c),
+                    _ => true,
+                  },
+                )
+                .where(
+                  (c) => _nobodyFilter == null || c['outcome'] == _nobodyFilter,
+                )
+                .toList(),
           ),
           _ when _clientFilter == 'existing' => _existingCalls(context, shown),
           _ => _everyCall(context, shown),
@@ -1780,7 +1828,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     // Said in words. Jose, 2026-09-24: "hard to understand what the icons
     // mean" - an arrow and a bell told nobody which was which.
-    final status = by == null
+    final status = _isOutbound(call)
+        ? 'Called by ${call['placed_by'] ?? 'someone'} · no answer'
+        : by == null
         ? (_outcomes[call['outcome']] ?? 'Nobody answered')
         : name == null
         ? 'Answered by $by'
@@ -1796,13 +1846,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     final reason = _existingLabels[_labelOf(call, _labeller)];
     final badges = [
+      if (by == null)
+        _isOutbound(call)
+            ? const StatusPill('Outbound', tone: Tone.info)
+            : const StatusPill('Inbound'),
       if (call['queue'] == _newQueue)
         const StatusPill('New client', tone: Tone.info)
       else if (call['queue'] == _existingQueue)
         const StatusPill('Existing client'),
       if (by == null)
         StatusPill(
-          _outcomes[call['outcome']] ?? 'Nobody answered',
+          _isOutbound(call)
+              ? 'No answer'
+              : _outcomes[call['outcome']] ?? 'Nobody answered',
           tone: Tone.caution,
         )
       else if (call['queue'] == _newQueue)
