@@ -105,5 +105,15 @@ class MetaAdsTest extends TestCase
         $this->assertSame('12.50', (string) $rows[0]->spend);
         // "lead", not every action: 3, not 23.
         $this->assertSame(3, (int) $rows[0]->leads);
+
+        // Reports' read keeps totals and regions apart, in cents.
+        $ads = app(MetaAdInsights::class);
+        $totals = $ads->rows($t['org'], '2026-10-01', '2026-10-31');
+        $regions = $ads->regionRows($t['org'], '2026-10-01', '2026-10-31');
+        $this->assertCount(1, $totals);
+        $this->assertSame(1250, $totals[0]['spend_minor']);
+        $this->assertNull($totals[0]['region']);
+        $this->assertSame('Texas', $regions[0]['region']);
+        $this->assertSame([], $ads->regionRows($t['org'], '2024-01-01', '2024-12-31'));
     }
 }

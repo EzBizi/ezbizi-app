@@ -4,10 +4,12 @@ namespace App\Support\Social;
 
 use App\Models\MetaAdCampaign;
 use App\Models\MetaAdInsight;
+use App\Models\Organization;
 use App\Models\ServiceGroup;
 use App\Models\SocialConnection;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -120,6 +122,62 @@ final class MetaAdInsights
         }
 
         return $written;
+    }
+
+    /**
+     * Reports' read: one row per day x campaign, the day's totals only.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function rows(Organization $org, string $from, string $to): array
+    {
+        return $this->read($org, $from, $to, false);
+    }
+
+    /**
+     * Reports' "where viewers were": one row per day x campaign x region. Never
+     * add these to rows() - they are the same money split another way. Only
+     * about the last 13 months exist; older dates return nothing, not zeros.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function regionRows(Organization $org, string $from, string $to): array
+    {
+        return $this->read($org, $from, $to, true);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function read(Organization $org, string $from, string $to, bool $byRegion): array
+    {
+        return DB::table('meta_ad_insights as i')
+            ->join('social_connections as c', 'c.id', '=', 'i.connection_id')
+            ->leftJoin('meta_ad_campaigns as m', fn ($j) => $j->on('m.connection_id', '=', 'i.connection_id')->on('m.campaign_id', '=', 'i.campaign_id'))
+            ->leftJoin('service_groups as g', 'g.id', '=', 'm.service_group_id')
+            ->where('i.organization_id', $org->getKey())
+            ->whereBetween('i.date', [$from, $to])
+            ->where('i.region', $byRegion ? '!=' : '=', '')
+            ->groupBy('i.date', 'c.remote_id', 'i.campaign_id', 'm.name', 'm.franchise_id', 'm.state', 'g.name', 'i.region', 'i.currency')
+            ->orderBy('i.date')
+            ->selectRaw('i.date, c.remote_id as ad_account_id, i.campaign_id, m.name as campaign_name, m.franchise_id as branch_id, '
+                .'m.state, g.name as category, i.region, i.currency, ROUND(SUM(i.spend) * 100) as spend_minor, SUM(i.leads) as results, '
+                .'SUM(i.clicks) as clicks, SUM(i.impressions) as impressions')
+            ->get()
+            ->map(fn ($r) => [
+                'date' => (string) $r->date,
+                'ad_account_id' => $r->ad_account_id,
+                'campaign_id' => $r->campaign_id,
+                'campaign_name' => $r->campaign_name,
+                'branch_id' => $r->branch_id,
+                'state' => $r->state,
+                'category' => $r->category,
+                'region' => $byRegion ? $r->region : null,
+                'currency' => $r->currency,
+                'spend_minor' => (int) $r->spend_minor,
+                'results' => (int) $r->results,
+                'result_type' => 'lead',
+                'clicks' => (int) $r->clicks,
+                'impressions' => (int) $r->impressions,
+            ])->all();
     }
 
     /** A two-letter state named in a campaign name: "Texas" or a standalone "TX". */

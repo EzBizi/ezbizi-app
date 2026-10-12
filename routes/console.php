@@ -162,6 +162,7 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlapping(30);
 
 /*
  * Who booked each new job, which only v1 says (Reports, 2026-10-06): a few
