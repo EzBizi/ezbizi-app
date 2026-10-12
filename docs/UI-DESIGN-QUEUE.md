@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **sent 2026-10-12, waiting** (`docs/previews/monitoring-files-explorer-layouts.html`)
+### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **Jose: "as u recommend on everything" — 1 and 4** (`docs/previews/monitoring-files-explorer-layouts.html`)
 
 Jose 2026-10-12, via Monitoring: *"have the files system require the authenticator code as well for extra security, and also
 if possible, can we make it sort of like windows explorer, where for example it shows previews of pictures, etc ? as well as
@@ -2980,6 +2980,14 @@ pill and Lock now sit in the toolbar, and the lock card stands in the pane in pl
 quick links become chips, and the preview opens in a side panel. **3**: one tree, computers with their quick links under
 them. Phone **4** (recommended): the code, the computer, quick-link tiles, the list, then a picture full width; **5**: chips;
 **6**: tree. Owner: Monitoring (`files_tab.dart`); built once the server lands.
+
+Built, first pass, on today's service (the lock and quick links follow once Monitoring's server lands). Once chosen, the
+computer is a picker (MenuAnchor) over three panes. Quick access lists This PC and the drives remembered from the roots. The
+details list has Name / Modified / Size, sorting by column with folders first, type icons, and dates in the viewer's format.
+The preview pane beside it from 1000 px: choosing a picture fetches it once (≤5 MB, logged as a download) and shows it;
+anything else shows its type, size, date, where it is, and Download. Below 1000 px, and on a phone, the chosen file stands in
+for the list with "Back to <folder>". Tapping a file now chooses it, as in Explorer, and Download is the button in what it
+shows.
 
 ### 78 · Reports · Performance · tables instead of sentences — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-tables-layouts.html`)
 
