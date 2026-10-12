@@ -2670,3 +2670,27 @@ Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+## 2026-10-12: nothing shipped, and the Pinterest correction is ~3 days unpublished
+
+**`main` has not moved since `5a64288f` (2026-10-10 19:05); production is
+`0.0.0404` at `25dbe9b3`.** Live `/` matches `ef8d1480`, `/privacy/`
+`41cc00bd`, `/terms/` `d8d79d49`, `/social-media/` `7349e798`, `sitemap.xml`
+`d3165650` — each exactly, so a stale deploy (live `Last-Modified` 2026-10-09
+20:19 UTC), not a hand edit. `710b8887` and `5a64288f` are not live: the site
+still says Pinterest sends. `/download/`, `/google-ads-api/`,
+`/delete-account/`, `robots.txt` are byte-identical to `www/`.
+
+**The deploy desk was reachable this run** — `send_message` to
+`local_072bee23…` delivered — and was asked to publish and for row counts
+(Pinterest sandbox token, `sent` rows by provider, the do-not-list). No answer
+before this entry was written; nothing on the site changed.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0363; WordPress
+directory 1.10.0.
+
+Still owed: lead counts by source with `is_test = 0` (incl. facebook /
+instagram), the resolved ring-group fraction, the Training row counts, the
+Scheduling count, an `estimates` row count.
