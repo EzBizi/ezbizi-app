@@ -2,6 +2,7 @@
 
 namespace App\Support\Ai;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
@@ -60,6 +61,7 @@ final class GrokCli
 
         if (! $result->successful()) {
             // The CLI's own error, cut short; never the prompt.
+            self::failed('exit '.$result->exitCode().': '.mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
             throw new RuntimeException('The Grok CLI failed (exit '.$result->exitCode().'): '
                 .mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
         }
@@ -68,10 +70,19 @@ final class GrokCli
         $answer = json_decode($result->output(), true)['structuredOutput'] ?? null;
 
         if (! is_array($answer)) {
+            self::failed('no structured output');
             throw new RuntimeException('The Grok CLI answered without structured output: '
                 .mb_substr(trim($result->output()), 0, 200));
         }
 
+        Cache::forever('grok.last_ok', now()->toIso8601String());
+
         return $answer;
+    }
+
+    /** Read by ezbizi:check-grok, which alerts when failures outlast successes. */
+    private static function failed(string $why): void
+    {
+        Cache::forever('grok.last_failure', ['at' => now()->toIso8601String(), 'why' => $why]);
     }
 }
