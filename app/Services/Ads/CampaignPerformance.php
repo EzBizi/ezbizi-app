@@ -118,8 +118,11 @@ class CampaignPerformance
         Carbon $from,
         Carbon $to,
         bool $withCampaigns = true,
+        ?string $token = null,
     ): array {
-        $token = GoogleToken::forConnection($connection, 'google_ads');
+        // A manager's token reads its clients too; the roll-up passes it for a
+        // client with no row of its own.
+        $token ??= GoogleToken::forConnection($connection, 'google_ads');
 
         // Dates are the ACCOUNT's, not the server's. segments.date is evaluated
         // in the customer's own time zone, so a range built from a UTC "today"
@@ -345,7 +348,7 @@ class CampaignPerformance
      * on is the intersection with the accounts we actually hold a token for,
      * which is a smaller set and is stated on screen rather than implied.
      *
-     * @return list<array{id: string, name: string}>
+     * @return list<array{id: string, name: string, status: string}>
      */
     public function childrenOf(SocialConnection $connection): array
     {
@@ -374,7 +377,11 @@ class CampaignPerformance
                 continue;
             }
 
-            $out[] = ['id' => $id, 'name' => (string) ($client['descriptiveName'] ?? $id)];
+            $out[] = [
+                'id' => $id,
+                'name' => (string) ($client['descriptiveName'] ?? $id),
+                'status' => (string) ($client['status'] ?? 'ENABLED'),
+            ];
         }
 
         return $out;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../widgets/dashboard_chart.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
@@ -239,6 +240,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   List<dynamic>? _rollup;
   int _rollupChildren = 0;
   int _rollupNotConnected = 0;
+  int _rollupCanceled = 0;
 
   /// Which metric the chart draws. Three series share no scale, so one at a
   /// time is the only honest way to draw them on one axis.
@@ -432,6 +434,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       _rollup = (body['data'] as List? ?? const []);
       _rollupChildren = (body['children_total'] as num?)?.toInt() ?? 0;
       _rollupNotConnected = (body['not_connected'] as num?)?.toInt() ?? 0;
+      _rollupCanceled = (body['canceled'] as num?)?.toInt() ?? 0;
       return;
     }
 
@@ -640,11 +643,17 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 final a = shown[i];
                 final id = a['connection_id'] as String?;
                 final selected = id != null && id == _selected;
+                // A manager in its own colour (Jose, 2026-10-12), so it stands
+                // apart from the accounts beneath it.
+                final manager = a['is_manager'] == true
+                    ? ToneColours.of(context, Tone.info)
+                    : null;
 
                 return ListTile(
                   key: ValueKey('ads-account-$id'),
                   dense: true,
                   selected: selected,
+                  tileColor: manager?.fill,
                   selectedTileColor: theme.colorScheme.primaryContainer,
                   title: Row(
                     children: [
@@ -653,6 +662,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                           (a['name'] as String?) ?? 'Google Ads account',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          style: manager == null || selected
+                              ? null
+                              : TextStyle(
+                                  color: manager.ink,
+                                  fontWeight: FontWeight.w600,
+                                ),
                         ),
                       ),
                       // A manager reports on everything beneath it rather than
@@ -664,7 +679,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                         Icon(
                           Icons.account_tree_outlined,
                           size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
+                          color: manager?.ink,
                         ),
                       ],
                     ],
@@ -1705,11 +1720,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             Text('All accounts under this manager',
                 style: theme.textTheme.titleMedium),
             Text(
-              _rollupNotConnected == 0
-                  ? '${rows.length} of $_rollupChildren accounts'
-                  : '${rows.length} of $_rollupChildren accounts — '
-                        '$_rollupNotConnected not connected to EzBizi, so they are '
-                        'not in these totals',
+              [
+                if (_rollupNotConnected == 0)
+                  '${rows.length} of $_rollupChildren accounts'
+                else
+                  '${rows.length} of $_rollupChildren accounts — '
+                      '$_rollupNotConnected could not be read, so they are '
+                      'not in these totals',
+                if (_rollupCanceled > 0)
+                  '$_rollupCanceled canceled ${_rollupCanceled == 1 ? 'account' : 'accounts'} not shown',
+              ].join(' · '),
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 14),

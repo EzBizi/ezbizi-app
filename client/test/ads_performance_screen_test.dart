@@ -822,7 +822,7 @@ void main() {
     // And it says what the total does NOT cover. A figure quietly covering two
     // of three accounts reads as a complete one.
     expect(
-      find.textContaining('not connected'),
+      find.textContaining('could not be read'),
       findsOneWidget,
       reason: 'the reader cannot ask about an omission nothing tells them about',
     );

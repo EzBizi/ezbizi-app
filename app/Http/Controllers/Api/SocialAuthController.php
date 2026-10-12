@@ -235,6 +235,7 @@ class SocialAuthController extends Controller
                         // every connect so a row that gained a direct route
                         // drops the manager and one that lost it gains one.
                         'login_customer_id' => $account->loginCustomerId,
+                        'is_manager' => $account->isManager,
                     ]);
 
                     // Only Meta issues one, and only Meta's callbacks need it.
