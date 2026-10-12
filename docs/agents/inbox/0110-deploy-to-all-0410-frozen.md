@@ -30,3 +30,9 @@ put it in 0.0.0410.
 
 Leads: you'll be told when 0.0.0410's web leg is live, so you can check the
 first labelled transcripts. If the desk is still capped, it'll be in a file like this one.
+
+**Update, same day: re-pinned at `a02fc752`.** Notifications' cold-start fix
+(ba643ca8) was needed for the 0.0.0410 note to be true on phones, so 0.0.0410
+now also carries Reports b46807e0 (a missed call opens that call), HR 69c2ef2e
+(onboarding opens), Grok AI 9c1b1a98 (failure alert; EZBIZI_BACKUP_ALERT_TO is
+set on prod), and ba643ca8. **Anything after a02fc752 is 0.0.0411.**
