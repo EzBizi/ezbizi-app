@@ -2724,3 +2724,16 @@ Integrations'** (`local_e76e374a…`, author of `4f8ee29b`), asked next. Note
 for whoever reads a refusal as the audit's verdict: the one TikTok row
 (2026-08-28) predates Direct Post (10-05), so **nothing on production has yet
 exercised Direct Post at all** — the row says nothing about the audit.
+
+**ANSWERED by API Integrations, and it made "connect today" false for TikTok:**
+TikTok's app review has **not been submitted**, so no Direct Post audit either.
+`TIKTOK_DIRECT_POST=true` exists only to record the review demo, and
+**production runs TikTok's SANDBOX keys** — only the sandbox user `ezbizi_us`
+can connect, posting `SELF_ONLY`. So no customer can connect TikTok at all.
+Narrowed the same day: `/social-media/` meta description drops TikTok, "Nine
+can be connected" → "Eight … TikTok is the ninth, and a business can connect it
+once TikTok has reviewed EzBizi's app", TikTok row "Not yet open to connect";
+`/` "posting to the others is still being proven" (was "the rest connect").
+`/privacy/` keeps TikTok in its "for example" list — a disclosure, over-wide is
+the safe direction. **Inverts in two steps, both from API Integrations:**
+production keys move off sandbox (connectable) → then a real `sent` row (sends).
