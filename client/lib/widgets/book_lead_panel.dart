@@ -433,6 +433,22 @@ addressFromForm(Iterable<String> said) {
   var line1 = '', line2 = '', city = '', state = '', postal = '';
   for (final text in said) {
     for (final raw in text.split('\n')) {
+      // Since 2026-10-12 a form says the address on one line, values only:
+      // "📍 123 Elm St Apt 4, Tempe, Arizona 85281".
+      if (raw.startsWith('📍 ')) {
+        final parts = raw.substring('📍 '.length).split(', ');
+        if (parts.length >= 3) {
+          final last = RegExp(
+            r'^(.*?)\s*(\d{5}(?:-\d{4})?)?$',
+          ).firstMatch(parts.last)!;
+          line1 = parts.sublist(0, parts.length - 2).join(', ');
+          city = parts[parts.length - 2];
+          final st = last.group(1)!.trim();
+          state = _stateCodes[st.toLowerCase()] ?? st;
+          postal = last.group(2) ?? postal;
+        }
+        continue;
+      }
       final at = raw.indexOf(':');
       if (at < 0) continue;
       // Each field starts with an emoji mark; the label is the letters after it.
