@@ -20,6 +20,7 @@ class VersionHistory {
         'Leads: Call opens a dial pad with the number already typed in, instead of the whole Communication screen over Leads.',
         'Leads: Book fills in the street, unit, city, state and ZIP from the customer\'s website form.',
         'Leads: Messenger is now called Facebook and has a blue tag.',
+        'Marketing › Social Media: Posts is now three tabs, Dashboard, Compose and Calendar, each grantable per role. Everyone who had Posts keeps all three.',
       ],
     ),
     VersionRelease(
