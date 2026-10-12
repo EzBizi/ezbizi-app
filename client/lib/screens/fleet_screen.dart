@@ -57,6 +57,13 @@ class _FleetScreenState extends State<FleetScreen> {
   bool _unassigned = false;
   bool _dueSoon = false;
 
+  /// The open state (franchise id, or 'general'), or null for all of them.
+  /// The first load opens the first state rather than every state at once —
+  /// Eve: "I don't wanna see them all on one page because it's confusing".
+  String? _place;
+  bool _placeChosen = false;
+  List<Map<String, dynamic>> _places = const [];
+
   /// 0 General, 1 Vehicles.
   int _tab = 0;
 
@@ -99,9 +106,12 @@ class _FleetScreenState extends State<FleetScreen> {
       'ownership': ?ownership,
       if (_unassigned) 'unassigned': '1',
       if (_dueSoon) 'due_soon': '1',
+      'franchise_id': ?_place,
     });
 
     if (!mounted || request != _request) return;
+
+    var openFirstPlace = false;
 
     setState(() {
       _loading = false;
@@ -116,14 +126,36 @@ class _FleetScreenState extends State<FleetScreen> {
         return;
       }
 
+      final meta = response.body['meta'] as Map<String, dynamic>?;
+      final places = meta?['places'];
+      if (places is List) {
+        _places = [
+          for (final p in places)
+            if (p is Map) Map<String, dynamic>.from(p),
+        ];
+      }
+
+      // Open on one state, once. Rows from the all-states answer are not
+      // drawn, so the first thing on screen is a single state.
+      if (!_placeChosen && _place == null && _places.length > 1) {
+        _placeChosen = true;
+        _place = _places.first['id'] as String?;
+        _loading = true;
+        openFirstPlace = true;
+        return;
+      }
+      _placeChosen = true;
+
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _vehicles = page == 1 ? rows : [..._vehicles, ...rows];
 
-      final meta = response.body['meta'] as Map<String, dynamic>?;
       _total = meta?['total'] as int? ?? _vehicles.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
     });
+
+    // The first answer chose a state above; fetch that state.
+    if (openFirstPlace) _load();
   }
 
   void _clearPane() => setState(() {
@@ -355,6 +387,12 @@ class _FleetScreenState extends State<FleetScreen> {
     pageError: _pageError,
     onMore: () => _load(page: _page + 1),
     organizationName: widget.session.me!.organization.name,
+    places: _places,
+    place: _place,
+    onPlace: (value) {
+      setState(() => _place = value);
+      _load();
+    },
   );
 
   Widget _pane({required bool showBack}) {

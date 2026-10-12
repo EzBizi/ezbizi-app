@@ -85,6 +85,20 @@ class VehiclesController extends Controller
         $statuses = $this->requestedStatuses($request);
         $query->whereIn('status', $statuses);
 
+        // The states (franchises) the register spans, with how many vehicles
+        // each holds, so the screen can open one state at a time — Eve,
+        // 2026-10-12: "I click Connecticut and I see all of Connecticut".
+        // Counted before the state filter below, so every chip keeps its
+        // number while another state is open.
+        $places = $this->places(clone $query);
+
+        $place = $request->query('franchise_id');
+        if (is_string($place) && $place !== '') {
+            $place === self::GENERAL_PLACE
+                ? $query->whereNull('vehicles.franchise_id')
+                : $query->where('vehicles.franchise_id', $place);
+        }
+
         if (filled($request->query('search'))) {
             $term = trim((string) $request->query('search'));
             $like = '%'.$term.'%';
@@ -133,8 +147,55 @@ class VehiclesController extends Controller
             'data' => collect($vehicles->items())->map(
                 fn (Vehicle $v) => $this->present($v, $user),
             ),
-            'meta' => $this->pageMeta($vehicles),
+            'meta' => [...$this->pageMeta($vehicles), 'places' => $places],
         ]);
+    }
+
+    /** `franchise_id` value for vehicles tagged to no franchise. */
+    private const GENERAL_PLACE = 'general';
+
+    /**
+     * One entry per franchise holding a vehicle in this query, by name, with
+     * the untagged ones last as General. Only places that hold something: a
+     * state with no vehicles is not a page anybody needs to open.
+     *
+     * @return list<array{id: string, name: string, count: int}>
+     */
+    private function places(Builder $query): array
+    {
+        $rows = $query->reorder()
+            ->selectRaw('vehicles.franchise_id as place, COUNT(*) as total')
+            ->groupBy('vehicles.franchise_id')
+            ->get();
+
+        $names = Franchise::query()
+            ->whereIn('id', $rows->pluck('place')->filter()->all())
+            ->pluck('name', 'id');
+
+        $places = [];
+        $general = 0;
+
+        foreach ($rows as $row) {
+            if ($row->place === null) {
+                $general = (int) $row->total;
+
+                continue;
+            }
+
+            $places[] = [
+                'id' => (string) $row->place,
+                'name' => (string) ($names[$row->place] ?? 'Unnamed'),
+                'count' => (int) $row->total,
+            ];
+        }
+
+        usort($places, fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        if ($general > 0) {
+            $places[] = ['id' => self::GENERAL_PLACE, 'name' => 'General', 'count' => $general];
+        }
+
+        return $places;
     }
 
     /**
