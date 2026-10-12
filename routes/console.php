@@ -363,6 +363,8 @@ Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
 Schedule::command('ezbizi:label-call-transcripts')->everyTwoMinutes()->withoutOverlapping(15);
+// Last week in plain English from Grok (AiWeeklySummary); Automations sends it.
+Schedule::command('ezbizi:ai-weekly-summary')->weeklyOn(1, '07:00')->timezone('America/New_York')->withoutOverlapping(60);
 // Grok failing for 30 minutes mails the ops address (CheckGrokHealth).
 Schedule::command('ezbizi:check-grok')->everyFifteenMinutes();
 // Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).

@@ -3868,6 +3868,17 @@ class ModuleServiceProvider extends ServiceProvider
                             .'one. It carries the caller\'s number, the line they rang and the company.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-10-12: a weekly plain-English report by WhatsApp
+                    // and email. ezbizi:ai-weekly-summary, Monday 7:00 New York.
+                    new TriggerDefinition(
+                        key: 'reports.ai_summary_ready',
+                        label: 'Weekly AI summary is ready',
+                        description: 'Every Monday morning AI reads the figures for last week (jobs, '
+                            .'sales, deposits, profit and call reasons, per branch) and writes a '
+                            .'short plain-English summary with what to do this week. It carries '
+                            .'a headline, the summary and the dates it covers.',
+                        composedFields: ['summary'],
+                    ),
                 ],
                 tabs: [
                     new TabDefinition('library', 'Reports'),
