@@ -2965,6 +2965,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 77 · AI · one marker, and where each AI feature lives — **sent 2026-10-12, waiting** (`docs/previews/ai-marker-placements-layouts.html`)
+
+From the Grok AI session, 2026-10-12, which relayed that Jose approved an AI program today. It asks where eight AI features
+live and how a person can tell what AI decided or wrote. The features: call summary and next step, the asked-but-didn't-book
+follow-up, the complaint alert, dispatcher scoring and coaching, the AI-filled name and ZIP with lead sort and flags (these
+exist, unmarked), the Performance call labels (exist, unmarked), draft replies (half exist), and the weekly report. The same
+rules hold in every option: the existing `auto_awesome` glyph, the word AI never left to colour alone, a tooltip saying where
+it came from and how to change it, the marker gone once a person edits the value, nothing sent to a customer without a person,
+and guesses worded as guesses with a one-tap "not right". Marker **1** (recommended) is a chip after a value plus a badge on
+an AI-written card; **2** a tint and dotted underline; **3** the glyph only. Desktop **1** (recommended) puts each feature
+where the work already is: the summary at the top of the call card with Show full transcript under it, a complaint strip on
+the lead, a Follow up view in Leads, and a Call score column with a Coaching panel in Performance › People. **2** puts AI in
+one place (an AI tab on the lead). **3** is 1's placement with the glyph. Phone **4** (recommended) as 1, plus the weekly
+WhatsApp report; **5** as 2; **6** as 3. Build: `AiMark` in `client/lib/widgets/` (UI/UX); each feature's owner places it.
+
 ### 76 · Marketing · Social posts · a dashboard and a full composer — **Jose: "2 definitely" — 2 and 5** — **BUILT** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
 
 Jose 2026-10-12: *"Now that we got the META Approval i believe we ought to improve this a bit and divide posts between a
