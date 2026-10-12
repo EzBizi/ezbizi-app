@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Reports: a role given the Performance tab can open it without also needing Build.',
         'Performance › Missed: tap a call to see the caller, the line they called, and the voicemail when they left one.',
+        'Leads: call transcripts are split into IVR menu, Dispatcher and Customer, with the menu shown once.',
       ],
     ),
     VersionRelease(
