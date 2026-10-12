@@ -655,17 +655,21 @@ void main() {
     // Absent, not disabled - a chip leading to a refusal tells somebody the
     // app is for other people.
     expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
-    // Experimental goes too, and for the same reason: its endpoint is gated on
-    // `reports.build` because the report names every member of staff and how
-    // many calls they took. It used to be shown to everyone, which was right
-    // while the pane was an empty placeholder and became wrong the moment it
-    // had contents.
-    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
-  testWidgets('a phone reaches Performance beside the Builder', (
+  testWidgets('the Performance tab alone opens Performance, without Build', (
     tester,
   ) async {
+    // Jose, 2026-10-12: a Lead Manager role given Reports › Performance still
+    // could not see it, because the chip also asked for reports.build. The
+    // server reads Performance on reports.experimental.view alone; only what
+    // changes data inside it (Convert, a person's tag) asks for Build.
+    await _pumpReports(tester, reports: [_report], permissions: _runner);
+
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsOneWidget);
+  });
+
+  testWidgets('a phone reaches Performance beside the Builder', (tester) async {
     // This was "Experimental is still reachable when Builder is absent", with
     // Builder dropped by WIDTH. A phone has the Builder since UI queue 72, so
     // nothing shifts by width any more; what stays is that the chip is found

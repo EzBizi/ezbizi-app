@@ -272,7 +272,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (_mayOpen('library')) ('Reports', Icons.list_alt_outlined, null),
       if (canBuildHere && _mayOpen('builder'))
         ('Report Builder', Icons.build_outlined, null),
-      if (canExperiment && _mayOpen('experimental'))
+      // The tab alone (Jose, 2026-10-12: a Lead Manager given Performance
+      // could not see it, because it also asked for Build). What inside it
+      // changes data asks for Build itself: ExperimentalCallReport.canEdit.
+      if (_mayOpen('experimental'))
         ('Performance', Icons.science_outlined, null),
       if (me != null)
         for (final module in me.reachableModules)
@@ -438,6 +441,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       case 'Performance':
         return ExperimentalCallReport(
           api: widget.api,
+          canEdit: canExperiment,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,
         );
 

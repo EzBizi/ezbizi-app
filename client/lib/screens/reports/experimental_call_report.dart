@@ -46,9 +46,15 @@ class ExperimentalCallReport extends StatefulWidget {
     required this.api,
     this.formats = DisplayFormats.fallback,
     this.now = DateTime.now,
+    this.canEdit = true,
   });
 
   final ApiClient api;
+
+  /// Whether this person may change what the report records (Convert to
+  /// booked, a person's New/Existing tag): the server asks reports.build for
+  /// those, while reading the report needs only the Performance tab.
+  final bool canEdit;
 
   /// Which way round a date is written: "Oct 5" or "5 Oct".
   final DisplayFormats formats;
@@ -792,13 +798,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _briefCall(
             context,
             call,
-            OutlinedButton(
-              key: ValueKey('overview-convert-${call['id']}'),
-              onPressed: _converting.contains('${call['id']}')
-                  ? null
-                  : () => _convert(call),
-              child: const Text('Convert to booked'),
-            ),
+            widget.canEdit
+                ? OutlinedButton(
+                    key: ValueKey('overview-convert-${call['id']}'),
+                    onPressed: _converting.contains('${call['id']}')
+                        ? null
+                        : () => _convert(call),
+                    child: const Text('Convert to booked'),
+                  )
+                : const SizedBox.shrink(),
           ),
       ],
       filter: 'not_booked',
@@ -1438,13 +1446,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                       '${call['from'] ?? ''}',
                       style: theme.textTheme.bodySmall,
                     ),
-                    OutlinedButton(
-                      key: ValueKey('convert-${call['id']}'),
-                      onPressed: _converting.contains('${call['id']}')
-                          ? null
-                          : () => _convert(call),
-                      child: const Text('Convert to booked'),
-                    ),
+                    if (widget.canEdit)
+                      OutlinedButton(
+                        key: ValueKey('convert-${call['id']}'),
+                        onPressed: _converting.contains('${call['id']}')
+                            ? null
+                            : () => _convert(call),
+                        child: const Text('Convert to booked'),
+                      ),
                   ],
                 ),
               ),
@@ -1785,8 +1794,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               ButtonSegment(value: 'none', label: Text('Not set')),
             ],
             selected: {'${tag ?? 'none'}'},
-            onSelectionChanged: (picked) =>
-                _setTag(name, picked.first == 'none' ? null : picked.first),
+            onSelectionChanged: widget.canEdit
+                ? (picked) => _setTag(
+                    name,
+                    picked.first == 'none' ? null : picked.first,
+                  )
+                : null,
           ),
         ],
       ),
@@ -1901,7 +1914,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       call['to_number'],
       call['to_name'],
     ].where((v) => v != null && '$v'.isNotEmpty).join(' · ');
-    final play = id == null || missed
+    void toggleDetails() => setState(
+      () =>
+          detailsOpen ? _openDetails.remove(callId) : _openDetails.add(callId),
+    );
+    final play = missed
+        ? IconButton(
+            key: ValueKey('details-$callId'),
+            tooltip: detailsOpen ? 'Hide details' : 'Show details',
+            onPressed: toggleDetails,
+            color: theme.colorScheme.onSurfaceVariant,
+            icon: Icon(
+              detailsOpen
+                  ? Icons.expand_less
+                  : voicemail
+                  ? Icons.voicemail
+                  : Icons.expand_more,
+            ),
+          )
+        : id == null
         ? const SizedBox(width: 48)
         : IconButton(
             key: ValueKey('listen-$id'),
@@ -1920,13 +1951,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         children: [
           InkWell(
             key: ValueKey('call-details-$callId'),
-            onTap: missed
-                ? () => setState(
-                    () => detailsOpen
-                        ? _openDetails.remove(callId)
-                        : _openDetails.add(callId),
-                  )
-                : null,
+            onTap: missed ? toggleDetails : null,
             child: LayoutBuilder(
               builder: (context, box) => box.maxWidth >= _wideRow
                   ? Row(
