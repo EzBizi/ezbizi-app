@@ -227,7 +227,9 @@
             "tabs": [
                 "Reports",
                 "Report Builder",
-                "Performance"
+                "Performance",
+                "Marketing",
+                "Meta"
             ]
         },
         "reviews": {
@@ -465,6 +467,8 @@
         "reports.experimental.view",
         "reports.export",
         "reports.library.view",
+        "reports.marketing.view",
+        "reports.meta.view",
         "reports.view",
         "reviews.create",
         "reviews.delete",

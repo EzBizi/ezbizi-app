@@ -185,7 +185,7 @@ final class PeriodReport
     /**
      * @return array{created: array, closed: array, techs: list<array>}
      */
-    private function figures(Franchise $branch, string $from, string $to): array
+    public function figures(Franchise $branch, string $from, string $to): array
     {
         $range = [$from.' 00:00:00', $to.' 23:59:59'];
         $jobs = fn () => DB::table('workiz_jobs')->where('franchise_id', $branch->getKey());
@@ -252,7 +252,7 @@ final class PeriodReport
      *
      * @return array{weeks: list<array>, missing: list<string>, income: ?float, costs: ?float, net: ?float, why: string, monthly: bool}
      */
-    private function profitAndLoss(Franchise $branch, string $from, string $to): array
+    public function profitAndLoss(Franchise $branch, string $from, string $to): array
     {
         $none = fn (string $why) => ['weeks' => [], 'missing' => [], 'income' => null, 'costs' => null, 'net' => null, 'why' => $why, 'monthly' => false];
         $code = self::PNL_TABLES[$branch->name] ?? null;
