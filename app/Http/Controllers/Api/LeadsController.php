@@ -1542,6 +1542,15 @@ class LeadsController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /** @return list<string> the fields whose value is still the one AI wrote */
+    public static function aiHeld(Lead $lead): array
+    {
+        $set = $lead->ai_set ?? [];
+
+        return array_values(array_filter(['status', 'contact_name', 'postal_code'],
+            fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
+    }
+
     private function present(Lead $lead): array
     {
         return [
@@ -1561,6 +1570,10 @@ class LeadsController extends Controller
             'locale' => $lead->locale,
             'summary' => $lead->summary,
             'status' => $lead->status,
+
+            // Which of these AI set and still holds (UI queue 77: the AI mark,
+            // gone once a person changes the value).
+            'ai' => self::aiHeld($lead),
 
             // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
             // model), beside what somebody DECIDED (status). Null until the

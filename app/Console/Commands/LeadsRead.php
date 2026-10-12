@@ -68,7 +68,20 @@ class LeadsRead extends Command
                     $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
                     $lost = ! $applicant && ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
 
+                    // What AI wrote, so the AI mark shows while the value is
+                    // still AI's and the weekly check counts what people changed.
+                    $aiSet = array_filter([
+                        'status' => ($applicant || $junk || $lost) ? match (true) {
+                            $applicant => Lead::STATUS_JOB_APPLICANT,
+                            $junk => Lead::STATUS_NOT_A_LEAD,
+                            default => Lead::STATUS_LOST,
+                        } : null,
+                        'contact_name' => $lead->contact_name ? null : $answer['name'],
+                        'postal_code' => $lead->postal_code ? null : $answer['zip'],
+                    ], fn ($v) => $v !== null && $v !== '');
+
                     $lead->forceFill([
+                        'ai_set' => $aiSet !== [] ? ['at' => now()->toIso8601String()] + $aiSet : null,
                         'status' => match (true) {
                             $applicant => Lead::STATUS_JOB_APPLICANT,
                             $junk => Lead::STATUS_NOT_A_LEAD,

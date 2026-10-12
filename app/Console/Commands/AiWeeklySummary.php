@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Api\LeadsController;
 use App\Models\Franchise;
+use App\Models\Lead;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
 use App\Support\Automations\EventEmitter;
@@ -59,7 +61,9 @@ class AiWeeklySummary extends Command
                         ],
                     );
 
-                    $summary = trim((string) $answer['summary'])."\n\nWritten by EzBizi AI.";
+                    $summary = trim((string) $answer['summary'])
+                        .(($check = self::accuracy($organization->getKey(), $from, $to)) ? "\n\n".$check : '')
+                        ."\n\nWritten by EzBizi AI.";
 
                     if ($this->option('dry')) {
                         $this->line($organization->name.': '.$answer['headline']."\n".$summary);
@@ -81,6 +85,29 @@ class AiWeeklySummary extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * How often people kept what AI set on leads last week (Jose, 2026-10-12,
+     * the weekly accuracy check): a value changed since is a value AI got wrong.
+     */
+    public static function accuracy(string $organizationId, CarbonImmutable $from, CarbonImmutable $to): ?string
+    {
+        $leads = Lead::query()->withoutGlobalScopes()
+            ->where('organization_id', $organizationId)
+            ->whereNotNull('ai_set')
+            ->whereBetween('classified_at', [$from->startOfDay()->utc(), $to->endOfDay()->utc()])
+            ->get(['id', 'status', 'contact_name', 'postal_code', 'ai_set']);
+
+        $set = $kept = 0;
+        foreach ($leads as $lead) {
+            $fields = array_diff(array_keys($lead->ai_set), ['at']);
+            $set += count($fields);
+            $kept += count(LeadsController::aiHeld($lead));
+        }
+
+        return $set === 0 ? null : sprintf('AI check: %d values set on %d leads, %d changed by a person (%d%% kept).',
+            $set, $leads->count(), $set - $kept, round(100 * $kept / $set));
     }
 
     /** The PDF's figures as text, branch by branch, plus call reasons. Empty when there are none. */

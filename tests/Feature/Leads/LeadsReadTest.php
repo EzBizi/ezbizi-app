@@ -64,6 +64,15 @@ class LeadsReadTest extends TestCase
             $this->assertSame('BOOK', $blank->classification);
             $this->assertSame('Already Known', $named->refresh()->contact_name, 'never overwrites what we hold');
             $this->assertNull($waiting->refresh()->classification, 'read once the transcript exists');
+
+            // The AI mark: set by AI and still AI's, until a person edits it.
+            $this->assertSame(['contact_name', 'postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($blank));
+            $this->assertSame(['postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($named), 'the ZIP only: the name was ours');
+            $blank->forceFill(['contact_name' => 'Cassandra Stone'])->save();
+            $this->assertSame(['postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($blank));
+            $this->assertStringContainsString('3 values set on 2 leads, 1 changed by a person (67% kept)',
+                \App\Console\Commands\AiWeeklySummary::accuracy($this->t['org']->id,
+                    \Carbon\CarbonImmutable::now()->subDay(), \Carbon\CarbonImmutable::now()));
         });
         $this->assertSame(2, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.classified')->count());
     }
