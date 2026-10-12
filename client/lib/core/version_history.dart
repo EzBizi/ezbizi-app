@@ -21,6 +21,7 @@ class VersionHistory {
         'Performance › Missed: tap a call to see the caller, the line they called, and the voicemail when they left one.',
         'Leads: call transcripts are split into IVR menu, Dispatcher and Customer, with the menu shown once.',
         'Scheduling › Overbooking: tap any overbooked day to see every job behind it: time, service, job number, client, phone, email, address, technician and notes.',
+        'Performance: call transcripts are split into IVR menu, Dispatcher and Customer, like in Leads.',
       ],
     ),
     VersionRelease(
