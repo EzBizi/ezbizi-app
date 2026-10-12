@@ -296,6 +296,22 @@ class LeadsController extends Controller
                     ->orWhereNotNull('leads.connection_id'));
         }
 
+        // Asked the price or a day on a call, nothing booked (Jose, 2026-10-12,
+        // AI item 6): Grok's call signals, until a job is matched or somebody
+        // marks it handled.
+        if ($request->boolean('follow_up')) {
+            $query->whereNull('leads.job_id')
+                ->whereNull('leads.follow_up_handled_at')
+                ->where('leads.status', Lead::STATUS_NEW)
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('lead_conversations')
+                    ->whereColumn('lead_conversations.lead_id', 'leads.id')
+                    // ponytail: unquoted text compare, the one JSON boolean test
+                    // MySQL and MariaDB agree on.
+                    ->where(fn ($q) => $q->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.asked_price')) = 'true'")
+                        ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.asked_availability')) = 'true'"))
+                    ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.booked')) = 'false'"));
+        }
+
         if ($request->boolean('unread')) {
             $query->where(function ($q) {
                 $q->whereNull('leads.read_at')
@@ -882,6 +898,11 @@ class LeadsController extends Controller
             // A call's words, machine-transcribed from the recording, divided
             // by speaker once Grok has (ezbizi:label-call-transcripts).
             'transcript' => $c->transcript_labelled ?? $c->transcript,
+            // Grok's one-line read of the call, shown above the transcript
+            // with the AI mark (ezbizi:label-call-transcripts).
+            'summary' => $c->call_summary,
+            'next_step' => $c->call_next_step,
+            'signals' => $c->call_signals,
             // Waiting its turn with the transcriber (ezbizi-transcribe.timer):
             // an answered, recorded customer call from the last week, not done.
             'transcript_pending' => $c->transcript === null && $c->transcribed_at === null
@@ -1145,6 +1166,20 @@ class LeadsController extends Controller
         DB::table('leads')->where('id', $lead->getKey())->update(['read_at' => now()]);
 
         return response()->json(['data' => ['id' => $lead->getKey(), 'is_unread' => false]]);
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/follow-up-handled
+     *
+     * Off the Follow up list: somebody called back, or it needs nothing.
+     */
+    public function followUpHandled(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        DB::table('leads')->where('id', $lead->getKey())->update(['follow_up_handled_at' => now()]);
+
+        return response()->json(['data' => ['id' => $lead->getKey(), 'follow_up_handled' => true]]);
     }
 
     /**
@@ -1506,7 +1541,15 @@ class LeadsController extends Controller
         ];
     }
 
-    /** @return array<string, mixed> */
+    /** @return list<string> the fields whose value is still the one AI wrote */
+    public static function aiHeld(Lead $lead): array
+    {
+        $set = $lead->ai_set ?? [];
+
+        return array_values(array_filter(['status', 'contact_name', 'postal_code'],
+            fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
+    }
+
     private function present(Lead $lead): array
     {
         return [
@@ -1520,12 +1563,19 @@ class LeadsController extends Controller
             'contact_name' => $lead->contact_name,
             'phone' => $lead->phone,
             'email' => $lead->email,
+            'postal_code' => $lead->postal_code,
             'lead_type' => $lead->lead_type,
             'category' => $lead->category,
             'service' => $lead->service,
             'locale' => $lead->locale,
             'summary' => $lead->summary,
             'status' => $lead->status,
+
+            // Which of these AI set and still holds (UI queue 77: the AI mark,
+            // gone once a person changes the value).
+            'ai' => self::aiHeld($lead),
+            // A different name the customer gave, kept for a person to decide.
+            'name_conflict' => $lead->ai_set['name_conflict'] ?? null,
 
             // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
             // model), beside what somebody DECIDED (status). Null until the

@@ -392,6 +392,10 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 .'wrote it — a second copy of the same personal data, and erased with it. '
                 .'`postal_code` is the ZIP they gave, which says roughly where they live.',
                 Erasure::erase()),
+            new PersonalDataEntry('ai_set', PersonalDataEntry::IDENTITY,
+                'The name, ZIP code or status AI filled in, kept beside the field so the '
+                .'app can mark it as set by AI until a person changes it.',
+                Erasure::erase()),
             new PersonalDataEntry('summary', PersonalDataEntry::CONTENT,
                 'What the person said they wanted, in their own words or transcribed from '
                 .'what they said. Free text, so it can contain anything they mentioned — an '
@@ -454,6 +458,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         return [
             'is_test' => 'boolean',
+            'ai_set' => 'array',
             'received_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',

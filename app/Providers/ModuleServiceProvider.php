@@ -2605,6 +2605,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'after "Lead received", once any recording has been transcribed.',
                     ),
                     new TriggerDefinition(
+                        key: 'lead.call_complaint',
+                        label: 'A call sounded like a complaint',
+                        description: 'AI read a call transcript and the caller sounded unhappy - '
+                            .'with work done, a no-show, a charge or how they were treated. It '
+                            .'carries the AI one-line summary, plus the caller name and phone.',
+                        composedFields: ['summary'],
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.status_changed',
                         label: 'Status changed',
                         description: 'Somebody moved the lead — booked, archived, or marked not a '
@@ -3859,6 +3867,19 @@ class ModuleServiceProvider extends ServiceProvider
                             .'missed, or left in voicemail. Spam that sat in the phone menu is not '
                             .'one. It carries the caller\'s number, the line they rang and the company.',
                         isRaised: true,
+                    ),
+                    // Jose, 2026-10-12: a weekly plain-English report by WhatsApp
+                    // and email. ezbizi:ai-weekly-summary, Monday 7:00 New York.
+                    new TriggerDefinition(
+                        key: 'reports.ai_summary_ready',
+                        label: 'Weekly AI summary is ready',
+                        description: 'Every Monday morning AI reads the figures for last week (jobs, '
+                            .'sales, deposits, profit and call reasons, per branch) and writes a '
+                            .'short plain-English summary with what to do this week. It carries '
+                            .'a headline, the summary and the dates it covers. It CONTAINS MONEY '
+                            .'FIGURES (sales, deposits, profit and loss) that the app keeps behind '
+                            .'the financials permissions: send it only to people who may see them.',
+                        composedFields: ['summary'],
                     ),
                 ],
                 tabs: [

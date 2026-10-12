@@ -187,6 +187,52 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
   });
 
+  /// Jose, 2026-10-12: "summary should show first with the option to see
+  /// the full transcript".
+  testWidgets('a call with a summary shows it first, marked AI, and the '
+      'transcript behind Show full transcript', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callSummary: 'Fireplace smokes; wants an inspection Thursday.',
+      callNextStep: 'Call back with a time',
+    );
+    expect(
+      find.text('Fireplace smokes; wants an inspection Thursday.'),
+      findsOneWidget,
+    );
+    expect(find.text('Next: Call back with a time'), findsOneWidget);
+    expect(find.text('Summary by AI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('full-transcript-toggle-c-call')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsOneWidget);
+  });
+
+  testWidgets('a call that asked the price with nothing booked can be marked '
+      'followed up', (tester) async {
+    _followUpPosts.clear();
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callSummary: 'Asked the price of a sweep.',
+      callSignals: {
+        'complaint': false,
+        'asked_price': true,
+        'asked_availability': false,
+        'booked': false,
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('followed-up-c-call')));
+    await tester.pumpAndSettle();
+    expect(_followUpPosts, ['/api/v1/leads/lead-1/follow-up-handled']);
+    expect(find.byKey(const ValueKey('followed-up-c-call')), findsNothing);
+  });
+
   /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
   testWidgets('a transcript divided by speaker shows each label in bold', (
     tester,
@@ -1007,6 +1053,7 @@ void main() {
 
 final _sent = <String>[];
 final _typingPosts = <String>[];
+final _followUpPosts = <String>[];
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -1019,6 +1066,9 @@ Future<void> _pump(
   Map<String, dynamic>? customer,
   Map<String, dynamic>? details,
   String? callTranscript = 'Hi, my fireplace smokes when I light it.',
+  String? callSummary,
+  String? callNextStep,
+  Map<String, dynamic>? callSignals,
   bool transcriptPending = false,
   List<Map<String, dynamic>>? conversations,
   List<String> viewers = const [],
@@ -1091,6 +1141,16 @@ Future<void> _pump(
         );
       }
 
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/follow-up-handled')) {
+        _followUpPosts.add(request.url.path);
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
         _typingPosts.add(request.url.path);
         return http.Response('{}', 200, headers: {'content-type': 'application/json'});
@@ -1128,6 +1188,9 @@ Future<void> _pump(
                   'duration_ms': 125000,
                   'text': null,
                   'transcript': callTranscript,
+                      'summary': callSummary,
+                      'next_step': callNextStep,
+                      'signals': callSignals,
                   'transcript_pending': transcriptPending,
                   'attachments': <String>[],
                   'has_recording': true,

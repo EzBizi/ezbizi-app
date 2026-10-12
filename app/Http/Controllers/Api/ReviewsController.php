@@ -6,6 +6,7 @@ use App\Models\Review;
 use App\Models\ReviewReply;
 use App\Models\SocialConnection;
 use App\Services\Reviews\BusinessProfileReviews;
+use App\Support\Ai\GrokCli;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Social\SocialConnectionAccess;
@@ -156,6 +157,49 @@ class ReviewsController extends Controller
         });
 
         return response()->json(['data' => $this->present($review->fresh()->load('reply'))]);
+    }
+
+    /**
+     * POST /api/v1/reviews/{review}/reply/suggest
+     *
+     * Grok's suggested words, returned and not saved (Jose, 2026-10-12, AI
+     * item 11). They go into the box for a person to edit, save and publish.
+     */
+    public function suggestReply(Review $review): JsonResponse
+    {
+        $this->authorize('update', $review);
+
+        if (! GrokCli::configured()) {
+            return response()->json(['message' => 'AI drafting is not switched on.'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        $business = $review->company?->name ?? $review->franchise?->name ?? 'the business';
+
+        try {
+            $answer = GrokCli::ask(
+                "Write a reply from {$business} (a home-services company: chimneys, fireplaces, garage "
+                ."doors) to this Google review. Warm, specific to what the reviewer said, 2 to 4 "
+                ."sentences, no emojis, no hashtags. Thank them by first name if one is given. For a "
+                ."low rating: apologise once, do not argue or admit fault in detail, and invite them to "
+                ."call the office to put it right. Never invent facts, names, prices or dates.
+
+"
+                ."Reviewer: ".($review->reviewer_name ?? 'unknown')."
+Stars: ".($review->rating ?? '?')
+                ."
+Review: ".($review->comment ?: '(no text, stars only)'),
+                [
+                    'type' => 'object',
+                    'properties' => ['reply' => ['type' => 'string']],
+                    'required' => ['reply'],
+                    'additionalProperties' => false,
+                ],
+            );
+        } catch (RuntimeException) {
+            return response()->json(['message' => 'AI could not draft a reply just now. Try again in a minute.'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        return response()->json(['data' => ['body' => mb_substr(trim((string) $answer['reply']), 0, 4096)]]);
     }
 
     /** DELETE /api/v1/reviews/{review}/reply — discard a draft. */
