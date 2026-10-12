@@ -2989,6 +2989,13 @@ anything else shows its type, size, date, where it is, and Download. Below 1000 
 for the list with "Back to <folder>". Tapping a file now chooses it, as in Explorer, and Download is the button in what it
 shows.
 
+Built, second pass, on top of Monitoring's server half (fa31bbd5, so the two ship as one release). When the server answers
+`locked`, the lock card stands in for the panes: one 6-digit field, Unlock, the server's sentence under it, and "the same
+one you sign in with" (Monitoring confirmed it is the person's own TOTP). Once open, the picker bar shows "Unlocked until
+3:42 PM" from the server's `unlocked_until`, which every request refreshes; it is never a client-side countdown. **Lock now**
+locks on the server (DELETE) and drops the fetched pictures. Quick access lists the quick links above This PC and the
+drives; on a phone they come first at This PC. An older agent sends none, and nothing is drawn.
+
 ### 78 · Reports · Performance · tables instead of sentences — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-tables-layouts.html`)
 
 Jose 2026-10-12, with a screenshot of Calls: *"look at all of the available tabs and options and see how you can improve the
