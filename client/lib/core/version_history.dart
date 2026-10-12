@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0409',
+      date: '12 Oct 2026',
+      items: [
+        'Leads: Facebook Messenger enquiries now show the customer\'s name instead of "Unnamed enquiry".',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0408',
       date: '12 Oct 2026',
       items: [
