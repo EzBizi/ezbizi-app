@@ -1,0 +1,575 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Social posts: dashboard and composer</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px;flex:0 0 auto}
+.under span{padding:6px 0 7px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden;flex:0 0 auto;background:#fff}
+.seg span{padding:5px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.rowb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}
+.win.tall{height:750px}
+/* network marks: invented accounts, each network's own colour */
+.mk{width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font:800 9px Inter,"Segoe UI",sans-serif;flex:0 0 auto;vertical-align:middle}
+.mk.pi{background:#e60023}.mk.ig{background:linear-gradient(45deg,#f58529,#dd2a7b 55%,#8134af)}.mk.fb{background:#1877f2}.mk.tt{background:#111}.mk.bs{background:#1185fe}
+.mk.lg{width:28px;height:28px;border-radius:8px;font-size:13px}
+.marks{display:inline-flex;gap:3px;align-items:center}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.tiles.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;display:flex;flex-direction:column;gap:1px}
+.tile .k{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-size:21px;font-weight:800;line-height:1.25}
+.tile .v.sm{font-size:14px;line-height:1.9}
+.tile .n{font-size:11px;color:var(--muted)}
+.tile.on{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
+.v.ok{color:var(--ok)}.v.bad{color:var(--bad)}.v.info{color:var(--pri)}
+.tile.fact{background:#fbfcfd;border-style:dashed}
+/* rows */
+.att{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)}
+.att:first-of-type{border-top:0}
+.att .b1{font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att .why{grid-column:2/3;font-size:11.5px;color:var(--bad)}
+.att .wh{font-size:11px;color:var(--muted)}
+.tb{display:grid;grid-template-columns:minmax(0,1fr) 78px 112px 66px 64px;gap:10px;align-items:center;min-height:34px;border-top:1px solid var(--line2);font-size:12px}
+.tb.h{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-top:0;min-height:22px}
+.tb .x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb a,.lnk{color:var(--pri);font-weight:700;text-decoration:none;font-size:11.5px}
+.p-bad{background:var(--badc);color:var(--bad)} .p-info{background:var(--pric);color:var(--prid)}
+.acc{display:flex;align-items:center;gap:9px;min-height:38px;border-top:1px solid var(--line2);font-size:12px}
+.acc:first-of-type{border-top:0}
+.acc .g{flex:1;min-width:0}.acc .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.acc .g span{display:block;font-size:10.5px;color:var(--muted)}
+.ag{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line2);font-size:12px}
+.ag:first-of-type{border-top:0}
+.ag .d{font-size:10.5px;font-weight:800;color:var(--pri);line-height:1.2}.ag .d span{display:block;color:var(--muted);font-weight:600}
+.dayh{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 0 2px}
+.tl{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:12px}
+.tl .tm{font-size:11px;color:var(--muted)}
+.tl .ac{display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;font-size:11px;color:var(--muted)}
+.tl .ac span{display:inline-flex;align-items:center;gap:4px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}.dot.ok{background:#2f9a4c}.dot.bad{background:#c53b3b}.dot.info{background:var(--pri)}
+/* account cards */
+.accs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.ac2{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.ac2 .hh{display:flex;align-items:center;gap:8px}.ac2 .hh b{font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ac2 .hh span{font-size:10.5px;color:var(--muted);display:block}
+.ac2 .nums{display:flex;gap:12px;font-size:11px;color:var(--muted)}.ac2 .nums b{font-size:15px;color:var(--ink);display:block}
+.ac2 .nums b.bad{color:var(--bad)}.ac2 .nums b.ok{color:var(--ok)}
+.ac2 .ln{font-size:11px;color:var(--muted);border-top:1px solid var(--line2);padding-top:6px}
+.ac2.warn2{border-color:var(--caue);background:#fffaf0}
+/* composer */
+.cmp{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;flex:1;min-height:0}
+.cmp3{display:grid;grid-template-columns:210px minmax(0,1fr) 330px;gap:14px;flex:1;min-height:0}
+.lbl{font-size:11px;font-weight:800;color:var(--muted);margin-bottom:-3px}
+.tick{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a}
+.tick.on{background:var(--pric);border-color:var(--edge);color:var(--prid)}
+.tick.off{opacity:.5}
+.words{border:1px solid #b9c7cd;border-radius:var(--r);padding:10px 12px;min-height:150px;font-size:13px;line-height:1.5;background:#fff}
+.cnt{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted)}.cnt span{display:inline-flex;align-items:center;gap:4px}.cnt b{color:var(--ink)}
+.dz{border:1.5px dashed #a9bcc4;border-radius:var(--r);padding:12px;display:flex;align-items:center;gap:12px;background:#fbfcfd;font-size:12px;color:var(--muted)}
+.dz .th{width:64px;height:48px;border-radius:8px;background:linear-gradient(135deg,#9db7c2,#4f7584);flex:0 0 auto}
+.dz b{color:var(--ink)}
+.pbar{display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;flex:0 0 auto;box-shadow:0 -2px 10px rgba(6,8,8,.04)}
+.ff{height:30px;border:1px solid #b9c7cd;border-radius:10px;display:inline-flex;align-items:center;padding:0 10px;font-size:12px;background:#fff;gap:6px}
+/* a post's likeness */
+.lk{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;font-size:12px}
+.lk .lh{display:flex;align-items:center;gap:8px;padding:8px 10px}.lk .lh .av{width:28px;height:28px}
+.lk .lh b{display:block;font-size:12px}.lk .lh span{display:block;font-size:10.5px;color:var(--muted)}
+.lk .lt{padding:0 10px 8px;line-height:1.45}
+.lk .img{height:120px;background:linear-gradient(135deg,#a7c1cb,#3e6574)}
+.lk .lf{display:flex;gap:16px;padding:7px 10px;color:var(--muted);font-size:11px;border-top:1px solid var(--line2)}
+.lk.sm .img{height:78px}.lk.sm .lt{font-size:11px}
+.pvtabs{display:flex;gap:6px;flex-wrap:wrap}
+.pvtabs span{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;font-size:11.5px;font-weight:600;color:#33404a;border:1px solid transparent}
+.pvtabs span.on{background:var(--pric);color:var(--prid)}
+.rail{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:4px}
+.rl{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12px}
+.rl.on{background:var(--pric)}
+.rl .g{flex:1;min-width:0}.rl .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rl .g span{display:block;font-size:10.5px;color:var(--muted)}
+.cb{width:15px;height:15px;border-radius:4px;border:1.5px solid #93aab3;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+.cb.on{background:var(--pri);border-color:var(--pri)}
+.trk{display:flex;gap:0;flex:0 0 auto}
+.trk span{flex:1;text-align:center;font-size:11px;font-weight:700;color:#9aa6ac;position:relative;padding-top:14px}
+.trk span:before{content:"";position:absolute;top:0;left:50%;margin-left:-5px;width:10px;height:10px;border-radius:50%;border:2px solid #d6dde1;background:#fff;box-sizing:border-box;z-index:1}
+.trk span+span:after{content:"";position:absolute;top:4px;right:50%;width:100%;height:2px;background:#e3e8eb}
+.trk span.on,.trk span.done{color:var(--ink)}.trk span.on:before{background:var(--pri);border-color:var(--pri)}.trk span.done:before{border-color:var(--pri)}.trk span.on:after,.trk span.done:after{background:var(--pri)}
+/* phones */
+.phn .pb{gap:9px}
+.phn .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.phn .tile .v{font-size:18px}
+.phn .card{padding:10px 12px;gap:6px}
+.phn .card h3{font-size:13.5px}
+.hs{display:flex;gap:6px;overflow:hidden;flex:0 0 auto}
+.hs > *{flex:0 0 auto}
+.pbar.ph{position:absolute;left:0;right:0;bottom:0;border-radius:0;border-width:1px 0 0;padding:10px 12px}
+.fullbtn{display:flex;width:100%}
+.car{display:flex;gap:8px;overflow:hidden;flex:0 0 auto}
+.car .ac2{width:200px;flex:0 0 auto}
+.dots{display:flex;gap:5px;justify-content:center}.dots i{width:6px;height:6px;border-radius:50%;background:#c9d4d9}.dots i.on{background:var(--pri)}
+.note2{font-size:11px;color:var(--muted)}
+</style>
+<div class="wrap">
+<h1>Social posts · a dashboard and a full composer</h1>
+<p class="sub">Jose, 2026-10-12: <i>"Now that we got the META Approval i believe we ought to improve this a bit and divide posts
+between a Dashboard that shows all of the data and a full fledged composer."</i> Today one screen does both: the composer on top,
+the tiles and the twenty newest posts under it, Calendar behind a second chip. The failures read as raw network errors in red.</p>
+<p class="need"><b>What a dashboard can show without saying something untrue.</b> Every number here is one EzBizi already holds:
+the posts it sent, each account's answer, what is scheduled, and which accounts can post. <b>No likes, reach or follower
+counts</b>: the Meta review told Meta, for <code>pages_read_engagement</code> and Instagram, that <i>"EzBizi does not read
+followers, comments or analytics"</i> (<code>docs/meta-app-review-submission.md</code>). Reading them needs a new App Review
+first, so they are left out, not drawn as empty boxes.</p>
+<p class="need"><b>Same in every option:</b> the Newsletter's shape (Dashboard first, then the composer: Jose's rule that
+landing in an empty composer answers no question); the server's tiles (Scheduled / Sent / Failed, counted over every post);
+a failure's reason under it (two lines at most; More shows the whole of the network's answer) with Retry beside it; <b>View post</b> wherever the network gave a link; Calendar kept as it is.
+The composer keeps every field and rule it has now (per-network character limits, TikTok's questions, Now / Later, one
+picture or video) and gets the room: a big writing box, a drop zone for the file, a large preview, and Publish fixed at the
+bottom. Names, posts and numbers are invented.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Dashboard · Composer · Calendar under Posts, like the Newsletter <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The Compose / Calendar chips become three: <b>Dashboard</b> (where Posts opens), <b>Composer</b>, <b>Calendar</b>.
+The dashboard works as a to-do list: what failed and how to fix it, then what goes out next, then every post. <b>New post</b>
+opens the Composer. A failed post's Retry and a scheduled post's row work in place, so you only go to the Composer to write.</p>
+<div class="lab">Dashboard</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span class="on">Posts</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="rowb"><div class="seg"><span class="on">Dashboard</span><span>Composer</span><span>Calendar</span></div><span class="sp"></span>
+  <span class="tiny">5 pages connected</span><span class="marks"><i class="mk pi">P</i><i class="mk ig">◎</i><i class="mk fb">f</i><i class="mk tt">♪</i><i class="mk bs">b</i></span>
+  <span class="btn f sm">＋ New post</span></div>
+ <div class="tiles">
+  <div class="tile"><span class="k">Scheduled</span><span class="v info">1</span><span class="n">waiting for their time</span></div>
+  <div class="tile"><span class="k">Sent</span><span class="v ok">14</span><span class="n">went out</span></div>
+  <div class="tile on"><span class="k">Failed</span><span class="v bad">3</span><span class="n">an account refused it</span></div>
+  <div class="tile fact"><span class="k">Pages</span><span class="v">5</span><span class="n">all 5 can post</span></div>
+  <div class="tile fact"><span class="k">Next one goes out</span><span class="v sm">Tue, Oct 14 · 9:00 AM</span><span class="n">to 2 pages</span></div>
+ </div>
+ <div class="cols">
+  <div class="main">
+   <div class="card"><h3>Needs attention <span class="pill p-bad">3</span></h3>
+    <div class="att"><i class="mk pi">P</i><span class="b1">Chimney season is here. Book your sweep before the first cold night.</span><span class="btn sm">Retry</span>
+     <span class="why">Northside · Pinterest refused it: Apps with Trial access may not create Pins in production… <a class="lnk">More</a></span></div>
+    <div class="att"><i class="mk tt">♪</i><span class="b1">Before and after: a full sweep in 40 seconds</span><span class="btn sm">Retry</span>
+     <span class="why">northside_chimney · TikTok refused it: Please review our integration guidelines at developers.tiktok.com… <a class="lnk">More</a></span></div>
+    <div class="att"><i class="mk pi">P</i><span class="b1">A look inside a flue camera inspection</span><span class="btn sm">Retry</span>
+     <span class="why">Northside · EzBizi cannot post video to Pinterest yet.</span></div>
+   </div>
+   <div class="card" style="flex:1"><h3>All posts <span class="sp"></span><span class="tiny">Filtered: Failed · <a class="lnk">Show all</a></span></h3>
+    <div class="tb h"><span>Post</span><span>Accounts</span><span>When</span><span>Status</span><span></span></div>
+    <div class="tb"><span class="x">Chimney season is here. Book your sweep before the first cold night.</span><span class="marks"><i class="mk pi">P</i></span><span class="tiny">Fri, Oct 10 · 11:36 AM</span><span class="pill p-bad">Failed</span><a>Retry</a></div>
+    <div class="tb"><span class="x">Before and after: a full sweep in 40 seconds</span><span class="marks"><i class="mk tt">♪</i></span><span class="tiny">Thu, Oct 9 · 2:45 PM</span><span class="pill p-bad">Failed</span><a>Retry</a></div>
+    <div class="tb"><span class="x">A look inside a flue camera inspection</span><span class="marks"><i class="mk pi">P</i></span><span class="tiny">Tue, Oct 7 · 3:04 PM</span><span class="pill p-bad">Failed</span><a>Open</a></div>
+   </div>
+  </div>
+  <div class="side" style="width:360px">
+   <div class="card"><h3>Coming up</h3>
+    <div class="ag"><span class="d">TUE 14<span>9:00 AM</span></span><span class="x" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Free inspection week: book by Friday</span><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i></span></div>
+    <div class="tiny">Nothing else in the next 7 days. <a class="lnk">Open the calendar</a></div>
+   </div>
+   <div class="card"><h3>Accounts</h3>
+    <div class="acc"><i class="mk fb">f</i><div class="g"><b>Northside Chimney</b><span>Facebook Page</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk ig">◎</i><div class="g"><b>northsidechimney</b><span>Instagram</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk bs">b</i><div class="g"><b>northside.bsky.social</b><span>Bluesky</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk tt">♪</i><div class="g"><b>northside_chimney</b><span>TikTok · goes straight to the profile</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk pi">P</i><div class="g"><b>Northside</b><span>Pinterest</span></div><span class="pill p-ok">Can post</span></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<div class="lab">Composer</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span class="on">Posts</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="rowb"><div class="seg"><span>Dashboard</span><span class="on">Composer</span><span>Calendar</span></div></div>
+ <div class="cmp">
+  <div class="card" style="gap:10px;overflow:hidden">
+   <span class="lbl">Post to</span>
+   <div class="rowb"><span class="tick on"><i class="mk fb">f</i>Northside Chimney</span><span class="tick on"><i class="mk ig">◎</i>northsidechimney</span><span class="tick on"><i class="mk bs">b</i>northside.bsky.social</span><span class="tick"><i class="mk tt">♪</i>northside_chimney</span><span class="tick"><i class="mk pi">P</i>Northside</span></div>
+   <span class="tiny">northside_chimney (TikTok): Posts straight to the profile. TikTok can take a few minutes to process the video.</span>
+   <span class="lbl">Words</span>
+   <div class="words">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge. Spots go fast, so call or book online.</div>
+   <div class="cnt"><span><i class="mk fb">f</i><b>148</b></span><span><i class="mk ig">◎</i><b>148</b> / 2,200</span><span><i class="mk bs">b</i><b>148</b> / 300</span></div>
+   <span class="lbl">Picture or video</span>
+   <div class="dz"><span class="th"></span><div><b>inspection-week.jpg</b><br>1.2 MB · <a class="lnk">Replace</a> · <a class="lnk">Remove</a></div><span class="sp"></span><span>or drag another file here</span></div>
+  </div>
+  <div class="card" style="gap:10px"><h3>How it will look</h3>
+   <div class="pvtabs"><span class="on"><i class="mk fb">f</i>Facebook</span><span><i class="mk ig">◎</i>Instagram</span><span><i class="mk bs">b</i>Bluesky</span></div>
+   <div class="lk"><div class="lh"><span class="av">NC</span><div><b>Northside Chimney</b><span>Just now · 🌐</span></div></div>
+    <div class="lt">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge. Spots go fast, so call or book online.</div>
+    <div class="img"></div><div class="lf"><span>👍 Like</span><span>💬 Comment</span><span>↗ Share</span></div></div>
+   <span class="tiny">A close likeness drawn here; each network has the last word on how it looks.</span>
+  </div>
+ </div>
+ <div class="pbar"><span class="tiny">Going to</span><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i><i class="mk bs">b</i></span><span class="b">3 accounts</span><span class="sp"></span>
+  <span class="tiny">When</span><div class="seg"><span>Now</span><span class="on">Later</span></div><span class="ff">📅 Tue, Oct 14</span><span class="ff">🕘 9:00 AM</span><span class="btn f">Schedule for Tue 9:00 AM</span></div>
+</div></div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>One row fewer: Dashboard and Compose sit beside Accounts</h2>
+<p class="cap">Posts' own row goes. Social Media Management's tabs become <b>Dashboard · Compose · Calendar · Accounts · QR Codes</b>,
+three rows of tabs down to two. The dashboard is one <b>timeline</b>: what is coming, then each day's posts, with every account's
+answer as a coloured dot. The composer shows <b>every ticked network's preview at once</b> instead of one at a time.</p>
+<p class="need"><b>Cost:</b> each tab is grantable on its own (<code>marketing.posts.view</code> today). Splitting Posts into Dashboard
+and Compose means two new permission keys, and the old "posts" tick must stay grantable. That is a server change in Marketing
+and a permission split, which has gone wrong twice before. Option 1 needs neither: all three panes sit under the Posts grant.</p>
+<div class="lab">Dashboard</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span class="on">Dashboard</span><span>Compose</span><span>Calendar</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="tiles four">
+  <div class="tile"><span class="k">Scheduled</span><span class="v info">1</span><span class="n">waiting for their time</span></div>
+  <div class="tile"><span class="k">Sent</span><span class="v ok">14</span><span class="n">went out</span></div>
+  <div class="tile"><span class="k">Failed</span><span class="v bad">3</span><span class="n">an account refused it</span></div>
+  <div class="tile fact"><span class="k">Pages</span><span class="v">5</span><span class="n">all 5 can post</span></div>
+ </div>
+ <div class="cols">
+  <div class="main"><div class="card" style="flex:1;gap:2px">
+   <h3>Timeline <span class="sp"></span><span class="btn f sm">＋ New post</span></h3>
+   <div class="dayh">Coming up</div>
+   <div class="tl"><span class="tm">Tue 9:00 AM</span><div><b>Free inspection week: book by Friday</b><div class="ac"><span><i class="dot info"></i>Northside Chimney</span><span><i class="dot info"></i>northsidechimney</span></div></div><a class="lnk">Change</a></div>
+   <div class="dayh">Today</div>
+   <div class="tl"><span class="tm">8:13 AM</span><div><b>Chimney season is here. Book your sweep with us.</b><div class="ac"><span><i class="dot ok"></i>Northside Chimney</span><span><i class="dot ok"></i>northsidechimney</span><span><i class="dot ok"></i>northside.bsky.social</span></div></div><a class="lnk">View posts</a></div>
+   <div class="dayh">Fri, Oct 10</div>
+   <div class="tl"><span class="tm">11:36 AM</span><div><b>Chimney season is here. Book your sweep before the first cold night.</b><div class="ac"><span style="color:var(--bad)"><i class="dot bad"></i>Northside · Pinterest refused it: Apps with Trial access may not…</span></div></div><span class="btn sm">Retry</span></div>
+   <div class="dayh">Thu, Oct 9</div>
+   <div class="tl"><span class="tm">2:45 PM</span><div><b>Before and after: a full sweep in 40 seconds</b><div class="ac"><span style="color:var(--bad)"><i class="dot bad"></i>northside_chimney · TikTok refused it: Please review our integration…</span></div></div><span class="btn sm">Retry</span></div>
+  </div></div>
+  <div class="side" style="width:330px"><div class="card"><h3>Accounts</h3>
+    <div class="acc"><i class="mk fb">f</i><div class="g"><b>Northside Chimney</b><span>Facebook Page</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk ig">◎</i><div class="g"><b>northsidechimney</b><span>Instagram</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk bs">b</i><div class="g"><b>northside.bsky.social</b><span>Bluesky</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk tt">♪</i><div class="g"><b>northside_chimney</b><span>TikTok</span></div><span class="pill p-ok">Can post</span></div>
+    <div class="acc"><i class="mk pi">P</i><div class="g"><b>Northside</b><span>Pinterest</span></div><span class="pill p-ok">Can post</span></div>
+  </div></div>
+ </div>
+</div></div></div>
+<div class="lab">Compose</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span>Dashboard</span><span class="on">Compose</span><span>Calendar</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="cmp" style="grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)">
+  <div class="card" style="gap:10px;overflow:hidden">
+   <span class="lbl">Post to</span>
+   <div class="rowb"><span class="tick on"><i class="mk fb">f</i>Northside Chimney</span><span class="tick on"><i class="mk ig">◎</i>northsidechimney</span><span class="tick on"><i class="mk bs">b</i>northside.bsky.social</span><span class="tick"><i class="mk tt">♪</i>northside_chimney</span><span class="tick"><i class="mk pi">P</i>Northside</span></div>
+   <span class="lbl">Words</span>
+   <div class="words" style="min-height:170px">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge. Spots go fast, so call or book online.</div>
+   <span class="lbl">Picture or video</span>
+   <div class="dz"><span class="th"></span><div><b>inspection-week.jpg</b><br>1.2 MB · <a class="lnk">Replace</a></div></div>
+  </div>
+  <div class="card" style="gap:8px"><h3>Every network at once</h3>
+   <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+    <div><div class="cnt" style="margin-bottom:5px"><span><i class="mk fb">f</i><b>148</b></span></div><div class="lk sm"><div class="lh"><span class="av">NC</span><div><b>Northside Chimney</b><span>Just now</span></div></div><div class="lt">Free inspection week 🔥 Book any day before Friday and we check your chimney…</div><div class="img"></div></div></div>
+    <div><div class="cnt" style="margin-bottom:5px"><span><i class="mk ig">◎</i><b>148</b> / 2,200</span></div><div class="lk sm"><div class="lh"><span class="av">NC</span><div><b>northsidechimney</b></div></div><div class="img" style="height:120px"></div><div class="lt">♡ 💬 ↗<br><b>northsidechimney</b> Free inspection week 🔥…</div></div></div>
+    <div><div class="cnt" style="margin-bottom:5px"><span><i class="mk bs">b</i><b>148</b> / 300</span></div><div class="lk sm"><div class="lh"><span class="av">NC</span><div><b>Northside</b><span>@northside.bsky.social</span></div></div><div class="lt">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap…</div><div class="img"></div></div></div>
+   </div>
+  </div>
+ </div>
+ <div class="pbar"><span class="b">3 accounts</span><span class="sp"></span><div class="seg"><span class="on">Now</span><span>Later</span></div><span class="btn f">Publish now</span></div>
+</div></div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>Dashboard by account, composer with the accounts down the side</h2>
+<p class="cap">Same three panes as option 1. The dashboard leads with <b>one card per account</b>: whether it can post, what it sent and
+what failed, and its last post. Then the list of every post, filtered by account. The composer puts the accounts in a
+<b>column on the left</b>, so each one's limit and note sits next to its tick.</p>
+<p class="need"><b>Cost:</b> the per-account numbers ("9 sent · 2 failed") are a new count on the server (Marketing). The list
+carries only the twenty newest posts, and counting those would understate any busy account. The column of accounts is also
+narrower writing space than option 1 on a laptop.</p>
+<div class="lab">Dashboard</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span class="on">Posts</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="rowb"><div class="seg"><span class="on">Dashboard</span><span>Composer</span><span>Calendar</span></div><span class="sp"></span><span class="btn f sm">＋ New post</span></div>
+ <div class="accs">
+  <div class="ac2"><div class="hh"><i class="mk lg fb">f</i><div><b>Northside Chimney</b><span>Facebook Page</span></div></div><div class="nums"><span><b class="ok">9</b>sent</span><span><b>0</b>failed</span><span><b>1</b>coming</span></div><div class="ln">Last: today 8:13 AM · <a class="lnk">View</a></div></div>
+  <div class="ac2"><div class="hh"><i class="mk lg ig">◎</i><div><b>northsidechimney</b><span>Instagram</span></div></div><div class="nums"><span><b class="ok">8</b>sent</span><span><b>0</b>failed</span><span><b>1</b>coming</span></div><div class="ln">Last: today 8:13 AM · <a class="lnk">View</a></div></div>
+  <div class="ac2"><div class="hh"><i class="mk lg bs">b</i><div><b>northside.bsky.social</b><span>Bluesky</span></div></div><div class="nums"><span><b class="ok">5</b>sent</span><span><b>0</b>failed</span><span><b>0</b>coming</span></div><div class="ln">Last: today 8:13 AM · <a class="lnk">View</a></div></div>
+  <div class="ac2"><div class="hh"><i class="mk lg tt">♪</i><div><b>northside_chimney</b><span>TikTok</span></div></div><div class="nums"><span><b class="ok">2</b>sent</span><span><b class="bad">1</b>failed</span><span><b>0</b>coming</span></div><div class="ln">Last: Thu 2:45 PM · <span style="color:var(--bad)">Failed</span></div></div>
+  <div class="ac2"><div class="hh"><i class="mk lg pi">P</i><div><b>Northside</b><span>Pinterest</span></div></div><div class="nums"><span><b class="ok">0</b>sent</span><span><b class="bad">2</b>failed</span><span><b>0</b>coming</span></div><div class="ln">Last: Fri 11:36 AM · <span style="color:var(--bad)">Failed</span></div></div>
+ </div>
+ <div class="card" style="flex:1"><h3>All posts <span class="sp"></span><span class="pill2 on" style="height:26px">All accounts</span><span class="pill2" style="height:26px"><i class="mk fb">f</i></span><span class="pill2" style="height:26px"><i class="mk ig">◎</i></span><span class="pill2" style="height:26px"><i class="mk bs">b</i></span><span class="pill2" style="height:26px"><i class="mk tt">♪</i></span><span class="pill2" style="height:26px"><i class="mk pi">P</i></span></h3>
+  <div class="tb h"><span>Post</span><span>Accounts</span><span>When</span><span>Status</span><span></span></div>
+  <div class="tb"><span class="x">Free inspection week: book by Friday</span><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i></span><span class="tiny">Tue, Oct 14 · 9:00 AM</span><span class="pill p-info">Scheduled</span><a>Change</a></div>
+  <div class="tb"><span class="x">Chimney season is here. Book your sweep with us.</span><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i><i class="mk bs">b</i></span><span class="tiny">Today · 8:13 AM</span><span class="pill p-ok">Sent</span><a>View</a></div>
+  <div class="tb"><span class="x">Chimney season is here. Book your sweep before the first cold night.</span><span class="marks"><i class="mk pi">P</i></span><span class="tiny">Fri, Oct 10 · 11:36 AM</span><span class="pill p-bad">Failed</span><a>Retry</a></div>
+  <div class="tb"><span class="x">Before and after: a full sweep in 40 seconds</span><span class="marks"><i class="mk tt">♪</i></span><span class="tiny">Thu, Oct 9 · 2:45 PM</span><span class="pill p-bad">Failed</span><a>Retry</a></div>
+ </div>
+</div></div></div>
+<div class="lab">Composer</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Marketing</div><div class="st">Reach people who are not customers yet.</div>
+ <div class="pills"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media Management</span><span class="pill2">Web Management</span></div>
+ <div class="under"><span class="on">Posts</span><span>Accounts</span><span>QR Codes</span></div>
+ <div class="rowb"><div class="seg"><span>Dashboard</span><span class="on">Composer</span><span>Calendar</span></div></div>
+ <div class="cmp3">
+  <div class="rail"><span class="lbl" style="margin:0 0 4px 4px">Post to</span>
+   <div class="rl on"><span class="cb on">✓</span><i class="mk fb">f</i><div class="g"><b>Northside Chimney</b><span>148 characters</span></div></div>
+   <div class="rl on"><span class="cb on">✓</span><i class="mk ig">◎</i><div class="g"><b>northsidechimney</b><span>148 / 2,200</span></div></div>
+   <div class="rl on"><span class="cb on">✓</span><i class="mk bs">b</i><div class="g"><b>northside.bsky.social</b><span>148 / 300</span></div></div>
+   <div class="rl"><span class="cb"></span><i class="mk tt">♪</i><div class="g"><b>northside_chimney</b><span>straight to the profile</span></div></div>
+   <div class="rl"><span class="cb"></span><i class="mk pi">P</i><div class="g"><b>Northside</b><span>not ticked</span></div></div>
+  </div>
+  <div class="card" style="gap:10px">
+   <span class="lbl">Words</span>
+   <div class="words" style="min-height:200px">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge. Spots go fast, so call or book online.</div>
+   <span class="lbl">Picture or video</span>
+   <div class="dz"><span class="th"></span><div><b>inspection-week.jpg</b><br>1.2 MB · <a class="lnk">Replace</a></div></div>
+  </div>
+  <div class="card" style="gap:10px"><h3>How it will look</h3>
+   <div class="pvtabs"><span class="on"><i class="mk fb">f</i>Facebook</span><span><i class="mk ig">◎</i>Instagram</span><span><i class="mk bs">b</i>Bluesky</span></div>
+   <div class="lk"><div class="lh"><span class="av">NC</span><div><b>Northside Chimney</b><span>Just now · 🌐</span></div></div><div class="lt">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge.</div><div class="img"></div><div class="lf"><span>👍 Like</span><span>💬 Comment</span><span>↗ Share</span></div></div>
+  </div>
+ </div>
+ <div class="pbar"><span class="b">3 accounts</span><span class="sp"></span><div class="seg"><span class="on">Now</span><span>Later</span></div><span class="btn f">Publish now</span></div>
+</div></div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The same three panes. The dashboard is one column: <b>New post</b> full width on top, the tiles two by two, Needs attention
+with Retry, Coming up, then the posts. The composer scrolls with <b>Publish fixed at the bottom</b>, and the preview folds
+under its own heading so the words stay near the keyboard.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Dashboard</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb">
+  <div class="hs"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media</span><span class="pill2">Web</span></div>
+  <div class="under" style="gap:16px"><span class="on">Posts</span><span>Accounts</span><span>QR Codes</span></div>
+  <div class="seg" style="display:flex"><span class="on" style="flex:1;text-align:center">Dashboard</span><span style="flex:1;text-align:center">Composer</span><span style="flex:1;text-align:center">Calendar</span></div>
+  <span class="btn f fullbtn">＋ New post</span>
+  <div class="tiles"><div class="tile"><span class="k">Scheduled</span><span class="v info">1</span></div><div class="tile"><span class="k">Sent</span><span class="v ok">14</span></div><div class="tile on"><span class="k">Failed</span><span class="v bad">3</span></div><div class="tile fact"><span class="k">Next one</span><span class="v sm" style="font-size:12px">Tue 9:00 AM</span></div></div>
+  <div class="card"><h3>Needs attention <span class="pill p-bad">3</span></h3>
+   <div class="att"><i class="mk pi">P</i><span class="b1">Chimney season is here…</span><span class="btn sm">Retry</span><span class="why">Pinterest refused it: Apps with Trial access may not…</span></div>
+   <div class="att"><i class="mk tt">♪</i><span class="b1">Before and after: a full sweep</span><span class="btn sm">Retry</span><span class="why">TikTok refused it: Please review our integration…</span></div>
+  </div>
+  <div class="card"><h3>Coming up</h3><div class="ag" style="grid-template-columns:52px minmax(0,1fr) auto"><span class="d">TUE 14<span>9:00</span></span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Free inspection week</span><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i></span></div></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">Composer</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb" style="padding-bottom:70px">
+  <div class="seg" style="display:flex"><span style="flex:1;text-align:center">Dashboard</span><span class="on" style="flex:1;text-align:center">Composer</span><span style="flex:1;text-align:center">Calendar</span></div>
+  <span class="lbl">Post to</span>
+  <div class="rowb" style="gap:6px"><span class="tick on"><i class="mk fb">f</i>Northside…</span><span class="tick on"><i class="mk ig">◎</i>northside…</span><span class="tick on"><i class="mk bs">b</i>northside…</span><span class="tick"><i class="mk tt">♪</i>northside…</span></div>
+  <span class="lbl">Words</span>
+  <div class="words" style="min-height:120px;font-size:12.5px">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge.</div>
+  <div class="cnt"><span><i class="mk ig">◎</i><b>148</b>/2,200</span><span><i class="mk bs">b</i><b>148</b>/300</span></div>
+  <span class="btn" style="justify-content:flex-start">🖼 inspection-week.jpg · Replace</span>
+  <span class="lbl">When</span><div class="seg" style="display:flex"><span class="on" style="flex:1;text-align:center">Now</span><span style="flex:1;text-align:center">Later</span></div>
+  <div class="card" style="flex-direction:row;align-items:center"><b>Preview</b><span class="marks"><i class="mk fb">f</i></span><span class="sp"></span><span class="tiny">Show ▾</span></div>
+  <div class="pbar ph"><span class="b">3 accounts</span><span class="sp"></span><span class="btn f">Publish now</span></div>
+ </div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">Two rows of tabs (the five scroll sideways). The dashboard is the timeline with a dot per account. The composer
+<b>swipes between each network's preview</b>.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Dashboard</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb">
+  <div class="hs"><span class="pill2">Newsletter</span><span class="pill2 on">Social Media</span><span class="pill2">Web</span></div>
+  <div class="under" style="gap:14px;overflow:hidden;white-space:nowrap"><span class="on">Dashboard</span><span>Compose</span><span>Calendar</span><span>Accounts</span><span>QR…</span></div>
+  <div class="tiles"><div class="tile"><span class="k">Scheduled</span><span class="v info">1</span></div><div class="tile"><span class="k">Sent</span><span class="v ok">14</span></div><div class="tile"><span class="k">Failed</span><span class="v bad">3</span></div><div class="tile fact"><span class="k">Pages</span><span class="v">5</span></div></div>
+  <div class="card" style="gap:0"><div class="dayh" style="padding-top:0">Coming up</div>
+   <div class="tl" style="grid-template-columns:50px minmax(0,1fr)"><span class="tm">Tue 9:00</span><div><b>Free inspection week</b><div class="ac"><span><i class="dot info"></i>Facebook</span><span><i class="dot info"></i>Instagram</span></div></div></div>
+   <div class="dayh">Today</div>
+   <div class="tl" style="grid-template-columns:50px minmax(0,1fr)"><span class="tm">8:13</span><div><b>Chimney season is here.</b><div class="ac"><span><i class="dot ok"></i>Facebook</span><span><i class="dot ok"></i>Instagram</span><span><i class="dot ok"></i>Bluesky</span></div></div></div>
+   <div class="dayh">Fri, Oct 10</div>
+   <div class="tl" style="grid-template-columns:50px minmax(0,1fr) auto"><span class="tm">11:36</span><div><b>Chimney season is here…</b><div class="ac"><span style="color:var(--bad)"><i class="dot bad"></i>Pinterest refused it</span></div></div><span class="btn sm">Retry</span></div>
+  </div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">Compose</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb" style="padding-bottom:70px">
+  <div class="under" style="gap:14px;overflow:hidden;white-space:nowrap"><span>Dashboard</span><span class="on">Compose</span><span>Calendar</span><span>Accounts</span><span>QR…</span></div>
+  <div class="rowb" style="gap:6px"><span class="tick on"><i class="mk fb">f</i></span><span class="tick on"><i class="mk ig">◎</i></span><span class="tick on"><i class="mk bs">b</i></span><span class="tick"><i class="mk tt">♪</i></span><span class="tick"><i class="mk pi">P</i></span></div>
+  <div class="words" style="min-height:110px;font-size:12.5px">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge.</div>
+  <span class="btn" style="justify-content:flex-start">🖼 inspection-week.jpg · Replace</span>
+  <div class="lk sm"><div class="lh"><span class="av">NC</span><div><b>northsidechimney</b><span>Instagram · 148 / 2,200</span></div></div><div class="img" style="height:130px"></div><div class="lt"><b>northsidechimney</b> Free inspection week 🔥…</div></div>
+  <div class="dots"><i></i><i class="on"></i><i></i></div>
+  <div class="pbar ph"><div class="seg"><span class="on">Now</span><span>Later</span></div><span class="sp"></span><span class="btn f">Publish now</span></div>
+ </div></div></div>
+</div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">The account cards <b>swipe sideways</b> above the list. The composer goes in <b>three steps</b> (Where, What, When), one
+screen each, with Next at the bottom: less on screen at once, but more taps for a quick post.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Dashboard</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb">
+  <div class="seg" style="display:flex"><span class="on" style="flex:1;text-align:center">Dashboard</span><span style="flex:1;text-align:center">Composer</span><span style="flex:1;text-align:center">Calendar</span></div>
+  <span class="btn f fullbtn">＋ New post</span>
+  <div class="car">
+   <div class="ac2"><div class="hh"><i class="mk lg fb">f</i><div><b>Northside Chimney</b><span>Facebook Page</span></div></div><div class="nums"><span><b class="ok">9</b>sent</span><span><b>0</b>failed</span><span><b>1</b>coming</span></div></div>
+   <div class="ac2"><div class="hh"><i class="mk lg pi">P</i><div><b>Northside</b><span>Pinterest</span></div></div><div class="nums"><span><b>0</b>sent</span><span><b class="bad">2</b>failed</span></div></div>
+  </div>
+  <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+  <div class="lst">
+   <div class="li"><i class="mk pi">P</i><div class="g"><b>Chimney season is here…</b><span>Fri, Oct 10 · Failed at Pinterest</span></div><span class="btn sm">Retry</span></div>
+   <div class="li"><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i></span><div class="g"><b>Free inspection week</b><span>Tue, Oct 14 · 9:00 AM · Scheduled</span></div></div>
+   <div class="li"><span class="marks"><i class="mk fb">f</i><i class="mk ig">◎</i><i class="mk bs">b</i></span><div class="g"><b>Chimney season is here.</b><span>Today · 8:13 AM · Sent</span></div><a class="lnk">View</a></div>
+   <div class="li"><i class="mk tt">♪</i><div class="g"><b>Before and after: a full sweep</b><span>Thu, Oct 9 · Failed</span></div><span class="btn sm">Retry</span></div>
+  </div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">Composer · step 2 of 3</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Marketing</span></div><div class="pb" style="padding-bottom:70px">
+  <div class="trk"><span class="done">Where</span><span class="on">What</span><span>When</span></div>
+  <span class="tiny">Going to <b>3 accounts</b> · <a class="lnk">Change</a></span>
+  <span class="lbl">Words</span>
+  <div class="words" style="min-height:150px;font-size:12.5px">Free inspection week 🔥 Book any day before Friday and we check your chimney, flue and cap at no charge.</div>
+  <div class="cnt"><span><i class="mk ig">◎</i><b>148</b>/2,200</span><span><i class="mk bs">b</i><b>148</b>/300</span></div>
+  <span class="lbl">Picture or video</span>
+  <span class="btn" style="justify-content:flex-start">🖼 inspection-week.jpg · Replace</span>
+  <div class="pbar ph"><span class="btn">Back</span><span class="sp"></span><span class="btn f">Next: When</span></div>
+ </div></div></div>
+</div>
+
+<p class="need" style="margin-top:36px"><b>Recommendation: 1 and 4.</b> They match the Newsletter people already know, keep the
+Posts permission as it is (2 needs a split), and need no new server count (3 does). The dashboard opens on what needs doing,
+the composer gets the whole width, and Publish is always in view. Owner: Marketing (<code>social_media_tab.dart</code>); I build
+it and send them the diff first.</p>
+</div>

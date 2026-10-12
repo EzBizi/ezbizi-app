@@ -2965,6 +2965,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 76 · Marketing · Social posts · a dashboard and a full composer — **sent 2026-10-12, waiting** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
+
+Jose 2026-10-12: *"Now that we got the META Approval i believe we ought to improve this a bit and divide posts between a
+Dashboard that shows all of the data and a full fledged composer."* Today Posts is the composer with the tiles and the
+twenty newest under it, and Calendar behind a second chip; failures print the network's raw answer in red. **No likes,
+reach or followers in any option:** the Meta review declared that EzBizi does not read followers, comments or analytics
+(`docs/meta-app-review-submission.md`, pages_read_engagement and Instagram), so reading them needs a new App Review first.
+Desktop **1** (recommended) Posts → Dashboard · Composer · Calendar like the Newsletter. The dashboard has the tiles plus
+Pages and Next one goes out, Needs attention with Retry, All posts, Coming up and Accounts. The composer takes the full
+width with a drop zone, a large preview and the publish bar fixed at the bottom. **2** one tab row fewer: Dashboard ·
+Compose · Calendar · Accounts · QR Codes, a timeline with a dot per account, every network's preview at once (needs a
+permission split). **3** a card per account with sent and failed counts (needs a server count), accounts down the side
+of the composer. Phone **4** (recommended) as 1; **5** as 2; **6** as 3, with a three-step composer. Owner: Marketing
+(`client/lib/screens/marketing/social_media_tab.dart`).
+
 ### 75 · A-1 booking page · more modern — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (plugin 1.26.11) (`docs/previews/a1-booking-page-layouts.html`)
 
 Jose 2026-10-09: *"How can we make this look more modern"* (a-1chimney.com/booking, the plugin's `[ezbizi_booking]`).
