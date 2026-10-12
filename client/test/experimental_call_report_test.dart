@@ -241,9 +241,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
     await tester.pumpAndSettle();
 
-    // Closed: no details, and no play button on a missed row.
+    // Closed: no details, no play button on a missed row, and a voicemail
+    // icon that says there is a recording inside (UI/UX).
     expect(find.text('Caller: +15550004444'), findsNothing);
     expect(find.byKey(const ValueKey('listen-rec-4')), findsNothing);
+    expect(find.byTooltip('Show details'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('call-details-c4')));
     await tester.pumpAndSettle();
