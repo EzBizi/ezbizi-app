@@ -142,7 +142,7 @@ class LabelReportCallsTest extends TestCase
                 && str_contains($command, '--prompt-file')
                 && str_contains($command, '--max-turns 1')
                 && str_contains($command, '--disable-web-search')
-                && str_contains($command, '"enum":["complaint","reschedule","eta","billing","other"]')
+                && str_contains($command, '"enum":'.json_encode(array_keys(CallLabels::EXISTING)))
                 && ! str_contains($command, 'secret');
         });
     }
@@ -188,6 +188,48 @@ class LabelReportCallsTest extends TestCase
             ->assertOk()
             ->json('calls.0.transcript');
         $this->assertSame($labelled, $shown);
+    }
+
+    /**
+     * The label set grew (2026-10-12; Jose: "add them"), so the old "other"
+     * rows can be asked again with --relabel=other, overwriting them; any
+     * other label is left alone.
+     */
+    public function test_relabel_asks_the_other_calls_again_and_overwrites_them(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true]);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->ringCentral([
+            $this->rcCall('rc-other', 'A1 - Existing Client'),
+            $this->rcCall('rc-eta', 'A1 - Existing Client'),
+        ]);
+        $this->transcript($tenant, 'rc-other', 'When is the tech coming back to finish?');
+        $this->transcript($tenant, 'rc-eta', 'Is the tech on the way?');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach (['rc-other' => 'other', 'rc-eta' => 'eta'] as $call => $label) {
+                foreach (['claude', 'grok'] as $provider) {
+                    CallReportLabel::query()->create(['organization_id' => $tenant['org']->id, 'call_id' => $call, 'provider' => $provider, 'label' => $label]);
+                }
+            }
+        });
+
+        $asked = $this->fakeTaggers();
+
+        // Without --relabel nothing is asked: every call already has a label.
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])->assertSuccessful();
+        $this->assertSame([], $asked->questions);
+
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1, '--relabel' => 'other'])->assertSuccessful();
+
+        // Only the "other" call was asked again, by each provider, and overwritten in place.
+        $this->assertCount(2, $asked->questions);
+        $this->assertSame(4, CallReportLabel::withoutGlobalScopes()->count());
+        $this->assertSame(['eta', 'eta'], CallReportLabel::withoutGlobalScopes()->where('call_id', 'rc-eta')->pluck('label')->all());
+        $this->assertSame(['eta', 'eta'], CallReportLabel::withoutGlobalScopes()->where('call_id', 'rc-other')->pluck('label')->all());
+        $this->assertContains('job_status', array_keys(CallLabels::EXISTING));
     }
 
     public function test_the_report_carries_each_providers_label(): void

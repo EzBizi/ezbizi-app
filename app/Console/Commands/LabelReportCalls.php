@@ -31,7 +31,8 @@ class LabelReportCalls extends Command
     protected $signature = 'ezbizi:label-report-calls
         {--days=2 : days back to look, including today}
         {--minutes=2 : how long a run may take}
-        {--organization= : whose report; defaults to the one organization with Workiz connected}';
+        {--organization= : whose report; defaults to the one organization with Workiz connected}
+        {--relabel= : ask again for calls holding this label (e.g. other), overwriting it}';
 
     protected $description = 'Label the Performance report\'s calls with Claude and Grok';
 
@@ -72,7 +73,11 @@ class LabelReportCalls extends Command
         $queues = array_column($calls->forPeriod($start, $end), 'queue', 'id');
         $done = [];
 
-        $tenant->run($organization, function () use ($queues, $taggers, $until, &$done) {
+        // A label set that grew (2026-10-12) leaves old "other" rows behind;
+        // --relabel=other asks those again, in the same time budget.
+        $relabel = $this->option('relabel');
+
+        $tenant->run($organization, function () use ($queues, $taggers, $until, $relabel, &$done) {
             $transcripts = CallReportTranscript::query()
                 ->whereIn('call_id', array_keys($queues))
                 ->whereNotNull('transcript')
@@ -84,6 +89,7 @@ class LabelReportCalls extends Command
                 $have = CallReportLabel::query()
                     ->where('provider', $tagger->name())
                     ->whereIn('call_id', $transcripts->pluck('call_id'))
+                    ->when($relabel !== null, fn ($q) => $q->where(fn ($q) => $q->whereNull('label')->orWhere('label', '!=', $relabel)))
                     ->pluck('call_id')
                     ->flip();
 
@@ -103,12 +109,11 @@ class LabelReportCalls extends Command
                         continue;
                     }
 
-                    CallReportLabel::query()->create([
+                    CallReportLabel::query()->updateOrCreate([
                         'organization_id' => app(TenantContext::class)->idOrFail(),
                         'call_id' => $row->call_id,
                         'provider' => $tagger->name(),
-                        'label' => $label,
-                    ]);
+                    ], ['label' => $label]);
 
                     $done[$tagger->name()] = ($done[$tagger->name()] ?? 0) + 1;
                 }
