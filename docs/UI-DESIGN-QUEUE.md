@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 76 · Marketing · Social posts · a dashboard and a full composer — **sent 2026-10-12, waiting** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
+### 76 · Marketing · Social posts · a dashboard and a full composer — **Jose: "2 definitely" — 2 and 5** — **BUILT** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
 
 Jose 2026-10-12: *"Now that we got the META Approval i believe we ought to improve this a bit and divide posts between a
 Dashboard that shows all of the data and a full fledged composer."* Today Posts is the composer with the tiles and the
@@ -2979,6 +2979,22 @@ Compose · Calendar · Accounts · QR Codes, a timeline with a dot per account, 
 permission split). **3** a card per account with sent and failed counts (needs a server count), accounts down the side
 of the composer. Phone **4** (recommended) as 1; **5** as 2; **6** as 3, with a three-step composer. Owner: Marketing
 (`client/lib/screens/marketing/social_media_tab.dart`).
+
+Built (client, `social_media_tab.dart`): Social Media Management's tabs are **Dashboard · Compose · Calendar · Accounts
+· QR Codes**, opening on Dashboard. **Permissions split (Marketing, server):** sharing `marketing.posts.view` across
+three tabs failed `module_tabs_registry_test`, rightly, because Roles would have said "Posts" for tabs nobody can
+find. So each is its own grant (`marketing.{dashboard,compose,calendar}.view`). Migration `2026_10_12_400000` gives
+every holder of the old key all three. GET posts takes any of them, POST needs Compose, retry needs Dashboard or
+Compose, and New post shows only with Compose. Dashboard: the server's
+Scheduled / Sent / Failed tiles (they still filter) plus a **Pages** fact (`FactTile`, now shared in `list_table.dart`
+with the Newsletter; `FilterTiles(facts:)` lays it at the tiles' width). The timeline puts Coming up first ("Goes out"
+and the promised wall time and clock), then each day newest first. A row has its status word as well as a dot per
+account, the network's refusal (2 lines) and Retry; tapping it opens the post panel. The Accounts card shows Can post /
+Cannot post with the server's reason, plus Connect and Manage accounts. Compose: the full pane; every ticked network's
+likeness side by side (a swipe pager with tappable dots below 360 px); a bigger words box; a picture or video
+dropped anywhere on the pane attaches (`desktop_drop`, first image/video only); and the publish bar fixed at the
+bottom ("Going to 3 accounts · now" beside Publish). Now / Later stays in the form, so the date picker can open
+downward. **Not built:** "Change" on a scheduled post (no edit endpoint), and per-account sent/failed counts (option 3's).
 
 ### 75 · A-1 booking page · more modern — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (plugin 1.26.11) (`docs/previews/a1-booking-page-layouts.html`)
 
