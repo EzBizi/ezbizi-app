@@ -111,6 +111,7 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\MarketingReportController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
@@ -1217,6 +1218,8 @@ Route::prefix('v1')
          */
         Route::get('reports/profit-loss/sources', [ProfitLossController::class, 'sources']);
         Route::get('reports/profit-loss', [ProfitLossController::class, 'show']);
+        // Ad cost against jobs and sales per source; same grant as the P&L.
+        Route::get('reports/marketing', [MarketingReportController::class, 'show'])->middleware('permission:reports.marketing.view');
 
         /*
          * ── apiResource SPLIT BY AUDIENCE, deliberately ────────────

@@ -12,6 +12,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
+import 'reports/marketing_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
@@ -311,6 +312,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
       // changes data asks for Build itself: ExperimentalCallReport.canEdit.
       if (_mayOpen('experimental'))
         ('Performance', Icons.science_outlined, null),
+      // Ad cost against jobs and profit (Jose, 2026-10-12). Its profit is the
+      // P&L's margin, so it goes where the P&L can.
+      if (_mayOpen('marketing') &&
+          (me?.reachableModules.any((m) => m.key == 'profit_loss') ?? false))
+        (
+          'Marketing',
+          Icons.campaign_outlined,
+          () => MarketingReport(api: widget.api),
+        ),
       if (me != null)
         for (final module in me.reachableModules)
           if (module.parent == 'reports')
