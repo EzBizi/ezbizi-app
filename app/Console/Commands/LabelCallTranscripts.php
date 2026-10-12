@@ -6,6 +6,7 @@ use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\TranscriptSpeakers;
+use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use RuntimeException;
@@ -22,7 +23,7 @@ class LabelCallTranscripts extends Command
 
     protected $description = 'Divide new call transcripts by speaker (IVR menu, Dispatcher, Customer) with Grok';
 
-    public function handle(TenantContext $tenant): int
+    public function handle(TenantContext $tenant, EventEmitter $events): int
     {
         if (! config('ezbizi.leads_ai_grok') || ! GrokCli::configured()) {
             return self::SUCCESS;
@@ -45,12 +46,24 @@ class LabelCallTranscripts extends Command
             }
             $tenant->run(
                 Organization::withoutGlobalScopes()->findOrFail($row->organization_id),
-                fn () => $row->forceFill([
-                    'transcript_labelled' => $read['labelled'] ?? $row->transcript,
-                    'call_summary' => $read['summary'],
-                    'call_next_step' => $read['next_step'],
-                    'call_signals' => $read['signals'],
-                ])->save(),
+                function () use ($row, $read, $events) {
+                    $row->forceFill([
+                        'transcript_labelled' => $read['labelled'] ?? $row->transcript,
+                        'call_summary' => $read['summary'],
+                        'call_next_step' => $read['next_step'],
+                        'call_signals' => $read['signals'],
+                    ])->save();
+
+                    // Jose, 2026-10-12: "notify lead manager and administrator" -
+                    // who hears is the Automations rule's, so it can change.
+                    if ($read['signals']['complaint'] && $row->lead !== null) {
+                        $events->emit('lead.call_complaint', $row->lead, ['after' => [
+                            'summary' => $read['summary'],
+                            'caller_name' => $row->lead->contact_name,
+                            'phone' => $row->lead->phone,
+                        ]]);
+                    }
+                },
             );
         }
 

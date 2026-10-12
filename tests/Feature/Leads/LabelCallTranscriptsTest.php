@@ -132,4 +132,20 @@ class LabelCallTranscriptsTest extends TestCase
         $this->assertNull($row->call_next_step);
         $this->assertEquals(['complaint' => false, 'asked_price' => true, 'asked_availability' => false, 'booked' => false], $row->call_signals);
     }
+
+    public function test_a_complaint_call_raises_lead_call_complaint(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [['speaker' => 'Customer', 'text' => self::RAW]],
+            'summary' => 'Technician never showed up; caller wants a refund.',
+            'next_step' => 'Manager to call back',
+            'complaint' => true, 'asked_price' => false, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $row = $this->aCall();
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $event = \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->sole();
+        $this->assertSame($row->lead_id, $event->subject_id);
+    }
 }

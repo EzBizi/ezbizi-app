@@ -2605,6 +2605,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'after "Lead received", once any recording has been transcribed.',
                     ),
                     new TriggerDefinition(
+                        key: 'lead.call_complaint',
+                        label: 'A call sounded like a complaint',
+                        description: 'AI read a call transcript and the caller sounded unhappy - '
+                            .'with work done, a no-show, a charge or how they were treated. It '
+                            .'carries the AI one-line summary, plus the caller name and phone.',
+                        composedFields: ['summary'],
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.status_changed',
                         label: 'Status changed',
                         description: 'Somebody moved the lead — booked, archived, or marked not a '
