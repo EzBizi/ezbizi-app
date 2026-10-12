@@ -47,7 +47,12 @@ class ExperimentalCallReport extends StatefulWidget {
     this.formats = DisplayFormats.fallback,
     this.now = DateTime.now,
     this.canEdit = true,
+    this.openCall,
   });
+
+  /// A call to open on arrival (from a missed-call notification): Calls,
+  /// Missed, with that call's details showing.
+  final String? openCall;
 
   final ApiClient api;
 
@@ -170,6 +175,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   @override
   void initState() {
     super.initState();
+    if (widget.openCall case final call?) {
+      _view = 'calls';
+      _result = 'missed';
+      _openDetails.add(call);
+    }
     _load();
   }
 
