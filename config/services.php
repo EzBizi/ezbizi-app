@@ -615,6 +615,8 @@ return [
     // The Grok Build CLI's home on the box, signed in to Jose's Grok
     // subscription (App\Support\Ai\GrokCli). Unset: nothing uses it.
     'grok_cli' => [
+        // Questions asked side by side (GrokCli::askMany); 1 if rate-limited.
+        'concurrency' => (int) env('GROK_CLI_CONCURRENCY', 4),
         'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
     ],
 

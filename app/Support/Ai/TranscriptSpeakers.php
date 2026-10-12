@@ -153,6 +153,12 @@ final class TranscriptSpeakers
         // ponytail: a length check, not a word diff. People's words under a
         // quarter of the raw call means Grok summarised or lost them; the
         // menu loop can be most of a call, so the bar is low.
+        // Only the menu and a hang-up (4 of 6 on prod, Leads, 2026-10-12): the
+        // menu is the whole call.
+        if ($spoken === 0 && $menuSeen) {
+            return implode("\n\n", array_map(fn ($b) => $b[0].': '.$b[1], $blocks));
+        }
+
         if ($spoken === 0 || $spoken < mb_strlen($raw) / 4) {
             return null;
         }

@@ -22,7 +22,6 @@ use RuntimeException;
  */
 final class GrokCli
 {
-    private const CONCURRENCY = 4;
 
     public static function configured(): bool
     {
@@ -54,8 +53,8 @@ final class GrokCli
      * at a time). One process per question keeps every answer tied to its own
      * question and a failure to its own row.
      *
-     * ponytail: CONCURRENCY processes at a time; raise it when the plan's rate
-     * limit allows, lower it if Grok starts refusing.
+     * GROK_CLI_CONCURRENCY processes at a time (default 4); set it to 1 if
+     * Grok starts refusing on the plan's rate limit.
      *
      * @param  list<string>  $prompts
      * @param  array<string, mixed>  $schema
@@ -66,7 +65,7 @@ final class GrokCli
         $home = (string) config('services.grok_cli.home');
         $answers = [];
 
-        foreach (array_chunk($prompts, self::CONCURRENCY, true) as $chunk) {
+        foreach (array_chunk($prompts, max(1, (int) config('services.grok_cli.concurrency', 4)), true) as $chunk) {
             $works = [];
             foreach ($chunk as $i => $prompt) {
                 $works[$i] = storage_path('app/grok-'.bin2hex(random_bytes(6)));

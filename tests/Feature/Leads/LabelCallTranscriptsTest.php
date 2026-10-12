@@ -196,4 +196,13 @@ class LabelCallTranscriptsTest extends TestCase
         $this->assertSame(0, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->count());
         $this->assertTrue($this->reread($row)->call_signals['complaint'], 'still read and stored');
     }
+
+    /** Leads, 2026-10-12: a call that is only the menu reads labelled too. */
+    public function test_a_menu_only_call_is_labelled_as_the_menu(): void
+    {
+        $this->assertSame('IVR menu: Press 1 for service.', TranscriptSpeakers::assemble(
+            [['speaker' => 'IVR menu', 'text' => 'Press 1 for service.'], ['speaker' => 'IVR menu', 'text' => 'Press 1 for service.']],
+            'Press 1 for service. Press 1 for service.',
+        ));
+    }
 }

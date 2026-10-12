@@ -84,6 +84,10 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
             new PersonalDataEntry('call_next_step', PersonalDataEntry::CONTENT,
                 'What the business should do next after the call, written by Grok.',
                 Erasure::erase()),
+            new PersonalDataEntry('call_signals', PersonalDataEntry::CONTENT,
+                'Four yes/no readings of the call by AI: a complaint, asked the price, asked '
+                .'for a day, booked.',
+                Erasure::erase()),
             new PersonalDataEntry('recording_url', PersonalDataEntry::CONTENT,
                 'Where Google keeps the recording of a call with this person — their voice. '
                 .'EzBizi never copies the audio; it streams it on request with the connected '
