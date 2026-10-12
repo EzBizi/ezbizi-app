@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 78 · Reports · Performance · tables instead of sentences — **sent 2026-10-12, waiting** (`docs/previews/reports-performance-tables-layouts.html`)
+### 78 · Reports · Performance · tables instead of sentences — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-tables-layouts.html`)
 
 Jose 2026-10-12, with a screenshot of Calls: *"look at all of the available tabs and options and see how you can improve the
 UI, maybe add some more columns, cause the stuff we keep adding keeps overflowing."* Calls draws each call as a sentence
@@ -2977,6 +2977,15 @@ Answered by · Reason ✦AI · Talk · ▶, with a row opening in place (transcr
 **2**: the same table, with the row opening in a side panel. **3**: a list with the call beside it. People gains Missed and
 Answer rate in every option; Overview is unchanged. Phone **4** (recommended): three-line cards that open in place; **5**
 rows that open a page; **6** grouped by hour. Owner: Reports (`experimental_call_report.dart`).
+
+Built: Calls is a table under pinned headings (`_callsHeader`; `_cells()` lays out the headings and every row from one list).
+The columns are Time · In/Out · Caller · **Number** · Client · Result · Answered by · Reason ✦AI · Talk · play/open. **Line
+called** stayed inside the opened row rather than becoming a column: on a tracking number RingCentral's caller label already
+names the market and source, so the column would mostly repeat the Caller. Any row opens on tap. A missed call shows its
+numbers and voicemail. An answered one shows its words (folded to the first line), both AIs' readings, the numbers, and
+Convert to booked where allowed. "Not transcribed yet" shows only inside an opened row. "Reasons by Claude / Grok" moved into
+the bar, the reason counts sit above the table, and a search finds a caller, number or person. Below 1000 px each call is a
+three-line card. People gains **Not picked up** (rang − answered) and **Answer rate**, both sortable.
 
 ### 77 · AI · one marker, and where each AI feature lives — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **MARKER BUILT** (`docs/previews/ai-marker-placements-layouts.html`)
 
