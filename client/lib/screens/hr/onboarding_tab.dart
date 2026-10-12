@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
+import '../../core/deep_links.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/session.dart';
@@ -42,10 +43,18 @@ import 'onboarding_form.dart';
 /// on a row, and to hand them to the form — so they arrive with the list rather
 /// than being fetched at the moment somebody opens one and finding out then.
 class OnboardingTab extends StatefulWidget {
-  const OnboardingTab({super.key, required this.api, required this.session});
+  const OnboardingTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.link,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// A notification's "open this onboarding"; a new one opens over the list.
+  final DeepLink? link;
 
   @override
   State<OnboardingTab> createState() => _OnboardingTabState();
@@ -101,7 +110,16 @@ class _OnboardingTabState extends State<OnboardingTab> {
   @override
   void initState() {
     super.initState();
+    _open = widget.link?.id;
     _load();
+  }
+
+  @override
+  void didUpdateWidget(OnboardingTab old) {
+    super.didUpdateWidget(old);
+    if (widget.link != null && !identical(widget.link, old.link)) {
+      _open = widget.link!.id;
+    }
   }
 
   Future<void> _load({int page = 1}) async {
@@ -189,6 +207,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
   Widget build(BuildContext context) {
     if (_open case final id?) {
       return OnboardingForm(
+        key: ValueKey(id),
         api: widget.api,
         onboardingId: id,
         vocabulary: _vocabulary,
@@ -232,7 +251,10 @@ class _OnboardingTabState extends State<OnboardingTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _rows.isEmpty && _filter == 'open' && (_tiles?.values.every((n) => n == 0) ?? true)
+            child:
+                _rows.isEmpty &&
+                    _filter == 'open' &&
+                    (_tiles?.values.every((n) => n == 0) ?? true)
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
@@ -245,14 +267,14 @@ class _OnboardingTabState extends State<OnboardingTab> {
                                 textAlign: TextAlign.center,
                               )
                             : const Text(
-                          'Nobody is being taken on right now.\n\n'
-                          'Starting one picks the person and the contract. The '
-                          'contract decides what the form asks and which side '
-                          'answers each question — you fill in your half, they '
-                          'fill in theirs, and either of you can correct the '
-                          'questions marked as shared.',
-                          textAlign: TextAlign.center,
-                        ),
+                                'Nobody is being taken on right now.\n\n'
+                                'Starting one picks the person and the contract. The '
+                                'contract decides what the form asks and which side '
+                                'answers each question — you fill in your half, they '
+                                'fill in theirs, and either of you can correct the '
+                                'questions marked as shared.',
+                                textAlign: TextAlign.center,
+                              ),
                       ),
                     ),
                   )
@@ -335,7 +357,10 @@ class _OnboardingTabState extends State<OnboardingTab> {
     if (_rows.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
-        child: Text('No onboardings in this state.', textAlign: TextAlign.center),
+        child: Text(
+          'No onboardings in this state.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -484,7 +509,9 @@ class _OnboardingTabState extends State<OnboardingTab> {
   Future<void> _download(OnboardingSummary row) async {
     final refusal = await downloadSignedPdf(widget.api, row);
     if (refusal == null || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(refusal)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(refusal)));
   }
 
   // Whatever its state (Jose, 2026-10-05: "regardless of anything").
