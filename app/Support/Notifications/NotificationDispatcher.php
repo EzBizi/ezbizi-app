@@ -165,6 +165,12 @@ class NotificationDispatcher
             $rowsWritten = count($rows);
         }
 
+        // Each person's own row id, for the push: a tap on a phone opens the
+        // app with it and routes exactly as tapping the bell row would (Bar,
+        // 2026-10-12: a notification must open "the exact thing"). Empty when
+        // the bell is off — no row exists for a tap to point at.
+        $rowIds = $rowsWritten > 0 ? collect($rows)->pluck('id', 'user_id')->all() : [];
+
         /*
          * A RULE MAY DECLINE THE EMAIL. IT MAY NOT DEMAND ONE.
          *
@@ -212,7 +218,7 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
-        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $this->isUrgent($source, $eventId));
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $this->isUrgent($source, $eventId), $rowIds);
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.
@@ -276,7 +282,8 @@ class NotificationDispatcher
         );
     }
 
-    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope, bool $urgent = false): int
+    /** @param array<string, string> $rowIds user id => that person's notification id */
+    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope, bool $urgent = false, array $rowIds = []): int
     {
         if (! $this->channelOn('notifications.push_enabled', $scope) || ! $this->push->configured()) {
             return 0;
@@ -292,7 +299,9 @@ class NotificationDispatcher
 
         $reached = $devices
             ->groupBy('user_id')
-            ->filter(fn (Collection $forOnePerson) => $this->push->send($forOnePerson, $title, $body, $urgent) > 0)
+            ->filter(fn (Collection $forOnePerson, $userId) => $this->push->send(
+                $forOnePerson, $title, $body, $urgent, $rowIds[$userId] ?? null,
+            ) > 0)
             ->count();
 
         return $reached;

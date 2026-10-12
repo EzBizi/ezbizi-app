@@ -146,7 +146,7 @@ class PushSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false): int
+    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null): int
     {
         if ($devices->isEmpty()) {
             return 0;
@@ -161,7 +161,7 @@ class PushSender
          */
         [$apple, $google] = $devices->partition(fn (DeviceToken $device) => $device->platform === 'ios');
 
-        $sent = $this->apns->send($apple, $title, $body);
+        $sent = $this->apns->send($apple, $title, $body, $notificationId);
 
         if ($google->isEmpty() || ! $this->fcmConfigured()) {
             return $sent;
@@ -185,7 +185,7 @@ class PushSender
         }
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $accessToken, $title, $body, $urgent)) {
+            if ($this->deliver($device, $accessToken, $title, $body, $urgent, $notificationId)) {
                 $sent++;
             }
         }
@@ -205,20 +205,26 @@ class PushSender
      * arrives keeps the table honest without a sweep that would have to
      * re-derive what the API just said out loud.
      */
-    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body, bool $urgent = false): bool
+    private function deliver(DeviceToken $device, string $accessToken, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
                 ->withToken($accessToken)
                 ->post(sprintf(self::FCM_ENDPOINT, $this->projectId()), [
-                    'message' => [
+                    'message' => array_filter([
                         'token' => $device->token,
                         'notification' => array_filter([
                             'title' => $title,
                             'body' => $body,
                         ]),
                         'android' => ['notification' => ['channel_id' => $urgent ? self::ANDROID_URGENT_CHANNEL : self::ANDROID_CHANNEL]],
-                    ],
+                        // Which bell row a tap opens: the app routes it exactly as
+                        // tapping that row (Bar, 2026-10-12). The KEY is dropped,
+                        // not emptied, when there is no row: PHP's empty array
+                        // encodes as JSON [] and FCM refuses `"data": []`, which
+                        // would fail every push sent with the bell switched off.
+                        'data' => $notificationId === null ? null : ['notification_id' => $notificationId],
+                    ], fn ($value) => $value !== null),
                 ]);
         } catch (ConnectionException $exception) {
             Log::warning('Push not sent: FCM unreachable.', [
