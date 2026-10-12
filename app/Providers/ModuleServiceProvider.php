@@ -3893,6 +3893,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.
                     new TabDefinition('marketing', 'Marketing'),
+                    // Facebook ad spend by campaign, state and category.
+                    new TabDefinition('meta', 'Meta'),
                 ],
                 actionRequires: [
                     'build' => ['reports.view'],

@@ -13,6 +13,7 @@ import '../widgets/tab_bar_like.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
 import 'reports/marketing_report.dart';
+import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
@@ -320,6 +321,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
           'Marketing',
           Icons.campaign_outlined,
           () => MarketingReport(api: widget.api),
+        ),
+      // Facebook ad spend (Jose, 2026-10-12). Editing the campaign mapping
+      // asks for Build, as the server does.
+      if (_mayOpen('meta'))
+        (
+          'Meta',
+          Icons.campaign_outlined,
+          () => MetaAdsReport(api: widget.api, canEdit: canBuildHere),
         ),
       if (me != null)
         for (final module in me.reachableModules)

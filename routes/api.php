@@ -112,6 +112,7 @@ use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebho
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\MarketingReportController;
+use App\Http\Controllers\Api\MetaAdsReportController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
@@ -1220,6 +1221,13 @@ Route::prefix('v1')
         Route::get('reports/profit-loss', [ProfitLossController::class, 'show']);
         // Ad cost against jobs and sales per source; same grant as the P&L.
         Route::get('reports/marketing', [MarketingReportController::class, 'show'])->middleware('permission:reports.marketing.view');
+        // Facebook ad spend per campaign (Jose, 2026-10-12), and the campaign
+        // mapping (state, category, branch) staff keep for it.
+        Route::middleware('permission:reports.meta.view')->group(function () {
+            Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
+            Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
+            Route::put('reports/meta/campaigns/{campaign}', [MetaAdsReportController::class, 'update'])->middleware('permission:reports.build');
+        });
 
         /*
          * ── apiResource SPLIT BY AUDIENCE, deliberately ────────────

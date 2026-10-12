@@ -228,7 +228,8 @@
                 "Reports",
                 "Report Builder",
                 "Performance",
-                "Marketing"
+                "Marketing",
+                "Meta"
             ]
         },
         "reviews": {
@@ -467,6 +468,7 @@
         "reports.export",
         "reports.library.view",
         "reports.marketing.view",
+        "reports.meta.view",
         "reports.view",
         "reviews.create",
         "reviews.delete",
