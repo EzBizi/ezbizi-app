@@ -29,6 +29,11 @@ class OverbookingPane extends StatefulWidget {
 }
 
 class _OverbookingPaneState extends State<OverbookingPane> {
+  /// Rows opened to their jobs (Bar, via Jose, 2026-10-12: "make everything
+  /// clickable to show its full information"), keyed by the row's key, each
+  /// with the request that fills it. A reload closes them: the list must be
+  /// the count, and the count may have moved.
+  final Map<String, Future<ApiResponse>> _opened = {};
   static const _spans = [7, 14, 30, 60];
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const _months = [
@@ -66,6 +71,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       _error = null;
     });
 
+    _opened.clear();
     final response = await widget.api.get(
       '/scheduling/overbooking',
       _date == null ? {'days': '$_days'} : {'date': _date!},
@@ -326,52 +332,183 @@ class _OverbookingPaneState extends State<OverbookingPane> {
     required String title,
     required String detail,
     String? pill,
+    VoidCallback? onTap,
+    bool open = false,
+    Widget? below,
   }) {
     final c = ToneColours.of(context, tone);
+    final head = Row(
+      children: [
+        Icon(icon, size: 20, color: c.ink),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.titleSmall),
+              Text(
+                detail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (pill != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: c.fill,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              pill,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: c.ink,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        if (onTap != null)
+          Icon(
+            open ? Icons.expand_less : Icons.expand_more,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+      ],
+    );
+
     return Container(
       key: key,
       margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         border: Border.all(color: EzBiziTheme.edge(context)),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(icon, size: 20, color: c.ink),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleSmall),
-                Text(
-                  detail,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+          InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: head,
             ),
           ),
-          if (pill != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: c.fill,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                pill,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: c.ink,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+          if (open && below != null) below,
         ],
       ),
     );
+  }
+
+  /// The jobs behind an overbooked row, each with its client and appointment.
+  Widget _jobs(ThemeData theme, Future<ApiResponse> request) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return FutureBuilder<ApiResponse>(
+      future: request,
+      builder: (context, snap) {
+        final response = snap.data;
+        if (response == null) {
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!response.ok) {
+          return Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(response.message, style: TextStyle(color: muted)),
+          );
+        }
+        final jobs = (response.body['data'] as List? ?? const [])
+            .cast<Map<String, dynamic>>();
+        return SelectionArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final j in jobs) _job(theme, j),
+              if (jobs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'No jobs on this day any more.',
+                    style: TextStyle(color: muted),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _job(ThemeData theme, Map<String, dynamic> j) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final client = (j['customer'] as Map?)?.cast<String, dynamic>() ?? {};
+    final techs = (j['technicians'] as List? ?? const []).join(', ');
+    final time = j['time'] == null
+        ? 'No time set'
+        : [
+            _clock(j['time'] as String),
+            if (j['end_time'] != null) _clock(j['end_time'] as String),
+          ].join(' – ');
+
+    Widget line(IconData icon, String? text) => text == null || text.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 16, color: muted),
+                const SizedBox(width: 8),
+                Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+              ],
+            ),
+          );
+
+    return Container(
+      key: ValueKey(
+        'overbooked-job-${j['job_id'] ?? j['lead_id'] ?? j['number']}-${j['time']}',
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            [
+              time,
+              j['service'],
+              if (j['number'] != null) '#${j['number']}',
+            ].whereType<String>().join('  ·  '),
+            style: theme.textTheme.titleSmall,
+          ),
+          Text(
+            [client['name'], j['status']].whereType<String>().join('  ·  '),
+            style: theme.textTheme.bodyMedium,
+          ),
+          line(Icons.phone_outlined, client['phone'] as String?),
+          line(Icons.mail_outline, client['email'] as String?),
+          line(Icons.place_outlined, client['address'] as String?),
+          line(
+            Icons.engineering_outlined,
+            techs.isEmpty ? 'No technician yet' : techs,
+          ),
+          line(Icons.notes_outlined, j['notes'] as String?),
+        ],
+      ),
+    );
+  }
+
+  /// "14:00" → "2:00 PM".
+  static String _clock(String hhmm) {
+    final h = int.tryParse(hhmm.substring(0, 2)) ?? 0;
+    final m = hhmm.substring(3, 5);
+    return '${h % 12 == 0 ? 12 : h % 12}:$m ${h < 12 ? 'AM' : 'PM'}';
   }
 
   Widget _overRow(ThemeData theme, Map<String, dynamic> r) {
@@ -384,14 +521,30 @@ class _OverbookingPaneState extends State<OverbookingPane> {
         : '${r['booked']} booked of ${r['capacity']}'
               '${franchise ? ' (daily limit)' : ''}';
 
+    final id = 'overbooked-${r['date']}-${r['level']}-${r['name']}';
+    final request = _opened[id];
+
     return _row(
       theme,
-      key: ValueKey('overbooked-${r['date']}-${r['level']}-${r['name']}'),
+      key: ValueKey(id),
       icon: franchise ? Icons.domain : Icons.warning_amber_rounded,
       tone: Tone.bad,
       title: title,
       detail: detail,
       pill: '${r['over']} over',
+      open: request != null,
+      below: request == null ? null : _jobs(theme, request),
+      onTap: () => setState(() {
+        if (_opened.remove(id) == null) {
+          _opened[id] = widget.api.get('/scheduling/overbooking/jobs', {
+            'date': r['date'] as String,
+            if (franchise)
+              'franchise_id': '${r['franchise_id']}'
+            else
+              'area_id': '${r['area_id']}',
+          });
+        }
+      }),
     );
   }
 
