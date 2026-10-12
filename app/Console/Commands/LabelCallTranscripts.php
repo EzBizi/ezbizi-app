@@ -36,13 +36,16 @@ class LabelCallTranscripts extends Command
             ->limit((int) $this->option('limit'))
             ->get();
 
-        foreach ($rows as $row) {
-            try {
-                $read = TranscriptSpeakers::read((string) $row->transcript);
-            } catch (RuntimeException $e) {
-                $this->warn('Grok: '.$e->getMessage());
+        // Side by side (GrokCli::askMany); a failed call stays unlabelled and
+        // is asked about again next run.
+        $reads = TranscriptSpeakers::readMany($rows->map(fn ($row) => (string) $row->transcript)->all());
 
-                return self::SUCCESS;   // an expired sign-in fails every call; next run tries again
+        foreach ($rows->values() as $n => $row) {
+            $read = $reads[$n];
+            if ($read instanceof RuntimeException) {
+                $this->warn('Grok: '.$read->getMessage());
+
+                continue;
             }
             $tenant->run(
                 Organization::withoutGlobalScopes()->findOrFail($row->organization_id),

@@ -148,4 +148,19 @@ class LabelCallTranscriptsTest extends TestCase
         $event = \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->sole();
         $this->assertSame($row->lead_id, $event->subject_id);
     }
+
+    /** AI item 4: asked side by side, and one failure leaves only its own call for later. */
+    public function test_calls_are_asked_together_and_a_failure_stays_with_its_call(): void
+    {
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result('', 'not logged in', 1))
+            ->push(Process::result(json_encode(['structuredOutput' => ['turns' => [['speaker' => 'Customer', 'text' => self::RAW]]]])))]);
+        $a = $this->aCall();
+        $b = $this->aCall();
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $done = array_filter([$this->reread($a)->transcript_labelled, $this->reread($b)->transcript_labelled]);
+        $this->assertCount(1, $done, 'one answered, one left for the next run');
+    }
 }

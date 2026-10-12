@@ -39,51 +39,26 @@ final class TranscriptSpeakers
      */
     public static function read(string $raw): array
     {
-        $json = GrokCli::ask(
-            "Below is a machine transcript of one phone call to a home-services business (chimneys, "
-            ."fireplaces, garage doors). It starts with the business's recorded phone menu, which may "
-            ."repeat.\n\n"
-            ."1. Split it into turns by who is speaking:\n"
-            ."- \"IVR menu\": the recorded menu or any recorded message. Give it ONCE, as one turn, even if it repeated.\n"
-            ."- \"Dispatcher\": the business's person who answers.\n"
-            ."- \"Customer\": the caller.\n"
-            ."Copy the words exactly as written. Do not summarise, correct or add anything.\n"
-            ."2. summary: one plain sentence a dispatcher can read in two seconds: what the caller wanted "
-            ."and what was agreed (service, day, price if said). Empty if nobody spoke.\n"
-            ."3. next_step: what the business should do next, in a few words (\"Call back with a quote\"), "
-            ."or empty if nothing is left to do.\n"
-            ."4. complaint: the caller is unhappy with work done, a no-show, a charge or how they were treated.\n"
-            ."5. asked_price / asked_availability: the caller asked what it costs / when someone can come.\n"
-            ."6. booked: an appointment was agreed on this call.\n\n"
-            .$raw,
-            [
-                'type' => 'object',
-                'properties' => [
-                    'turns' => [
-                        'type' => 'array',
-                        'items' => [
-                            'type' => 'object',
-                            'properties' => [
-                                'speaker' => ['type' => 'string', 'enum' => self::LABELS],
-                                'text' => ['type' => 'string'],
-                            ],
-                            'required' => ['speaker', 'text'],
-                            'additionalProperties' => false,
-                        ],
-                    ],
-                    'summary' => ['type' => 'string'],
-                    'next_step' => ['type' => 'string'],
-                    'complaint' => ['type' => 'boolean'],
-                    'asked_price' => ['type' => 'boolean'],
-                    'asked_availability' => ['type' => 'boolean'],
-                    'booked' => ['type' => 'boolean'],
-                ],
-                'required' => ['turns', 'summary', 'next_step', 'complaint', 'asked_price', 'asked_availability', 'booked'],
-                'additionalProperties' => false,
-            ],
-        );
+        $read = self::readMany([$raw])[0];
 
-        return [
+        if ($read instanceof RuntimeException) {
+            throw $read;
+        }
+
+        return $read;
+    }
+
+    /**
+     * read() for several calls side by side (GrokCli::askMany).
+     *
+     * @param  list<string>  $raws
+     * @return list<array|RuntimeException> in order; a failure stays with its call
+     */
+    public static function readMany(array $raws): array
+    {
+        $answers = GrokCli::askMany(array_map(fn ($raw) => self::PROMPT.$raw, $raws), self::SCHEMA);
+
+        return array_map(fn ($json, $raw) => $json instanceof RuntimeException ? $json : [
             'labelled' => self::assemble((array) ($json['turns'] ?? []), $raw),
             'summary' => self::line($json['summary'] ?? null),
             'next_step' => self::line($json['next_step'] ?? null),
@@ -93,8 +68,50 @@ final class TranscriptSpeakers
                 'asked_availability' => ($json['asked_availability'] ?? false) === true,
                 'booked' => ($json['booked'] ?? false) === true,
             ],
-        ];
+        ], $answers, $raws);
     }
+
+    private const PROMPT = "Below is a machine transcript of one phone call to a home-services business (chimneys, "
+        ."fireplaces, garage doors). It starts with the business's recorded phone menu, which may "
+        ."repeat.\n\n"
+        ."1. Split it into turns by who is speaking:\n"
+        ."- \"IVR menu\": the recorded menu or any recorded message. Give it ONCE, as one turn, even if it repeated.\n"
+        ."- \"Dispatcher\": the business's person who answers.\n"
+        ."- \"Customer\": the caller.\n"
+        ."Copy the words exactly as written. Do not summarise, correct or add anything.\n"
+        ."2. summary: one plain sentence a dispatcher can read in two seconds: what the caller wanted "
+        ."and what was agreed (service, day, price if said). Empty if nobody spoke.\n"
+        ."3. next_step: what the business should do next, in a few words (\"Call back with a quote\"), "
+        ."or empty if nothing is left to do.\n"
+        ."4. complaint: the caller is unhappy with work done, a no-show, a charge or how they were treated.\n"
+        ."5. asked_price / asked_availability: the caller asked what it costs / when someone can come.\n"
+        ."6. booked: an appointment was agreed on this call.\n\n";
+
+    private const SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'turns' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'speaker' => ['type' => 'string', 'enum' => self::LABELS],
+                        'text' => ['type' => 'string'],
+                    ],
+                    'required' => ['speaker', 'text'],
+                    'additionalProperties' => false,
+                ],
+            ],
+            'summary' => ['type' => 'string'],
+            'next_step' => ['type' => 'string'],
+            'complaint' => ['type' => 'boolean'],
+            'asked_price' => ['type' => 'boolean'],
+            'asked_availability' => ['type' => 'boolean'],
+            'booked' => ['type' => 'boolean'],
+        ],
+        'required' => ['turns', 'summary', 'next_step', 'complaint', 'asked_price', 'asked_availability', 'booked'],
+        'additionalProperties' => false,
+    ];
 
     private static function line(mixed $text): ?string
     {
