@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0408',
+      date: '12 Oct 2026',
+      items: [
+        'Leads: Call opens a dial pad with the number already typed in, instead of the whole Communication screen over Leads.',
+        'Leads: Book fills in the street, unit, city, state and ZIP from the customer\'s website form.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0407',
       date: '12 Oct 2026',
       items: [
