@@ -2739,3 +2739,13 @@ the safe direction. **Inverts in two steps, both from API Integrations:**
 production keys move off sandbox (connectable) → then a real `sent` row (sends).
 
 **Published at `a83ce119`** (desk; `/` and `/social-media/` re-verified byte-identical here). Nothing on this run is left unpublished.
+
+**Later the same day, Pinterest INVERTED, on this table's own test.** API
+Integrations relayed Standard access approved (email 2026-10-12). Measured on
+production rather than taken: `services.pinterest.sandbox_token` is now
+**unset**, and `social_post_targets` `01a13007…` is `sent` 2026-10-12 12:13 UTC,
+`remote_id` 1129910994053982207, from A1-Group's real connection; the Pin URL
+answers `200`. Both halves of the inversion condition hold. `/` "Facebook Pages,
+Instagram, Threads and Pinterest send today"; `/social-media/` "four of the
+nine", "For the other five", Pinterest row "Sends now, images only — video
+publishing does not exist yet". Still no usage claim: one tenant, Jose's own.
