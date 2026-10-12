@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **sent 2026-10-12, waiting** (`docs/previews/monitoring-files-explorer-layouts.html`)
+
+Jose 2026-10-12, via Monitoring: *"have the files system require the authenticator code as well for extra security, and also
+if possible, can we make it sort of like windows explorer, where for example it shows previews of pictures, etc ? as well as
+quicklinks like desktop download, etc."* Monitoring is building the server half:
+- an unlock by authenticator code that lasts 15 minutes and slides with use (403 files_locked, then asked for again in place);
+- quick_links, only the folders that exist;
+- a preview on select (up to 5 MB, logged as a download), with no thumbnail grid.
+
+Desktop **1** (recommended): once chosen, the computer folds into a picker at the top. Explorer's three panes follow: Quick
+access and drives, a details list (Name, Modified, Size, sortable, type icons) and a preview pane. A green "Unlocked · 14 min"
+pill and Lock now sit in the toolbar, and the lock card stands in the pane in place of the files. **2**: the rail stays,
+quick links become chips, and the preview opens in a side panel. **3**: one tree, computers with their quick links under
+them. Phone **4** (recommended): the code, the computer, quick-link tiles, the list, then a picture full width; **5**: chips;
+**6**: tree. Owner: Monitoring (`files_tab.dart`); built once the server lands.
+
 ### 78 · Reports · Performance · tables instead of sentences — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-tables-layouts.html`)
 
 Jose 2026-10-12, with a screenshot of Calls: *"look at all of the available tabs and options and see how you can improve the
