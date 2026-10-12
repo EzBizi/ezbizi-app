@@ -219,6 +219,50 @@ void main() {
     expect(find.textContaining('Burst pipe'), findsOneWidget);
   });
 
+  testWidgets('a missed call opens to its caller, its line and its voicemail', (
+    tester,
+  ) async {
+    // Bar, via Jose, 2026-10-12: a missed row opens to all of its info.
+    final withLines = Map<String, dynamic>.from(_report);
+    withLines['calls'] = [
+      for (final call
+          in (_report['calls'] as List).cast<Map<String, dynamic>>())
+        call['id'] == 'c4'
+            ? {
+                ...call,
+                'recording_id': 'rec-4',
+                'to_number': '+15558887777',
+                'to_name': 'DFW - LS Ads',
+              }
+            : call,
+    ];
+    await _pump(tester, width: 1400, report: () => withLines);
+
+    await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
+    await tester.pumpAndSettle();
+
+    // Closed: no details, and no play button on a missed row.
+    expect(find.text('Caller: +15550004444'), findsNothing);
+    expect(find.byKey(const ValueKey('listen-rec-4')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('call-details-c4')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Caller: +15550004444'), findsOneWidget);
+    expect(
+      find.text('Line called: +15558887777 · DFW - LS Ads'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('voicemail-rec-4')), findsOneWidget);
+
+    // A missed call with no voicemail opens to its numbers, no player.
+    await tester.tap(find.byKey(const ValueKey('call-details-c3')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voicemail-null')), findsNothing);
+  });
+
   testWidgets('Missed calls narrow to new or existing clients', (tester) async {
     await _pump(tester, width: 1400);
 
