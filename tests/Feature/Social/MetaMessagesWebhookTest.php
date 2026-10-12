@@ -8,6 +8,7 @@ use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -222,6 +223,71 @@ class MetaMessagesWebhookTest extends TestCase
         // apart only by `object`, so a single source here would put Instagram
         // DMs behind the Messenger chip and make one of them unreachable.
         $this->assertSame(Lead::SOURCE_INSTAGRAM, $lead->source);
+    }
+
+    private function holdsToken(SocialConnection $connection, array $t): void
+    {
+        $this->inTenant($t['org'], fn () => $connection->forceFill(['credentials' => ['access_token' => 'page-token']])->save());
+    }
+
+    public function test_a_messenger_lead_is_named_from_the_conversation(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->holdsToken($this->pageBelongsTo($t), $t);
+
+        // The participants list, not GET /{PSID}: the profile route needs a
+        // feature this app does not hold and refused every real customer.
+        Http::fake(['graph.facebook.com/*/'.self::PAGE_ID.'/conversations*' => Http::response(['data' => [[
+            'participants' => ['data' => [
+                ['name' => 'Scarllet Peter', 'id' => self::SENDER],
+                ['name' => 'A-1 Chimney', 'id' => self::PAGE_ID],
+            ]],
+        ]]])]);
+
+        $this->deliver($this->body(['mid' => 'm_N', 'text' => 'hi']))->assertOk();
+
+        $this->assertSame('Scarllet Peter', Lead::query()->withoutGlobalScopes()->firstOrFail()->contact_name);
+    }
+
+    public function test_an_instagram_lead_without_a_name_is_named_by_username(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->holdsToken($this->pageBelongsTo($t, SocialProvider::InstagramProfessional->value), $t);
+
+        Http::fake(['graph.instagram.com/*/'.self::SENDER.'*' => Http::response(['name' => '', 'username' => 'jldemasi'])]);
+
+        $this->deliver($this->body(['mid' => 'm_IGN', 'text' => 'hi'], 'instagram'))->assertOk();
+
+        $this->assertSame('@jldemasi', Lead::query()->withoutGlobalScopes()->firstOrFail()->contact_name);
+    }
+
+    public function test_a_name_staff_typed_is_never_overwritten_and_a_blank_one_is_filled(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->holdsToken($this->pageBelongsTo($t), $t);
+
+        Http::fake(['graph.facebook.com/*' => Http::sequence()
+            ->push(['data' => []])
+            ->push(['data' => [['participants' => ['data' => [['name' => 'Meta Name', 'id' => self::SENDER]]]]]])
+            ->push(['data' => [['participants' => ['data' => [['name' => 'Meta Name', 'id' => self::SENDER]]]]]]),
+        ]);
+
+        // Meta says nothing the first time: unnamed, the honest state.
+        $this->deliver($this->body(['mid' => 'm_B1', 'text' => 'hi']))->assertOk();
+        $lead = Lead::query()->withoutGlobalScopes()->firstOrFail();
+        $this->assertNull($lead->contact_name);
+
+        // The next message fills the blank.
+        $this->deliver($this->body(['mid' => 'm_B2', 'text' => 'hello?']))->assertOk();
+        $this->assertSame('Meta Name', $lead->fresh()->contact_name);
+
+        // Staff correct it; Meta's name must not come back over theirs.
+        $this->inTenant($t['org'], fn () => $lead->fresh()->forceFill(['contact_name' => 'Mrs Peters'])->save());
+        $this->deliver($this->body(['mid' => 'm_B3', 'text' => 'still there?']))->assertOk();
+        $this->assertSame('Mrs Peters', $lead->fresh()->contact_name);
     }
 
     public function test_an_instagram_delivery_signed_with_the_instagram_secret_is_accepted(): void
