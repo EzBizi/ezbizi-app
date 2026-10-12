@@ -42,11 +42,18 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RequirePermission
 {
-    public function handle(Request $request, Closure $next, string $permission): Response
+    /**
+     * `permission:a.view,b.view` admits a holder of ANY of the keys - for a
+     * list several tabs draw (Marketing's Dashboard, Compose and Calendar all
+     * read social/posts). One key behaves exactly as before.
+     */
+    public function handle(Request $request, Closure $next, string ...$permissions): Response
     {
         $user = $request->user();
+        $held = $user !== null
+            && array_filter($permissions, fn (string $key) => $user->hasPermission($key)) !== [];
 
-        if ($user === null || ! $user->hasPermission($permission)) {
+        if (! $held) {
             /*
              * The tab's own words, not the key.
              *
@@ -58,7 +65,7 @@ class RequirePermission
              */
             return response()->json([
                 'message' => Refusal::permission('open this tab')->message(),
-                'code'    => 'permission_denied',
+                'code' => 'permission_denied',
             ], Response::HTTP_FORBIDDEN);
         }
 

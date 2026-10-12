@@ -157,7 +157,9 @@
             "label": "Marketing",
             "parent": null,
             "tabs": [
-                "Posts",
+                "Dashboard",
+                "Compose",
+                "Calendar",
                 "Accounts",
                 "QR Codes"
             ]
@@ -412,8 +414,10 @@
         "leads.whatsapp.view",
         "leads.workiz.view",
         "marketing.accounts.view",
+        "marketing.calendar.view",
+        "marketing.compose.view",
+        "marketing.dashboard.view",
         "marketing.edit",
-        "marketing.posts.view",
         "marketing.qr_codes.view",
         "marketing.view",
         "memberships.create",

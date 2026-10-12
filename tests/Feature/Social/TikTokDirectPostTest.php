@@ -202,7 +202,7 @@ class TikTokDirectPostTest extends TestCase
             ->assertJsonPath('data.stitch_disabled', true)
             ->assertJsonPath('data.max_video_post_duration_sec', 600);
 
-        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.posts.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.compose.view']);
         $this->signedInAs($reader)->getJson("/api/v1/social/connections/$key/tiktok-creator")->assertForbidden();
     }
 

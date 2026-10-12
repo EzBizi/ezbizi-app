@@ -1900,14 +1900,17 @@ Route::prefix('v1')
         Route::post('newsletter/mailchimp/connect', [MailchimpConnectController::class, 'store']);
         Route::get('newsletter/mailchimp/lists', [MailchimpConnectController::class, 'lists']);
 
-        // Social Media Management's Posts tab. Accounts is gated on the screen
+        // Social Media Management's post tabs. Accounts is gated on the screen
         // only: the connection routes below serve Integrations, Leads, Reports
         // and Newsletter too.
-        Route::middleware('permission:marketing.posts.view')->group(function () {
-            Route::get('social/posts', [SocialPostsController::class, 'index']);
-            Route::post('social/posts', [SocialPostsController::class, 'store']);
-            Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
-        });
+        // The list is drawn by all three post tabs; writing is Compose's;
+        // Retry sits on the Dashboard and in Compose's sent list.
+        Route::get('social/posts', [SocialPostsController::class, 'index'])
+            ->middleware('permission:marketing.dashboard.view,marketing.compose.view,marketing.calendar.view');
+        Route::post('social/posts', [SocialPostsController::class, 'store'])
+            ->middleware('permission:marketing.compose.view');
+        Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry'])
+            ->middleware('permission:marketing.dashboard.view,marketing.compose.view');
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);

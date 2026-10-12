@@ -4,6 +4,8 @@ namespace Tests\Feature\Api;
 
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -29,12 +31,27 @@ class MarketingTabPermissionsTest extends TestCase
 
     private const TAB_REFUSAL = 'open this tab';
 
-    public function test_the_posts_tab_opens_the_post_list(): void
+    /** Posts became Dashboard, Compose and Calendar (2026-10-12); each reads the list. */
+    public function test_each_post_tab_opens_the_post_list(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $marketer = $this->userWithRole($t, 'Marketer', ['marketing.view', 'marketing.posts.view']);
 
-        $this->signedInAs($marketer)->getJson('/api/v1/social/posts')->assertOk();
+        foreach (['dashboard', 'compose', 'calendar'] as $tab) {
+            $user = $this->userWithRole($t, ucfirst($tab), ['marketing.view', "marketing.{$tab}.view"]);
+            $this->signedInAs($user)->getJson('/api/v1/social/posts')->assertOk();
+        }
+    }
+
+    /** Writing is Compose's: the Calendar alone reads but cannot post. */
+    public function test_only_compose_can_post(): void
+    {
+        $t = $this->provisionTenant('Alpha2');
+        $calendar = $this->userWithRole($t, 'Calendar', ['marketing.view', 'marketing.edit', 'marketing.calendar.view']);
+
+        $this->signedInAs($calendar)
+            ->postJson('/api/v1/social/posts', ['body' => 'Autumn sweeps'])
+            ->assertForbidden()
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, self::TAB_REFUSAL));
     }
 
     public function test_marketing_without_the_posts_tab_cannot_read_the_post_list(): void
@@ -113,39 +130,37 @@ class MarketingTabPermissionsTest extends TestCase
     }
 
     /*
-     * The migration is what stops anybody losing a pane on the deploy: every
-     * role that could open each module this morning gets every tab it drew.
-     * Required from the FILE and run, because RefreshDatabase has already run
-     * it before any role existed, which would make a test that relied on the
-     * migrator prove nothing.
+     * The split migration gives every role that held Posts all three new tabs.
+     *
+     * The test this replaces ran 2026_09_29_310000, which materialises
+     * `marketing.posts.view` and so cannot run against today's registry once a
+     * role exists. It already ran in production, and on a fresh database no
+     * role exists when it runs, so it returns before that line.
      */
-    public function test_the_migration_grants_every_existing_reader_their_tabs(): void
+    public function test_the_split_gives_every_posts_holder_the_three_tabs(): void
     {
         $t = $this->provisionTenant('Hotel');
-        $marketer = $this->userWithRole($t, 'Marketer', ['marketing.view']);
-        $mailer = $this->userWithRole($t, 'Mailer', ['newsletter.view']);
+        $poster = $this->userWithRole($t, 'Poster', ['marketing.view']);
+        $other = $this->userWithRole($t, 'Other', ['marketing.view']);
 
-        // Role reads are tenant-scoped.
+        // posts.view is no longer declared, so it is written the way it sits in
+        // production: a row the registry has stopped describing.
+        $postsId = (string) Str::uuid();
+        DB::table('permissions')->insert([
+            'id' => $postsId, 'key' => 'marketing.posts.view', 'module' => 'marketing', 'action' => 'posts.view', 'label' => 'Posts',
+        ]);
+        $roleId = app(TenantContext::class)->run($t['org'], fn () => $poster->fresh()->role_id);
+        DB::table('permission_role')->insert(['role_id' => $roleId, 'permission_id' => $postsId]);
+
         $holds = fn ($user, string $key) => app(TenantContext::class)->run(
-            $t['org'],
-            fn () => $user->fresh()->hasPermission($key),
+            $t['org'], fn () => $user->fresh()->hasPermission($key),
         );
 
-        $this->assertFalse($holds($marketer, 'marketing.posts.view'));
+        (require database_path('migrations/2026_10_12_400000_split_marketing_posts_into_dashboard_compose_calendar.php'))->up();
 
-        $migration = require database_path('migrations/2026_09_29_310000_grant_existing_roles_the_marketing_and_newsletter_tabs.php');
-        $migration->up();
-
-        foreach (['marketing.posts.view', 'marketing.accounts.view'] as $key) {
-            $this->assertTrue($holds($marketer, $key), "{$key} was not granted to Marketing's readers.");
+        foreach (['marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view'] as $key) {
+            $this->assertTrue($holds($poster, $key), "{$key} was not granted to a Posts holder.");
+            $this->assertFalse($holds($other, $key), "{$key} was granted to a role without Posts.");
         }
-
-        foreach (['newsletter.dashboard.view', 'newsletter.composer.view', 'newsletter.settings.view'] as $key) {
-            $this->assertTrue($holds($mailer, $key), "{$key} was not granted to Newsletter's readers.");
-        }
-
-        // And it grants nothing across: a Newsletter-only role does not gain
-        // Social's panes by being in the same parent.
-        $this->assertFalse($holds($mailer, 'marketing.posts.view'));
     }
 }

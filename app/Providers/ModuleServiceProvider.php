@@ -1562,7 +1562,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * refused server-side without `connectPermission()` regardless.
                  */
                 tabs: [
-                    new TabDefinition('posts', 'Posts'),
+                    // Posts split into its three tabs (Jose, 2026-10-12, UI queue 76).
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('compose', 'Compose'),
+                    new TabDefinition('calendar', 'Calendar'),
                     new TabDefinition('accounts', 'Accounts'),
                     // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
                     new TabDefinition('qr_codes', 'QR Codes'),

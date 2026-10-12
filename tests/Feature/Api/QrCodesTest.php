@@ -213,7 +213,7 @@ class QrCodesTest extends TestCase
     public function test_marketing_without_the_tab_cannot_list(): void
     {
         $t = $this->provisionTenant('Delta');
-        $poster = $this->userWithRole($t, 'Poster', ['marketing.view', 'marketing.edit', 'marketing.posts.view']);
+        $poster = $this->userWithRole($t, 'Poster', ['marketing.view', 'marketing.edit', 'marketing.compose.view']);
 
         $this->signedInAs($poster)->getJson('/api/v1/marketing/qr-codes')
             ->assertForbidden()
