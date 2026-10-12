@@ -637,6 +637,13 @@ class _LeadThreadState extends State<LeadThread> {
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),
+                                if (leadNameIsAi(lead)) ...[
+                                  const SizedBox(width: 6),
+                                  const AiMark(
+                                    key: ValueKey('thread-ai-name'),
+                                    tooltip: aiNameTooltip,
+                                  ),
+                                ],
                                 const SizedBox(width: 8),
                                 // What it is, said as a pill: the corner
                                 // field that read as a search box is gone
@@ -645,6 +652,14 @@ class _LeadThreadState extends State<LeadThread> {
                                   lead['status'],
                                   key: const ValueKey('thread-status'),
                                 ),
+                                if (leadAiHolds(lead, 'status')) ...[
+                                  const SizedBox(width: 4),
+                                  const AiMark(
+                                    key: ValueKey('thread-ai-status'),
+                                    tooltip: 'Status set by AI from the '
+                                        'conversation. Change it to override.',
+                                  ),
+                                ],
                                 if (widget.onStar != null)
                                   IconButton(
                                     key: const ValueKey('thread-star'),
@@ -1618,13 +1633,32 @@ class _LeadThreadState extends State<LeadThread> {
             ],
           )
         else if (address != null || zip != null)
-          Text(
-            [
-              ?address,
-              if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
-            ].join(' · '),
-            key: const ValueKey('lead-address'),
-            style: theme.textTheme.bodySmall,
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  [
+                    ?address,
+                    if (zip != null && !(address ?? '').contains(zip))
+                      'ZIP $zip',
+                  ].join(' · '),
+                  key: const ValueKey('lead-address'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              // Only when the ZIP shown is the one AI wrote: a ZIP from
+              // Google's own details is not AI's, whatever AI also guessed.
+              if (zip != null &&
+                  leadAiHolds(lead, 'postal_code') &&
+                  lead['postal_code'] == zip) ...[
+                const SizedBox(width: 6),
+                const AiMark(
+                  key: ValueKey('lead-ai-zip'),
+                  tooltip: 'ZIP filled in by AI from what the customer said. '
+                      'Edit it to change it.',
+                ),
+              ],
+            ],
           ),
         if (mayCheck)
           Align(
@@ -2171,6 +2205,19 @@ bool showsNumberLine(Map<String, dynamic> lead) {
       phone.isNotEmpty &&
       leadTitle(lead) != formatPhoneNumber(phone);
 }
+
+/// Whether [field] still holds the value AI wrote: the API's `ai` list,
+/// which drops a field once a person changes it (UI queue 77).
+bool leadAiHolds(Map<String, dynamic> lead, String field) =>
+    (lead['ai'] as List?)?.contains(field) == true;
+
+/// The title is the name AI filled in, rather than a number or a customer.
+bool leadNameIsAi(Map<String, dynamic> lead) =>
+    leadAiHolds(lead, 'contact_name') &&
+    (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
+
+const String aiNameTooltip =
+    'Name filled in by AI from what the customer said. Edit it to change it.';
 
 /// The title of a lead: the name, or the number somebody would call back.
 String leadTitle(Map<String, dynamic> lead) {

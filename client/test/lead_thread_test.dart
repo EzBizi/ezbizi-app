@@ -577,6 +577,44 @@ void main() {
     expect(mark, findsNothing);
   });
 
+  // UI queue 77: a value AI set says so until a person changes it. The API's
+  // `ai` list is what says which values are still AI's.
+  testWidgets('the name, status and ZIP AI set carry the AI mark', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      ai: const ['contact_name', 'status', 'postal_code'],
+      postalCode: '46360',
+      details: const {'zip': '46360'},
+    );
+
+    expect(find.byKey(const ValueKey('thread-ai-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('thread-ai-status')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-ai-zip')), findsOneWidget);
+  });
+
+  // The control: a lead whose values a person set carries none of it, and a
+  // ZIP from Google's own details is not AI's whatever AI guessed.
+  testWidgets('values a person set, or Google gave, carry no AI mark', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      ai: const ['postal_code'],
+      postalCode: '06103',
+      details: const {'zip': '46360'},
+    );
+
+    expect(find.byKey(const ValueKey('thread-ai-name')), findsNothing);
+    expect(find.byKey(const ValueKey('thread-ai-status')), findsNothing);
+    expect(find.byKey(const ValueKey('lead-ai-zip')), findsNothing);
+  });
+
   testWidgets('without the model there is no Suggest button', (tester) async {
     await _pump(
       tester,
@@ -992,6 +1030,8 @@ Future<void> _pump(
   String? source,
   bool visitorTyping = false,
   Map<String, dynamic>? booking,
+  List<String>? ai,
+  String? postalCode,
 }) async {
   _sent.clear();
   _typingPosts.clear();
@@ -1144,6 +1184,8 @@ Future<void> _pump(
             'franchise': const {'id': 'f-1', 'name': 'Connecticut'},
             'company': ?company,
             'source': ?source,
+            'ai': ?ai,
+            'postal_code': ?postalCode,
           },
           onStatusChanged: (_) async {},
           onRead: onRead,

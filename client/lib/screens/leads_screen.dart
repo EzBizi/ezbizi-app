@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
@@ -1701,6 +1702,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            if (leadNameIsAi(lead)) ...[
+                              const SizedBox(width: 4),
+                              AiMark(
+                                key: ValueKey('lead-ai-name-${lead['id']}'),
+                                tooltip: aiNameTooltip,
+                              ),
+                            ],
                             // The badges wrap under each other rather than push the
                             // row past its edge: at half a desktop screen the list
                             // pane is ~300px and a Customer + Text + Awaiting reply +
