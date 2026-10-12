@@ -2737,3 +2737,5 @@ once TikTok has reviewed EzBizi's app", TikTok row "Not yet open to connect";
 `/privacy/` keeps TikTok in its "for example" list — a disclosure, over-wide is
 the safe direction. **Inverts in two steps, both from API Integrations:**
 production keys move off sandbox (connectable) → then a real `sent` row (sends).
+
+**Published at `a83ce119`** (desk; `/` and `/social-media/` re-verified byte-identical here). Nothing on this run is left unpublished.
