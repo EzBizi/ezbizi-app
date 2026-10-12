@@ -142,6 +142,8 @@ class FileAccessService {
           'op': 'list',
           'path': path,
           'entries': entries,
+          // This PC carries Explorer's Quick access alongside the drives.
+          if (path.isEmpty) 'quick_links': await _reader.quickLinks(),
         };
       } else {
         final file = await _reader.read(path, _maxDownloadBytes);

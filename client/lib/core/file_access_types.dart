@@ -27,4 +27,10 @@ abstract interface class FileAccessReader {
   /// [path]'s bytes as `{name, size, content_base64}`, refusing with
   /// `too_large` before reading anything when the file is over [maxBytes].
   Future<Map<String, Object?>> read(String path, int maxBytes);
+
+  /// Explorer's Quick access for the signed-in user — `{label, path}` for
+  /// Desktop, Documents, Downloads, Pictures, Videos, Music that exist. Sent
+  /// with the roots listing (Jose, 2026-10-12). Never throws: no links is an
+  /// empty list, not a failed drive list.
+  Future<List<Map<String, String>>> quickLinks();
 }
