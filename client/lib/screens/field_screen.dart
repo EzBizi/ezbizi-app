@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'field/dashboard_tab.dart';
@@ -28,6 +29,32 @@ class _FieldScreenState extends State<FieldScreen> {
   String _tab = 'dashboard';
   final Set<String> _shown = {'dashboard'};
 
+  /// A tapped notification about an alert opens it on the Dashboard.
+  String? _alertId;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+    DeepLinks.pending.addListener(_takeLink);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
+    super.dispose();
+  }
+
+  void _takeLink() => setState(_open);
+
+  void _open() {
+    final link = DeepLinks.take('field');
+    if (link?.type != 'field_alert' || !_may('field.dashboard.view')) return;
+    _alertId = link!.id;
+    _tab = 'dashboard';
+    _shown.add(_tab);
+  }
+
   bool _may(String key) =>
       widget.session.me?.permissions.contains(key) ?? false;
 
@@ -40,6 +67,7 @@ class _FieldScreenState extends State<FieldScreen> {
         () => FieldDashboardTab(
           api: widget.api,
           canAcknowledge: _may('field.manage'),
+          focusAlertId: _alertId,
         ),
       ),
     if (_may('field.map.view'))
