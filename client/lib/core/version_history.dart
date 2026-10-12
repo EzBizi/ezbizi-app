@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0414',
+      date: '12 Oct 2026',
+      items: [
+        'Workiz: each branch\'s Workiz phone calls and Workiz\'s call scores now come into EzBizi (for Reports).',
+        'Reports: Performance › People shows Workiz\'s own call scores beside EzBizi\'s, for branches Workiz scores (DMV, Illinois, New York).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0413',
       date: '12 Oct 2026',
       items: [
