@@ -3,6 +3,7 @@
 namespace App\Support\Ai;
 
 use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -22,6 +23,9 @@ use RuntimeException;
  */
 final class GrokCli
 {
+    /** A long call's speaker split can take minutes; 120 s timed out on prod. */
+    private const TIMEOUT = 300;
+
 
     public static function configured(): bool
     {
@@ -74,28 +78,39 @@ final class GrokCli
             }
 
             try {
-                $results = Process::pool(function ($pool) use ($works, $home, $schema) {
-                    foreach ($works as $i => $work) {
-                        $pool->as((string) $i)->env(['HOME' => $home])->timeout(120)->command([
-                            $home.'/.grok/bin/grok',
-                            '--prompt-file', $work.'/prompt.txt',
-                            '--json-schema', json_encode($schema),
-                            '--max-turns', '1',
-                            '--disable-web-search',
-                            '--no-subagents',
-                            '--tools', '',
-                            '--cwd', $work.'/cwd',
-                        ]);
+                // Started side by side, waited on one by one, so a call that
+                // runs out of time fails alone (prod 2026-10-12: one long
+                // transcript's timeout stopped every run behind it).
+                $running = [];
+                foreach ($works as $i => $work) {
+                    $running[$i] = Process::env(['HOME' => $home])->timeout(self::TIMEOUT)->start([
+                        $home.'/.grok/bin/grok',
+                        '--prompt-file', $work.'/prompt.txt',
+                        '--json-schema', json_encode($schema),
+                        '--max-turns', '1',
+                        '--disable-web-search',
+                        '--no-subagents',
+                        '--tools', '',
+                        '--cwd', $work.'/cwd',
+                    ]);
+                }
+                $results = [];
+                foreach ($running as $i => $process) {
+                    try {
+                        $results[$i] = $process->wait();
+                    } catch (ProcessTimedOutException) {
+                        self::failed('timed out after '.self::TIMEOUT.'s');
+                        $results[$i] = new RuntimeException('The Grok CLI timed out after '.self::TIMEOUT.'s');
                     }
-                })->start()->wait();
+                }
             } finally {
                 foreach ($works as $work) {
                     File::deleteDirectory($work);
                 }
             }
 
-            foreach (array_keys($works) as $i) {
-                $answers[$i] = self::answer($results[(string) $i]);
+            foreach ($results as $i => $result) {
+                $answers[$i] = $result instanceof RuntimeException ? $result : self::answer($result);
             }
         }
 
