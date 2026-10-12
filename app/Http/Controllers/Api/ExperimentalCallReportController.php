@@ -268,8 +268,14 @@ class ExperimentalCallReportController extends Controller
             $labels[$row->call_id][$row->provider] = $row->label;
         }
 
+        // Our number the call was on, by RingCentral's own label for it
+        // ("DFW - LS Ads"): Bar, via Jose, 2026-10-12, wants a missed call's
+        // row to say which line was rung.
+        $lines = app(RingCentralCallLog::class)->numberNames();
+
         $day['calls'] = array_map(
             fn (array $call) => $call + [
+                'to_name' => $lines[$call['to_number'] ?? ''] ?? $call['queue'] ?? null,
                 'transcript' => $words[$call['id']] ?? null,
                 'labels' => (object) ($labels[$call['id']] ?? []),
             ],

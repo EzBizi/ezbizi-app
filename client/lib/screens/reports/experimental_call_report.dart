@@ -111,6 +111,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// i want also to differentiate between inbound and outbound calls").
   String? _directionFilter;
 
+  /// Calls whose details are open (Bar, via Jose, 2026-10-12: a missed
+  /// call's row opens to its caller, the line it rang, and a voicemail).
+  final Set<String> _openDetails = {};
+
   /// 'new' or 'existing' client, or null for both: the second half of the
   /// Calls bar.
   String? _clientFilter;
@@ -1887,7 +1891,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
     );
     final talkText = Text(talk, style: theme.textTheme.bodySmall);
-    final play = id == null
+    final callId = '${call['id']}';
+    // A call nobody answered opens to its details; its only recording is a
+    // voicemail, and that plays in the details.
+    final missed = by == null;
+    final detailsOpen = missed && _openDetails.contains(callId);
+    final voicemail = call['outcome'] == 'voicemail' && id != null;
+    final line = [
+      call['to_number'],
+      call['to_name'],
+    ].where((v) => v != null && '$v'.isNotEmpty).join(' · ');
+    final play = id == null || missed
         ? const SizedBox(width: 48)
         : IconButton(
             key: ValueKey('listen-$id'),
@@ -1904,60 +1918,99 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          LayoutBuilder(
-            builder: (context, box) => box.maxWidth >= _wideRow
-                ? Row(
-                    children: [
-                      SizedBox(width: _timeWidth, child: when),
-                      SizedBox(
-                        width: _whoWidth,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: who,
-                        ),
-                      ),
-                      Expanded(child: caller),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 230,
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: badges,
-                        ),
-                      ),
-                      SizedBox(
-                        width: 48,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: talkText,
-                        ),
-                      ),
-                      play,
-                    ],
+          InkWell(
+            key: ValueKey('call-details-$callId'),
+            onTap: missed
+                ? () => setState(
+                    () => detailsOpen
+                        ? _openDetails.remove(callId)
+                        : _openDetails.add(callId),
                   )
-                // A card's lines on a phone: when and how it went, then who.
-                : Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [when, ...badges, talkText],
-                            ),
-                            const SizedBox(height: 2),
-                            Wrap(spacing: 6, children: [who, caller]),
-                          ],
+                : null,
+            child: LayoutBuilder(
+              builder: (context, box) => box.maxWidth >= _wideRow
+                  ? Row(
+                      children: [
+                        SizedBox(width: _timeWidth, child: when),
+                        SizedBox(
+                          width: _whoWidth,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: who,
+                          ),
                         ),
-                      ),
-                      play,
-                    ],
-                  ),
+                        Expanded(child: caller),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 230,
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: badges,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 48,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: talkText,
+                          ),
+                        ),
+                        play,
+                      ],
+                    )
+                  // A card's lines on a phone: when and how it went, then who.
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [when, ...badges, talkText],
+                              ),
+                              const SizedBox(height: 2),
+                              Wrap(spacing: 6, children: [who, caller]),
+                            ],
+                          ),
+                        ),
+                        play,
+                      ],
+                    ),
+            ),
           ),
+          if (detailsOpen)
+            _under(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    '${_isOutbound(call) ? 'Number called' : 'Caller'}: ${call['from'] ?? 'unknown'}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  if (!_isOutbound(call))
+                    SelectableText(
+                      'Line called: ${line.isEmpty ? 'unknown' : line}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  if (voicemail) ...[
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: RecordingPlaybackBar(
+                        key: ValueKey('voicemail-$id'),
+                        player: _player,
+                        dense: true,
+                        load: () => _recording(id),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           if (listening)
             _under(
               ConstrainedBox(

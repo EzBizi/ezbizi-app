@@ -338,6 +338,7 @@ final class CallReconciliation
             'calls' => [...array_map(fn (array $call): array => [
                 'id' => $call['id'] ?? null,
                 'direction' => 'Inbound',
+                'to_number' => $call['to_number'] ?? null,
                 'started_at' => $call['started_at'] ?? null,
                 'from' => $call['from'] ?? null,
                 'caller_label' => $call['caller_label'] ?? null,
@@ -356,6 +357,7 @@ final class CallReconciliation
             ], $calls), ...array_map(fn (array $call): array => [
                 'id' => $call['id'] ?? null,
                 'direction' => 'Outbound',
+                'to_number' => $call['to_number'] ?? null,
                 'started_at' => $call['started_at'] ?? null,
                 // The number we dialled, where an inbound call has the caller's.
                 'from' => $call['to_number'] ?? null,
