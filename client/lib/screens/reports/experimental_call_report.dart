@@ -1620,7 +1620,35 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// One person's coaching: their average, how often each check was met,
   /// and the latest things AI said would have helped.
+  /// Our coaching read and, where Workiz scores the branch (DMV, Illinois,
+  /// New York), Workiz's own beside it (Jose, 2026-10-12).
   Widget _coaching(BuildContext context, String name) {
+    final workiz = (_report?['workiz_scores'] as Map?)?[name];
+    if (workiz is! Map) return _ourCoaching(context, name);
+
+    final theme = Theme.of(context);
+    String pct(Object? v) => v is num ? '${v.round()}%' : '—';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ourCoaching(context, name),
+        Padding(
+          key: ValueKey('workiz-coaching-$name'),
+          padding: const EdgeInsets.fromLTRB(0, 0, 16, 12),
+          child: Text(
+            "Workiz's own score · ${workiz['score']} / 100 over "
+            '${workiz['calls']} call${workiz['calls'] == 1 ? '' : 's'} · '
+            'booked ${pct(workiz['booked'])} · price discussed '
+            '${pct(workiz['pricing'])} · positive ${pct(workiz['positive'])}',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _ourCoaching(BuildContext context, String name) {
     final scores = _scoresOf(name);
     if (scores.isEmpty) return const SizedBox.shrink();
 

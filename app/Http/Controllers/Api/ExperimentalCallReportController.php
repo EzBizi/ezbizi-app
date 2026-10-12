@@ -8,6 +8,7 @@ use App\Models\CallReportLabel;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
+use App\Models\WorkizCall;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
@@ -231,6 +232,27 @@ class ExperimentalCallReportController extends Controller
             'workiz_synced_at' => $syncedAt,
 
             'period' => $period,
+
+            // Workiz's own AI read of its phone calls, per person (Jose, via
+            // Grok AI, 2026-10-12): shown beside our call scores. Only the
+            // branches Workiz scores (DMV, Illinois, New York) have any.
+            // called_at is the account's wall clock, so dates, not instants.
+            'workiz_scores' => (object) WorkizCall::query()
+                ->whereBetween('called_at', [$start->toDateString().' 00:00:00', $end->toDateString().' 23:59:59'])
+                ->whereNotNull('dispatcher_score')
+                ->whereNotNull('user_name')
+                ->groupBy('user_name')
+                ->selectRaw('user_name, count(*) calls, avg(dispatcher_score) score, avg(booked) booked_rate,
+                    avg(pricing_discussed) pricing, avg(sentiment in (?, ?)) positive', ['great', 'positive'])
+                ->get()
+                ->mapWithKeys(fn ($r) => [$r->user_name => [
+                    'calls' => (int) $r->calls,
+                    'score' => round((float) $r->score),
+                    'booked' => $r->booked_rate === null ? null : round($r->booked_rate * 100),
+                    'pricing' => $r->pricing === null ? null : round($r->pricing * 100),
+                    'positive' => round((float) $r->positive * 100),
+                ]])
+                ->all(),
 
             // Who marked which call as booked in this period, newest first:
             // the not-booked-to-booked history.

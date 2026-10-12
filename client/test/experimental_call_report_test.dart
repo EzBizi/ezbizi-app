@@ -176,6 +176,33 @@ void main() {
     expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);
   });
 
+  testWidgets('Workiz\'s own score shows beside ours for that person', (
+    tester,
+  ) async {
+    final withWorkiz = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    withWorkiz['workiz_scores'] = {
+      'Ada': {
+        'calls': 3,
+        'score': 72,
+        'booked': 33,
+        'pricing': 67,
+        'positive': 100,
+      },
+    };
+    await _pump(tester, width: 1400, view: 'People', report: () => withWorkiz);
+
+    await tester.tap(find.text('Ada'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        "Workiz's own score · 72 / 100 over 3 calls · booked 33% · "
+        'price discussed 67% · positive 100%',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('no Call score column while no call is scored', (tester) async {
     await _pump(tester, width: 1400, view: 'People');
 
