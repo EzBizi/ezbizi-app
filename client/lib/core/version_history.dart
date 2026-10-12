@@ -23,6 +23,7 @@ class VersionHistory {
         'Scheduling › Overbooking: tap any overbooked day to see every job behind it: time, service, job number, client, phone, email, address, technician and notes.',
         'Performance: call transcripts are split into IVR menu, Dispatcher and Customer, like in Leads.',
         'Notifications: tapping one, on desktop or on a phone push, always opens its module now (time-clock corrections, field alerts and onboarding used to go nowhere), and a suggestion notification opens that exact suggestion. Emails, calls and the rest still open their module for now.',
+        'Leads: a website form now reads one line per detail (name, phone, email, appointment, address, service, note), each with its emoji, leaving out empty ones.',
       ],
     ),
     VersionRelease(
