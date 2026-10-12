@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/suggestions_screen.dart';
@@ -105,6 +106,33 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  // Bar, 2026-10-12: a tapped notification opens "the exact thing". The
+  // distinguishing case: the linked suggestion is NOT the newest, which is
+  // what would be preselected anyway.
+  testWidgets('a notification about a suggestion opens that one, not the newest', (
+    tester,
+  ) async {
+    addTearDown(() => DeepLinks.pending.value = null);
+    DeepLinks.open(const DeepLink(module: 'suggestions', type: 'suggestion', id: 'b'));
+
+    await _pump(
+      tester,
+      _listing([
+        _row(id: 'a', status: 'new', body: 'Let the board remember its filter.'),
+        _row(id: 'b', status: 'approved', body: 'Print a route sheet.'),
+      ]),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('suggestion-detail')),
+        matching: find.text('Print a route sheet.'),
+      ),
+      findsOneWidget,
+    );
+    expect(DeepLinks.pending.value, isNull, reason: 'taken, so a rebuild cannot reopen it');
   });
 
   testWidgets('a new suggestion offers edit and withdraw', (tester) async {

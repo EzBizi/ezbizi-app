@@ -268,13 +268,14 @@ class NotificationsController extends Controller
      * suggestion was approved", an SOS, onboarding paperwork — carry a subject
      * but no event, so they derived no module at all and a tap went nowhere.
      *
-     * Suggestions are absent on purpose: they are not a module key but the
-     * shell's own Staff ▸ Suggestions, which the client routes by the record's
-     * type. Every key here must be a real module (asserted by a test).
+     * Every key here is a real module (asserted by a test) except
+     * `suggestions`, which is the shell's own pinned destination; the client
+     * shell routes that one key to its pinned rail.
      *
      * @var array<class-string, string>
      */
     private const SUBJECT_MODULES = [
+        \App\Models\Suggestion::class => 'suggestions',
         \App\Models\Lead::class => 'leads',
         \App\Models\TimeClockCorrectionRequest::class => 'work_hours',
         \App\Models\Automation::class => self::AUTOMATIONS_MODULE,

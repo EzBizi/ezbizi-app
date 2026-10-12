@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'client_platform.dart';
@@ -269,6 +270,32 @@ class OsNotifications {
   static Future<void> _clicked(NotificationResponse response) async {
     await ClockWindow.raise();
     onClick?.call(response.payload);
+  }
+
+  /// A phone PUSH (FCM / APNs) was tapped — the native side's half of [onClick].
+  ///
+  /// The server puts the bell row's id in the push as `notification_id`; the
+  /// Android and iOS runners read it from the tap and forward it here:
+  /// `tapped(id)` while running, and `initialTap()` answers the id that
+  /// cold-started the app (null when nothing did). Called once the bell has set
+  /// [onClick], so a cold-start tap is not delivered to nobody.
+  static const _pushTaps = MethodChannel('com.ezbizi.app/notification_tap');
+
+  static Future<void> listenForPushTaps() async {
+    if (ClientPlatform.isWeb) return;
+    _pushTaps.setMethodCallHandler((call) async {
+      if (call.method == 'tapped' && call.arguments is String) {
+        onClick?.call(call.arguments as String);
+      }
+    });
+    try {
+      final initial = await _pushTaps.invokeMethod<String>('initialTap');
+      if (initial != null && initial.isNotEmpty) onClick?.call(initial);
+    } on MissingPluginException {
+      // ponytail: desktop, and a runner that has not learned the channel yet.
+    } on PlatformException {
+      // Same: no native tap handling means no push tap to deliver.
+    }
   }
 
   /// Per-platform, because the four ask in four different ways.

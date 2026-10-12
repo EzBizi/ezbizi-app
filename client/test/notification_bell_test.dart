@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/os_notifications.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/notification_bell.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -256,6 +258,59 @@ void main() {
     expect(find.text('Your trial ends tomorrow'), findsOneWidget);
   });
 
+  // Bar, 2026-10-12: "a new email notification should open that email". The
+  // subject is the MAILBOX; meta.record names the message, and that is what
+  // must reach the Email screen — at desktop and at phone width.
+  for (final width in [1280.0, 390.0]) {
+    testWidgets('a new-email notification hands Email that message (${width.toInt()}px)', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(width, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => DeepLinks.pending.value = null);
+      final opened = <String>[];
+
+      await _pumpWithItem(tester, item: _email, onOpenModule: (m, f, r) => opened.add(m));
+
+      await tester.tap(find.byIcon(Icons.notifications_none));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New email'));
+      await tester.pumpAndSettle();
+
+      expect(opened, ['email']);
+      final link = DeepLinks.take('email');
+      expect(link?.type, 'email_message');
+      expect(link?.id, 'msg-123');
+      expect(link?.mailbox, 'info@a1.test');
+      expect(DeepLinks.take('email'), isNull, reason: 'taken once, not reopened on rebuild');
+    });
+  }
+
+  testWidgets('tapping a phone push opens what it is about, like its row', (tester) async {
+    // The runner forwards the push's notification_id on this channel.
+    addTearDown(() => DeepLinks.pending.value = null);
+    final opened = <String>[];
+    await _pumpWithItem(tester, item: _email, onOpenModule: (m, f, r) => opened.add(m));
+
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'com.ezbizi.app/notification_tap',
+      const StandardMethodCodec().encodeMethodCall(const MethodCall('tapped', 'n9')),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+
+    expect(opened, ['email']);
+    expect(DeepLinks.take('email')?.id, 'msg-123');
+  });
+
+  testWidgets('a link for another module waits for that module', (tester) async {
+    addTearDown(() => DeepLinks.pending.value = null);
+    DeepLinks.open(const DeepLink(module: 'email', type: 'email_message', id: 'm'));
+
+    expect(DeepLinks.take('leads'), isNull);
+    expect(DeepLinks.take('email')?.id, 'm');
+  });
+
   // Jose, 2026-10-05: "an option turn notifications on or off (individually
   // for each user, something they can inside the notification button sidebar)".
   testWidgets("the panel holds each person's own Alert me switch, and it saves", (
@@ -466,6 +521,21 @@ Future<void> _pumpAlerts(
 
   await tester.pumpAndSettle();
 }
+
+const _email = {
+  'id': 'n9',
+  'source': 'automation',
+  'title': 'New email',
+  'body': null,
+  'subject': {'type': 'Mailbox', 'id': 'mbx-1'},
+  'meta': {
+    'module': 'email',
+    'filter': null,
+    'record': {'type': 'email_message', 'id': 'msg-123', 'mailbox': 'info@a1.test'},
+  },
+  'read_at': null,
+  'created_at': '2026-10-12T12:00:00+00:00',
+};
 
 Future<void> _pumpWithItem(
   WidgetTester tester, {

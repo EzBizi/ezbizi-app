@@ -1406,8 +1406,13 @@ class _HomeShellState extends State<HomeShell> {
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
                 // only needs to name one.
-                onOpenModule: (key, filter, record) =>
-                    _show(_Rail.modules, key, openLead: record),
+                // Suggestions is the one pinned destination a notification
+                // points at; everything else is a module.
+                onOpenModule: (key, filter, record) => _show(
+                  key == 'suggestions' ? _Rail.pinned : _Rail.modules,
+                  key,
+                  openLead: record,
+                ),
                 // Each notification wears its module's sidebar glyph.
                 iconOf: (key) => moduleScreens[key]?.icon,
                 formats: widget.session.me?.display,

@@ -86,6 +86,9 @@ class NotificationDestinationTest extends TestCase
 
         foreach ($map as $class => $module) {
             $this->assertTrue(class_exists($class), "{$class} is not a model");
+            if ($module === 'suggestions') {
+                continue; // the shell's pinned destination, not a module (main.dart _apply)
+            }
             $this->assertNotNull($registry->get($module), "{$class} points at '{$module}', which is not a module");
         }
     }
