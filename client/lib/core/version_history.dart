@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0405',
+      date: '12 Oct 2026',
+      items: [
+        'Monitoring › Files: an online computer\'s drives and files now open, instead of the tab saying the computer looks offline. Empty files download too.',
+        'Social: Pinterest posts now publish live.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0404',
       date: '9 Oct 2026',
       items: [
