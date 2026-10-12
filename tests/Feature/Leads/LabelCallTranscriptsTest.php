@@ -163,4 +163,37 @@ class LabelCallTranscriptsTest extends TestCase
         $done = array_filter([$this->reread($a)->transcript_labelled, $this->reread($b)->transcript_labelled]);
         $this->assertCount(1, $done, 'one answered, one left for the next run');
     }
+
+    /** Leads review: a call 0.0.0410 split by speaker still gets its summary. */
+    public function test_a_call_already_split_by_speaker_is_still_read_for_its_summary(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [['speaker' => 'Customer', 'text' => self::RAW]],
+            'summary' => 'Asked about jobs.', 'next_step' => '',
+            'complaint' => false, 'asked_price' => false, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $row = $this->aCall();
+        $this->inTenant($this->t['org'], fn () => $row->forceFill(['transcript_labelled' => 'Customer: earlier'])->save());
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $this->assertSame('Asked about jobs.', $this->reread($row)->call_summary);
+    }
+
+    /** Leads review: the first run must not alert about last week's complaints. */
+    public function test_an_old_complaint_call_raises_nothing(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [['speaker' => 'Customer', 'text' => self::RAW]],
+            'summary' => 'Unhappy.', 'next_step' => '',
+            'complaint' => true, 'asked_price' => false, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $row = $this->aCall();
+        $this->inTenant($this->t['org'], fn () => $row->forceFill(['occurred_at' => now()->subDays(3)])->save());
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $this->assertSame(0, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.call_complaint')->count());
+        $this->assertTrue($this->reread($row)->call_signals['complaint'], 'still read and stored');
+    }
 }

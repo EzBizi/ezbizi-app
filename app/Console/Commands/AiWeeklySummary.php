@@ -127,6 +127,9 @@ class AiWeeklySummary extends Command
                 $report->html($branch, $from, $to))))."\n\n";
         }
 
+        // ponytail: counted by when the label was written, not when the call
+        // was made, so a --relabel run inflates that week; join the transcript's
+        // call date if that matters.
         $labels = DB::table('call_report_labels')
             ->where('organization_id', $organization->getKey())
             ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])

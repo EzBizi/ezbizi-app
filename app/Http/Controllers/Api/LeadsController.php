@@ -1541,7 +1541,6 @@ class LeadsController extends Controller
         ];
     }
 
-    /** @return array<string, mixed> */
     /** @return list<string> the fields whose value is still the one AI wrote */
     public static function aiHeld(Lead $lead): array
     {
@@ -1564,6 +1563,7 @@ class LeadsController extends Controller
             'contact_name' => $lead->contact_name,
             'phone' => $lead->phone,
             'email' => $lead->email,
+            'postal_code' => $lead->postal_code,
             'lead_type' => $lead->lead_type,
             'category' => $lead->category,
             'service' => $lead->service,

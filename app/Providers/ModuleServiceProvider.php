@@ -3876,7 +3876,9 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Every Monday morning AI reads the figures for last week (jobs, '
                             .'sales, deposits, profit and call reasons, per branch) and writes a '
                             .'short plain-English summary with what to do this week. It carries '
-                            .'a headline, the summary and the dates it covers.',
+                            .'a headline, the summary and the dates it covers. It CONTAINS MONEY '
+                            .'FIGURES (sales, deposits, profit and loss) that the app keeps behind '
+                            .'the financials permissions: send it only to people who may see them.',
                         composedFields: ['summary'],
                     ),
                 ],

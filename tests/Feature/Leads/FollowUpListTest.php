@@ -61,4 +61,19 @@ class FollowUpListTest extends TestCase
         $this->postJson("/api/v1/leads/{$price->id}/follow-up-handled")->assertOk();
         $this->assertSame([$day->id], $this->listed());
     }
+
+    /** Leads review: a customer who calls back is on the list again. */
+    public function test_a_new_contact_clears_the_followed_up_mark(): void
+    {
+        $no = ['complaint' => false, 'asked_price' => true, 'asked_availability' => false, 'booked' => false];
+        $lead = $this->leadWithCall($no);
+        $this->signedInAs($this->t['admin'])->postJson("/api/v1/leads/{$lead->id}/follow-up-handled")->assertOk();
+        $this->assertSame([], $this->listed());
+
+        $this->inTenant($this->t['org'], fn () => app(\App\Support\Leads\LeadThread::class)->store($lead->fresh(), uniqid(), [
+            'channel' => 'SMS', 'participant' => LeadConversation::FROM_CONSUMER, 'occurred_at' => now(), 'text' => 'Any update?',
+        ]));
+
+        $this->assertSame([$lead->id], $this->listed());
+    }
 }

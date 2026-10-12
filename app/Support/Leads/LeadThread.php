@@ -73,6 +73,10 @@ final class LeadThread
             if (in_array($lead->status, [Lead::STATUS_COMPLETED, Lead::STATUS_ARCHIVED, Lead::STATUS_NOT_A_LEAD, Lead::STATUS_LOST], true)) {
                 $lead->forceFill(['status' => Lead::STATUS_NEW])->save();
             }
+            // Back on the AI Follow up list if they ask again (Leads review).
+            if ($lead->follow_up_handled_at !== null) {
+                $lead->forceFill(['follow_up_handled_at' => null])->save();
+            }
 
             $this->events->emitAfterCommit('lead.contact_received', $lead, [
                 'after' => [

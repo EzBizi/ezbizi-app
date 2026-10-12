@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
@@ -394,7 +395,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
       _unreadBySource = {
-        for (final e in (meta['unread_by_source'] as Map? ?? const {}).entries)
+        for (final e
+            in (meta['unread_by_source'] as Map? ?? const {}).entries)
           '${e.key}': (e.value as num?)?.toInt() ?? 0,
       };
     });
@@ -437,9 +439,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       final known = {for (final l in _leads) l['id']};
       _leads = [
         ..._leads,
-        for (final l
-            in (response.data as List? ?? const [])
-                .cast<Map<String, dynamic>>())
+        for (final l in (response.data as List? ?? const []).cast<Map<String, dynamic>>())
           if (!known.contains(l['id'])) l,
       ];
       _shown += _morePage;
@@ -706,9 +706,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   int _unreadIn(String? key) => key != null
       ? _unreadBySource[key] ?? 0
       : _visibleSources
-            .where(
-              (s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1),
-            )
+            .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
             .fold(0, (sum, s) => sum + (_unreadBySource[s.$1] ?? 0));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
@@ -1157,9 +1155,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ? 'No Thumbtack account connected'
           : '$n Thumbtack ${n == 1 ? 'business' : 'businesses'}';
     }
-    if (key == 'website_chat' ||
-        key == 'website_form' ||
-        key == 'website_booking') {
+    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking') {
       return 'From your websites';
     }
     return null;
@@ -1503,8 +1499,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ? const <String>[]
         : [
             for (final s in _visibleSources)
-              if (_allLeftOut.contains(s.$1) &&
-                  (_unreadBySource[s.$1] ?? 0) > 0)
+              if (_allLeftOut.contains(s.$1) && (_unreadBySource[s.$1] ?? 0) > 0)
                 s.$2,
           ];
     return [
@@ -1688,279 +1683,264 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ? DateTime.tryParse('${lead['last_contact_at'] ?? ''}')
             : null,
         child: Container(
-          // Approved colour layout 3 (c31b50ad): a primaryContainer fill,
-          // unmistakable at a glance where a 3px rule is not. No leading-edge
-          // accent bar anywhere, on Jose's ruling of 2026-09-08.
-          color: selected ? theme.colorScheme.primaryContainer : null,
-          padding: const EdgeInsets.fromLTRB(14, 9, 8, 7),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: SizedBox(
-                  width: 8,
-                  height: 8,
-                  child: unread
-                      ? DecoratedBox(
-                          key: ValueKey('unread-$id'),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        )
-                      : null,
-                ),
+        // Approved colour layout 3 (c31b50ad): a primaryContainer fill,
+        // unmistakable at a glance where a 3px rule is not. No leading-edge
+        // accent bar anywhere, on Jose's ruling of 2026-09-08.
+        color: selected ? theme.colorScheme.primaryContainer : null,
+        padding: const EdgeInsets.fromLTRB(14, 9, 8, 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: SizedBox(
+                width: 8,
+                height: 8,
+                child: unread
+                    ? DecoratedBox(
+                        key: ValueKey('unread-$id'),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      )
+                    : null,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  leadTitle(lead),
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: unread ? FontWeight.w700 : null,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                leadTitle(lead),
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: unread ? FontWeight.w700 : null,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              // The badges wrap under each other rather than push the
-                              // row past its edge: at half a desktop screen the list
-                              // pane is ~300px and a Customer + Text + Awaiting reply +
-                              // warning + Google row overflowed by 118px (Jose,
-                              // 2026-09-28).
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    // A specimen, not a customer. First on the row because
-                                    // it changes how everything after it should be read.
-                                    if (lead['is_test'] == true) ...[
-                                      _Badge(
-                                        'Test',
-                                        key: ValueKey('test-badge-$id'),
-                                      ),
-                                    ],
-                                    // Only when it is not New: 43,184 of 43,190 are,
-                                    // and a pill on every row would say nothing.
-                                    if ((lead['status'] ?? 'new') != 'new')
-                                      leadStatusPill(
-                                        lead['status'],
-                                        key: ValueKey('status-pill-$id'),
-                                      ),
-                                    // Somebody else has it open right now.
-                                    if ((lead['viewers'] as List?)
-                                            ?.isNotEmpty ??
-                                        false)
-                                      Tooltip(
-                                        message:
-                                            '${(lead['viewers'] as List).join(', ')} '
-                                            'viewing this lead',
-                                        child: Row(
-                                          key: ValueKey('viewers-$id'),
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.visibility_outlined,
-                                              size: 15,
-                                              color: ToneColours.of(
-                                                context,
-                                                Tone.caution,
-                                              ).ink,
-                                            ),
-                                            const SizedBox(width: 3),
-                                            // Flexible, so a long name ellipsizes in a
-                                            // narrow list rather than running past it.
-                                            Flexible(
-                                              child: Text(
-                                                '${(lead['viewers'] as List).first}'
-                                                '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: theme
-                                                    .textTheme
-                                                    .labelSmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      color: ToneColours.of(
-                                                        context,
-                                                        Tone.caution,
-                                                      ).ink,
-                                                    ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    // This number is already a customer.
-                                    if (lead['customer'] is Map) ...[
-                                      _Badge(
-                                        'Customer',
-                                        key: ValueKey('customer-badge-$id'),
-                                      ),
-                                    ],
-                                    // Replied or not, and ONLY where a reply is possible.
-                                    //
-                                    // `can_reply` is the channel's own answer, not a guess
-                                    // from lead_type here: a call cannot be replied to, a
-                                    // Thumbtack specimen cannot, and a lead whose account was
-                                    // disconnected cannot. On all of those the badge is
-                                    // absent entirely rather than reading "Replied", because
-                                    // "no reply is owed" and "a reply was sent" are different
-                                    // things and one must not be dressed as the other.
-                                    // Not on a Completed lead: nobody owes them an
-                                    // answer, whoever spoke last (Jose, 2026-10-01).
-                                    if (lead['can_reply'] == true &&
-                                        lead['status'] != 'completed') ...[
-                                      _Badge(
-                                        mine ? 'Replied' : 'Awaiting reply',
-                                        key: ValueKey('reply-badge-$id'),
-                                      ),
-                                    ],
-                                    // Waited too long: the customer spoke last over ten
-                                    // minutes ago and the lead is still New (Jose,
-                                    // 2026-09-28). The server decides; the row only shows it.
-                                    if (lead['reply_overdue'] == true) ...[
-                                      Tooltip(
-                                        message:
-                                            'Waiting more than 10 minutes for a reply',
-                                        child: Icon(
-                                          Icons.warning_rounded,
-                                          key: ValueKey('overdue-$id'),
-                                          size: 18,
-                                          color: theme.colorScheme.error,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                            ),
+                            if (leadNameIsAi(lead)) ...[
+                              const SizedBox(width: 4),
+                              AiMark(
+                                key: ValueKey('lead-ai-name-${lead['id']}'),
+                                tooltip: aiNameTooltip,
                               ),
                             ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          leadWhen(
-                            (lead['last_contact_at'] ?? lead['received_at'])
-                                as String?,
-                          ),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        // No company tag here: it is on the lead's own header,
-                        // and Jose wants it in one place only (2026-09-30, "not
-                        // on both").
-                        // The source first on the line, in its own colour.
-                        _SourceBadge(
-                          leadSourceWord(lead),
-                          key: ValueKey('source-badge-$id'),
-                        ),
-                        // The channel badge is drawn only when it says
-                        // something the source badge does not. "Call · Google"
-                        // is two facts; a chat row read "Chat · Chat", one fact
-                        // twice (UI/UX, 2026-09-08). The rule needs no list of
-                        // sources: a fifth source with one channel gets the
-                        // right answer for free.
-                        if (channel != null &&
-                            !leadSourceWord(
-                              lead,
-                            ).endsWith(channelWord(channel))) ...[
-                          const SizedBox(width: 4),
-                          _Badge(
-                            channelWord(channel),
-                            call: channel == 'PHONE_CALL',
-                          ),
-                        ],
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: preview != null && preview.isNotEmpty
-                              ? Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      if (mine)
-                                        TextSpan(
-                                          text: 'You: ',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: theme.colorScheme.onSurface,
+                            // The badges wrap under each other rather than push the
+                            // row past its edge: at half a desktop screen the list
+                            // pane is ~300px and a Customer + Text + Awaiting reply +
+                            // warning + Google row overflowed by 118px (Jose,
+                            // 2026-09-28).
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                // A specimen, not a customer. First on the row because
+                                // it changes how everything after it should be read.
+                                if (lead['is_test'] == true) ...[
+                                  _Badge('Test', key: ValueKey('test-badge-$id')),
+                                ],
+                                // Only when it is not New: 43,184 of 43,190 are,
+                                // and a pill on every row would say nothing.
+                                if ((lead['status'] ?? 'new') != 'new')
+                                  leadStatusPill(
+                                    lead['status'],
+                                    key: ValueKey('status-pill-$id'),
+                                  ),
+                                // Somebody else has it open right now.
+                                if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
+                                  Tooltip(
+                                    message: '${(lead['viewers'] as List).join(', ')} '
+                                        'viewing this lead',
+                                    child: Row(
+                                      key: ValueKey('viewers-$id'),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.visibility_outlined,
+                                          size: 15,
+                                          color: ToneColours.of(context, Tone.caution).ink,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        // Flexible, so a long name ellipsizes in a
+                                        // narrow list rather than running past it.
+                                        Flexible(
+                                          child: Text(
+                                            '${(lead['viewers'] as List).first}'
+                                            '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.labelSmall?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: ToneColours.of(context, Tone.caution).ink,
+                                            ),
                                           ),
                                         ),
-                                      TextSpan(text: preview),
-                                    ],
-                                  ),
-                                  style: muted,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                )
-                              : Text(
-                                  [
-                                    if ((lead['phone'] as String?)
-                                                ?.isNotEmpty ==
-                                            true &&
-                                        (lead['contact_name'] as String?)
-                                                ?.trim()
-                                                .isNotEmpty ==
-                                            true)
-                                      formatPhoneNumber(
-                                        lead['phone'] as String?,
-                                      ),
-                                    ?humaniseService(
-                                      lead['service'] as String?,
+                                      ],
                                     ),
-                                  ].join(' · '),
-                                  style: muted,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                        ),
-                        // Hollow until set, at the end of the line it marks
-                        // (design 30): stacked under the time it made every row
-                        // as tall as a 44px target. A phone keeps 40 of target.
-                        IconButton(
-                          key: ValueKey('star-$id'),
-                          tooltip: starred ? 'Unstar' : 'Star',
-                          iconSize: 16,
-                          padding: EdgeInsets.zero,
-                          constraints: BoxConstraints.tight(
-                            Size.square(
-                              MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
+                                  ),
+                                // This number is already a customer.
+                                if (lead['customer'] is Map) ...[
+                                  _Badge(
+                                    'Customer',
+                                    key: ValueKey('customer-badge-$id'),
+                                  ),
+                                ],
+                                // Replied or not, and ONLY where a reply is possible.
+                                //
+                                // `can_reply` is the channel's own answer, not a guess
+                                // from lead_type here: a call cannot be replied to, a
+                                // Thumbtack specimen cannot, and a lead whose account was
+                                // disconnected cannot. On all of those the badge is
+                                // absent entirely rather than reading "Replied", because
+                                // "no reply is owed" and "a reply was sent" are different
+                                // things and one must not be dressed as the other.
+                                // Not on a Completed lead: nobody owes them an
+                                // answer, whoever spoke last (Jose, 2026-10-01).
+                                if (lead['can_reply'] == true &&
+                                    lead['status'] != 'completed') ...[
+                                  _Badge(
+                                    mine ? 'Replied' : 'Awaiting reply',
+                                    key: ValueKey('reply-badge-$id'),
+                                  ),
+                                ],
+                                // Waited too long: the customer spoke last over ten
+                                // minutes ago and the lead is still New (Jose,
+                                // 2026-09-28). The server decides; the row only shows it.
+                                if (lead['reply_overdue'] == true) ...[
+                                  Tooltip(
+                                    message: 'Waiting more than 10 minutes for a reply',
+                                    child: Icon(
+                                      Icons.warning_rounded,
+                                      key: ValueKey('overdue-$id'),
+                                      size: 18,
+                                      color: theme.colorScheme.error,
+                                    ),
+                                  ),
+                                ],
+                                ],
+                              ),
                             ),
-                          ),
-                          onPressed: () => _mark(lead, starred: !starred),
-                          icon: Icon(
-                            starred ? Icons.star : Icons.star_border,
-                            color: starred
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.outline,
-                          ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        leadWhen(
+                          (lead['last_contact_at'] ?? lead['received_at'])
+                              as String?,
+                        ),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      // No company tag here: it is on the lead's own header,
+                      // and Jose wants it in one place only (2026-09-30, "not
+                      // on both").
+                      // The source first on the line, in its own colour.
+                      _SourceBadge(
+                        leadSourceWord(lead),
+                        key: ValueKey('source-badge-$id'),
+                      ),
+                      // The channel badge is drawn only when it says
+                      // something the source badge does not. "Call · Google"
+                      // is two facts; a chat row read "Chat · Chat", one fact
+                      // twice (UI/UX, 2026-09-08). The rule needs no list of
+                      // sources: a fifth source with one channel gets the
+                      // right answer for free.
+                      if (channel != null &&
+                          !leadSourceWord(lead).endsWith(
+                            channelWord(channel),
+                          )) ...[
+                        const SizedBox(width: 4),
+                        _Badge(
+                          channelWord(channel),
+                          call: channel == 'PHONE_CALL',
                         ),
                       ],
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: preview != null && preview.isNotEmpty
+                            ? Text.rich(
+                                TextSpan(
+                                  children: [
+                                    if (mine)
+                                      TextSpan(
+                                        text: 'You: ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: theme.colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    TextSpan(text: preview),
+                                  ],
+                                ),
+                                style: muted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : Text(
+                                [
+                                  if ((lead['phone'] as String?)?.isNotEmpty ==
+                                          true &&
+                                      (lead['contact_name'] as String?)
+                                              ?.trim()
+                                              .isNotEmpty ==
+                                          true)
+                                    formatPhoneNumber(lead['phone'] as String?),
+                                  ?humaniseService(lead['service'] as String?),
+                                ].join(' · '),
+                                style: muted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                      ),
+                      // Hollow until set, at the end of the line it marks
+                      // (design 30): stacked under the time it made every row
+                      // as tall as a 44px target. A phone keeps 40 of target.
+                      IconButton(
+                        key: ValueKey('star-$id'),
+                        tooltip: starred ? 'Unstar' : 'Star',
+                        iconSize: 16,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints.tight(
+                          Size.square(
+                            MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
+                          ),
+                        ),
+                        onPressed: () => _mark(lead, starred: !starred),
+                        icon: Icon(
+                          starred ? Icons.star : Icons.star_border,
+                          color: starred
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
       ),
     );
   }
@@ -2116,8 +2096,7 @@ class _OverdueGlowState extends State<OverdueGlow>
   }
 
   void _sync() {
-    final moving =
-        widget.since != null &&
+    final moving = widget.since != null &&
         OverdueGlow.pulse &&
         !MediaQuery.disableAnimationsOf(context);
     if (moving && !_beat.isAnimating) {
@@ -2139,8 +2118,7 @@ class _OverdueGlowState extends State<OverdueGlow>
     if (since == null) return widget.child;
 
     final minutes = DateTime.now().difference(since).inMinutes.clamp(10, 60);
-    final base =
-        0.06 + (minutes - 10) / 50 * 0.14; // 0.06 at 10 min, 0.20 at an hour
+    final base = 0.06 + (minutes - 10) / 50 * 0.14; // 0.06 at 10 min, 0.20 at an hour
     final red = Theme.of(context).colorScheme.error;
 
     return AnimatedBuilder(

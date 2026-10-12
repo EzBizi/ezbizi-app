@@ -30,7 +30,10 @@ class LabelCallTranscripts extends Command
         }
 
         $rows = LeadConversation::query()->withoutGlobalScopes()
-            ->whereNotNull('transcript')->whereNull('transcript_labelled')
+            ->whereNotNull('transcript')
+            // read() always sets signals: null means not read yet, including calls
+            // 0.0.0410 split by speaker before summaries existed.
+            ->whereNull('call_signals')
             ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
             ->orderByDesc('occurred_at')
             ->limit((int) $this->option('limit'))
@@ -59,7 +62,9 @@ class LabelCallTranscripts extends Command
 
                     // Jose, 2026-10-12: "notify lead manager and administrator" -
                     // who hears is the Automations rule's, so it can change.
-                    if ($read['signals']['complaint'] && $row->lead !== null) {
+                    // Only a fresh call: the first run reads a week of older ones.
+                    if ($read['signals']['complaint'] && $row->lead !== null
+                        && $row->occurred_at?->gte(now()->subDay())) {
                         $events->emit('lead.call_complaint', $row->lead, ['after' => [
                             'summary' => $read['summary'],
                             'caller_name' => $row->lead->contact_name,
