@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0410',
+      date: '12 Oct 2026',
+      items: [
+        'Reports: a role given the Performance tab can open it without also needing Build.',
+        'Performance › Missed: tap a call to see the caller, the line they called, and the voicemail when they left one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0409',
       date: '12 Oct 2026',
       items: [
