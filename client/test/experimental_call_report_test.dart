@@ -265,6 +265,14 @@ void main() {
     expect(find.byKey(const ValueKey('voicemail-null')), findsNothing);
   });
 
+  testWidgets('a missed-call notification opens on that call', (tester) async {
+    // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
+    await _pump(tester, width: 1400, openCall: 'c3');
+
+    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.byTooltip('Hide details'), findsOneWidget);
+  });
+
   testWidgets('Missed calls narrow to new or existing clients', (tester) async {
     await _pump(tester, width: 1400);
 
@@ -896,6 +904,7 @@ Future<void> _pump(
   Map<String, dynamic> Function()? report,
   List<String>? deleted,
   String? view,
+  String? openCall,
 }) async {
   tester.view.physicalSize = Size(width, 2400);
   tester.view.devicePixelRatio = 1.0;
@@ -927,7 +936,11 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: ExperimentalCallReport(api: api, now: now ?? DateTime.now),
+        body: ExperimentalCallReport(
+          api: api,
+          now: now ?? DateTime.now,
+          openCall: openCall,
+        ),
       ),
     ),
   );

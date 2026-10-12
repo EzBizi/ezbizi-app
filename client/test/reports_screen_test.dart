@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -655,6 +656,23 @@ void main() {
     // Absent, not disabled - a chip leading to a refusal tells somebody the
     // app is for other people.
     expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
+  });
+
+  testWidgets('a missed-call notification opens Performance', (tester) async {
+    // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
+    DeepLinks.open(
+      const DeepLink(module: 'reports', type: 'call', id: 'call-1'),
+    );
+    addTearDown(() => DeepLinks.pending.value = null);
+
+    await _pumpReports(tester, reports: [_report]);
+
+    final chip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'Performance'),
+    );
+    expect(chip.selected, isTrue);
+    // Consumed: a later rebuild does not open it again.
+    expect(DeepLinks.pending.value, isNull);
   });
 
   testWidgets('the Performance tab alone opens Performance, without Build', (
