@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0406',
+      date: '12 Oct 2026',
+      items: [
+        'Monitoring › Files: drives and folders now open even when Windows locks some of their files.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0405',
       date: '12 Oct 2026',
       items: [
