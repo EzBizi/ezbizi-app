@@ -2719,3 +2719,8 @@ Scheduling count, an `estimates` row count.
 TikTok audit pass; its only rule is that `TIKTOK_DIRECT_POST=true` is safe only
 with the composer's per-account choices. Audit status asked of Marketing
 (`local_067b17d7…`), which owns it.
+Marketing does not know either; the flag and publisher are **API
+Integrations'** (`local_e76e374a…`, author of `4f8ee29b`), asked next. Note
+for whoever reads a refusal as the audit's verdict: the one TikTok row
+(2026-08-28) predates Direct Post (10-05), so **nothing on production has yet
+exercised Direct Post at all** — the row says nothing about the audit.
