@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0412',
+      date: '12 Oct 2026',
+      items: [
+        'Performance › Calls is a table: one line per call with its own columns, and a search. Open a call for its words and recording. People shows who didn\'t pick up and their answer rate.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0411',
       date: '12 Oct 2026',
       items: [
