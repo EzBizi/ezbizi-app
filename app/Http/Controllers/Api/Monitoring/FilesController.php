@@ -257,7 +257,11 @@ class FilesController extends Controller
             'op' => ['required_if:status,ready', 'string', 'in:list,download'],
             'error' => ['required_if:status,error', 'string', 'in:access_denied,not_found,too_large,unreadable'],
 
-            'path' => ['sometimes', 'string', 'max:4096'],
+            // nullable, not just string: the roots answer echoes path:'' and
+            // ConvertEmptyStringsToNull makes it null before validation — the
+            // same trap request() hit (b54f38a5). Without it every "This PC"
+            // answer 422'd and the viewer timed out to "offline".
+            'path' => ['sometimes', 'nullable', 'string', 'max:4096'],
 
             // op:list
             'entries' => ['sometimes', 'array', 'max:'.self::MAX_ENTRIES],
@@ -269,7 +273,8 @@ class FilesController extends Controller
             // op:download
             'name' => ['sometimes', 'string', 'max:1024'],
             'size' => ['sometimes', 'integer', 'min:0'],
-            'content_base64' => ['sometimes', 'string'],
+            // A zero-byte file is base64 '' → null, same trap as path above.
+            'content_base64' => ['sometimes', 'nullable', 'string'],
         ]);
 
         $device = MonitoredDevice::query()->ownedBy($request->user(), $data['device_key'])->first();
