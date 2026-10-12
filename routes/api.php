@@ -929,6 +929,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
+        Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);

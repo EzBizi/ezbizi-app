@@ -296,6 +296,22 @@ class LeadsController extends Controller
                     ->orWhereNotNull('leads.connection_id'));
         }
 
+        // Asked the price or a day on a call, nothing booked (Jose, 2026-10-12,
+        // AI item 6): Grok's call signals, until a job is matched or somebody
+        // marks it handled.
+        if ($request->boolean('follow_up')) {
+            $query->whereNull('leads.job_id')
+                ->whereNull('leads.follow_up_handled_at')
+                ->where('leads.status', Lead::STATUS_NEW)
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('lead_conversations')
+                    ->whereColumn('lead_conversations.lead_id', 'leads.id')
+                    // ponytail: unquoted text compare, the one JSON boolean test
+                    // MySQL and MariaDB agree on.
+                    ->where(fn ($q) => $q->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.asked_price')) = 'true'")
+                        ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.asked_availability')) = 'true'"))
+                    ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(lead_conversations.call_signals, '$.booked')) = 'false'"));
+        }
+
         if ($request->boolean('unread')) {
             $query->where(function ($q) {
                 $q->whereNull('leads.read_at')
@@ -1150,6 +1166,20 @@ class LeadsController extends Controller
         DB::table('leads')->where('id', $lead->getKey())->update(['read_at' => now()]);
 
         return response()->json(['data' => ['id' => $lead->getKey(), 'is_unread' => false]]);
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/follow-up-handled
+     *
+     * Off the Follow up list: somebody called back, or it needs nothing.
+     */
+    public function followUpHandled(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        DB::table('leads')->where('id', $lead->getKey())->update(['follow_up_handled_at' => now()]);
+
+        return response()->json(['data' => ['id' => $lead->getKey(), 'follow_up_handled' => true]]);
     }
 
     /**

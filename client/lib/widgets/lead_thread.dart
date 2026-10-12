@@ -1829,6 +1829,17 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// Taken off the Follow up list in this view.
+  bool _followedUp = false;
+
+  /// Asked the price or a day, nothing booked: what puts a lead on Follow up.
+  static bool _asksForFollowUp(Map c) {
+    final s = c['signals'];
+    if (s is! Map) return false;
+    return (s['asked_price'] == true || s['asked_availability'] == true) &&
+        s['booked'] == false;
+  }
+
   /// Grok's one line on the call first, the transcript one tap away (Jose,
   /// 2026-10-12: "summary should show first with the option to see the full
   /// transcript"; UI queue 77 placement 1).
@@ -1856,6 +1867,26 @@ class _LeadThreadState extends State<LeadThread> {
               style: theme.textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
+            ),
+          ),
+        if (_asksForFollowUp(c) && !_followedUp)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: ValueKey('followed-up-$id'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+              ),
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Followed up'),
+              onPressed: () async {
+                setState(() => _followedUp = true);
+                await widget.api.post(
+                  '/leads/${widget.lead['id']}/follow-up-handled',
+                  const {},
+                );
+              },
             ),
           ),
         if (transcript != null && transcript.isNotEmpty) ...[
