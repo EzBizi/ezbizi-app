@@ -2965,6 +2965,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 78 · Reports · Performance · tables instead of sentences — **sent 2026-10-12, waiting** (`docs/previews/reports-performance-tables-layouts.html`)
+
+Jose 2026-10-12, with a screenshot of Calls: *"look at all of the available tabs and options and see how you can improve the
+UI, maybe add some more columns, cause the stuff we keep adding keeps overflowing."* Calls draws each call as a sentence
+with no headings: direction, client and result share a 230 px badge box and wrap, and every row has a second line for "Not
+transcribed yet" or "Claude: — · Grok: ETA". The same in every option: Calls becomes a table with pinned headings, like People.
+Each fact gets its own column, a row is one line, and the details open on demand; the Claude/Grok switch moves into the
+filter bar, and a search box is added. Desktop **1** (recommended): Time · In/Out · Caller · Line called · Client · Result ·
+Answered by · Reason ✦AI · Talk · ▶, with a row opening in place (transcript, recording, both AIs, numbers, Mark booked).
+**2**: the same table, with the row opening in a side panel. **3**: a list with the call beside it. People gains Missed and
+Answer rate in every option; Overview is unchanged. Phone **4** (recommended): three-line cards that open in place; **5**
+rows that open a page; **6** grouped by hour. Owner: Reports (`experimental_call_report.dart`).
+
 ### 77 · AI · one marker, and where each AI feature lives — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **MARKER BUILT** (`docs/previews/ai-marker-placements-layouts.html`)
 
 From the Grok AI session, 2026-10-12, which relayed that Jose approved an AI program today. It asks where eight AI features
