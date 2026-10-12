@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\CallReportLabel;
 use App\Models\CallReportTranscript;
+use App\Support\Ai\GrokCli;
+use App\Support\Ai\TranscriptSpeakers;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Reports\Tagging\CallTagger;
@@ -113,8 +115,57 @@ class LabelReportCalls extends Command
             }
         });
 
-        $this->info('Labelled: '.json_encode($done ?: (object) []));
+        $split = $this->splitSpeakers(array_keys($queues), $tenant, $organization, $until);
+
+        $this->info('Labelled: '.json_encode($done ?: (object) []).", split by speaker: {$split}");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The transcript divided into IVR menu / Dispatcher / Customer, with the
+     * prompt Leads uses (Jose, 2026-10-12, on Leads: "have grok divide them
+     * properly ... so it's easier to read them"), in what time this run has
+     * left. An answer that lost the words keeps the raw text; a Grok failure
+     * is reported and left for the next run.
+     *
+     * @param  list<string>  $callIds
+     */
+    private function splitSpeakers(array $callIds, TenantContext $tenant, $organization, $until): int
+    {
+        if (! GrokCli::configured()) {
+            return 0;
+        }
+
+        $split = 0;
+
+        $tenant->run($organization, function () use ($callIds, $until, &$split) {
+            $rows = CallReportTranscript::query()
+                ->whereIn('call_id', $callIds)
+                ->whereNull('transcript_labelled')
+                ->whereNotNull('transcript')
+                ->where('transcript', '!=', '')
+                ->latest()
+                ->get();
+
+            foreach ($rows as $row) {
+                if (now()->greaterThan($until)) {
+                    return;
+                }
+
+                try {
+                    $labelled = TranscriptSpeakers::label((string) $row->transcript);
+                } catch (Throwable $e) {
+                    report($e);
+
+                    return;
+                }
+
+                $row->forceFill(['transcript_labelled' => $labelled ?? $row->transcript])->save();
+                $split++;
+            }
+        });
+
+        return $split;
     }
 }

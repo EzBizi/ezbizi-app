@@ -260,7 +260,10 @@ class ExperimentalCallReportController extends Controller
     {
         $ids = array_column($day['calls'] ?? [], 'id');
 
-        $words = CallReportTranscript::query()->whereIn('call_id', $ids)->pluck('transcript', 'call_id');
+        // Split by speaker when Grok has done it; the raw words until then.
+        $words = CallReportTranscript::query()->whereIn('call_id', $ids)
+            ->get(['call_id', 'transcript', 'transcript_labelled'])
+            ->mapWithKeys(fn ($row) => [$row->call_id => $row->transcript_labelled ?: $row->transcript]);
 
         // Each provider's label for the call, side by side for comparing.
         $labels = [];

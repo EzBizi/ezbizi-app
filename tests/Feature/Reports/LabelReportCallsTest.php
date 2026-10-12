@@ -160,6 +160,36 @@ class LabelReportCallsTest extends TestCase
         app(GrokTagger::class)->tag('Hello.', 'Why?', CallLabels::EXISTING);
     }
 
+    /** The Leads speaker split, reused: IVR menu / Dispatcher / Customer, shown in place of the raw words. */
+    public function test_a_transcript_is_split_by_speaker_and_shown_that_way(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true, 'services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->ringCentral([$this->rcCall('rc-new', 'A1 - New Client')]);
+        $this->transcript($tenant, 'rc-new', 'Thank you for calling. Hi, how much is a sweep? It is 199.');
+        $this->fakeTaggers();
+
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => ['turns' => [
+            ['speaker' => 'IVR menu', 'text' => 'Thank you for calling.'],
+            ['speaker' => 'Customer', 'text' => 'Hi, how much is a sweep?'],
+            ['speaker' => 'Dispatcher', 'text' => 'It is 199.'],
+        ]]]))]);
+
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])->assertSuccessful();
+
+        $labelled = CallReportTranscript::withoutGlobalScopes()->where('call_id', 'rc-new')->value('transcript_labelled');
+        $this->assertStringContainsString('Customer: Hi, how much is a sweep?', (string) $labelled);
+        $this->assertStringContainsString('Dispatcher: It is 199.', (string) $labelled);
+
+        $shown = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-10-06')
+            ->assertOk()
+            ->json('calls.0.transcript');
+        $this->assertSame($labelled, $shown);
+    }
+
     public function test_the_report_carries_each_providers_label(): void
     {
         config(['app.timezone' => 'America/New_York']);
