@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/pto_tab.dart';
@@ -35,6 +36,30 @@ class WorkHoursScreen extends StatefulWidget {
 class _WorkHoursScreenState extends State<WorkHoursScreen> {
   String _tab = 'general';
   final Set<String> _shown = {'general'};
+
+  @override
+  void initState() {
+    super.initState();
+    // Before General's own listener: a tapped correction notification
+    // brings General to the front, and General then takes the link.
+    DeepLinks.pending.addListener(_toGeneral);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_toGeneral);
+    super.dispose();
+  }
+
+  void _toGeneral() {
+    if (DeepLinks.pending.value?.module != 'work_hours' || _tab == 'general') {
+      return;
+    }
+    setState(() {
+      _tab = 'general';
+      _shown.add('general');
+    });
+  }
 
   bool _may(String key) =>
       widget.session.me?.permissions.contains(key) ?? false;
