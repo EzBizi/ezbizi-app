@@ -523,12 +523,21 @@ class _LeadThreadState extends State<LeadThread> {
       (lead['phone'] as String?)?.isNotEmpty == true &&
       (widget.session?.me?.permissions.contains('phone.phone.view') ?? false);
 
+  /// In a panel of its own, narrow enough that Call shows only its pad with
+  /// the number typed in. Handed to showSidePanel bare, the whole three-pane
+  /// Communication screen filled the window with no background, over Leads
+  /// (Jose, 2026-10-12).
   Future<void> _call(String phone) => showSidePanel<void>(
     context,
-    builder: (_) => CallTab(
-      api: widget.api,
-      session: widget.session!,
-      initialNumber: phone,
+    builder: (_) => SidePanel(
+      title: 'Call',
+      subtitle: phone,
+      scrollable: false,
+      child: CallTab(
+        api: widget.api,
+        session: widget.session!,
+        initialNumber: phone,
+      ),
     ),
   );
 
@@ -546,6 +555,11 @@ class _LeadThreadState extends State<LeadThread> {
       session: widget.session!,
       lead: _lead,
       matches: _matches,
+      said: [
+        for (final c in _conversations)
+          if (c['from'] != 'ADVERTISER' && c['text'] is String)
+            c['text'] as String,
+      ],
       onBooked: (result) async {
         Navigator.of(context).pop();
         final fresh = await widget.onBooked!(result);
