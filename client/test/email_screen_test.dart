@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/compose_panel.dart';
@@ -972,6 +973,46 @@ void main() {
 
     expect(opened, isNotEmpty);
     expect(opened.last.queryParameters['thread'], 'thread-of-m-1');
+  });
+
+  // Bar via Jose, 2026-10-12: "a new email notification should open that
+  // email". The bell leaves a link and switches to Email; Email opens it.
+  testWidgets('a notification tapped before Email opens lands on that email', (tester) async {
+    final opened = <Uri>[];
+    addTearDown(() => DeepLinks.pending.value = null);
+
+    DeepLinks.open(const DeepLink(
+      module: 'email', type: 'email_message', id: 'm-9', mailbox: 'Bookings@a-1chimney.com',
+    ));
+    await _pump(tester, _handler(onOpen: opened.add));
+
+    expect(opened.map((u) => u.path), contains(endsWith('/mailboxes/mb-2/messages/m-9')));
+    expect(DeepLinks.pending.value, isNull, reason: 'The link was not consumed.');
+  });
+
+  testWidgets('a notification tapped while Email is open opens that email', (tester) async {
+    final opened = <Uri>[];
+    addTearDown(() => DeepLinks.pending.value = null);
+
+    await _pump(tester, _handler(onOpen: opened.add));
+    expect(opened, isEmpty);
+
+    DeepLinks.open(const DeepLink(
+      module: 'email', type: 'email_message', id: 'm-9', mailbox: 'info@a-1chimney.com',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(opened.map((u) => u.path), contains(endsWith('/mailboxes/mb-1/messages/m-9')));
+  });
+
+  testWidgets('a link for another module is left for that module', (tester) async {
+    addTearDown(() => DeepLinks.pending.value = null);
+    const call = DeepLink(module: 'phone', type: 'call', id: 'c-1');
+
+    DeepLinks.open(call);
+    await _pump(tester, _handler());
+
+    expect(DeepLinks.pending.value, same(call));
   });
 
   /// A conversation the server really sent, opened on the screen.
