@@ -153,6 +153,35 @@ class FilesTest extends TestCase
             ]]);
     }
 
+    public function test_a_zero_byte_file_downloads_rather_than_timing_out(): void
+    {
+        // An empty file is base64 '' on the wire, which ConvertEmptyStringsToNull
+        // turns into null — the same trap as the roots path. It must arrive as
+        // an empty download, not a 422 the viewer reads as "offline".
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
+                'op' => 'download', 'path' => 'C:\\empty.txt',
+            ])
+            ->json('data.request_id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'ready', 'op' => 'download',
+                'name' => 'empty.txt', 'size' => 0, 'content_base64' => '',
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.name', 'empty.txt');
+    }
+
     public function test_the_agent_can_report_an_error_the_manager_then_sees(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -210,6 +239,58 @@ class FilesTest extends TestCase
 
         $this->assertCount(1, $pulled);
         $this->assertSame('', $pulled[0]['path']);
+
+        // THE SECOND HALF of the same bug, found 2026-10-12 on Hyanne's machine:
+        // the agent echoes path:'' back in its ANSWER, and answer() validated it
+        // as `sometimes|string` — ConvertEmptyStringsToNull turns '' into null,
+        // `string` rejects null, the answer 422'd, the slot never filled, and the
+        // viewer timed out to "This computer looks offline (last seen 0 min ago)"
+        // on a machine that was polling every 1.5s. This is the agent's real
+        // wire shape for the drive list.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1',
+                'status' => 'ready',
+                'op' => 'list',
+                'path' => '',
+                'entries' => [
+                    ['name' => 'C:\\', 'is_dir' => true, 'size_bytes' => null, 'modified_at' => null],
+                ],
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.entries.0.name', 'C:\\');
+    }
+
+    public function test_an_error_answer_for_the_roots_is_accepted_too(): void
+    {
+        // The agent's error branch also echoes path:'' — a roots read that
+        // failed must still reach the manager as its slug, not time out as
+        // "offline".
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->json('data.request_id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'error', 'op' => 'list',
+                'error' => 'unreadable', 'path' => '',
+            ])
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertJsonPath('data.status', 'error')
+            ->assertJsonPath('data.error', 'unreadable');
     }
 
     // ── read-once pull ───────────────────────────────────────────────
