@@ -93,7 +93,7 @@ touches apps, monitoring, social, Google or mail.
 | "— if your organization turns it on — a copy of a notification" | `/privacy/` | `SettingRegistry` → `notifications.email_enabled` → `default:`. **Flipped `true` → `false` on 2026-09-28** (Jose's ruling, deployed by `0.0.0304`), which made "unless your organization turns it off" false from that deploy until this fix. If the default goes back to `true`, the word goes back to "unless". |
 | "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. **RUN 2026-09-22, AND THE ROW FAILED ITS OWN TEST ON ITS FIRST RUN.** STOP and HELP do match, word for word, in all three. The frequency string does not: the site says *"typically fewer than five a month"* and `sms_codes_card.dart:328` says *"typically fewer than 5 messages per month"*. Both are true and they are not the same words, which is the state this row was written to forbid. **It was NOT corrected on the site, deliberately**, and the reason is the only interesting part: the toll-free campaign is in carrier review, the consent language cited in a campaign filing is part of that filing, and nobody here knows which of the two wordings was filed. Editing a published consent sentence mid-review to match an app is a change to evidence somebody is currently reading. **The next person to answer this owns the campaign, not this page** — asked as `0059`. Align to whichever was filed; do not align to whichever is prettier. **ANSWERED 2026-10-08 by Phone (`0101`): neither wording was filed** (the toll-free verification has no frequency sentence and is TWILIO_REJECTED anyway). **Aligned 2026-10-10:** `/privacy/` and `/terms/` now read *"typically fewer than 5 messages per month"*, the app's words. All three now match. |
 | "Either stops the texts; neither needs a password" | `/terms/` | `SmsCodesController::disable()` takes only `$request->user()`. Load-bearing: add a confirmation step and this page is false. |
-| "Facebook Pages, Instagram, Threads and TikTok send today" · "TikTok drafts, not the profile" · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
+| "Facebook Pages, Instagram and Threads send today" · TikTok "rebuilt to TikTok's Direct Post rules … not yet proven" (was "drafts, not the profile" until 2026-10-12: `TIKTOK_DIRECT_POST` is `true` on production since `4f8ee29b`, and its only row is a refusal) · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
 | "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
@@ -2683,8 +2683,27 @@ still says Pinterest sends. `/download/`, `/google-ads-api/`,
 
 **The deploy desk was reachable this run** — `send_message` to
 `local_072bee23…` delivered — and was asked to publish and for row counts
-(Pinterest sandbox token, `sent` rows by provider, the do-not-list). No answer
-before this entry was written; nothing on the site changed.
+(Pinterest sandbox token, `sent` rows by provider, the do-not-list). **It answered:** it published
+`5a64288f` (covers `710b8887`; re-verified here — all nine live files now
+byte-identical to `www/`), nothing shipped since `0.0.0404`, Pinterest
+sandbox token still set, and `social_post_targets` by provider:
+`facebook_page` 1 sent, `pinterest` 1 sent (sandbox) + 2 failed, **`tiktok`
+1 failed**, nothing else. The desk closed `0108` itself (`0087bec6`).
+
+**The finding: TikTok had never sent, and the site said it sends to drafts.**
+Its one row (2026-08-28, after the drafts publisher of 08-27) reads *"TikTok
+refused it: Please review our integration guidelines…"*. And the mechanism
+the page described is gone: `4f8ee29b` (10-05, deployed) rebuilt it for
+Direct Post, and production `config('services.tiktok.direct_post')` is
+**`true`** — so "to the account's drafts", "ours has not had [the audit]" and
+"the account row says this before you press send" were all unverifiable or
+false. Moved TikTok into the "not yet proven" group by the rule above (pull on
+a refusal; add on a real `sent` row): `/` "Facebook Pages, Instagram and
+Threads send today"; `/social-media/` "three of the nine", "For the other
+six", TikTok row rewritten; page date and `sitemap.xml` `lastmod` 2026-10-12.
+**Whether TikTok's audit actually passed was not established** — setting
+`TIKTOK_DIRECT_POST` is not evidence of it. Promote TikTok on its first real
+`sent` row.
 
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
