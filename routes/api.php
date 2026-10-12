@@ -2623,6 +2623,8 @@ Route::prefix('v1')
         // downloading files IS navigation — the request and the poll that
         // collects its answer both keep the session's idle window open. The
         // agent's poll lives in the idle-less group below. See FilesController.
+        // One authenticator code opens Files for 15 sliding minutes (Jose, 2026-10-12).
+        Route::post('monitoring/files/unlock', [MonitoringFilesController::class, 'unlock']);
         Route::post('monitoring/devices/{id}/files', [MonitoringFilesController::class, 'request']);
         Route::get('monitoring/devices/{id}/files/{requestId}', [MonitoringFilesController::class, 'result']);
 

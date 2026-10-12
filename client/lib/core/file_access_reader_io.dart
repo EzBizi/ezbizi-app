@@ -16,10 +16,83 @@ class IoFileAccessReader implements FileAccessReader {
   /// [driveProbe] is the seam for testing the roots listing: it answers "does
   /// this drive letter have readable media", and is allowed to THROW to stand
   /// in for a not-ready device. Null in production → the real guarded probe.
-  const IoFileAccessReader({this.driveProbe});
+  const IoFileAccessReader({this.driveProbe, this.home, this.shellFolders});
 
   /// Test seam only. `(String root) => bool`, may throw.
   final bool Function(String root)? driveProbe;
+
+  /// Test seams for [quickLinks]: the profile folder (null → USERPROFILE) and
+  /// Windows' User Shell Folders values (null → read from the registry).
+  final String? home;
+  final Future<Map<String, String>> Function()? shellFolders;
+
+  /// Explorer's labels, and the User Shell Folders value naming each one.
+  /// Downloads has no friendly value name, only its known-folder GUID.
+  static const _quickFolders = <(String, String)>[
+    ('Desktop', 'Desktop'),
+    ('Documents', 'Personal'),
+    ('Downloads', '{374DE290-123F-4565-9164-39C4925E467B}'),
+    ('Pictures', 'My Pictures'),
+    ('Videos', 'My Video'),
+    ('Music', 'My Music'),
+  ];
+
+  @override
+  Future<List<Map<String, String>>> quickLinks() async {
+    try {
+      final profile = home ?? Platform.environment['USERPROFILE'];
+      if (profile == null || profile.isEmpty) return const [];
+
+      // Where Windows actually keeps each folder. OneDrive "backup" moves
+      // Desktop/Documents/Pictures into the OneDrive folder and records it
+      // here, so guessing <profile>\Desktop would open an empty leftover.
+      final shell = await (shellFolders ?? _readShellFolders)();
+
+      final links = <Map<String, String>>[];
+      for (final (label, value) in _quickFolders) {
+        final recorded = shell[value];
+        final path = recorded != null && recorded.isNotEmpty
+            ? _expand(recorded)
+            : '$profile\\$label';
+        try {
+          if (Directory(path).existsSync()) {
+            links.add({'label': label, 'path': path});
+          }
+        } catch (_) {
+          // An unreachable redirect (an offline network share) is skipped.
+        }
+      }
+      return links;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// `reg query` of HKCU's User Shell Folders → {value name: data}. Async so
+  /// the spawn never blocks the agent's UI isolate; it runs only when a manager
+  /// opens This PC.
+  static Future<Map<String, String>> _readShellFolders() async {
+    final result = await Process.run('reg', [
+      'query',
+      r'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders',
+    ]);
+    if (result.exitCode != 0) return const {};
+
+    final values = <String, String>{};
+    final row = RegExp(r'^\s+(.+?)\s+REG_(?:EXPAND_)?SZ\s+(.*)$');
+    for (final line in LineSplitter.split(result.stdout as String)) {
+      final m = row.firstMatch(line);
+      if (m != null) values[m.group(1)!] = m.group(2)!.trim();
+    }
+    return values;
+  }
+
+  /// `%USERPROFILE%\OneDrive\Desktop` → the real path, from this process's
+  /// environment. An unknown variable is left as written.
+  static String _expand(String value) => value.replaceAllMapped(
+        RegExp(r'%([^%]+)%'),
+        (m) => Platform.environment[m.group(1)!] ?? m.group(0)!,
+      );
 
   @override
   Future<List<Map<String, Object?>>> list(String path) async {

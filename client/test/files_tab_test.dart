@@ -34,8 +34,10 @@ void main() {
     required List<Map<String, dynamic>> devices,
     required Map<String, Map<String, dynamic>> answers,
     List<Map<String, dynamic>>? requestLog,
+    bool locked = false,
   }) {
     var nextId = 0;
+    var unlocked = !locked;
     final pathOf = <String, String>{}; // request_id -> path
     final polled = <String>{}; // request_ids polled at least once
 
@@ -73,9 +75,37 @@ void main() {
           );
         }
 
+        // The authenticator lock: 123456 is the only code that verifies.
+        if (path.endsWith('/monitoring/files/unlock') && request.method == 'POST') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          if (body['code'] == '123456') {
+            unlocked = true;
+            return http.Response(
+              jsonEncode({'data': {'unlocked_until': '2026-10-12T15:00:00Z'}}),
+              200,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode({'message': 'That code did not verify.'}),
+            422,
+            headers: const {'content-type': 'application/json'},
+          );
+        }
+
         // POST a file request → mint an id, remember its path.
         final reqMatch = RegExp(r'/monitoring/devices/[^/]+/files$');
         if (reqMatch.hasMatch(path) && request.method == 'POST') {
+          if (!unlocked) {
+            return http.Response(
+              jsonEncode({
+                'message': 'Enter a current code from your authenticator to open files.',
+                'code': 'files_locked',
+              }),
+              403,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           requestLog?.add(body);
           final id = 'req-${nextId++}';
@@ -159,6 +189,94 @@ void main() {
     expect(find.byKey(const ValueKey('files-entry-readme.txt')), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'This PC'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'C:\\'), findsOneWidget);
+  });
+
+  testWidgets('locked Files asks for an authenticator code in place, and opens once it verifies',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      locked: true,
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': r'C:\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    // Locked: the code prompt, in the pane — no listing, no dialog.
+    expect(find.byKey(const Key('files-unlock-code')), findsOneWidget);
+    expect(find.byKey(const ValueKey(r'files-entry-C:\')), findsNothing);
+    expect(find.byType(Dialog), findsNothing);
+
+    // A wrong code says so and stays locked.
+    await tester.enterText(find.byKey(const Key('files-unlock-code')), '000000');
+    await tester.tap(find.byKey(const Key('files-unlock-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('That code did not verify.'), findsOneWidget);
+    expect(find.byKey(const ValueKey(r'files-entry-C:\')), findsNothing);
+
+    // The right one opens the drives where the manager was.
+    await tester.enterText(find.byKey(const Key('files-unlock-code')), '123456');
+    await tester.tap(find.byKey(const Key('files-unlock-submit')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-unlock-code')), findsNothing);
+    expect(find.byKey(const ValueKey(r'files-entry-C:\')), findsOneWidget);
+  });
+
+  testWidgets('This PC shows the quick links and one opens that folder',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': r'C:\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
+        ], 'quick_links': [
+          {'label': 'Desktop', 'path': r'C:\Users\toula\OneDrive\Desktop'},
+          {'label': 'Downloads', 'path': r'C:\Users\toula\Downloads'},
+        ]},
+        r'C:\Users\toula\OneDrive\Desktop': {'status': 'ready', 'op': 'list',
+          'path': r'C:\Users\toula\OneDrive\Desktop', 'entries': [
+          {'name': 'invoice.pdf', 'is_dir': false, 'size_bytes': 2048, 'modified_at': '2026-10-01'},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('files-quick-Desktop')), findsOneWidget);
+    expect(find.byKey(const ValueKey('files-quick-Downloads')), findsOneWidget);
+    expect(find.byKey(const ValueKey(r'files-entry-C:\')), findsOneWidget,
+        reason: 'The drives are still there under the quick links.');
+
+    await tester.tap(find.byKey(const ValueKey('files-quick-Desktop')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('files-entry-invoice.pdf')), findsOneWidget,
+        reason: 'The redirected (OneDrive) Desktop opened, not a guessed path.');
+    expect(find.widgetWithText(TextButton, 'Desktop'), findsOneWidget,
+        reason: 'The breadcrumb names the quick link, not the long path.');
   });
 
   testWidgets('a download posts an op:download request and the tray marks it ready',

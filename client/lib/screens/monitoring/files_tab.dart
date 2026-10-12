@@ -186,9 +186,13 @@ class _FilesTabState extends State<FilesTab> {
       if (!mounted) return;
       setState(() {
         item.status = _DownloadStatus.error;
-        item.error = e.slug == 'offline'
-            ? 'Device offline'
-            : (FilesTab.errorNotes[e.slug] ?? 'Could not download.');
+        item.error = switch (e.slug) {
+          'offline' => 'Device offline',
+          'locked' => 'Enter your authenticator code first',
+          _ => FilesTab.errorNotes[e.slug] ?? 'Could not download.',
+        };
+        // The 15 minutes lapsed mid-browse: bring the code prompt back.
+        if (e.slug == 'locked') _browseError = 'locked';
       });
     }
   }
@@ -336,6 +340,13 @@ class _FilesTabState extends State<FilesTab> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_browseError == 'locked') {
+      return _UnlockPrompt(
+        browser: _browser,
+        onUnlocked: () => _open(_trail.isEmpty ? '' : _trail.last.path),
+      );
+    }
+
     if (_browseError != null) {
       final note = FilesTab.errorNotes[_browseError] ?? _browseError!;
       return Center(
@@ -358,7 +369,10 @@ class _FilesTabState extends State<FilesTab> {
     }
 
     final entries = _listing?.entries ?? const [];
-    if (entries.isEmpty) {
+    // Explorer's Quick access, above the drives on This PC. Only agents new
+    // enough to send them have any.
+    final quickLinks = _listing?.quickLinks ?? const <QuickLink>[];
+    if (entries.isEmpty && quickLinks.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -377,11 +391,36 @@ class _FilesTabState extends State<FilesTab> {
 
     return ListView.separated(
       key: const Key('files-listing'),
-      itemCount: sorted.length,
+      itemCount: quickLinks.length + sorted.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, i) => _entryTile(context, sorted[i]),
+      itemBuilder: (context, i) => i < quickLinks.length
+          ? _quickLinkTile(quickLinks[i])
+          : _entryTile(context, sorted[i - quickLinks.length]),
     );
   }
+
+  Widget _quickLinkTile(QuickLink link) {
+    return ListTile(
+      key: ValueKey('files-quick-${link.label}'),
+      leading: Icon(_quickIcon(link.label)),
+      title: Text(link.label),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        setState(() => _trail.add((label: link.label, path: link.path)));
+        _open(link.path);
+      },
+    );
+  }
+
+  static IconData _quickIcon(String label) => switch (label) {
+        'Desktop' => Icons.desktop_windows_outlined,
+        'Documents' => Icons.description_outlined,
+        'Downloads' => Icons.download_outlined,
+        'Pictures' => Icons.image_outlined,
+        'Videos' => Icons.movie_outlined,
+        'Music' => Icons.music_note_outlined,
+        _ => Icons.folder_special_outlined,
+      };
 
   Widget _entryTile(BuildContext context, FileEntry entry) {
     return ListTile(
@@ -478,6 +517,97 @@ class _FilesTabState extends State<FilesTab> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+/// Files is locked behind a current authenticator code (Jose, 2026-10-12).
+/// Shown in place of the listing — not a dialog — and reopens where the
+/// manager was once the code verifies. ponytail: placeholder look; UI/UX owns
+/// the final layout of this screen.
+class _UnlockPrompt extends StatefulWidget {
+  const _UnlockPrompt({required this.browser, required this.onUnlocked});
+
+  final FileBrowserService browser;
+  final VoidCallback onUnlocked;
+
+  static const String note =
+      'Enter a current code from your authenticator to open files. '
+      'It stays open for 15 minutes after you stop browsing.';
+
+  @override
+  State<_UnlockPrompt> createState() => _UnlockPromptState();
+}
+
+class _UnlockPromptState extends State<_UnlockPrompt> {
+  final _code = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy || _code.text.trim().length != 6) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await widget.browser.unlock(_code.text);
+    if (!mounted) return;
+    if (error == null) {
+      widget.onUnlocked();
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = error;
+      _code.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 32),
+              const SizedBox(height: 12),
+              const Text(_UnlockPrompt.note, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('files-unlock-code'),
+                controller: _code,
+                autofocus: true,
+                enabled: !_busy,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  labelText: 'Authenticator code',
+                  counterText: '',
+                  errorText: _error,
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                key: const Key('files-unlock-submit'),
+                onPressed: _busy ? null : _submit,
+                child: const Text('Unlock'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -29,13 +29,31 @@ class FileBrowserService {
   final Duration _pollInterval;
   final int _maxPolls;
 
+  /// Opens Files with a current authenticator code (Jose, 2026-10-12). Null on
+  /// success — Files then stays open until 15 minutes pass with no request —
+  /// or the server's sentence to show under the code field ("That code did
+  /// not verify…", "Too many attempts…").
+  Future<String?> unlock(String code) async {
+    final res = await _api.post('/monitoring/files/unlock', {'code': code.trim()});
+    return res.ok ? null : res.reason;
+  }
+
   /// A directory's entries, or a [FileAccessException] with the agent's slug.
-  /// An empty [path] asks for the roots (the drives).
+  /// An empty [path] asks for the roots (the drives). Slug `locked` means Files
+  /// needs an authenticator code first ([unlock]).
   Future<FileListing> list(String deviceId, String path) async {
     final answer = await _run(deviceId, 'list', path);
 
     return FileListing(
       path: answer['path'] as String? ?? path,
+      quickLinks: [
+        for (final raw in (answer['quick_links'] as List? ?? const []))
+          if (raw is Map && raw['path'] is String)
+            QuickLink(
+              label: raw['label'] as String? ?? raw['path'] as String,
+              path: raw['path'] as String,
+            ),
+      ],
       entries: [
         for (final raw in (answer['entries'] as List? ?? const []))
           if (raw is Map)
@@ -69,6 +87,10 @@ class FileBrowserService {
     });
 
     if (!posted.ok) {
+      // Locked behind the authenticator: the screen shows the code prompt.
+      if (posted.body['code'] == 'files_locked') {
+        throw const FileAccessException('locked');
+      }
       throw const FileAccessException('unreadable');
     }
 
@@ -120,10 +142,26 @@ class FileBrowserService {
 
 /// A directory listing.
 class FileListing {
-  const FileListing({required this.path, required this.entries});
+  const FileListing({
+    required this.path,
+    required this.entries,
+    this.quickLinks = const [],
+  });
 
   final String path;
   final List<FileEntry> entries;
+
+  /// Explorer's Quick access — only on the roots ("This PC") listing, and only
+  /// from agents new enough to send it; otherwise empty.
+  final List<QuickLink> quickLinks;
+}
+
+/// One Quick access folder on the monitored machine (Desktop, Downloads…).
+class QuickLink {
+  const QuickLink({required this.label, required this.path});
+
+  final String label;
+  final String path;
 }
 
 /// One entry in a listing. Matches the backend's {name, is_dir, size_bytes,
