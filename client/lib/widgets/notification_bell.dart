@@ -98,7 +98,6 @@ class _NotificationBellState extends State<NotificationBell>
   // inbox were indistinguishable — and the one that needs action looked like
   // the one that does not.
   String? _error;
-  bool _loading = false;
   List<Map<String, dynamic>> _items = [];
 
   Timer? _poll;
@@ -177,11 +176,15 @@ class _NotificationBellState extends State<NotificationBell>
     if (state == AppLifecycleState.resumed) unawaited(_refresh());
   }
 
-  Future<void> _refresh() async {
-    if (_loading) return;
+  /// A second caller during a fetch waits for THAT fetch rather than returning
+  /// at once — a cold-start push tap arrives while the first fetch is still in
+  /// flight, and must see its rows (Android, 2026-10-12: it opened the panel).
+  Future<void>? _inFlight;
 
-    setState(() => _loading = true);
+  Future<void> _refresh() =>
+      _inFlight ??= _fetch().whenComplete(() => _inFlight = null);
 
+  Future<void> _fetch() async {
     final response = await widget.api.get('/notifications', {'limit': '20'});
 
     if (!mounted) return;
@@ -192,8 +195,6 @@ class _NotificationBellState extends State<NotificationBell>
         : const [];
 
     setState(() {
-      _loading = false;
-
       if (!response.ok) {
         // Recorded, not shown. A bell that pops an error banner because a
         // background poll failed is worse than one that briefly shows a stale
@@ -359,15 +360,19 @@ class _NotificationBellState extends State<NotificationBell>
     // Unread-ness from the list as fetched, so a toast clicked twice does not
     // post the read twice. A failed read is not a reason to go nowhere: the
     // person clicked to see something, and the panel below still shows it.
+    // After the fetch, not before: on a cold start _items is still empty.
+    await _refresh();
+    if (!mounted) return;
+
     final clicked = _items
         .where((item) => item['id']?.toString() == payload)
         .firstOrNull;
     if (clicked != null && clicked['read_at'] == null) {
       await widget.api.post('/notifications/$payload/read', {});
+      if (!mounted) return;
+      await _refresh();
+      if (!mounted) return;
     }
-
-    await _refresh();
-    if (!mounted) return;
 
     final destination = _destinationOf(payload);
     if (destination != null && widget.onOpenModule != null) {

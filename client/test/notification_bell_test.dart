@@ -303,6 +303,40 @@ void main() {
     expect(DeepLinks.take('email')?.id, 'msg-123');
   });
 
+  testWidgets('a cold-start push tap, before the first fetch lands, still opens its record', (
+    tester,
+  ) async {
+    // Android, 2026-10-12: from a stopped app the tap opened the PANEL — the
+    // lookup ran against the still-empty list while the first fetch was out.
+    addTearDown(() => DeepLinks.pending.value = null);
+    final opened = <String>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (request.method == 'POST') return _json({'data': {}});
+        return _json({'data': [_email], 'meta': {'unread': 1}});
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          appBar: AppBar(
+            actions: [NotificationBell(api: api, onOpenModule: (m, f, r) => opened.add(m))],
+          ),
+        ),
+      ),
+    );
+    OsNotifications.onClick?.call('n9'); // first fetch still in flight
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+
+    expect(opened, ['email']);
+    expect(DeepLinks.take('email')?.id, 'msg-123');
+  });
+
   testWidgets('a link for another module waits for that module', (tester) async {
     addTearDown(() => DeepLinks.pending.value = null);
     DeepLinks.open(const DeepLink(module: 'email', type: 'email_message', id: 'm'));
