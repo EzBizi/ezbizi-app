@@ -2749,3 +2749,5 @@ answers `200`. Both halves of the inversion condition hold. `/` "Facebook Pages,
 Instagram, Threads and Pinterest send today"; `/social-media/` "four of the
 nine", "For the other five", Pinterest row "Sends now, images only — video
 publishing does not exist yet". Still no usage claim: one tenant, Jose's own.
+
+**Published at `ded18bf2`** (desk; `/` and `/social-media/` re-verified byte-identical here). Nothing left unpublished.
