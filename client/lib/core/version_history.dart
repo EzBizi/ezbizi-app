@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0413',
+      date: '12 Oct 2026',
+      items: [
+        'AI: call summaries first in the lead, a Follow up list, complaint alerts, Draft with AI for reviews, smarter name filling, and a Monday AI summary.',
+        'Fleet: the vehicle list opens one state at a time, with a button per state and an All states option.',
+        'AI: new leads are read faster, several at a time.',
+        'Monitoring › Files works like Windows Explorer: drives on the left, a sortable list (name, modified, size) in the middle and a preview of the chosen file beside it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0412',
       date: '12 Oct 2026',
       items: [

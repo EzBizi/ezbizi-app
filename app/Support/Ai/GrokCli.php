@@ -2,6 +2,8 @@
 
 namespace App\Support\Ai;
 
+use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -21,6 +23,10 @@ use RuntimeException;
  */
 final class GrokCli
 {
+    /** A long call's speaker split can take minutes; 120 s timed out on prod. */
+    private const TIMEOUT = 300;
+
+
     public static function configured(): bool
     {
         return filled(config('services.grok_cli.home'));
@@ -36,33 +42,92 @@ final class GrokCli
      */
     public static function ask(string $prompt, array $schema): array
     {
-        $home = (string) config('services.grok_cli.home');
-        $work = storage_path('app/grok-'.bin2hex(random_bytes(6)));
-        File::ensureDirectoryExists($work.'/cwd', 0700);
+        $answer = self::askMany([$prompt], $schema)[0];
 
-        try {
-            File::put($work.'/prompt.txt', $prompt);
-
-            $result = Process::env(['HOME' => $home])
-                ->timeout(120)
-                ->run([
-                    $home.'/.grok/bin/grok',
-                    '--prompt-file', $work.'/prompt.txt',
-                    '--json-schema', json_encode($schema),
-                    '--max-turns', '1',
-                    '--disable-web-search',
-                    '--no-subagents',
-                    '--tools', '',
-                    '--cwd', $work.'/cwd',
-                ]);
-        } finally {
-            File::deleteDirectory($work);
+        if ($answer instanceof RuntimeException) {
+            throw $answer;
         }
 
+        return $answer;
+    }
+
+    /**
+     * Several questions at once, one CLI process each, run side by side (Jose,
+     * 2026-10-12, AI item 4: each answer takes about 8 s and callers asked one
+     * at a time). One process per question keeps every answer tied to its own
+     * question and a failure to its own row.
+     *
+     * GROK_CLI_CONCURRENCY processes at a time (default 4); set it to 1 if
+     * Grok starts refusing on the plan's rate limit.
+     *
+     * @param  list<string>  $prompts
+     * @param  array<string, mixed>  $schema
+     * @return list<array<string, mixed>|RuntimeException> in the prompts' order
+     */
+    public static function askMany(array $prompts, array $schema): array
+    {
+        $home = (string) config('services.grok_cli.home');
+        $answers = [];
+
+        foreach (array_chunk($prompts, max(1, (int) config('services.grok_cli.concurrency', 4)), true) as $chunk) {
+            $works = [];
+            foreach ($chunk as $i => $prompt) {
+                $works[$i] = storage_path('app/grok-'.bin2hex(random_bytes(6)));
+                File::ensureDirectoryExists($works[$i].'/cwd', 0700);
+                File::put($works[$i].'/prompt.txt', $prompt);
+            }
+
+            try {
+                // Started side by side, waited on one by one, so a call that
+                // runs out of time fails alone (prod 2026-10-12: one long
+                // transcript's timeout stopped every run behind it).
+                $running = [];
+                foreach ($works as $i => $work) {
+                    $running[$i] = Process::env(['HOME' => $home])->timeout(self::TIMEOUT)->start([
+                        $home.'/.grok/bin/grok',
+                        '--prompt-file', $work.'/prompt.txt',
+                        '--json-schema', json_encode($schema),
+                        '--max-turns', '1',
+                        '--disable-web-search',
+                        '--no-subagents',
+                        '--tools', '',
+                        '--cwd', $work.'/cwd',
+                    ]);
+                }
+                $results = [];
+                foreach ($running as $i => $process) {
+                    try {
+                        $results[$i] = $process->wait();
+                    } catch (ProcessTimedOutException) {
+                        self::failed('timed out after '.self::TIMEOUT.'s');
+                        $results[$i] = new RuntimeException('The Grok CLI timed out after '.self::TIMEOUT.'s');
+                    }
+                }
+            } finally {
+                foreach ($works as $work) {
+                    File::deleteDirectory($work);
+                }
+            }
+
+            foreach ($results as $i => $result) {
+                $answers[$i] = $result instanceof RuntimeException ? $result : self::answer($result);
+            }
+        }
+
+        ksort($answers);
+
+        return array_values($answers);
+    }
+
+    /** @return array<string, mixed>|RuntimeException */
+    private static function answer(ProcessResult $result): array|RuntimeException
+    {
         if (! $result->successful()) {
             // The CLI's own error, cut short; never the prompt.
-            self::failed('exit '.$result->exitCode().': '.mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
-            throw new RuntimeException('The Grok CLI failed (exit '.$result->exitCode().'): '
+            $why = 'exit '.$result->exitCode().': '.mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300);
+            self::failed($why);
+
+            return new RuntimeException('The Grok CLI failed (exit '.$result->exitCode().'): '
                 .mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
         }
 
@@ -71,7 +136,8 @@ final class GrokCli
 
         if (! is_array($answer)) {
             self::failed('no structured output');
-            throw new RuntimeException('The Grok CLI answered without structured output: '
+
+            return new RuntimeException('The Grok CLI answered without structured output: '
                 .mb_substr(trim($result->output()), 0, 200));
         }
 

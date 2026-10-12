@@ -63,7 +63,17 @@ class LeadsReadTest extends TestCase
             $this->assertSame('19020', $blank->postal_code);
             $this->assertSame('BOOK', $blank->classification);
             $this->assertSame('Already Known', $named->refresh()->contact_name, 'never overwrites what we hold');
+            $this->assertSame('Kassandra Stone', $named->ai_set['name_conflict'], 'a different name is flagged for a person');
             $this->assertNull($waiting->refresh()->classification, 'read once the transcript exists');
+
+            // The AI mark: set by AI and still AI's, until a person edits it.
+            $this->assertSame(['contact_name', 'postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($blank));
+            $this->assertSame(['postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($named), 'the ZIP only: the name was ours');
+            $blank->forceFill(['contact_name' => 'Cassandra Stone'])->save();
+            $this->assertSame(['postal_code'], \App\Http\Controllers\Api\LeadsController::aiHeld($blank));
+            $this->assertStringContainsString('3 values set on 2 leads, 1 changed by a person (67% kept)',
+                \App\Console\Commands\AiWeeklySummary::accuracy($this->t['org']->id,
+                    \Carbon\CarbonImmutable::now()->subDay(), \Carbon\CarbonImmutable::now()));
         });
         $this->assertSame(2, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.classified')->count());
     }
@@ -146,5 +156,37 @@ class LeadsReadTest extends TestCase
         $this->artisan('ezbizi:leads-read')->assertSuccessful();
 
         Process::assertNothingRan();
+    }
+
+    /** Rodrigo's §3: a first name becomes the full name the customer gave. */
+    public function test_a_first_name_is_enriched_to_the_full_name_the_customer_gave(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Wants a sweep.', 'name' => 'Nora Vale', 'name_basis' => 'self_introduction',
+            'zip' => null, 'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+        ]]))]);
+        $lead = $this->callLead('Nora', 'Hi, this is Nora Vale, I need a sweep');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame('Nora Vale', $this->inTenant($this->t['org'], fn () => $lead->refresh()->contact_name));
+    }
+
+    /** AI item 4: read side by side; a failed lead stays unread for the next run. */
+    public function test_leads_are_read_together_and_a_failure_stays_with_its_lead(): void
+    {
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result('', 'not logged in', 1))
+            ->push(Process::result(json_encode(['structuredOutput' => [
+                'classification' => 'BOOK', 'summary' => 'Wants a sweep.', 'name' => null, 'name_basis' => 'none',
+                'zip' => null, 'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+            ]])))]);
+        $a = $this->callLead('A', 'I need a sweep');
+        $b = $this->callLead('B', 'I need a sweep');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $read = $this->inTenant($this->t['org'], fn () => array_filter([$a->refresh()->classification, $b->refresh()->classification]));
+        $this->assertCount(1, $read, 'one read, one left for the next run');
     }
 }

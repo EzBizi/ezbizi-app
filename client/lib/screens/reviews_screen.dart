@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
@@ -54,6 +55,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   /// could be open on several rows at once is a dialog with extra steps.
   String? _confirmingPublishId;
   final _draft = TextEditingController();
+
+  /// The words AI suggested, while the box still holds them unchanged.
+  String? _aiDraft;
   bool _busy = false;
 
   @override
@@ -127,6 +131,26 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         : 'Nothing new.');
 
     await _load();
+  }
+
+  /// Grok's words into the box, for a person to edit (AI item 11).
+  Future<void> _suggest(Map<String, dynamic> review) async {
+    setState(() => _busy = true);
+    final response = await widget.api.post(
+      '/reviews/${review['id']}/reply/suggest',
+      const {},
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!response.ok) {
+      setState(() => _notice = response.message);
+      return;
+    }
+    final body = (response.data as Map)['body'] as String? ?? '';
+    setState(() {
+      _draft.text = body;
+      _aiDraft = body;
+    });
   }
 
   Future<void> _saveDraft(Map<String, dynamic> review) async {
@@ -439,8 +463,18 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 ),
               )
             else ...[
+              if (_aiDraft != null && _draft.text == _aiDraft)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: AiMark.badge(
+                    'Draft by AI',
+                    tooltip:
+                        'Written by AI from the review. Edit it before you publish.',
+                  ),
+                ),
               TextField(
                 controller: _draft,
+                onChanged: (_) => setState(() {}),
                 maxLines: 4,
                 maxLength: 4096,
                 decoration: const InputDecoration(
@@ -456,6 +490,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                     child: const Text('Cancel'),
                   ),
                   const Spacer(),
+                  TextButton.icon(
+                    key: ValueKey('review-ai-draft-${review['id']}'),
+                    icon: const Icon(Icons.auto_awesome, size: 16),
+                    label: const Text('Draft with AI'),
+                    onPressed: _busy ? null : () => _suggest(review),
+                  ),
                   TextButton(
                     onPressed: _busy ? null : () => _saveDraft(review),
                     child: const Text('Save draft'),

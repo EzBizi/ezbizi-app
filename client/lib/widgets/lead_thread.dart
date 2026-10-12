@@ -1798,6 +1798,89 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// Taken off the Follow up list in this view.
+  bool _followedUp = false;
+
+  /// Asked the price or a day, nothing booked: what puts a lead on Follow up.
+  static bool _asksForFollowUp(Map c) {
+    final s = c['signals'];
+    if (s is! Map) return false;
+    return (s['asked_price'] == true || s['asked_availability'] == true) &&
+        s['booked'] == false;
+  }
+
+  /// Grok's one line on the call first, the transcript one tap away (Jose,
+  /// 2026-10-12: "summary should show first with the option to see the full
+  /// transcript"; UI queue 77 placement 1).
+  Widget _callSummary(ThemeData theme, String id, Map c) {
+    final open = _openTranscripts.contains('full-$id');
+    final next = c['next_step'] as String?;
+    final transcript = c['transcript'] as String?;
+    return Column(
+      key: ValueKey('call-summary-$id'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const AiMark.badge(
+          'Summary by AI',
+          tooltip:
+              'Written by AI from the call recording. Check the transcript for the exact words.',
+        ),
+        const SizedBox(height: 4),
+        Text(c['summary'] as String, style: theme.textTheme.bodyMedium),
+        if (next != null && next.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Next: $next',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        if (_asksForFollowUp(c) && !_followedUp)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: ValueKey('followed-up-$id'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+              ),
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Followed up'),
+              onPressed: () async {
+                setState(() => _followedUp = true);
+                await widget.api.post(
+                  '/leads/${widget.lead['id']}/follow-up-handled',
+                  const {},
+                );
+              },
+            ),
+          ),
+        if (transcript != null && transcript.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: ValueKey('full-transcript-toggle-$id'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+              ),
+              onPressed: () => setState(() {
+                open
+                    ? _openTranscripts.remove('full-$id')
+                    : _openTranscripts.add('full-$id');
+              }),
+              child: Text(open ? 'Hide transcript' : 'Show full transcript'),
+            ),
+          ),
+          if (open) _transcript(theme, id, transcript),
+        ],
+      ],
+    );
+  }
+
   /// "Tanya is viewing this lead" - somebody else may be answering it.
   Widget _viewingBanner({bool compact = false}) {
     final colours = ToneColours.of(context, Tone.caution);
@@ -2156,7 +2239,9 @@ class _LeadThreadState extends State<LeadThread> {
                 // The words, right under the recording (Jose, 2026-09-29): both
                 // voices in one text, machine-transcribed on our own server - so it
                 // is labelled as a transcript, not quoted. Four lines, then Show all.
-          if ((c['transcript'] as String?)?.isNotEmpty ?? false)
+          if ((c['summary'] as String?)?.isNotEmpty ?? false)
+            _callSummary(theme, id, c)
+          else if ((c['transcript'] as String?)?.isNotEmpty ?? false)
             _transcript(theme, id, c['transcript'] as String)
           else if (c['transcript_pending'] == true)
             Padding(

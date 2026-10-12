@@ -188,7 +188,11 @@ void main() {
     await tester.tap(find.text('Toula Elwell'));
     await tester.pumpAndSettle();
 
+    // A file is chosen first, as in Explorer (UI queue 79); Download is in
+    // what it shows.
     await tester.tap(find.byKey(const ValueKey('files-entry-invoice.pdf')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('files-download-invoice.pdf')));
     // No animated spinner rides a download (the tray shows a static state), so
     // pumpAndSettle has nothing to advance the poll timers with — step the two
     // ~900ms polls explicitly.
@@ -203,6 +207,109 @@ void main() {
     // The tray shows it, ready.
     expect(find.byKey(const Key('files-downloads-tray')), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+  });
+
+  // UI queue 79: Explorer's panes once a computer is chosen.
+  testWidgets('a chosen picture is fetched and shown beside the list, a '
+      'PDF is not fetched, and the list sorts by size', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // A 1×1 PNG, so Image.memory has something real to decode.
+    const png =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    final log = <Map<String, dynamic>>[];
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': 'cap.png', 'is_dir': false, 'size_bytes': 70, 'modified_at': '2026-10-11'},
+          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
+        ]},
+        'cap.png': {'status': 'ready', 'op': 'download', 'name': 'cap.png',
+          'size': 70, 'content_base64': png},
+      },
+      requestLog: log,
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    // The rail folded into the picker, and the list has its headings.
+    expect(find.byKey(const Key('files-device-rail')), findsNothing);
+    expect(find.byKey(const Key('files-device-picker')), findsOneWidget);
+    expect(find.text('Choose a file to see it here.'), findsOneWidget);
+
+    // Size, largest first: the PDF above the picture.
+    await tester.tap(find.byKey(const ValueKey('files-sort-size')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('files-sort-size')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('files-entry-estimate.pdf'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('files-entry-cap.png'))).dy,
+      ),
+    );
+
+    // A PDF shows what it is and is not fetched.
+    await tester.tap(find.byKey(const ValueKey('files-entry-estimate.pdf')));
+    await tester.pumpAndSettle();
+    expect(find.text('PDF document'), findsOneWidget);
+    expect(log.where((r) => r['op'] == 'download'), isEmpty);
+
+    // A picture is fetched once and shown.
+    await tester.tap(find.byKey(const ValueKey('files-entry-cap.png')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(log.where((r) => r['op'] == 'download' && r['path'] == 'cap.png'),
+        hasLength(1));
+    expect(find.byKey(const ValueKey('files-preview-image-cap.png')),
+        findsOneWidget);
+    expect(find.text('Opening a preview counts as a download in the log.'),
+        findsOneWidget);
+  });
+
+  testWidgets('on a phone a chosen file stands in for the list, with the way '
+      'back', (tester) async {
+    tester.view.physicalSize = const Size(380, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('files-entry-estimate.pdf')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-listing')), findsNothing);
+    expect(find.byKey(const ValueKey('files-download-estimate.pdf')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('files-preview-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-listing')), findsOneWidget);
   });
 
   testWidgets('access_denied on a folder reads as a sentence, not a spinner',

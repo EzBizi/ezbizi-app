@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
+use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
@@ -271,6 +272,11 @@ class ExperimentalCallReportController extends Controller
             $labels[$row->call_id][$row->provider] = $row->label;
         }
 
+        // AI's coaching read of the call (ezbizi:score-report-calls), if any.
+        $scores = CallReportScore::query()->whereIn('call_id', $ids)->whereNotNull('score')
+            ->get(['call_id', 'score', 'checks', 'strength', 'improve'])
+            ->keyBy('call_id');
+
         // Our number the call was on, by RingCentral's own label for it
         // ("DFW - LS Ads"): Bar, via Jose, 2026-10-12, wants a missed call's
         // row to say which line was rung.
@@ -281,6 +287,9 @@ class ExperimentalCallReportController extends Controller
                 'to_name' => $lines[$call['to_number'] ?? ''] ?? $call['queue'] ?? null,
                 'transcript' => $words[$call['id']] ?? null,
                 'labels' => (object) ($labels[$call['id']] ?? []),
+                'score' => isset($scores[$call['id']])
+                    ? $scores[$call['id']]->only(['score', 'checks', 'strength', 'improve'])
+                    : null,
             ],
             $day['calls'] ?? [],
         );

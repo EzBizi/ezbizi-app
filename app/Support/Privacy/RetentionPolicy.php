@@ -79,6 +79,7 @@ final class RetentionPolicy
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `alerts` (created_at), `automation_events` (occurred_at),
      * `call_report_conversions` (created_at), `call_report_labels` (created_at),
+     * `call_report_scores` (created_at),
      * `call_report_transcripts` (created_at),
      * `device_tokens` (last_registered_at),
      * `email_verifications` (created_at), `field_alerts` (created_at),

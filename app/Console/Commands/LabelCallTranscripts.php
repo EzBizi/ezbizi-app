@@ -6,6 +6,7 @@ use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\TranscriptSpeakers;
+use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use RuntimeException;
@@ -22,30 +23,55 @@ class LabelCallTranscripts extends Command
 
     protected $description = 'Divide new call transcripts by speaker (IVR menu, Dispatcher, Customer) with Grok';
 
-    public function handle(TenantContext $tenant): int
+    public function handle(TenantContext $tenant, EventEmitter $events): int
     {
         if (! config('ezbizi.leads_ai_grok') || ! GrokCli::configured()) {
             return self::SUCCESS;
         }
 
         $rows = LeadConversation::query()->withoutGlobalScopes()
-            ->whereNotNull('transcript')->whereNull('transcript_labelled')
+            ->whereNotNull('transcript')
+            // read() always sets signals: null means not read yet, including calls
+            // 0.0.0410 split by speaker before summaries existed.
+            ->whereNull('call_signals')
             ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
             ->orderByDesc('occurred_at')
             ->limit((int) $this->option('limit'))
             ->get();
 
-        foreach ($rows as $row) {
-            try {
-                $labelled = TranscriptSpeakers::label((string) $row->transcript);
-            } catch (RuntimeException $e) {
-                $this->warn('Grok: '.$e->getMessage());
+        // Side by side (GrokCli::askMany); a failed call stays unlabelled and
+        // is asked about again next run.
+        $reads = TranscriptSpeakers::readMany($rows->map(fn ($row) => (string) $row->transcript)->all());
 
-                return self::SUCCESS;   // an expired sign-in fails every call; next run tries again
+        foreach ($rows->values() as $n => $row) {
+            $read = $reads[$n];
+            if ($read instanceof RuntimeException) {
+                $this->warn('Grok: '.$read->getMessage());
+
+                continue;
             }
             $tenant->run(
                 Organization::withoutGlobalScopes()->findOrFail($row->organization_id),
-                fn () => $row->forceFill(['transcript_labelled' => $labelled ?? $row->transcript])->save(),
+                function () use ($row, $read, $events) {
+                    $row->forceFill([
+                        'transcript_labelled' => $read['labelled'] ?? $row->transcript,
+                        'call_summary' => $read['summary'],
+                        'call_next_step' => $read['next_step'],
+                        'call_signals' => $read['signals'],
+                    ])->save();
+
+                    // Jose, 2026-10-12: "notify lead manager and administrator" -
+                    // who hears is the Automations rule's, so it can change.
+                    // Only a fresh call: the first run reads a week of older ones.
+                    if ($read['signals']['complaint'] && $row->lead !== null
+                        && $row->occurred_at?->gte(now()->subDay())) {
+                        $events->emit('lead.call_complaint', $row->lead, ['after' => [
+                            'summary' => $read['summary'],
+                            'caller_name' => $row->lead->contact_name,
+                            'phone' => $row->lead->phone,
+                        ]]);
+                    }
+                },
             );
         }
 

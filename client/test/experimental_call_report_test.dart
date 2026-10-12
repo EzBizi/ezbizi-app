@@ -151,6 +151,37 @@ void main() {
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
   });
 
+  testWidgets('AI call scores add a column and a coaching panel, only once '
+      'a call has one', (tester) async {
+    final scored = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (scored['calls'] as List).first['score'] = {
+      'score': 7,
+      'checks': {'greeted': true, 'offered_time': false},
+      'strength': 'Warm greeting.',
+      'improve': 'Offer a time.',
+    };
+    await _pump(tester, width: 1400, view: 'People', report: () => scored);
+
+    expect(find.text('Call score'), findsOneWidget);
+    expect(find.text('7.0'), findsOneWidget);
+
+    await tester.tap(find.text('Ada'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('coaching-Ada')), findsOneWidget);
+    expect(find.textContaining('7.0 / 10 over 1 scored call'), findsOneWidget);
+    expect(find.text('Greeted with the company name: 100%'), findsOneWidget);
+    expect(find.text('Offered a time: 0%'), findsOneWidget);
+    expect(find.text('To improve: Offer a time.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);
+  });
+
+  testWidgets('no Call score column while no call is scored', (tester) async {
+    await _pump(tester, width: 1400, view: 'People');
+
+    expect(find.text('Call score'), findsNothing);
+  });
+
   testWidgets('a call that rang somebody but was taken by another says so', (
     tester,
   ) async {

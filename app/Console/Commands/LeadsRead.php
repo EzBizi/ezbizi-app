@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Services\Leads\LeadInsights;
+use App\Support\Ai\NameDecision;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -45,13 +46,16 @@ class LeadsRead extends Command
         $read = 0;
         foreach ($leads->groupBy('organization_id') as $orgId => $group) {
             $tenant->run(Organization::withoutGlobalScopes()->findOrFail($orgId), function () use ($group, $insights, $events, &$read) {
-                foreach ($group as $lead) {
-                    try {
-                        $answer = $insights->read($lead);
-                    } catch (RuntimeException $e) {
-                        $this->warn('Grok: '.$e->getMessage());
+                // Side by side (GrokCli::askMany); a failed lead stays unread
+                // and is asked again next run.
+                $answers = $insights->readMany($group->values()->all());
 
-                        return;   // an expired sign-in fails every call; try the rest next run
+                foreach ($group->values() as $n => $lead) {
+                    $answer = $answers[$n];
+                    if ($answer instanceof RuntimeException) {
+                        $this->warn('Grok: '.$answer->getMessage());
+
+                        continue;
                     }
                     if ($answer === null) {
                         continue;
@@ -68,7 +72,32 @@ class LeadsRead extends Command
                     $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
                     $lost = ! $applicant && ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
 
+                    // Rodrigo's §3 merge table (NameDecision): fill a blank,
+                    // enrich a first name, correct AI's own weak spelling; a
+                    // name a person set, or a shared phone, is only flagged.
+                    [$nameAction, $name] = NameDecision::decide(
+                        $lead->contact_name,
+                        $lead->ai_set['contact_name'] ?? null,
+                        $answer['name'],
+                        $answer['name_basis'] ?? 'self_introduction',
+                        $answer['name'] !== null && self::phoneShared($lead, $answer['name']),
+                    );
+
+                    // What AI wrote, so the AI mark shows while the value is
+                    // still AI's and the weekly check counts what people changed.
+                    $aiSet = array_filter([
+                        'status' => ($applicant || $junk || $lost) ? match (true) {
+                            $applicant => Lead::STATUS_JOB_APPLICANT,
+                            $junk => Lead::STATUS_NOT_A_LEAD,
+                            default => Lead::STATUS_LOST,
+                        } : null,
+                        'contact_name' => in_array($nameAction, ['fill', 'enrich', 'correct'], true) ? $name : null,
+                        'name_conflict' => $nameAction === 'conflict' ? $name : null,
+                        'postal_code' => $lead->postal_code ? null : $answer['zip'],
+                    ], fn ($v) => $v !== null && $v !== '');
+
                     $lead->forceFill([
+                        'ai_set' => $aiSet !== [] ? ['at' => now()->toIso8601String()] + $aiSet : null,
                         'status' => match (true) {
                             $applicant => Lead::STATUS_JOB_APPLICANT,
                             $junk => Lead::STATUS_NOT_A_LEAD,
@@ -78,7 +107,7 @@ class LeadsRead extends Command
                         'classification' => $answer['classification'],
                         'summary' => $answer['summary'] !== '' ? $answer['summary'] : $lead->summary,
                         'classified_at' => now(),
-                        'contact_name' => $lead->contact_name ?: $answer['name'],
+                        'contact_name' => in_array($nameAction, ['fill', 'enrich', 'correct'], true) ? $name : $lead->contact_name,
                         'postal_code' => $lead->postal_code ?: $answer['zip'],
                     ])->save();
 
@@ -103,5 +132,21 @@ class LeadsRead extends Command
         $this->info("Read {$read} lead(s).");
 
         return self::SUCCESS;
+    }
+
+    /** Another lead on this phone goes by a different name: one number, maybe two people. */
+    private static function phoneShared(Lead $lead, string $name): bool
+    {
+        if (blank($lead->phone_digits)) {
+            return false;
+        }
+
+        return Lead::query()->withoutGlobalScopes()
+            ->where('organization_id', $lead->organization_id)
+            ->where('phone_digits', $lead->phone_digits)
+            ->whereKeyNot($lead->getKey())
+            ->whereNotNull('contact_name')
+            ->whereRaw('LOWER(contact_name) <> ?', [mb_strtolower($name)])
+            ->exists();
     }
 }

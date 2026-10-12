@@ -119,6 +119,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Only the red, overdue rows (Jose, 2026-10-08).
   bool _overdue = false;
+
+  /// Asked the price or a day on a call, nothing booked - AI's read (Jose,
+  /// 2026-10-12).
+  bool _followUp = false;
   bool _starred = false;
 
   /// The source chip, as the API spells it. Null is every source.
@@ -406,6 +410,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_unreplied) 'unreplied': '1',
     if (_unread) 'unread': '1',
     if (_overdue) 'overdue': '1',
+    if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
     'source': ?_source,
     'sources': ?_allSources,
@@ -919,6 +924,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
           onSelected: (on) => _setFilters(overdue: on),
         ),
         FilterChip(
+          key: const ValueKey('filter-follow-up'),
+          // The AI mark's glyph (AiMark): the list is AI's read of the calls.
+          avatar: Icon(
+            Icons.auto_awesome,
+            size: 16,
+            color: theme.colorScheme.primary,
+            semanticLabel: 'AI',
+          ),
+          tooltip:
+              'AI read the call: they asked the price or a day and nothing was booked.',
+          label: const Text('Follow up'),
+          showCheckmark: false,
+          selected: _followUp,
+          visualDensity: VisualDensity.compact,
+          onSelected: (on) => _setFilters(followUp: on),
+        ),
+        FilterChip(
           key: const ValueKey('filter-starred'),
           label: const Text('Starred'),
           selected: _starred,
@@ -1265,19 +1287,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
     bool? unreplied,
     bool? starred,
     bool? overdue,
+    bool? followUp,
   }) {
     final next = (
       unread ?? _unread,
       unreplied ?? _unreplied,
       starred ?? _starred,
       overdue ?? _overdue,
+      followUp ?? _followUp,
     );
-    if (next == (_unread, _unreplied, _starred, _overdue)) return;
+    if (next == (_unread, _unreplied, _starred, _overdue, _followUp)) return;
     setState(() {
       _unread = next.$1;
       _unreplied = next.$2;
       _starred = next.$3;
       _overdue = next.$4;
+      _followUp = next.$5;
     });
     _load();
   }

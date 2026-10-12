@@ -808,6 +808,94 @@ void main() {
     expect(find.byTooltip('1 field not filled in'), findsNothing);
   });
 
+  // ── One state at a time (Eve, 2026-10-12) ───────────────────────────────
+
+  testWidgets('the list opens on the first state and its chips switch state', (
+    tester,
+  ) async {
+    final asked = <String?>[];
+
+    await _pumpScreen(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/vehicles')) return null;
+        final place = request.url.queryParameters['franchise_id'];
+        asked.add(place);
+
+        final rows = switch (place) {
+          'fr-ct' => [
+            {..._van, 'id': 'v-ct', 'label': 'Connecticut van'},
+          ],
+          'fr-nj' => [
+            {..._van, 'id': 'v-nj', 'label': 'New Jersey van'},
+          ],
+          _ => [
+            {..._van, 'id': 'v-ct', 'label': 'Connecticut van'},
+            {..._van, 'id': 'v-nj', 'label': 'New Jersey van'},
+          ],
+        };
+
+        return _json({
+          'data': rows,
+          'meta': {
+            'total': rows.length,
+            'last_page': 1,
+            'places': [
+              {'id': 'fr-ct', 'name': 'Connecticut', 'count': 1},
+              {'id': 'fr-nj', 'name': 'New Jersey', 'count': 1},
+            ],
+          },
+        });
+      },
+    );
+
+    // First answer names the states; the screen then opens the first one
+    // and never draws the mixed list.
+    expect(asked, [null, 'fr-ct']);
+    expect(find.text('Connecticut van'), findsOneWidget);
+    expect(find.text('New Jersey van'), findsNothing);
+    expect(find.text('Connecticut  1'), findsOneWidget);
+    expect(find.text('All states  2'), findsOneWidget);
+
+    await tester.tap(find.text('New Jersey  1'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last, 'fr-nj');
+    expect(find.text('New Jersey van'), findsOneWidget);
+    expect(find.text('Connecticut van'), findsNothing);
+
+    await tester.tap(find.text('All states  2'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last, isNull);
+    expect(find.text('Connecticut van'), findsOneWidget);
+    expect(find.text('New Jersey van'), findsOneWidget);
+  });
+
+  testWidgets('a register in one state draws no state chips', (tester) async {
+    await _pumpScreen(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/vehicles')) return null;
+        return _json({
+          'data': [_van],
+          'meta': {
+            'total': 1,
+            'last_page': 1,
+            'places': [
+              {'id': 'fr-1', 'name': 'Connecticut', 'count': 1},
+            ],
+          },
+        });
+      },
+    );
+
+    expect(find.text('All states  1'), findsNothing);
+    expect(find.text('Connecticut  1'), findsNothing);
+    // Control: the list itself drew.
+    expect(find.text(_van['label']! as String), findsOneWidget);
+  });
+
 }
 
 const _van = {
