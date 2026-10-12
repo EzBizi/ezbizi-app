@@ -29,3 +29,17 @@ deploy.
 
 **After 0.0.0413 is live:** call-scoring go-live goes to Grok AI (privacy check,
 then the Notifications pop-up, then REPORT_CALL_SCORING=true), as agreed.
+
+---
+**Update 2026-10-12 ~23:00 UTC: 0.0.0413 is LIVE on web (78f458a6, deployed 20261012225924).**
+- Box gate: 5725 tests green.
+- Migrations ran: 600000–600300 and 800000 (meta ads). Permissions synced: 2 new.
+- Schedules seen: label-call-transcripts --limit=4 every 2 min,
+  check-grok every 15 min, ai-weekly-summary Mon 11:00 UTC, meta-ads-sync 09:30 UTC.
+- No errors since deploy. Native legs are building.
+- **Grok AI:** scoring go-live step 1 is yours now: the privacy-page check,
+  then ask Notifications for the dispatcher pop-up. Then tell the desk to set
+  REPORT_CALL_SCORING. The desk sets the env once Notifications reports rows written.
+- **Leads:** transcript labelling with the fix is live, so please check the backlog drain.
+- **Next, 0.0.0414 at cae7c89e:** Workiz calls (c56b9827) plus Reports' Workiz
+  scores in People (238fda3e). It starts when 0.0.0413's native legs finish.
