@@ -171,6 +171,54 @@ void main() {
     expect(find.textContaining('Burst pipe'), findsNothing);
   });
 
+  testWidgets('Missed tells inbound from outbound calls nobody picked up', (
+    tester,
+  ) async {
+    // Jose, 2026-10-12: "on missed calls i want also to differentiate
+    // between inbound and outbound calls".
+    final withOutbound = Map<String, dynamic>.from(_report);
+    withOutbound['calls'] = [
+      ...(_report['calls'] as List),
+      {
+        'id': 'o1',
+        'direction': 'Outbound',
+        'started_at': '2026-09-16T17:00:00Z',
+        'from': '+15550007777',
+        'caller_label': null,
+        'queue': null,
+        'result': 'No Answer',
+        'talk_seconds': null,
+        'recording_id': null,
+        'answered_by': null,
+        'placed_by': 'Ada',
+        'rang': [],
+        'outcome': 'no_answer',
+      },
+    ];
+    await _pump(tester, width: 1400, report: () => withOutbound);
+
+    await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
+    await tester.pumpAndSettle();
+
+    // Listed in Missed with who placed it, but not a missed customer.
+    expect(find.text('Inbound 2'), findsOneWidget);
+    expect(find.text('Outbound 1'), findsOneWidget);
+    expect(find.text('Called by Ada · no answer'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('calls-filter-outbound')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Called by Ada · no answer'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsNothing);
+    expect(find.byKey(const ValueKey('nobody-missed')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('calls-filter-inbound')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Called by Ada · no answer'), findsNothing);
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+  });
+
   testWidgets('Missed calls narrow to new or existing clients', (tester) async {
     await _pump(tester, width: 1400);
 
