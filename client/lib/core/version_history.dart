@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Anything AI wrote or sorted now says so: a ✦ AI mark on suggested replies and on Performance\'s call reasons.',
         'Performance: the AI\'s call reasons gain Estimate question, Job status, Confirmation, Not a customer and No conversation, so fewer calls land in Other.',
+        'Reports › Google Ads: every manager account (MCC) now opens as an overview of the accounts under it, and manager accounts have their own colour in the list.',
+        'Reports › Google Ads: a manager\'s overview includes every active account under it; canceled accounts are counted separately instead of as not connected.',
       ],
     ),
     VersionRelease(
