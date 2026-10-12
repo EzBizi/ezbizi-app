@@ -1574,6 +1574,8 @@ class LeadsController extends Controller
             // Which of these AI set and still holds (UI queue 77: the AI mark,
             // gone once a person changes the value).
             'ai' => self::aiHeld($lead),
+            // A different name the customer gave, kept for a person to decide.
+            'name_conflict' => $lead->ai_set['name_conflict'] ?? null,
 
             // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
             // model), beside what somebody DECIDED (status). Null until the

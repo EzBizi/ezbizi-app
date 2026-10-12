@@ -5,6 +5,7 @@ namespace App\Services\Leads;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\NameDecision;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -85,7 +86,7 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool}|null
+     * @return array{classification: string, summary: string, name: ?string, name_basis: string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
@@ -105,8 +106,15 @@ class LeadInsights
             ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
             ."a vendor selling something, a hang-up, or nothing to act on).\n"
             ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
-            ."- name: the CUSTOMER's own full name only if they clearly say it; never a staff member, "
-            ."never the business; null if not said.\n"
+            ."- name: the CUSTOMER's own name, as they gave it (keep accents, hyphens, apostrophes; "
+            ."one name is fine), only from: the customer introducing themselves (\"My name is ...\", "
+            ."\"This is ...\"), the customer's answer when asked their name, a \"Name:\" line they "
+            ."wrote, or the customer spelling or correcting it (use the spelled form). NEVER a "
+            ."dispatcher, technician, the phone menu, the business, a review author, or someone "
+            ."the customer mentions (\"my husband Mark\", \"ask for Andy\"); never made from an "
+            ."email handle. Null if not given.\n"
+            ."- name_basis: how the name was given: self_introduction, answer_to_name_question, "
+            ."spelled_or_corrected, or none when name is null.\n"
             ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
             ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
             ."something, a robocall, or a wrong number. A real person asking about any "
@@ -121,12 +129,13 @@ class LeadInsights
                     'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
                     'summary' => ['type' => 'string'],
                     'name' => ['type' => ['string', 'null']],
+                    'name_basis' => ['type' => 'string', 'enum' => NameDecision::BASES],
                     'zip' => ['type' => ['string', 'null']],
                     'not_a_lead' => ['type' => 'boolean'],
                     'lost' => ['type' => 'boolean'],
                     'job_applicant' => ['type' => 'boolean'],
                 ],
-                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
+                'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
                 'additionalProperties' => false,
             ],
         );
@@ -139,6 +148,8 @@ class LeadInsights
             'classification' => in_array($class, self::CLASSIFICATIONS, true) ? $class : self::SUPPORT,
             'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
             'name' => $name !== '' ? mb_substr($name, 0, 120) : null,
+            'name_basis' => in_array($json['name_basis'] ?? null, NameDecision::BASES, true)
+                ? $json['name_basis'] : ($name !== '' ? 'self_introduction' : 'none'),
             'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
             'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
             'lost' => ($json['lost'] ?? false) === true,

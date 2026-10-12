@@ -101,7 +101,7 @@ class AiWeeklySummary extends Command
 
         $set = $kept = 0;
         foreach ($leads as $lead) {
-            $fields = array_diff(array_keys($lead->ai_set), ['at']);
+            $fields = array_intersect(array_keys($lead->ai_set), ['status', 'contact_name', 'postal_code']);
             $set += count($fields);
             $kept += count(LeadsController::aiHeld($lead));
         }
