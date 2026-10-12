@@ -711,6 +711,70 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('Dallas', $this->first($tenant, 'zip='.urlencode('75201-1234'))['area_name']);
     }
 
+    /**
+     * An overbooked row opens to the jobs it counted, each with its client and
+     * appointment (Bar, via Jose, 2026-10-12). The list is the count: four
+     * booked of three lists four, and a cancelled job is in neither.
+     */
+    public function test_an_overbooked_row_lists_the_jobs_it_counted_with_their_details(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 4]);
+
+        foreach (['07:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Canceled');
+        WorkizJob::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => 'RICH01',
+            'service_area' => 'Dallas',
+            'postal_code' => '75201',
+            'city' => 'Dallas',
+            'address' => '1430 Red Oaks Dr',
+            'status' => 'Submitted',
+            'scheduled_for' => '2026-10-05 08:00:00',
+            'payload' => [
+                'Tags' => [], 'SerialId' => 600012, 'FirstName' => 'John', 'LastName' => 'Lynch',
+                'Phone' => '2145550100', 'Email' => 'john@example.com', 'JobType' => 'Chimney Inspection',
+                'JobEndDateTime' => '2026-10-05 11:00:00', 'JobNotes' => 'Gate code 4411',
+                'Team' => [['id' => 'USR-1', 'Name' => 'Ivan Sharkov']],
+            ],
+            'synced_at' => now(),
+        ]);
+
+        $row = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/overbooking')->json('data.overbooked'))
+            ->first(fn ($r) => $r['level'] === 'area' && $r['date'] === '2026-10-05');
+        $this->assertSame(4, $row['booked']);
+
+        $jobs = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount($row['booked'], $jobs, 'The list is exactly what the row counted.');
+        $this->assertSame(['07:00', '08:00', '11:00', '12:00'], array_column($jobs, 'time'));
+        $this->assertSame([
+            'number' => '600012', 'status' => 'Submitted', 'time' => '08:00', 'end_time' => '11:00',
+            'service' => 'Chimney Inspection', 'technicians' => ['Ivan Sharkov'], 'notes' => 'Gate code 4411',
+            'customer' => ['name' => 'John Lynch', 'phone' => '2145550100', 'email' => 'john@example.com', 'address' => '1430 Red Oaks Dr, Dallas 75201'],
+        ], array_intersect_key($jobs[1], array_flip(['number', 'status', 'time', 'end_time', 'service', 'technicians', 'notes', 'customer'])));
+
+        // A franchise row lists the franchise's jobs that day.
+        $this->assertCount(4, $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&franchise_id={$tenant['franchise']->id}")
+            ->assertOk()->json('data'));
+
+        // Another tenant's area and franchise are not found, and a caller
+        // without the Overbooking tab cannot ask.
+        $other = $this->provisionTenant('Beta');
+        $this->signedInAs($other['admin'])->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")->assertNotFound();
+        $this->signedInAs($other['admin'])->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&franchise_id={$tenant['franchise']->id}")->assertNotFound();
+        $caller = $this->userWithRole($tenant, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
+        $this->signedInAs($caller)->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")->assertForbidden();
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {

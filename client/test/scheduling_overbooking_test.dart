@@ -68,6 +68,73 @@ void main() {
     },
   );
 
+  /// Bar, via Jose, 2026-10-12: "make everything clickable to show its full
+  /// information". A row opens to the jobs it counted, with the client and
+  /// the appointment, in place, and closes again.
+  testWidgets('an overbooked row opens to its jobs, client and appointment', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, _data, asked, jobs: _jobs);
+
+    await tester.tap(find.text('Texas › Dallas').first);
+    await tester.pumpAndSettle();
+
+    expect(asked.last.path, endsWith('/scheduling/overbooking/jobs'));
+    expect(asked.last.queryParameters, {
+      'date': '2026-10-05',
+      'area_id': 'a-1',
+    });
+    expect(
+      find.text('8:00 AM – 11:00 AM  ·  Chimney Inspection  ·  #600012'),
+      findsOneWidget,
+    );
+    expect(find.text('John Lynch  ·  Submitted'), findsOneWidget);
+    expect(find.text('2145550100'), findsOneWidget);
+    expect(find.text('1430 Red Oaks Dr, Dallas 75201'), findsOneWidget);
+    expect(find.text('Ivan Sharkov'), findsOneWidget);
+    expect(find.text('Gate code 4411'), findsOneWidget);
+    // An online booking with nobody on it yet says so.
+    expect(find.text('No technician yet'), findsOneWidget);
+
+    // The franchise row asks for the franchise.
+    await tester.tap(find.text('Texas (whole franchise)'));
+    await tester.pumpAndSettle();
+    expect(asked.last.queryParameters, {
+      'date': '2026-10-05',
+      'franchise_id': 'f-tx',
+    });
+
+    // Tapped again, a row closes.
+    await tester.tap(find.text('Texas › Dallas').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Gate code 4411'),
+      findsOneWidget,
+      reason: 'Only the franchise row is still open.',
+    );
+  });
+
+  testWidgets('an opened row draws at phone width without overflowing', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(tester, _data, <Uri>[], width: 360, jobs: _jobs);
+    await tester.tap(find.text('Texas › Dallas').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gate code 4411'), findsOneWidget);
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
+
   testWidgets('a quiet week says so rather than showing nothing', (
     tester,
   ) async {
@@ -106,12 +173,18 @@ const _data = {
   'days': 30,
   'overbooked': [
     {
-      'level': 'area', 'date': '2026-10-05', 'area_id': 'a-1', //
+      'level': 'area',
+      'date': '2026-10-05',
+      'area_id': 'a-1',
+      'franchise_id': 'f-tx', //
       'name': 'Dallas', 'franchise_name': 'Texas',
       'capacity': 3, 'booked': 4, 'over': 1, 'closed': false,
     },
     {
-      'level': 'franchise', 'date': '2026-10-05', 'area_id': null, //
+      'level': 'franchise',
+      'date': '2026-10-05',
+      'area_id': null,
+      'franchise_id': 'f-tx', //
       'name': 'Texas', 'franchise_name': 'Texas',
       'capacity': 4, 'booked': 5, 'over': 1, 'closed': false,
     },
@@ -131,11 +204,43 @@ const _data = {
   ],
 };
 
+const _jobs = [
+  {
+    'kind': 'job',
+    'job_id': 'j-1',
+    'number': '600012',
+    'status': 'Submitted', //
+    'time': '08:00', 'end_time': '11:00', 'service': 'Chimney Inspection',
+    'technicians': ['Ivan Sharkov'], 'notes': 'Gate code 4411',
+    'customer': {
+      'name': 'John Lynch',
+      'phone': '2145550100',
+      'email': 'john@example.com', //
+      'address': '1430 Red Oaks Dr, Dallas 75201',
+    },
+  },
+  {
+    'kind': 'booking',
+    'lead_id': 'l-1',
+    'number': null,
+    'status': 'Online booking', //
+    'time': '11:00', 'end_time': '14:00', 'service': null,
+    'technicians': <String>[], 'notes': null,
+    'customer': {
+      'name': 'Ann Reyes',
+      'phone': '2145550199',
+      'email': null,
+      'address': null,
+    },
+  },
+];
+
 Future<void> _pump(
   WidgetTester tester,
   Map<String, dynamic> data,
   List<Uri> asked, {
   double width = 1100,
+  List<Map<String, dynamic>> jobs = const [],
 }) async {
   tester.view.physicalSize = Size(width, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -145,7 +250,9 @@ Future<void> _pump(
     client: MockClient((request) async {
       asked.add(request.url);
       return http.Response(
-        jsonEncode({'data': data}),
+        jsonEncode({
+          'data': request.url.path.endsWith('/overbooking/jobs') ? jobs : data,
+        }),
         200,
         headers: const {'content-type': 'application/json'},
       );
