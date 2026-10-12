@@ -2713,3 +2713,9 @@ directory 1.10.0.
 Still owed: lead counts by source with `is_test = 0` (incl. facebook /
 instagram), the resolved ring-group fraction, the Training row counts, the
 Scheduling count, an `estimates` row count.
+
+**Published the same day at `e2f56916`** (desk; `/`, `/social-media/`,
+`sitemap.xml` re-verified byte-identical here). The desk has no record of a
+TikTok audit pass; its only rule is that `TIKTOK_DIRECT_POST=true` is safe only
+with the composer's per-account choices. Audit status asked of Marketing
+(`local_067b17d7…`), which owns it.
