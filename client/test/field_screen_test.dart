@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -62,6 +63,33 @@ void main() {
     expect(sizes, hasLength(1));
     // 1400 wide minus 16 padding each side: six columns, 8 between.
     expect(tester.getSize(tiles.first).width, closeTo((1368 - 40) / 6, 0.5));
+  });
+
+  testWidgets('a tapped alert notification opens that alert', (tester) async {
+    await _pump(tester, grants: ['field.dashboard.view', 'field.manage']);
+    bool selected() => tester
+        .widget<ListTile>(
+          find.ancestor(
+            of: find.text('SOS · Bea Okafor'),
+            matching: find.byType(ListTile),
+          ),
+        )
+        .selected;
+    expect(selected(), isFalse);
+
+    DeepLinks.open(
+      const DeepLink(module: 'email', type: 'email_message', id: 'm-1'),
+    );
+    await tester.pumpAndSettle();
+    expect(selected(), isFalse);
+    expect(DeepLinks.pending.value?.module, 'email', reason: 'Not ours: left.');
+
+    DeepLinks.open(
+      const DeepLink(module: 'field', type: 'field_alert', id: 'a-1'),
+    );
+    await tester.pumpAndSettle();
+    expect(selected(), isTrue);
+    expect(DeepLinks.pending.value, isNull, reason: 'Taken, so opened once.');
   });
 
   testWidgets('a tracked person gets the SOS button', (tester) async {
