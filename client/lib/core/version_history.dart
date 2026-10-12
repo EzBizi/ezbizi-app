@@ -21,7 +21,7 @@ class VersionHistory {
         'Marketing › Social Media Management: publish or schedule posts to your Facebook Page, and photo posts to Instagram.',
         'Leads: Facebook Messenger messages to your Page arrive in Leads (Messenger filter), and you can reply from EzBizi.',
         'Leads: older Google bookings now show the customer\'s name too, and older leads that became jobs are marked Completed.',
-        'Thumbtack: the nightly phone-number sync no longer fails because of one number Thumbtack won\'t accept.',
+        'Thumbtack: the nightly phone-number sync now also skips a number Thumbtack rejects when it is the only new one, instead of failing.',
       ],
     ),
     VersionRelease(
