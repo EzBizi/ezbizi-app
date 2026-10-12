@@ -550,6 +550,33 @@ void main() {
     expect(_sent, isEmpty, reason: 'a draft is not a send');
   });
 
+  // UI queue 77: what AI wrote says so, until a person changes it.
+  testWidgets("a suggestion is marked as AI's until the words change", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      suggestion: 'Hi, yes we can inspect it. Which day suits you?',
+    );
+
+    final mark = find.byKey(const ValueKey('reply-ai-draft'));
+    expect(mark, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('reply-suggest')));
+    await tester.pumpAndSettle();
+    expect(mark, findsOneWidget);
+    expect(find.text('Draft by AI'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'Hi, yes we can inspect it. Does Thursday suit you?',
+    );
+    await tester.pumpAndSettle();
+    expect(mark, findsNothing);
+  });
+
   testWidgets('without the model there is no Suggest button', (tester) async {
     await _pump(
       tester,

@@ -15,6 +15,7 @@ import '../screens/phone/call_tab.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import '../screens/scheduling/availability_pane.dart';
+import 'ai_mark.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
 import 'side_panel.dart';
@@ -186,6 +187,10 @@ class _LeadThreadState extends State<LeadThread> {
   List<Map<String, dynamic>> _templates = const [];
   bool _suggesting = false;
 
+  /// The words Suggest put in the box. Marked as AI's while the box still
+  /// holds exactly them; the first change makes them the person's.
+  String? _aiDraft;
+
   /// How often an OPEN conversation re-reads itself.
   ///
   /// Faster than the list beside it, because this is somebody mid-conversation
@@ -293,7 +298,10 @@ class _LeadThreadState extends State<LeadThread> {
         return;
       }
       final text = (response.data as Map?)?['text'] as String? ?? '';
-      if (text.isNotEmpty) _compose.text = text;
+      if (text.isNotEmpty) {
+        _compose.text = text;
+        _aiDraft = text;
+      }
     });
   }
 
@@ -327,6 +335,7 @@ class _LeadThreadState extends State<LeadThread> {
         (response.data as Map<String, dynamic>? ?? const {}),
       ];
       _compose.clear();
+      _aiDraft = null;
       _emoji = false;
     });
 
@@ -927,6 +936,19 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
+        if (_aiDraft != null && _compose.text == _aiDraft)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: AiMark.badge(
+                'Draft by AI',
+                key: ValueKey('reply-ai-draft'),
+                tooltip: 'Written by AI. Read it before sending: nothing goes '
+                    'until you press Send.',
+              ),
+            ),
+          ),
         Row(
           // Bottom-aligned, and every control is a one-line box tall, so
           // they line up with the box and stay by its last line as it grows
@@ -937,6 +959,9 @@ class _LeadThreadState extends State<LeadThread> {
               child: TextField(
                 key: const ValueKey('reply-box'),
                 controller: _compose,
+                // Redrawn only while a draft is marked: the mark goes the
+                // moment the words change.
+                onChanged: _aiDraft == null ? null : (_) => setState(() {}),
                 // The phone's own spell check and suggestions (Jose,
                 // 2026-09-30: "hellu" was not corrected). Windows and the
                 // web build have no native checker Flutter can call.

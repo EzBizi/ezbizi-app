@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/async_body.dart';
 import '../widgets/search_picker.dart';
 
@@ -126,6 +127,10 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// Rodrigo's review-ops routes are connected: draft, card, match, report.
   bool _opsAvailable = false;
   bool _drafting = false;
+
+  /// The reply Draft with AI wrote, marked as AI's while the editor still
+  /// holds exactly it (UI queue 77).
+  String? _aiReply;
 
   /// The review open in the right-hand panel, by its Google name. Jose,
   /// 2026-09-28: "clicking on any review should open up the right sidebar",
@@ -1155,6 +1160,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         return;
       }
       _replyDraft.text = text;
+      _aiReply = text;
       _confirmingReply = false;
     });
   }
@@ -1813,6 +1819,18 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                 ),
               ),
             ],
+            if (_aiReply != null && _replyDraft.text == _aiReply) ...[
+              const SizedBox(height: 10),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: AiMark.badge(
+                  'Draft by AI',
+                  key: ValueKey('gbp-reply-ai-draft'),
+                  tooltip: 'Written by AI. Read it before posting: nothing goes '
+                      'until you press Post and confirm.',
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               controller: _replyDraft,
@@ -1821,7 +1839,10 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               maxLength: 4000,
               enabled: !_postingReply,
               onChanged: (_) {
-                if (_confirmingReply) setState(() => _confirmingReply = false);
+                // Also redraws the AI mark, which goes at the first change.
+                if (_confirmingReply || _aiReply != null) {
+                  setState(() => _confirmingReply = false);
+                }
               },
               decoration: const InputDecoration(
                 labelText: 'Public reply',

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
@@ -1307,6 +1308,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        // The reasons are AI's reading, not a count anybody checked (UI
+        // queue 77).
+        const AiMark(
+          key: ValueKey('labels-ai-mark'),
+          tooltip: 'Each call was read and sorted by AI, Claude or Grok. '
+              'Switch between them to compare.',
+        ),
         SegmentedButton<String>(
           key: const ValueKey('labeller'),
           showSelectedIcon: false,
@@ -1351,13 +1359,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? '—'
         : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
 
+    final line = Text(
+      'Claude: ${name(claude)} · Grok: ${name(grok)}',
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        'Claude: ${name(claude)} · Grok: ${name(grok)}',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-        ),
+      child: Row(
+        children: [
+          const AiMark(
+            tooltip: 'What each AI read this call as. Neither was checked by '
+                'a person.',
+          ),
+          const SizedBox(width: 6),
+          Flexible(child: line),
+        ],
       ),
     );
   }

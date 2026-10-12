@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
+import 'package:ezbizi_client/widgets/ai_mark.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -357,6 +358,25 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('label-price')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Kitchen tap'), findsNothing);
+  });
+
+  // UI queue 77: the reasons are AI's reading, and say so.
+  testWidgets('the AI reasons carry the AI mark', (tester) async {
+    await _pump(tester, width: 1400);
+
+    await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('labels-ai-mark')), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('Claude: Price · Grok: Availability'),
+        matching: find.byWidgetPredicate(
+          (w) => w is Row && w.children.first is AiMark,
+        ),
+      ),
+      findsOneWidget,
+    );
   });
 
   // Was "choosing a week asks the server for a week". Day / Week / Month gave

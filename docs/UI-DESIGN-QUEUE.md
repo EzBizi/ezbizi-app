@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 77 · AI · one marker, and where each AI feature lives — **sent 2026-10-12, waiting** (`docs/previews/ai-marker-placements-layouts.html`)
+### 77 · AI · one marker, and where each AI feature lives — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **MARKER BUILT** (`docs/previews/ai-marker-placements-layouts.html`)
 
 From the Grok AI session, 2026-10-12, which relayed that Jose approved an AI program today. It asks where eight AI features
 live and how a person can tell what AI decided or wrote. The features: call summary and next step, the asked-but-didn't-book
@@ -2979,6 +2979,12 @@ where the work already is: the summary at the top of the call card with Show ful
 the lead, a Follow up view in Leads, and a Call score column with a Coaching panel in Performance › People. **2** puts AI in
 one place (an AI tab on the lead). **3** is 1's placement with the glyph. Phone **4** (recommended) as 1, plus the weekly
 WhatsApp report; **5** as 2; **6** as 3. Build: `AiMark` in `client/lib/widgets/` (UI/UX); each feature's owner places it.
+
+Built: `AiMark` (`client/lib/widgets/ai_mark.dart`): the chip, and `AiMark.badge(label)`, with a tooltip. It is placed on what
+exists today and can be shown to be AI's: Leads' **Suggest** reply ("Draft by AI" until the words change), A1Leads GBP's
+**Draft with AI** (the same), and Performance's call reasons (the chip before the counts and before each call's "Claude: … ·
+Grok: …"). **Not marked yet:** the AI-filled name and ZIP. LeadsRead fills them without recording that AI did, so Leads
+were asked for a per-field flag. Features 1–4 and 8 are new; the Grok AI session places the mark as each one lands.
 
 ### 76 · Marketing · Social posts · a dashboard and a full composer — **Jose: "2 definitely" — 2 and 5** — **BUILT** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
 
