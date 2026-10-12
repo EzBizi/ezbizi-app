@@ -21,6 +21,8 @@ class VersionHistory {
         'Fleet: the vehicle list opens one state at a time, with a button per state and an All states option.',
         'AI: new leads are read faster, several at a time.',
         'Monitoring › Files works like Windows Explorer: drives on the left, a sortable list (name, modified, size) in the middle and a preview of the chosen file beside it.',
+        'Monitoring › Files asks for your authenticator code to open, shows until when it stays open, has Lock now, and lists Desktop, Downloads and the rest under Quick access (once that computer has this update).',
+        'Reports: new Marketing tab (ad cost against jobs, sales and estimated profit per branch and source) and Meta tab (Facebook ad spend by campaign, state and category).',
       ],
     ),
     VersionRelease(
