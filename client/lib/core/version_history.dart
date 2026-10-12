@@ -18,6 +18,7 @@ class VersionHistory {
       date: '12 Oct 2026',
       items: [
         'Leads: Facebook Messenger enquiries now show the customer\'s name instead of "Unnamed enquiry".',
+        'Performance › Calls › Missed: each call now says Inbound or Outbound, with a filter. Outbound calls nobody answered are listed but not counted as missed customers.',
       ],
     ),
     VersionRelease(
