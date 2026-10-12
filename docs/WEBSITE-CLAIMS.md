@@ -2755,3 +2755,24 @@ nine", "For the other five", Pinterest row "Sends now, images only — video
 publishing does not exist yet". Still no usage claim: one tenant, Jose's own.
 
 **Published at `ded18bf2`** (desk; `/` and `/social-media/` re-verified byte-identical here). Nothing left unpublished.
+
+## 2026-10-12 evening: nine releases, nothing on the site changes
+
+Desk `0115`, measured ~23:10 UTC: production web **0.0.0413 at `78f458a6`**
+(0405–0413 since morning). All 7 pages live = repo (`/privacy/` = `280de455`,
+Last-Modified 22:17 UTC); `check-site.py` ok; forbidden terms ok - 4, none.
+`/download/windows.json` 0.0.0412 is the 0413 native leg still building — not stuck.
+Play 200; Apple lookup `resultCount` 1, `0.0.0363`.
+
+- Today's four xAI privacy additions: review drafts and speaker split **live**;
+  Monday summary code live, rule inactive (first run 2026-10-19); FB campaign
+  names code live, **0** `facebook_ads` connections; call **scoring OFF**
+  (`REPORT_CALL_SCORING` unset, `call_report_scores` 0). Page ahead of the
+  switch = over-disclosure, the safe direction. Leave as is.
+- **Training: `training_attempts` = 50** (0 new today). Built-and-UNUSED is no
+  longer true. The card's imperatives stay true; the tense rule still forbids
+  any usage claim ("teams train on it") — 50 attempts is not a customer base.
+- Leads: `facebook` 4, `instagram` 1 (a tester). Messenger/Instagram row
+  **stays held** — customer DMs wait on Meta's round two; `is_test` split of
+  the 4 not taken. Ask for `WHERE is_test = 0` before inverting.
+- Social: pinterest sent 1, tiktok 0, no new publisher. Ring groups not measured.
