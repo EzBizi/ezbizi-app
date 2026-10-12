@@ -66,7 +66,16 @@ class LeadsAdoptManagerClients extends Command
                         continue;
                     }
 
-                    if (! GoogleAdsOAuth::describe($token, $managerId, $manager->login_customer_id)['manager']) {
+                    // Google's word on which rows are managers, kept on the row
+                    // for the Ads report (Jose, 2026-10-12).
+                    $isManager = GoogleAdsOAuth::describe($token, $managerId, $manager->login_customer_id)['manager'];
+                    // Only ever raised: a failed read says false, and an account does not
+                    // stop being a manager.
+                    if ($isManager && ! $manager->is_manager && ! $dry) {
+                        $manager->forceFill(['is_manager' => true])->save();
+                    }
+
+                    if (! $isManager) {
                         continue;
                     }
 

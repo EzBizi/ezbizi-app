@@ -349,6 +349,10 @@ Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlappin
 // background check), once a morning before the day's calls - an account that
 // lapses stops showing ads and nobody is told.
 Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('America/New_York')->withoutOverlapping(30);
+// Every enabled account under a connected Google Ads manager connected, and
+// which rows are managers, kept true daily (Jose, 2026-10-12: the Ads report
+// and Leads should agree as accounts are added to the managers).
+Schedule::command('leads:adopt-manager-clients')->dailyAt('07:30')->timezone('America/New_York')->withoutOverlapping(30);
 
 // The nightly Same-Day Reports on WhatsApp (docs/REPLACING-RODRIGO-BOT.md),
 // after Workiz's evening sync; the second run catches a branch that failed.

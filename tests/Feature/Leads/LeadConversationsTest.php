@@ -1000,7 +1000,7 @@ class LeadConversationsTest extends TestCase
         $this->artisan('leads:adopt-manager-clients')->assertSuccessful();
 
         $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()
-            ->where('provider', 'google_ads')->orderBy('remote_id')->get(['remote_id', 'login_customer_id', 'display_name', 'scope_type', 'scope_id']));
+            ->where('provider', 'google_ads')->orderBy('remote_id')->get(['remote_id', 'login_customer_id', 'display_name', 'scope_type', 'scope_id', 'is_manager']));
 
         $this->assertSame(['2796623321', '4051729356', self::CUSTOMER, '8839813550'], $rows->pluck('remote_id')->all());
         $stamford = $rows->firstWhere('remote_id', '2796623321');
@@ -1012,6 +1012,11 @@ class LeadConversationsTest extends TestCase
         // The adopted row can refresh a token: it carries the manager's grant.
         $refresh = $this->inTenant($t['org'], fn () => SocialConnection::query()->where('remote_id', '2796623321')->first()->credentials['refresh_token'] ?? null);
         $this->assertSame('rt-test', $refresh);
+
+        // Google said the manager is one: kept on its row for the Ads report
+        // (2026-10-12); a client is not.
+        $this->assertTrue($rows->firstWhere('remote_id', '4051729356')->is_manager);
+        $this->assertFalse($rows->firstWhere('remote_id', self::CUSTOMER)->is_manager);
 
         // Second run: nothing new.
         $this->artisan('leads:adopt-manager-clients')->assertSuccessful();

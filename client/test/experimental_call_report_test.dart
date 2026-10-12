@@ -6,6 +6,7 @@ import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
 import 'package:ezbizi_client/widgets/ai_mark.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,35 @@ void main() {
 
     // Bo: 2 new-client calls, 2 jobs.
     expect(find.text('100%'), findsOneWidget);
+  });
+
+  // UI queue 78: two columns worked out from the counts beside them.
+  testWidgets('People says who was rung and did not pick up, and how often '
+      'they answer', (tester) async {
+    await _pump(tester, width: 1400, view: 'People');
+
+    expect(find.text('Not picked up'), findsOneWidget);
+    // Ada: rang 7, answered 6. Bo: rang 10, answered 9.
+    expect(find.text('86%'), findsOneWidget);
+    expect(find.text('90%'), findsOneWidget);
+  });
+
+  // UI queue 78: Calls is a table, and a search narrows it.
+  testWidgets('Calls has headings, and the search narrows the calls', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+
+    expect(find.text('ANSWERED BY'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('calls-search')),
+      'kitchen',
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsNothing);
   });
 
   testWidgets('somebody who answered no new-client calls gets a dash, not 0%', (
@@ -201,22 +231,25 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
     await tester.pumpAndSettle();
 
-    // Listed in Missed with who placed it, but not a missed customer.
+    // Listed in Missed with who placed it, but not a missed customer. Since
+    // UI queue 78 who placed it is the Answered by column and "No answer"
+    // its Result.
     expect(find.text('Inbound 2'), findsOneWidget);
     expect(find.text('Outbound 1'), findsOneWidget);
-    expect(find.text('Called by Ada · no answer'), findsOneWidget);
+    expect(find.text('Called by Ada'), findsOneWidget);
+    expect(find.widgetWithText(StatusPill, 'No answer'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('calls-filter-outbound')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Called by Ada · no answer'), findsOneWidget);
+    expect(find.text('Called by Ada'), findsOneWidget);
     expect(find.textContaining('Burst pipe'), findsNothing);
     expect(find.byKey(const ValueKey('nobody-missed')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('calls-filter-inbound')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Called by Ada · no answer'), findsNothing);
+    expect(find.text('Called by Ada'), findsNothing);
     expect(find.textContaining('Burst pipe'), findsOneWidget);
   });
 
@@ -323,8 +356,10 @@ void main() {
     expect(find.textContaining('Blocked drain'), findsNothing);
     expect(find.text('+15550001111'), findsOneWidget); // the caller's number
 
-    // The words, folded until asked for.
+    // The words, folded until asked for: the row opens to them (UI queue 78).
     expect(find.text('How much is a sweep?'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('transcript-c1')));
     await tester.pumpAndSettle();
     expect(find.text('How much is a sweep?'), findsOneWidget);
@@ -343,9 +378,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
     await tester.pumpAndSettle();
 
-    // Claude's reading first: Kitchen tap is a price call.
+    // Claude's reading first: Kitchen tap is a price call. Both readings are
+    // in what the row opens to (UI queue 78).
     expect(find.text('Price 1'), findsOneWidget);
     expect(find.text('Availability 0'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
     expect(find.text('Claude: Price · Grok: Availability'), findsOneWidget);
 
     // Grok read the same call differently.
@@ -368,6 +406,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('labels-ai-mark')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
     expect(
       find.ancestor(
         of: find.text('Claude: Price · Grok: Availability'),
@@ -766,9 +806,18 @@ void main() {
   ) async {
     await _pump(tester, width: 1400, view: 'Calls');
 
+    // Folded into the row until it is opened (UI queue 78): a list of
+    // greetings and "not transcribed" told nobody anything.
+    expect(find.text('“How much is a sweep?”'), findsNothing);
+    expect(find.text('Not transcribed yet.'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
     expect(find.text('“How much is a sweep?”'), findsOneWidget);
-    // Only Blocked drain waits for its words: nothing is said on a call
-    // nobody took, so those two say nothing about transcripts.
+
+    // Blocked drain was answered and waits for its words.
+    await tester.tap(find.byKey(const ValueKey('call-details-c2')));
+    await tester.pumpAndSettle();
     expect(find.text('Not transcribed yet.'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('transcript-c1')));

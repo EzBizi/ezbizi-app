@@ -169,7 +169,7 @@ final class GoogleAdsOAuth implements SocialOAuth
             }
 
             $about      = self::describe($grant->accessToken, $id);
-            $accounts[] = new SocialAccount($id, $about['name'], null);
+            $accounts[] = new SocialAccount($id, $about['name'], null, isManager: $about['manager']);
             $seen[]     = $id;
 
             if ($about['manager']) {

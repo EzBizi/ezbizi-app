@@ -2,12 +2,16 @@
 
 namespace Tests\Feature\Hr;
 
+use App\Console\Commands\CallScoringClause;
 use App\Models\Contract;
 use App\Models\ContractVersion;
+use App\Support\Contracts\ChecklistTable;
 use App\Support\Contracts\MergeTags;
 use App\Support\Hr\OnboardingCatalog;
 use App\Support\Hr\OnboardingCatalog\SourceCompiler;
+use App\Support\Hr\StandardPayTerms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -240,7 +244,7 @@ class OnboardingCatalogTest extends TestCase
         ])->assertCreated()->json('data.id');
         $covered = $make('Call Center Employee');
         $bare = $make('Field Repair Team');
-        $this->inTenant($alpha['org'], fn () => \Illuminate\Support\Facades\DB::table('contract_versions')
+        $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
             ->where('id', Contract::findOrFail($covered)->current_version_id)
             ->update(['cover_source' => 'logo', 'cover_path' => 'covers/alpha.png']));
 
@@ -269,9 +273,9 @@ class OnboardingCatalogTest extends TestCase
 
         $alpha = $this->provisionTenant('Alpha');
         $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'Field Repair Team', 'body' => "## Tools Checklist
+            'name' => 'Field Repair Team', 'body' => '## Tools Checklist
 
-{{tools}}",
+{{tools}}',
             'fields' => [
                 ['key' => 'tools', 'label' => 'Tools issued', 'type' => 'checklist', 'options' => ['Hammer'],
                     'filled_by' => 'employer', 'required' => false],
@@ -290,10 +294,39 @@ class OnboardingCatalogTest extends TestCase
             ->firstWhere('key', 'tools'));
         $this->assertSame('employee', $field->filledBy);
 
-        $html = \App\Support\Contracts\ChecklistTable::html($field, json_encode([
+        $html = ChecklistTable::html($field, json_encode([
             ['item' => 'Ladder', 'quantity' => '1', 'received' => '2026-10-05'],
         ]));
         $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
+    }
+
+    /** Phone staff are told, in their contract, that calls are scored (Jose, 2026-10-12). */
+    public function test_phone_contracts_say_calls_are_recorded_and_scored(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $make = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => $name,
+            'body' => "6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n7. CONFIDENTIALITY\r\n\r\nKeep it.",
+            'fields' => [
+                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+            ],
+        ])->assertCreated()->json('data.id');
+        $dispatch = $make('Dispatch Supervisor');
+        $field = $make('Field Technician');
+
+        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Dispatch Supervisor: call scoring clause as version 2')->assertSuccessful();
+        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('1 contracts given a new version.')->assertSuccessful();
+        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
+
+        $body = fn (string $id) => $this->inTenant($alpha['org'], fn () => (string) Contract::findOrFail($id)->currentVersion->body);
+        $this->assertStringContainsString(
+            "Devices are monitored.\n\n".CallScoringClause::CLAUSE."\n\n7. CONFIDENTIALITY",
+            $body($dispatch),
+        );
+        $this->assertStringNotContainsString('Grok', $body($field));
     }
 
     /**
@@ -331,7 +364,7 @@ class OnboardingCatalogTest extends TestCase
             $v = Contract::findOrFail($id)->currentVersion;
             $this->assertSame(2, (int) $v->version);
             $keys = array_column($v->fields, 'key');
-            foreach (\App\Support\Hr\StandardPayTerms::KEYS as $key) {
+            foreach (StandardPayTerms::KEYS as $key) {
                 $this->assertContains($key, $keys);
             }
             $this->assertSame('employee_signature', end($keys));
@@ -369,17 +402,17 @@ class OnboardingCatalogTest extends TestCase
             ];
             $next = ContractVersion::create([
                 'contract_id' => $accounting->getKey(),
-                'version'     => ((int) $accounting->currentVersion->version) + 1,
-                'fields'      => $fields,
-                'body'        => $accounting->currentVersion->body,
-                'created_by'  => $accounting->created_by,
+                'version' => ((int) $accounting->currentVersion->version) + 1,
+                'fields' => $fields,
+                'body' => $accounting->currentVersion->body,
+                'created_by' => $accounting->created_by,
             ]);
             $accounting->forceFill(['current_version_id' => $next->getKey()])->save();
         });
 
         $this->artisan('hr:publish-onboarding-catalog', [
             'organization' => 'Alpha',
-            '--replace'    => true,
+            '--replace' => true,
         ])->assertSuccessful();
 
         $this->inTenant($alpha['org'], function () {

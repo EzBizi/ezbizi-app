@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
@@ -122,6 +123,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Inbound or outbound, inside Missed (Jose, 2026-10-12: "on missed calls
   /// i want also to differentiate between inbound and outbound calls").
   String? _directionFilter;
+
+  /// The Calls search (UI queue 78): a caller, a number or a person.
+  String _query = '';
 
   /// Calls whose details are open (Bar, via Jose, 2026-10-12: a missed
   /// call's row opens to its caller, the line it rang, and a voicemail).
@@ -1085,7 +1089,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       _ => from.where((c) => !_isOutbound(c)).toList(),
     };
 
-    final mine = byClient(_clientFilter);
+    // The search narrows everything under it, counts included, so a chip
+    // never promises calls the list will not show.
+    final query = _query.trim().toLowerCase();
+    final digits = query.replaceAll(RegExp(r'[^0-9]'), '');
+    bool found(Map<String, dynamic> c) =>
+        query.isEmpty ||
+        [
+          _caller(c),
+          c['answered_by'],
+          c['placed_by'],
+          c['to_name'],
+        ].any((v) => v != null && '$v'.toLowerCase().contains(query)) ||
+        (digits.length >= 3 &&
+            '${c['from'] ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '').contains(
+              digits,
+            ));
+
+    final mine = byClient(_clientFilter).where(found).toList();
     final shown = byResult(_result, mine);
 
     final reasons = <String, int>{};
@@ -1155,6 +1176,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             },
           ),
       ]),
+      // Which AI the Reason column reads (UI queue 78: it was beside the
+      // counts, and the column needs it everywhere).
+      group('Reasons by', [
+        SegmentedButton<String>(
+          key: const ValueKey('labeller'),
+          showSelectedIcon: false,
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+          segments: const [
+            ButtonSegment(value: 'claude', label: Text('Claude')),
+            ButtonSegment(value: 'grok', label: Text('Grok')),
+          ],
+          selected: {_labeller},
+          onSelectionChanged: (picked) => setState(() {
+            _labeller = picked.first;
+            _labelFilter = null;
+          }),
+        ),
+      ]),
       if (_result == 'missed')
         group('Direction', [
           chip(
@@ -1221,12 +1260,28 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           )
         : Wrap(spacing: 20, runSpacing: 8, children: groups);
+    final search = SizedBox(
+      width: phone ? double.infinity : 260,
+      child: TextField(
+        key: const ValueKey('calls-search'),
+        onChanged: (value) => setState(() => _query = value),
+        decoration: const InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'Find a caller, number or person',
+          border: OutlineInputBorder(),
+        ),
+      ),
+    );
+    // Which AI put each call where, above the table it narrows.
+    final counts = switch (_result) {
+      'not_booked' => _labelCounts(context, _unbooked(mine), _notBookedLabels),
+      _ when _clientFilter == 'existing' && _result != 'missed' =>
+        _labelCounts(context, shown, _existingLabels),
+      _ => null,
+    };
 
-    return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
-      children: [
-        bar,
-        const SizedBox(height: 12),
+    final rows = [
         ...switch (_result) {
           'not_booked' => _notBooked(context, mine, conversions),
           'missed' => _everyCall(
@@ -1247,7 +1302,40 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _ when _clientFilter == 'existing' => _existingCalls(context, shown),
           _ => _everyCall(context, shown),
         },
-      ],
+    ];
+
+    // A table whose headings stay put while the calls scroll, as People's
+    // do (UI queue 78); a phone's cards need none.
+    return LayoutBuilder(
+      builder: (context, box) => CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (phone) ...[bar, const SizedBox(height: 8), search]
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: bar),
+                        const SizedBox(width: 16),
+                        search,
+                      ],
+                    ),
+                  if (counts != null) ...[const SizedBox(height: 10), counts],
+                ],
+              ),
+            ),
+          ),
+          if (box.maxWidth >= _tableRow)
+            PinnedHeaderSliver(child: _callsHeader(context)),
+          SliverList.list(children: rows),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
     );
   }
 
@@ -1259,12 +1347,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     if (calls.isEmpty)
       Text('No calls.', style: Theme.of(context).textTheme.bodyMedium)
     else
-      for (final call in calls) ...[
-        _call(context, null, call),
-        // Nothing was said on a call nobody took.
-        if (call['answered_by'] != null) _transcript(context, call),
-        const Divider(height: 1),
-      ],
+      for (final call in calls) _call(context, null, call),
   ];
 
   /// Every existing-client call in the period, with what each AI made of it.
@@ -1273,20 +1356,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     List<Map<String, dynamic>> calls,
   ) {
     final theme = Theme.of(context);
-    final all = calls;
-    final mine = _byLabel(all);
+    final mine = _byLabel(calls);
 
     return [
-      _labelCounts(context, all, _existingLabels),
-      const SizedBox(height: 8),
       if (mine.isEmpty)
         Text('No existing-client calls.', style: theme.textTheme.bodyMedium)
       else
-        for (final call in mine) ...[
-          _call(context, null, call),
-          _transcript(context, call),
-          const Divider(height: 1),
-        ],
+        for (final call in mine) _call(context, null, call),
     ];
   }
 
@@ -1316,24 +1392,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         // The reasons are AI's reading, not a count anybody checked (UI
-        // queue 77).
+        // queue 77). Which AI is the bar's "Reasons by" (UI queue 78).
         const AiMark(
           key: ValueKey('labels-ai-mark'),
           tooltip: 'Each call was read and sorted by AI, Claude or Grok. '
               'Switch between them to compare.',
-        ),
-        SegmentedButton<String>(
-          key: const ValueKey('labeller'),
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(value: 'claude', label: Text('Claude')),
-            ButtonSegment(value: 'grok', label: Text('Grok')),
-          ],
-          selected: {_labeller},
-          onSelectionChanged: (picked) => setState(() {
-            _labeller = picked.first;
-            _labelFilter = null;
-          }),
         ),
         for (final entry in labels.entries)
           FilterChip(
@@ -1397,23 +1460,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final words = call['transcript'];
 
     if (words is! String) {
-      return _under(
-        Text(
-          'Not transcribed yet.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
-          ),
+      return Text(
+        'Not transcribed yet.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.outline,
         ),
       );
     }
 
     final open = _openTranscripts.contains(id);
 
-    return _under(
-      Column(
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _labelLine(context, call),
           TextButton(
             key: ValueKey('transcript-$id'),
             // A line of the row, not a button's worth of padding around it.
@@ -1436,7 +1495,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               style: theme.textTheme.bodySmall,
             ),
         ],
-      ),
     );
   }
 
@@ -1455,47 +1513,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         .toList();
     final shown = _byLabel(unbooked);
 
+    // The number is the row's Number column and Convert is in what the row
+    // opens to (UI queue 78), so a row here is the same row as anywhere.
     return [
-      _labelCounts(context, unbooked, _notBookedLabels),
-      const SizedBox(height: 8),
       if (shown.isEmpty)
         Text(
           'Every new-client call was booked.',
           style: theme.textTheme.bodyMedium,
         )
       else
-        for (final call in shown)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _call(context, null, call),
-              // The caller's number and the mark, beneath the call so a phone
-              // never has to fit all three on one line.
-              _under(
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: [
-                    SelectableText(
-                      '${call['from'] ?? ''}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    if (widget.canEdit)
-                      OutlinedButton(
-                        key: ValueKey('convert-${call['id']}'),
-                        onPressed: _converting.contains('${call['id']}')
-                            ? null
-                            : () => _convert(call),
-                        child: const Text('Convert to booked'),
-                      ),
-                  ],
-                ),
-              ),
-              _transcript(context, call),
-              const Divider(height: 1),
-            ],
-          ),
+        for (final call in shown) _call(context, null, call),
       const SizedBox(height: 16),
       Text('Converted to booked', style: theme.textTheme.titleSmall),
       const SizedBox(height: 4),
@@ -1531,6 +1558,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         (key: 'person', label: 'Person', flex: 3, numeric: false),
         (key: 'rang', label: 'Rang', flex: 2, numeric: true),
         (key: 'answered', label: 'Answered', flex: 2, numeric: true),
+
+        // UI queue 78, from the two counts beside them: a call that rang this
+        // person and that they did not pick up (someone else may have), and
+        // the share they did. Their own phone rings for both.
+        (key: 'unanswered', label: 'Not picked up', flex: 2, numeric: true),
+        (key: 'answer_rate', label: 'Answer rate', flex: 2, numeric: true),
         (key: 'new_client', label: 'New', flex: 2, numeric: true),
         (key: 'existing_client', label: 'Existing', flex: 2, numeric: true),
         (key: 'jobs', label: 'Jobs', flex: 2, numeric: true),
@@ -1602,6 +1635,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         // talk time has no value to rank, and sorting them to the top of a
         // descending column would read as the longest calls of the day.
         'conversion' => _nullsLast(_conversion(a), _conversion(b)),
+        'unanswered' => _unanswered(a).compareTo(_unanswered(b)),
+        'answer_rate' => _nullsLast(_answerRate(a), _answerRate(b)),
         'avg_talk_seconds' => _nullsLast(
           (a['avg_talk_seconds'] as num?)?.toDouble(),
           (b['avg_talk_seconds'] as num?)?.toDouble(),
@@ -1614,6 +1649,21 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     });
 
     return ordered;
+  }
+
+  /// Calls that rang this person and that they did not take. The answerer
+  /// is among those it rang, so this cannot go below zero.
+  int _unanswered(Map<String, dynamic> person) =>
+      (((person['rang'] as num?) ?? 0) - ((person['answered'] as num?) ?? 0))
+          .toInt()
+          .clamp(0, 1 << 30);
+
+  /// Answered as a share of rang; null when nothing rang them.
+  double? _answerRate(Map<String, dynamic> person) {
+    final rang = (person['rang'] as num?) ?? 0;
+    if (rang == 0) return null;
+
+    return ((person['answered'] as num?) ?? 0) / rang * 100;
   }
 
   /// Ranks two possibly-absent numbers, keeping absence at the bottom.
@@ -1777,6 +1827,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   String _cell(Map<String, dynamic> person, String key) => switch (key) {
     'avg_talk_seconds' => _mmss(person['avg_talk_seconds']),
+    'unanswered' => '${_unanswered(person)}',
+    'answer_rate' => switch (_answerRate(person)) {
+      null => '—',
+      final rate => '${rate.round()}%',
+    },
     'conversion' => switch (_conversion(person)) {
       null => '—',
       final rate => '${rate.round()}%',
@@ -1867,160 +1922,176 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  /// One call, on one row (UI queue 71): when, who took it, the caller,
-  /// what it was and how it went, the talk time, and a play button. The
-  /// recording opens under the row only when played; it used to be an empty
-  /// bar under every call, stretched across the page. [name] is the person
-  /// whose list it sits in, or null in Calls.
+  /// One call, on one row of a table (UI queue 78, after 71): when, in or
+  /// out, who called and from which number, the client, how it went, who
+  /// took it, AI's reason, the talk time, and play. Tapping it opens the
+  /// rest beneath (see [_details]); the recording opens only when played.
+  /// [name] is the person whose list it sits in, or null in Calls.
   Widget _call(BuildContext context, String? name, Map<String, dynamic> call) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final by = call['answered_by'];
     final id = call['recording_id']?.toString();
+    final outbound = _isOutbound(call);
+    final missed = by == null;
 
     // Said in words. Jose, 2026-09-24: "hard to understand what the icons
     // mean" - an arrow and a bell told nobody which was which.
-    final status = _isOutbound(call)
-        ? 'Called by ${call['placed_by'] ?? 'someone'} · no answer'
+    final whoText = outbound
+        ? 'Called by ${call['placed_by'] ?? 'someone'}'
         : by == null
-        ? (_outcomes[call['outcome']] ?? 'Nobody answered')
+        ? '—'
         : name == null
-        ? 'Answered by $by'
+        ? '$by'
         : by == name
         ? 'Answered'
         : 'Rang · $by answered';
 
     // Talk time on EVERY answered call, whoever took it. It used to say
     // "rang" on calls this person did not take, which read as a missing time.
-    final talk = by == null ? 'no talk' : _mmss(call['talk_seconds']);
+    final talk = missed ? '—' : _mmss(call['talk_seconds']);
     final error = id == null ? null : _recordingErrors[id];
     final listening = id != null && _listeningTo == id;
-
-    final reason = _existingLabels[_labelOf(call, _labeller)];
-    final badges = [
-      if (by == null)
-        _isOutbound(call)
-            ? const StatusPill('Outbound', tone: Tone.info)
-            : const StatusPill('Inbound'),
-      if (call['queue'] == _newQueue)
-        const StatusPill('New client', tone: Tone.info)
-      else if (call['queue'] == _existingQueue)
-        const StatusPill('Existing client'),
-      if (by == null)
-        StatusPill(
-          _isOutbound(call)
-              ? 'No answer'
-              : _outcomes[call['outcome']] ?? 'Nobody answered',
-          tone: Tone.caution,
-        )
-      else if (call['queue'] == _newQueue)
-        call['booked'] == true
-            ? const StatusPill('Booked', tone: Tone.ok)
-            : const StatusPill('Not booked', tone: Tone.caution)
-      else if (call['queue'] == _existingQueue && reason != null)
-        StatusPill(reason),
-    ];
-
-    final when = Text(
-      _clock(call['started_at']),
-      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-    );
-    final who = Text(
-      status,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.labelMedium?.copyWith(
-        color: by != null && by == name ? theme.colorScheme.primary : muted,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-    final caller = Text(
-      _caller(call),
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-    );
-    final talkText = Text(talk, style: theme.textTheme.bodySmall);
     final callId = '${call['id']}';
-    // A call nobody answered opens to its details; its only recording is a
-    // voicemail, and that plays in the details.
-    final missed = by == null;
-    final detailsOpen = missed && _openDetails.contains(callId);
+    final detailsOpen = _openDetails.contains(callId);
+    // A call nobody answered has only a voicemail to hear, and it plays in
+    // the details.
     final voicemail = call['outcome'] == 'voicemail' && id != null;
+    final reason = missed ? null : _labelName(_labelOf(call, _labeller));
     final line = [
       call['to_number'],
       call['to_name'],
     ].where((v) => v != null && '$v'.isNotEmpty).join(' · ');
+
+    final client = call['queue'] == _newQueue
+        ? const StatusPill('New', tone: Tone.info)
+        : call['queue'] == _existingQueue
+        ? const StatusPill('Existing')
+        : null;
+    final result = missed
+        ? StatusPill(
+            outbound
+                ? 'No answer'
+                : _outcomes[call['outcome']] ?? 'Nobody answered',
+            tone: Tone.caution,
+          )
+        : call['queue'] == _newQueue
+        ? call['booked'] == true
+              ? const StatusPill('Booked', tone: Tone.ok)
+              : const StatusPill('Not booked', tone: Tone.caution)
+        : const StatusPill('Answered');
+
+    final small = theme.textTheme.bodySmall?.copyWith(color: muted);
+    final dash = Text('—', style: small);
+    final when = Text(_clock(call['started_at']), style: small);
+    final direction = Text(
+      outbound ? 'Out' : 'In',
+      style: theme.textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: outbound ? theme.colorScheme.primary : muted,
+      ),
+    );
+    final caller = Text(
+      _caller(call),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+    );
+    final number = call['from'] == null
+        ? dash
+        : Text(
+            formatPhoneNumber('${call['from']}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          );
+    final who = Text(
+      whoText,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: by != null && by == name ? theme.colorScheme.primary : null,
+        fontWeight: by != null && by == name ? FontWeight.w600 : null,
+      ),
+    );
+    final why = reason == null
+        ? dash
+        : Text(
+            reason,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          );
+    final talkText = Text(talk, style: theme.textTheme.bodySmall);
+
     void toggleDetails() => setState(
       () =>
           detailsOpen ? _openDetails.remove(callId) : _openDetails.add(callId),
     );
-    final play = missed
-        ? IconButton(
-            key: ValueKey('details-$callId'),
-            tooltip: detailsOpen ? 'Hide details' : 'Show details',
-            onPressed: toggleDetails,
-            color: theme.colorScheme.onSurfaceVariant,
-            icon: Icon(
-              detailsOpen
-                  ? Icons.expand_less
-                  : voicemail
-                  ? Icons.voicemail
-                  : Icons.expand_more,
-            ),
-          )
-        : id == null
-        ? const SizedBox(width: 48)
+    final more = IconButton(
+      key: ValueKey(missed ? 'details-$callId' : 'more-$callId'),
+      tooltip: detailsOpen ? 'Hide details' : 'Show details',
+      onPressed: toggleDetails,
+      color: muted,
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        detailsOpen
+            ? Icons.expand_less
+            : voicemail
+            ? Icons.voicemail
+            : Icons.expand_more,
+      ),
+    );
+    final play = missed || id == null
+        ? null
         : IconButton(
             key: ValueKey('listen-$id'),
             tooltip: listening ? 'Close the recording' : 'Play the recording',
+            visualDensity: VisualDensity.compact,
             onPressed: () {
               if (listening) unawaited(_player.stop());
               setState(() => _listeningTo = listening ? null : id);
             },
             icon: Icon(listening ? Icons.close : Icons.play_arrow),
           );
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [?play, more],
+    );
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            key: ValueKey('call-details-$callId'),
-            onTap: missed ? toggleDetails : null,
-            child: LayoutBuilder(
-              builder: (context, box) => box.maxWidth >= _wideRow
-                  ? Row(
-                      children: [
-                        SizedBox(width: _timeWidth, child: when),
-                        SizedBox(
-                          width: _whoWidth,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: who,
-                          ),
-                        ),
-                        Expanded(child: caller),
-                        const SizedBox(width: 12),
-                        SizedBox(
-                          width: 230,
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: badges,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 48,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: talkText,
-                          ),
-                        ),
-                        play,
-                      ],
-                    )
-                  // A card's lines on a phone: when and how it went, then who.
-                  : Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          key: ValueKey('call-details-$callId'),
+          onTap: toggleDetails,
+          child: LayoutBuilder(
+            builder: (context, box) => box.maxWidth >= _tableRow
+                ? Container(
+                    constraints: const BoxConstraints(minHeight: 44),
+                    color: detailsOpen
+                        ? theme.colorScheme.primaryContainer.withValues(
+                            alpha: 0.35,
+                          )
+                        : null,
+                    child: _cells([
+                      when,
+                      direction,
+                      caller,
+                      number,
+                      client ?? dash,
+                      result,
+                      who,
+                      why,
+                      talkText,
+                      actions,
+                    ]),
+                  )
+                // A card's lines on a phone, the same facts in the same
+                // order: when and how it went, who called, who took it.
+                : Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
                       children: [
                         Expanded(
                           child: Column(
@@ -2030,88 +2101,242 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                 spacing: 6,
                                 runSpacing: 4,
                                 crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [when, ...badges, talkText],
+                                children: [
+                                  when,
+                                  result,
+                                  ?client,
+                                  if (outbound) direction,
+                                  if (!missed) talkText,
+                                ],
                               ),
                               const SizedBox(height: 2),
-                              Wrap(spacing: 6, children: [who, caller]),
+                              caller,
+                              Text(
+                                [
+                                  if (call['from'] != null)
+                                    formatPhoneNumber('${call['from']}'),
+                                  if (whoText != '—') whoText,
+                                  ?reason,
+                                ].join(' · '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: small,
+                              ),
                             ],
                           ),
                         ),
-                        play,
+                        actions,
                       ],
                     ),
+                  ),
+          ),
+        ),
+        if (detailsOpen) _under(_details(context, call, line, voicemail, id)),
+        if (listening)
+          _under(
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: RecordingPlaybackBar(
+                player: _player,
+                dense: true,
+                autoplay: true,
+                load: () => _recording(id),
+              ),
             ),
           ),
-          if (detailsOpen)
-            _under(
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        if (error != null)
+          _under(
+            Text(
+              error,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  /// What a row opens to (UI queue 78): the numbers and a voicemail for a
+  /// call nobody took; the words, both AIs' reading and the numbers for one
+  /// somebody did, with Convert where it applies.
+  Widget _details(
+    BuildContext context,
+    Map<String, dynamic> call,
+    String line,
+    bool voicemail,
+    String? id,
+  ) {
+    final theme = Theme.of(context);
+    final outbound = _isOutbound(call);
+    final numbers = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SelectableText(
+          '${outbound ? 'Number called' : 'Caller'}: ${call['from'] ?? 'unknown'}',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (!outbound)
+          SelectableText(
+            'Line called: ${line.isEmpty ? 'unknown' : line}',
+            style: theme.textTheme.bodySmall,
+          ),
+      ],
+    );
+
+    if (call['answered_by'] == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          numbers,
+          if (voicemail) ...[
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: RecordingPlaybackBar(
+                key: ValueKey('voicemail-$id'),
+                player: _player,
+                dense: true,
+                load: () => _recording(id!),
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    final convertible = widget.canEdit && _unbooked([call]).isNotEmpty;
+
+    return Wrap(
+      spacing: 32,
+      runSpacing: 10,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: _transcript(context, call),
+        ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _labelLine(context, call),
+              numbers,
+              if (convertible) ...[
+                const SizedBox(height: 6),
+                OutlinedButton(
+                  key: ValueKey('convert-${call['id']}'),
+                  onPressed: _converting.contains('${call['id']}')
+                      ? null
+                      : () => _convert(call),
+                  child: const Text('Convert to booked'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A reason's words, from either AI's list.
+  String? _labelName(String? label) => label == null
+      ? null
+      : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
+
+  /// The Calls table's columns, once, so the heading and every row line up
+  /// (UI queue 78): each fact has a column of its own rather than a pill in
+  /// a shared box, so one added later is a column and not an overflow.
+  Widget _cells(List<Widget> c) {
+    Widget pad(Widget child) => Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: Align(alignment: Alignment.centerLeft, child: child),
+    );
+
+    return Row(
+      children: [
+        SizedBox(width: _timeWidth, child: pad(c[0])),
+        SizedBox(width: 40, child: pad(c[1])),
+        Expanded(flex: 4, child: pad(c[2])),
+        SizedBox(width: 136, child: pad(c[3])),
+        SizedBox(width: 92, child: pad(c[4])),
+        SizedBox(width: 116, child: pad(c[5])),
+        Expanded(flex: 3, child: pad(c[6])),
+        Expanded(flex: 3, child: pad(c[7])),
+        SizedBox(
+          width: 44,
+          child: Align(alignment: Alignment.centerRight, child: c[8]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[9]),
+        ),
+      ],
+    );
+  }
+
+  /// The headings over the Calls table, pinned while the calls scroll.
+  Widget _callsHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.labelSmall?.copyWith(
+      letterSpacing: 0.6,
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    Text heading(String text) => Text(text.toUpperCase(), style: style);
+
+    return Material(
+      // Opaque: pinned, it scrolls over the rows beneath it.
+      color: theme.colorScheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 36,
+            child: _cells([
+              heading('Time'),
+              const SizedBox.shrink(),
+              heading('Caller'),
+              heading('Number'),
+              heading('Client'),
+              heading('Result'),
+              heading('Answered by'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SelectableText(
-                    '${_isOutbound(call) ? 'Number called' : 'Caller'}: ${call['from'] ?? 'unknown'}',
-                    style: theme.textTheme.bodySmall,
+                  heading('Reason'),
+                  const SizedBox(width: 4),
+                  const AiMark(
+                    tooltip: 'Each call was read and sorted by AI, Claude or '
+                        'Grok, whichever is chosen above.',
                   ),
-                  if (!_isOutbound(call))
-                    SelectableText(
-                      'Line called: ${line.isEmpty ? 'unknown' : line}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  if (voicemail) ...[
-                    const SizedBox(height: 6),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: RecordingPlaybackBar(
-                        key: ValueKey('voicemail-$id'),
-                        player: _player,
-                        dense: true,
-                        load: () => _recording(id),
-                      ),
-                    ),
-                  ],
                 ],
               ),
-            ),
-          if (listening)
-            _under(
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: RecordingPlaybackBar(
-                  player: _player,
-                  dense: true,
-                  autoplay: true,
-                  load: () => _recording(id),
-                ),
-              ),
-            ),
-          if (error != null)
-            _under(
-              Text(
-                error,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
+              heading('Talk'),
+              const SizedBox.shrink(),
+            ]),
+          ),
+          const Divider(height: 1),
         ],
       ),
     );
   }
 
-  /// A row this wide or wider lays a call out in columns; narrower, as a
-  /// card's lines.
-  static const _wideRow = 720.0;
-  static const _whoWidth = 190.0;
+  /// A row this wide or wider is the table; narrower, a card's lines.
+  static const _tableRow = 1000.0;
 
   /// The time, and the day too when the dates span several.
-  double get _timeWidth => _span.single ? 52 : 104;
+  double get _timeWidth => _span.single ? 56 : 108;
 
-  /// What hangs under a call - its words, its recording, its number - starts
-  /// under the caller on a wide row, so the columns stay readable.
+  /// What hangs under a call - its details, its recording - starts under the
+  /// caller on a wide row, so the columns stay readable.
   Widget _under(Widget child) => LayoutBuilder(
     builder: (context, box) => Padding(
       padding: EdgeInsets.only(
-        left: box.maxWidth >= _wideRow ? _timeWidth + _whoWidth : 0,
-        bottom: 8,
+        left: box.maxWidth >= _tableRow ? _timeWidth + 40 : 0,
+        top: 4,
+        bottom: 10,
       ),
       child: Align(alignment: Alignment.centerLeft, child: child),
     ),
@@ -2212,7 +2437,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               ),
             const SizedBox(height: 8),
             Text(
-              '${person['answered']} answered of ${person['rang']} rung · '
+              '${person['answered']} answered of ${person['rang']} rung '
+              '(${_cell(person, 'answer_rate')}) · '
               '${person['new_client']} new · '
               '${person['existing_client']} existing · '
               '${person['jobs']} jobs · '

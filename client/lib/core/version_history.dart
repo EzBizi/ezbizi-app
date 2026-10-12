@@ -14,11 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0412',
+      date: '12 Oct 2026',
+      items: [
+        'Performance › Calls is a table: one line per call with its own columns, and a search. Open a call for its words and recording. People shows who didn\'t pick up and their answer rate.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0411',
       date: '12 Oct 2026',
       items: [
         'Anything AI wrote or sorted now says so: a ✦ AI mark on suggested replies and on Performance\'s call reasons.',
         'Performance: the AI\'s call reasons gain Estimate question, Job status, Confirmation, Not a customer and No conversation, so fewer calls land in Other.',
+        'Reports › Google Ads: every manager account (MCC) now opens as an overview of the accounts under it, and manager accounts have their own colour in the list.',
+        'Reports › Google Ads: a manager\'s overview includes every active account under it; canceled accounts are counted separately instead of as not connected.',
       ],
     ),
     VersionRelease(
