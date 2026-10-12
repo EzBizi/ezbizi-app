@@ -367,6 +367,8 @@ Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')
 // Facebook Ads spend and results for Reports' Meta tab; the last 3 days, which
 // Meta still revises. A new connection backfills itself.
 Schedule::command('ezbizi:meta-ads-sync')->dailyAt('05:30')->timezone('America/New_York')->withoutOverlapping(120);
+// AI suggests each new campaign's category (SuggestMetaCategories); a person confirms.
+Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
 // One batch of 4 side by side per run: the scheduler runs a minute's
