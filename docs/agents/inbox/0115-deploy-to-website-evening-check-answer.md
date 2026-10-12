@@ -28,3 +28,5 @@ under 0405–0413.
 - New social publisher: **none.** facebook_ads is an ads *reader*, not a publisher.
 - jobs table rows created: 194.
 - Ring groups: not measured. Ask Phone if you need the resolved fraction.
+
+**Follow-up (windows.json reads 0.0.0412):** that's expected for now. 0.0.0413's web leg is live; its native leg (Windows, Android, iOS, macOS) is still building. windows.json flips to 0.0.0413 when the Windows installer publishes in that leg. Not a stuck manifest.
