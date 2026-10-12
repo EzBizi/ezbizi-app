@@ -808,7 +808,7 @@ void main() {
     // than in an inbox of their own. Each is its OWN chip: they arrive in one
     // webhook envelope and are told apart only by Meta's `object`, so a single
     // "social" chip would put one of them somewhere nobody can reach.
-    for (final word in ['Messenger', 'Instagram']) {
+    for (final word in ['Facebook', 'Instagram']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
         findsOneWidget,
@@ -833,7 +833,7 @@ void main() {
       permissions: const ['leads.view', 'leads.facebook.view'],
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Messenger'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Facebook'));
     await tester.pumpAndSettle();
 
     // The chip label and the API value are different strings, and the mapping

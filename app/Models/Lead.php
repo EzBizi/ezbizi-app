@@ -767,7 +767,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             self::SOURCE_WEBSITE_CHAT => 'Chat',
             self::SOURCE_WEBSITE_FORM => 'Form',
             self::SOURCE_WEBSITE_BOOKING => 'Online Booking',
-            self::SOURCE_FACEBOOK => 'Messenger',
+            self::SOURCE_FACEBOOK => 'Facebook',
             self::SOURCE_WHATSAPP => 'WhatsApp',
             default => ucfirst((string) $this->source),
         };

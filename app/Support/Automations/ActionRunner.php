@@ -237,7 +237,7 @@ class ActionRunner
     private const FIELD_VALUES = [
         Lead::class => [
             'source' => [
-                'facebook' => 'Facebook Messenger',
+                'facebook' => 'Facebook',
                 'instagram' => 'Instagram',
                 'local_services' => 'Google Local Services',
                 'thumbtack' => 'Thumbtack',

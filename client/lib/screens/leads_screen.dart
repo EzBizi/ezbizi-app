@@ -183,7 +183,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
     ('website_booking', 'Online Booking'),
-    ('facebook', 'Messenger'),
+    ('facebook', 'Facebook'),
     ('instagram', 'Instagram'),
     ('workiz', 'Workiz'),
     ('whatsapp', 'WhatsApp'),
@@ -1916,7 +1916,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
-  'facebook' => 'Messenger',
+  'facebook' => 'Facebook',
   'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
@@ -1988,7 +1988,8 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Thumbtack' => PersonColours.hue(context, 5), // orange
   'Chat' => PersonColours.hue(context, 4), // gold
   'Form' => PersonColours.hue(context, 7), // brown
-  'Messenger' => PersonColours.hue(context, 6), // coral
+  // Named and coloured by Jose, 2026-10-12: "Messenger is too broad"; blue.
+  'Facebook' => PersonColours.hue(context, 10), // sky
   'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
   _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
