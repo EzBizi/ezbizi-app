@@ -111,4 +111,25 @@ class LabelCallTranscriptsTest extends TestCase
     {
         $this->assertNull(TranscriptSpeakers::assemble([['speaker' => 'Narrator', 'text' => self::RAW]], self::RAW));
     }
+
+    public function test_the_summary_next_step_and_signals_are_kept_and_shown(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'turns' => [
+                ['speaker' => 'Dispatcher', 'text' => 'A1 Chimney, this is Ana.'],
+                ['speaker' => 'Customer', 'text' => 'Hi, I saw you are hiring technicians in Baltimore. Yes, send your resume to the office. Great, thank you.'],
+            ],
+            'summary' => 'Asked about technician jobs in Baltimore; told to send a resume.',
+            'next_step' => '',
+            'complaint' => false, 'asked_price' => true, 'asked_availability' => false, 'booked' => false,
+        ]]))]);
+        $row = $this->aCall();
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $row = $this->reread($row);
+        $this->assertSame('Asked about technician jobs in Baltimore; told to send a resume.', $row->call_summary);
+        $this->assertNull($row->call_next_step);
+        $this->assertEquals(['complaint' => false, 'asked_price' => true, 'asked_availability' => false, 'booked' => false], $row->call_signals);
+    }
 }

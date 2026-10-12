@@ -37,7 +37,7 @@ class LabelCallTranscripts extends Command
 
         foreach ($rows as $row) {
             try {
-                $labelled = TranscriptSpeakers::label((string) $row->transcript);
+                $read = TranscriptSpeakers::read((string) $row->transcript);
             } catch (RuntimeException $e) {
                 $this->warn('Grok: '.$e->getMessage());
 
@@ -45,7 +45,12 @@ class LabelCallTranscripts extends Command
             }
             $tenant->run(
                 Organization::withoutGlobalScopes()->findOrFail($row->organization_id),
-                fn () => $row->forceFill(['transcript_labelled' => $labelled ?? $row->transcript])->save(),
+                fn () => $row->forceFill([
+                    'transcript_labelled' => $read['labelled'] ?? $row->transcript,
+                    'call_summary' => $read['summary'],
+                    'call_next_step' => $read['next_step'],
+                    'call_signals' => $read['signals'],
+                ])->save(),
             );
         }
 

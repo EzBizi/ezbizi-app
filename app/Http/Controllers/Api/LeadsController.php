@@ -882,6 +882,11 @@ class LeadsController extends Controller
             // A call's words, machine-transcribed from the recording, divided
             // by speaker once Grok has (ezbizi:label-call-transcripts).
             'transcript' => $c->transcript_labelled ?? $c->transcript,
+            // Grok's one-line read of the call, shown above the transcript
+            // with the AI mark (ezbizi:label-call-transcripts).
+            'summary' => $c->call_summary,
+            'next_step' => $c->call_next_step,
+            'signals' => $c->call_signals,
             // Waiting its turn with the transcriber (ezbizi-transcribe.timer):
             // an answered, recorded customer call from the last week, not done.
             'transcript_pending' => $c->transcript === null && $c->transcribed_at === null

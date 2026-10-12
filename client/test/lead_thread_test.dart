@@ -34,7 +34,9 @@ void main() {
   // "Archiv-e": once Completed made the moves four, a phone's one line beside
   // Book broke the longer words in half; at five (Lost) the segments shrank
   // the long words to about 7px. A phone has one Status picker now.
-  testWidgets('on a phone the status is one picker beside Book', (tester) async {
+  testWidgets('on a phone the status is one picker beside Book', (
+    tester,
+  ) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
@@ -173,7 +175,10 @@ void main() {
 
   testWidgets('a long transcript opens with Show all, and a call waiting its '
       'turn says Transcribing', (tester) async {
-    final long = List.filled(40, 'The flue is cracked and water comes in.').join(' ');
+    final long = List.filled(
+      40,
+      'The flue is cracked and water comes in.',
+    ).join(' ');
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
@@ -184,7 +189,35 @@ void main() {
     expect(tester.widget<Text>(text).maxLines, 4);
     await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
     await tester.pumpAndSettle();
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((w) => w is SelectableText && w.data == long),
+      findsOneWidget,
+    );
+  });
+
+  /// Jose, 2026-10-12: "summary should show first with the option to see
+  /// the full transcript".
+  testWidgets('a call with a summary shows it first, marked AI, and the '
+      'transcript behind Show full transcript', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callSummary: 'Fireplace smokes; wants an inspection Thursday.',
+      callNextStep: 'Call back with a time',
+    );
+    expect(
+      find.text('Fireplace smokes; wants an inspection Thursday.'),
+      findsOneWidget,
+    );
+    expect(find.text('Next: Call back with a time'), findsOneWidget);
+    expect(find.text('Summary by AI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('full-transcript-toggle-c-call')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsOneWidget);
   });
 
   /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
@@ -231,11 +264,18 @@ void main() {
 
     expect(find.text('Marcus is typing…'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'On my way');
-    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'On my way!');
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'On my way',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'On my way!',
+    );
     await tester.pump();
-    expect(_typingPosts, ['/api/v1/leads/lead-1/typing'],
-        reason: 'one signal, not one per keystroke');
+    expect(_typingPosts, [
+      '/api/v1/leads/lead-1/typing',
+    ], reason: 'one signal, not one per keystroke');
   });
 
   test('a lead with no name, or a number for one, reads as Customer', () {
@@ -272,7 +312,9 @@ void main() {
           'occurred_at': '2026-10-01T10:00:00Z',
           'duration_ms': null,
           'text': 'Here is the crack',
-          'attachments': <String>['https://app.ezbizi.com/api/v1/web/form/files/a.jpg'],
+          'attachments': <String>[
+            'https://app.ezbizi.com/api/v1/web/form/files/a.jpg',
+          ],
           'has_recording': false,
         },
       ],
@@ -281,8 +323,11 @@ void main() {
     expect(find.byKey(const ValueKey('attachment-outside-1')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('attachment-1')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('attachment-outside-1')), findsOneWidget,
-        reason: 'opened in place, with the browser as an option');
+    expect(
+      find.byKey(const ValueKey('attachment-outside-1')),
+      findsOneWidget,
+      reason: 'opened in place, with the browser as an option',
+    );
 
     await tester.tap(find.byKey(const ValueKey('attachment-1')));
     await tester.pumpAndSettle();
@@ -291,13 +336,21 @@ void main() {
 
   testWidgets('a message copies in one press', (tester) async {
     String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'Clipboard.setData') {
-        copied = (call.arguments as Map)['text'] as String?;
-      }
-      return null;
-    });
-    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await _pump(
       tester,
@@ -308,15 +361,25 @@ void main() {
     await tester.pump();
 
     expect(copied, 'Is Saturday ok?');
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == 'Is Saturday ok?'), findsOneWidget,
-        reason: 'part of a message can be selected too');
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is SelectableText && w.data == 'Is Saturday ok?',
+      ),
+      findsOneWidget,
+      reason: 'part of a message can be selected too',
+    );
   });
 
   // Jose, 2026-09-29: who sent what, and who else has the lead open.
   testWidgets('replies name who sent them, and others viewing are shown', (
     tester,
   ) async {
-    Map<String, dynamic> msg(String id, String from, {String? by, bool auto = false}) => {
+    Map<String, dynamic> msg(
+      String id,
+      String from, {
+      String? by,
+      bool auto = false,
+    }) => {
       'id': id,
       'channel': 'MESSAGE',
       'from': from,
@@ -342,7 +405,10 @@ void main() {
 
     expect(find.textContaining('Tanya Ruiz · '), findsOneWidget);
     expect(find.textContaining('Automation · '), findsOneWidget);
-    expect(find.text('Tanya Ruiz and Marco Diaz are viewing this lead'), findsOneWidget);
+    expect(
+      find.text('Tanya Ruiz and Marco Diaz are viewing this lead'),
+      findsOneWidget,
+    );
   });
 
   // The dispatchers, via Jose, 2026-09-29: opening a lead showed the FIRST
@@ -367,7 +433,11 @@ void main() {
       ],
     );
 
-    expect(find.text('Message 59'), findsOneWidget, reason: 'the newest is on screen');
+    expect(
+      find.text('Message 59'),
+      findsOneWidget,
+      reason: 'the newest is on screen',
+    );
     expect(find.text('Message 0'), findsNothing, reason: 'the oldest is not');
     expect(
       tester.getTopLeft(find.text('Message 59')).dy,
@@ -384,7 +454,10 @@ void main() {
       callTranscript: null,
       transcriptPending: true,
     );
-    expect(find.byKey(const ValueKey('transcript-pending-c-call')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('transcript-pending-c-call')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a call shows its transcript under the recording', (
@@ -398,7 +471,10 @@ void main() {
 
     // Shown straight away under the recording, labelled as a transcript.
     expect(find.text('Transcript'), findsOneWidget);
-    expect(find.text('Hi, my fireplace smokes when I light it.'), findsOneWidget);
+    expect(
+      find.text('Hi, my fireplace smokes when I light it.'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('transcript-toggle-c-call')),
       findsNothing,
@@ -500,8 +576,7 @@ void main() {
       recordingGate: Completer()..complete(),
     );
     final field = find.byKey(const ValueKey('reply-box'));
-    TextEditingController box() =>
-        tester.widget<TextField>(field).controller!;
+    TextEditingController box() => tester.widget<TextField>(field).controller!;
 
     expect(find.byKey(const ValueKey('reply-emoji-tray')), findsNothing);
     await tester.enterText(field, 'See you Saturday');
@@ -607,8 +682,18 @@ void main() {
   // reaction hung on the message it quotes instead of drawn as a message.
   test('the thread is split by day, and a reaction joins its message', () {
     final items = threadItems([
-      {'id': 'a', 'from': 'CONSUMER', 'text': 'Is Saturday ok?', 'occurred_at': '2026-09-26T15:00:00Z'},
-      {'id': 'b', 'from': 'ADVERTISER', 'text': 'Yes, 10am works.', 'occurred_at': '2026-09-28T13:00:00Z'},
+      {
+        'id': 'a',
+        'from': 'CONSUMER',
+        'text': 'Is Saturday ok?',
+        'occurred_at': '2026-09-26T15:00:00Z',
+      },
+      {
+        'id': 'b',
+        'from': 'ADVERTISER',
+        'text': 'Yes, 10am works.',
+        'occurred_at': '2026-09-28T13:00:00Z',
+      },
       {
         'id': 'c',
         'from': 'CONSUMER',
@@ -618,15 +703,33 @@ void main() {
       },
     ]);
 
-    expect(items.whereType<String>(), hasLength(2), reason: 'two days, two lines');
+    expect(
+      items.whereType<String>(),
+      hasLength(2),
+      reason: 'two days, two lines',
+    );
     final messages = items.whereType<Map<String, dynamic>>().toList();
-    expect(messages.map((m) => m['id']), ['a', 'b'], reason: 'the reaction is not a message');
+    expect(messages.map((m) => m['id']), [
+      'a',
+      'b',
+    ], reason: 'the reaction is not a message');
     expect(messages[1]['_reactions'], ['👍']);
 
     // Rebuilding must not stack the same reaction twice.
     final source = [
-      {'id': 'b', 'from': 'ADVERTISER', 'text': 'Yes', 'occurred_at': '2026-09-28T13:00:00Z'},
-      {'id': 'c', 'from': 'CONSUMER', 'text': 'Liked', 'occurred_at': '2026-09-28T13:05:00Z', 'reaction': {'emoji': '👍', 'quote': 'Yes'}},
+      {
+        'id': 'b',
+        'from': 'ADVERTISER',
+        'text': 'Yes',
+        'occurred_at': '2026-09-28T13:00:00Z',
+      },
+      {
+        'id': 'c',
+        'from': 'CONSUMER',
+        'text': 'Liked',
+        'occurred_at': '2026-09-28T13:05:00Z',
+        'reaction': {'emoji': '👍', 'quote': 'Yes'},
+      },
     ];
     threadItems(source);
     final again = threadItems(source).whereType<Map<String, dynamic>>().single;
@@ -635,10 +738,22 @@ void main() {
 
   test('day labels read as people say them', () {
     final now = DateTime(2026, 9, 28, 12);
-    expect(threadDay(DateTime(2026, 9, 28, 9).toIso8601String(), now: now), 'Today');
-    expect(threadDay(DateTime(2026, 9, 27, 9).toIso8601String(), now: now), 'Yesterday');
-    expect(threadDay(DateTime(2026, 2, 14, 9).toIso8601String(), now: now), 'Sat, Feb 14');
-    expect(threadDay(DateTime(2025, 2, 14, 9).toIso8601String(), now: now), 'Fri, Feb 14, 2025');
+    expect(
+      threadDay(DateTime(2026, 9, 28, 9).toIso8601String(), now: now),
+      'Today',
+    );
+    expect(
+      threadDay(DateTime(2026, 9, 27, 9).toIso8601String(), now: now),
+      'Yesterday',
+    );
+    expect(
+      threadDay(DateTime(2026, 2, 14, 9).toIso8601String(), now: now),
+      'Sat, Feb 14',
+    );
+    expect(
+      threadDay(DateTime(2025, 2, 14, 9).toIso8601String(), now: now),
+      'Fri, Feb 14, 2025',
+    );
   });
 
   testWidgets('the account, Google status and the address the customer gave', (
@@ -659,7 +774,10 @@ void main() {
 
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
     expect(find.text('Google: Active'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
+    expect(
+      find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an address Google placed exactly is shown as Google has it', (
@@ -681,8 +799,14 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('lead-address-checked')), findsOneWidget);
-    expect(find.text('215 Lakeview Dr, Michigan City, IN 46360, USA'), findsOneWidget);
-    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsNothing);
+    expect(
+      find.text('215 Lakeview Dr, Michigan City, IN 46360, USA'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'),
+      findsNothing,
+    );
   });
 
   // Jose, 2026-09-28: a number that is already a customer shows who they are
@@ -703,13 +827,30 @@ void main() {
         'revenue_minor': 45000,
         'currency': 'USD',
         'jobs': [
-          {'id': 'j-2', 'number': 'J-2', 'title': 'Flue repair', 'status': 'Pending', 'when': null},
-          {'id': 'j-1', 'number': 'J-1', 'title': 'Chimney sweep', 'status': 'Done', 'when': null, 'amount_minor': 45000, 'currency': 'USD'},
+          {
+            'id': 'j-2',
+            'number': 'J-2',
+            'title': 'Flue repair',
+            'status': 'Pending',
+            'when': null,
+          },
+          {
+            'id': 'j-1',
+            'number': 'J-1',
+            'title': 'Chimney sweep',
+            'status': 'Done',
+            'when': null,
+            'amount_minor': 45000,
+            'currency': 'USD',
+          },
         ],
       },
     );
 
-    expect(find.textContaining('Existing customer · Marcus Bell · C-0042 · 2 jobs'), findsOneWidget);
+    expect(
+      find.textContaining('Existing customer · Marcus Bell · C-0042 · 2 jobs'),
+      findsOneWidget,
+    );
     // One line until opened, so the thread keeps its room (Jose, 2026-09-30).
     expect(find.text('12 Hillcrest Ct, Ridgefield, CT'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('lead-customer-more')));
@@ -721,30 +862,47 @@ void main() {
 
   // Jose, 2026-09-30: "templates ... next to the send button". A tap fills
   // the box to read first; it does not send.
-  testWidgets('a reply template fills the box and sends nothing', (tester) async {
+  testWidgets('a reply template fills the box and sends nothing', (
+    tester,
+  ) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       templates: [
-        {'name': 'Thank you', 'text': 'Hi Marcus, thank you for contacting A-1 Chimney!'},
+        {
+          'name': 'Thank you',
+          'text': 'Hi Marcus, thank you for contacting A-1 Chimney!',
+        },
       ],
     );
 
     await tester.tap(find.byKey(const ValueKey('reply-template-Thank you')));
     await tester.pump();
 
-    final box = tester.widget<TextField>(find.byKey(const ValueKey('reply-box')));
-    expect(box.controller!.text, 'Hi Marcus, thank you for contacting A-1 Chimney!');
+    final box = tester.widget<TextField>(
+      find.byKey(const ValueKey('reply-box')),
+    );
+    expect(
+      box.controller!.text,
+      'Hi Marcus, thank you for contacting A-1 Chimney!',
+    );
     expect(_sent, isEmpty);
   });
 
   // Jose, 2026-10-01, a phone screenshot: seven templates in four rows took
   // the room the thread needs. One line, scrolled sideways.
-  testWidgets('on a phone the templates are one line, not rows', (tester) async {
+  testWidgets('on a phone the templates are one line, not rows', (
+    tester,
+  ) async {
     final names = [
-      'Thank you', 'Inspection prices', 'Sweep price', 'Availability',
-      'Booking details', 'Booked', 'We service your area',
+      'Thank you',
+      'Inspection prices',
+      'Sweep price',
+      'Availability',
+      'Booking details',
+      'Booked',
+      'We service your area',
     ];
     await _pump(
       tester,
@@ -756,8 +914,12 @@ void main() {
       ],
     );
 
-    final first = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Thank you')));
-    final second = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Inspection prices')));
+    final first = tester.getTopLeft(
+      find.byKey(const ValueKey('reply-template-Thank you')),
+    );
+    final second = tester.getTopLeft(
+      find.byKey(const ValueKey('reply-template-Inspection prices')),
+    );
     expect(second.dy, first.dy);
     expect(
       tester.getSize(find.byKey(const ValueKey('reply-templates'))).height,
@@ -765,47 +927,77 @@ void main() {
     );
 
     // The last one is reached by scrolling, and still fills the box.
-    final last = find.byKey(const ValueKey('reply-template-We service your area'));
+    final last = find.byKey(
+      const ValueKey('reply-template-We service your area'),
+    );
     await tester.ensureVisible(last);
     await tester.pumpAndSettle();
     await tester.tap(last);
     await tester.pump();
     expect(
-      tester.widget<TextField>(find.byKey(const ValueKey('reply-box'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
       'Text for We service your area.',
     );
   });
 
   // Jose, 2026-10-01: "see the time of the messages as well like 11:48 13:23".
-  test('a message says its time of day, and how long ago while it is recent', () {
-    final recent = DateTime.now().subtract(const Duration(minutes: 57));
-    final hh = recent.hour.toString().padLeft(2, '0');
-    final mm = recent.minute.toString().padLeft(2, '0');
-    expect(messageWhen(recent.toUtc().toIso8601String()), '$hh:$mm · 57m ago');
+  test(
+    'a message says its time of day, and how long ago while it is recent',
+    () {
+      final recent = DateTime.now().subtract(const Duration(minutes: 57));
+      final hh = recent.hour.toString().padLeft(2, '0');
+      final mm = recent.minute.toString().padLeft(2, '0');
+      expect(
+        messageWhen(recent.toUtc().toIso8601String()),
+        '$hh:$mm · 57m ago',
+      );
 
-    final old = DateTime(2026, 9, 23, 13, 5);
-    expect(messageWhen(old.toUtc().toIso8601String()), '13:05');
+      final old = DateTime(2026, 9, 23, 13, 5);
+      expect(messageWhen(old.toUtc().toIso8601String()), '13:05');
 
-    // In the organization's clock when there is one (UI/UX, 2026-10-01).
-    expect(
-      messageWhen(old.toUtc().toIso8601String(), clock: (h, m) => 'h$h m$m'),
-      'h13 m5',
-    );
-  });
+      // In the organization's clock when there is one (UI/UX, 2026-10-01).
+      expect(
+        messageWhen(old.toUtc().toIso8601String(), clock: (h, m) => 'h$h m$m'),
+        'h13 m5',
+      );
+    },
+  );
 
   test('the number shows under any name, the customer one included', () {
-    expect(showsNumberLine({'phone': '+12155550101', 'customer': {'name': 'Mark Morrow'}}), isTrue);
-    expect(showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}), isTrue);
-    expect(showsNumberLine({'phone': '+12155550101'}), isFalse, reason: 'the title is the number');
+    expect(
+      showsNumberLine({
+        'phone': '+12155550101',
+        'customer': {'name': 'Mark Morrow'},
+      }),
+      isTrue,
+    );
+    expect(
+      showsNumberLine({'phone': '+12155550101', 'contact_name': 'Mark'}),
+      isTrue,
+    );
+    expect(
+      showsNumberLine({'phone': '+12155550101'}),
+      isFalse,
+      reason: 'the title is the number',
+    );
   });
 
   test('a nameless lead from a known number is titled by the customer', () {
     expect(
-      leadTitle({'phone': '+12155550101', 'customer': {'name': 'Marcus Bell'}}),
+      leadTitle({
+        'phone': '+12155550101',
+        'customer': {'name': 'Marcus Bell'},
+      }),
       'Marcus Bell',
     );
     expect(
-      leadTitle({'contact_name': 'Marc', 'customer': {'name': 'Marcus Bell'}}),
+      leadTitle({
+        'contact_name': 'Marc',
+        'customer': {'name': 'Marcus Bell'},
+      }),
       'Marc',
       reason: 'what the person gave Google still wins',
     );
@@ -981,6 +1173,8 @@ Future<void> _pump(
   Map<String, dynamic>? customer,
   Map<String, dynamic>? details,
   String? callTranscript = 'Hi, my fireplace smokes when I light it.',
+  String? callSummary,
+  String? callNextStep,
   bool transcriptPending = false,
   List<Map<String, dynamic>>? conversations,
   List<String> viewers = const [],
@@ -1053,7 +1247,11 @@ Future<void> _pump(
 
       if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
         _typingPosts.add(request.url.path);
-        return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       }
 
       if (request.url.path.endsWith('/recording')) {
@@ -1079,40 +1277,44 @@ Future<void> _pump(
               'visitor_typing': visitorTyping,
               'booking': booking,
               'reply_templates': templates,
-              'conversations': conversations ?? [
-                {
-                  'id': 'c-call',
-                  'channel': 'PHONE_CALL',
-                  'from': 'CONSUMER',
-                  'occurred_at': '2026-09-06T10:00:00Z',
-                  'duration_ms': 125000,
-                  'text': null,
-                  'transcript': callTranscript,
-                  'transcript_pending': transcriptPending,
-                  'attachments': <String>[],
-                  'has_recording': true,
-                },
-                {
-                  'id': 'c-in',
-                  'channel': 'MESSAGE',
-                  'from': 'CONSUMER',
-                  'occurred_at': '2026-09-07T09:00:00Z',
-                  'duration_ms': null,
-                  'text': 'Is Saturday ok?',
-                  'attachments': <String>[],
-                  'has_recording': false,
-                },
-                {
-                  'id': 'c-out',
-                  'channel': 'MESSAGE',
-                  'from': 'ADVERTISER',
-                  'occurred_at': '2026-09-07T09:30:00Z',
-                  'duration_ms': null,
-                  'text': 'Yes, 10am works.',
-                  'attachments': <String>[],
-                  'has_recording': false,
-                },
-              ],
+              'conversations':
+                  conversations ??
+                  [
+                    {
+                      'id': 'c-call',
+                      'channel': 'PHONE_CALL',
+                      'from': 'CONSUMER',
+                      'occurred_at': '2026-09-06T10:00:00Z',
+                      'duration_ms': 125000,
+                      'text': null,
+                      'transcript': callTranscript,
+                      'summary': callSummary,
+                      'next_step': callNextStep,
+                      'transcript_pending': transcriptPending,
+                      'attachments': <String>[],
+                      'has_recording': true,
+                    },
+                    {
+                      'id': 'c-in',
+                      'channel': 'MESSAGE',
+                      'from': 'CONSUMER',
+                      'occurred_at': '2026-09-07T09:00:00Z',
+                      'duration_ms': null,
+                      'text': 'Is Saturday ok?',
+                      'attachments': <String>[],
+                      'has_recording': false,
+                    },
+                    {
+                      'id': 'c-out',
+                      'channel': 'MESSAGE',
+                      'from': 'ADVERTISER',
+                      'occurred_at': '2026-09-07T09:30:00Z',
+                      'duration_ms': null,
+                      'text': 'Yes, 10am works.',
+                      'attachments': <String>[],
+                      'has_recording': false,
+                    },
+                  ],
             },
           }),
           200,
@@ -1233,7 +1435,6 @@ void _wordTests() {
   });
 }
 
-
 /// AN OPEN CONVERSATION RE-READS ITSELF.
 ///
 /// Jose, 2026-09-16, after a live chat went unanswered for half an hour: "when
@@ -1304,7 +1505,8 @@ void _autoRefreshTests() {
             lead: const {
               'id': 'lead-1',
               'contact_name': 'Marcus Bell',
-              'source': 'local_services', // a live website chat re-reads every 3s
+              'source':
+                  'local_services', // a live website chat re-reads every 3s
               'status': 'new',
             },
             onStatusChanged: (_) async {},
@@ -1344,7 +1546,8 @@ void _autoRefreshTests() {
     expect(
       find.text('Are you still there?'),
       findsOneWidget,
-      reason: 'somebody is waiting in a live chat and the dispatcher is '
+      reason:
+          'somebody is waiting in a live chat and the dispatcher is '
           'looking at this exact screen',
     );
   });
