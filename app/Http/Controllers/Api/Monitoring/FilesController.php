@@ -103,6 +103,9 @@ class FilesController extends Controller
     /** Entries the agent may return for one directory. A huge folder is paged by the agent, not dumped. */
     private const MAX_ENTRIES = 2000;
 
+    /** What Dart's statSync reports as `modified` for an entry it could not stat. */
+    private const UNSTATABLE_MODIFIED = '1970-01-01T00:00:00.000Z';
+
     /** The SECURITY exemption's refusal sentence — the same wording every screen-reaching guard uses. */
     private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
 
@@ -267,7 +270,10 @@ class FilesController extends Controller
             'entries' => ['sometimes', 'array', 'max:'.self::MAX_ENTRIES],
             'entries.*.name' => ['required_with:entries', 'string', 'max:1024'],
             'entries.*.is_dir' => ['required_with:entries', 'boolean'],
-            'entries.*.size_bytes' => ['nullable', 'integer', 'min:0'],
+            // No min:0 — shipped agents send -1 for an entry they cannot stat,
+            // and one such entry rejected the whole listing (every drive root
+            // has some). slotFrom() turns a negative into null.
+            'entries.*.size_bytes' => ['nullable', 'integer'],
             'entries.*.modified_at' => ['nullable', 'string', 'max:64'],
 
             // op:download
@@ -332,8 +338,12 @@ class FilesController extends Controller
                 'entries' => array_map(fn (array $e) => [
                     'name' => $e['name'],
                     'is_dir' => (bool) $e['is_dir'],
-                    'size_bytes' => $e['size_bytes'] ?? null,
-                    'modified_at' => $e['modified_at'] ?? null,
+                    // An entry Windows will not stat (pagefile.sys, System
+                    // Volume Information) reaches here as size -1, modified
+                    // 1970-01-01 — Dart's statSync sentinels for "notFound",
+                    // not measurements. Shown as unknown, never as -1 bytes.
+                    'size_bytes' => isset($e['size_bytes']) && $e['size_bytes'] >= 0 ? $e['size_bytes'] : null,
+                    'modified_at' => ($e['modified_at'] ?? null) === self::UNSTATABLE_MODIFIED ? null : ($e['modified_at'] ?? null),
                 ], $data['entries'] ?? []),
             ];
         }

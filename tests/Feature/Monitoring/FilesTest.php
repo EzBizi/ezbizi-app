@@ -153,6 +153,45 @@ class FilesTest extends TestCase
             ]]);
     }
 
+    public function test_a_drive_with_entries_windows_will_not_stat_still_lists(): void
+    {
+        // Measured 2026-10-12: every drive root holds entries Windows will not
+        // let anyone stat — pagefile.sys, hiberfil.sys, System Volume
+        // Information. Dart's statSync does not throw for them; it returns
+        // type notFound, size -1, modified 1970-01-01. size_bytes was min:0, so
+        // the WHOLE listing 422'd and every drive opened to "looks offline".
+        // The agent's real wire shape for C:\ on a shipped build:
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
+            ->json('data.request_id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'ready', 'op' => 'list', 'path' => 'C:\\',
+                'entries' => [
+                    ['name' => 'Users', 'is_dir' => true, 'size_bytes' => null, 'modified_at' => '2026-10-01T12:00:00.000Z'],
+                    ['name' => 'pagefile.sys', 'is_dir' => false, 'size_bytes' => -1, 'modified_at' => '1970-01-01T00:00:00.000Z'],
+                ],
+            ])
+            ->assertNoContent();
+
+        // The unreadable entry is still listed, with no size and no date —
+        // never a "-1 bytes" or a 1970 timestamp the agent never measured.
+        $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$requestId)
+            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.entries.0.size_bytes', null)
+            ->assertJsonPath('data.entries.0.modified_at', '2026-10-01T12:00:00.000Z')
+            ->assertJsonPath('data.entries.1.name', 'pagefile.sys')
+            ->assertJsonPath('data.entries.1.size_bytes', null)
+            ->assertJsonPath('data.entries.1.modified_at', null);
+    }
+
     public function test_a_zero_byte_file_downloads_rather_than_timing_out(): void
     {
         // An empty file is base64 '' on the wire, which ConvertEmptyStringsToNull
