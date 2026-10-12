@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/hr/onboarding_form.dart';
 import 'package:ezbizi_client/screens/hr/records_tab.dart';
 import 'package:ezbizi_client/screens/hr/training_card.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
@@ -94,6 +96,32 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
+  testWidgets('a tapped onboarding notification opens that onboarding', (
+    tester,
+  ) async {
+    DeepLinks.open(
+      const DeepLink(module: 'hr', type: 'onboarding', id: 'onb-1'),
+    );
+    await _pump(tester, _handler());
+
+    expect(
+      tester.widget<OnboardingForm>(find.byType(OnboardingForm)).onboardingId,
+      'onb-1',
+    );
+    expect(DeepLinks.pending.value, isNull);
+
+    // And while the screen is already open.
+    DeepLinks.open(
+      const DeepLink(module: 'hr', type: 'onboarding', id: 'onb-2'),
+    );
+    await tester.pump();
+
+    expect(
+      tester.widget<OnboardingForm>(find.byType(OnboardingForm)).onboardingId,
+      'onb-2',
+    );
+  });
+
   /// The module granted, and not one tab inside it.
   ///
   /// Not a hypothetical and not a stale fixture. Measured 2026-09-17 against
@@ -111,28 +139,34 @@ void main() {
   /// Before this, the answer was a blank pane: no chips, no content, nothing
   /// logged, and a person deciding the product is broken when it is doing what
   /// somebody configured.
-  testWidgets('hr.view with no tab granted says so instead of drawing nothing', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _handler(me: {..._me, 'permissions': const ['hr.view']}),
-    );
+  testWidgets(
+    'hr.view with no tab granted says so instead of drawing nothing',
+    (tester) async {
+      await _pump(
+        tester,
+        _handler(
+          me: {
+            ..._me,
+            'permissions': const ['hr.view'],
+          },
+        ),
+      );
 
-    expect(_chips(tester), isEmpty);
-    expect(
-      find.text('No part of Human Resources has been opened to you yet.'),
-      findsOneWidget,
-    );
+      expect(_chips(tester), isEmpty);
+      expect(
+        find.text('No part of Human Resources has been opened to you yet.'),
+        findsOneWidget,
+      );
 
-    // Names the place, and says it is not theirs to change — the two things a
-    // person in this state cannot work out from an empty screen.
-    expect(
-      find.textContaining('Settings › Roles & permissions'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('nothing here is broken'), findsOneWidget);
-  });
+      // Names the place, and says it is not theirs to change — the two things a
+      // person in this state cannot work out from an empty screen.
+      expect(
+        find.textContaining('Settings › Roles & permissions'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('nothing here is broken'), findsOneWidget);
+    },
+  );
 
   /// And one tab is enough to be an ordinary screen again.
   ///
@@ -146,7 +180,10 @@ void main() {
     await _pump(
       tester,
       _handler(
-        me: {..._me, 'permissions': const ['hr.view', 'hr.records.view']},
+        me: {
+          ..._me,
+          'permissions': const ['hr.view', 'hr.records.view'],
+        },
       ),
     );
 
@@ -207,10 +244,7 @@ void main() {
     expect(find.text('Expiring certifications'), findsNothing);
     expect(find.text('Not built yet'), findsNothing);
 
-    expect(
-      find.textContaining('marked as an expiry'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('marked as an expiry'), findsOneWidget);
   });
 
   /// Onboarding stopped being a placeholder. Only that it opens and reaches the
@@ -261,7 +295,8 @@ void main() {
     expect(
       _inviteButton(tester).onPressed,
       isNull,
-      reason: 'An invitation carries a role and a place; an address is not one.',
+      reason:
+          'An invitation carries a role and a place; an address is not one.',
     );
 
     await _choose(tester, 'Role', 'Technician');
@@ -392,7 +427,11 @@ void main() {
     await _tap(tester, find.text('Invite somebody'));
     await _type(tester, 'Email', 'tommy@example.com');
     await _choose(tester, 'Role', 'Technician');
-    await _choose(tester, 'Where they are assigned', 'Serenisima › Connecticut');
+    await _choose(
+      tester,
+      'Where they are assigned',
+      'Serenisima › Connecticut',
+    );
 
     await _tap(tester, find.byKey(const ValueKey('invite-with-contract')));
     final create = find.widgetWithText(FilledButton, 'Create the invitation');
@@ -442,10 +481,9 @@ void main() {
       // and refused rather than offered as a silent mistake.
       'Serenisima › Rhode Island — deactivated',
     ]);
-    expect(
-      scopes.options.where((o) => !o.enabled).map((o) => o.value),
-      ['franchise:fr-4'],
-    );
+    expect(scopes.options.where((o) => !o.enabled).map((o) => o.value), [
+      'franchise:fr-4',
+    ]);
 
     // `/me` knows about Texas and does not know about Connecticut. Neither
     // fact may show through: the question is what this person may ASSIGN, and
@@ -495,7 +533,10 @@ void main() {
       find.text('https://app.ezbizi.com/invite?token=raw-token-2'),
       findsOneWidget,
     );
-    expect(find.textContaining('previous link has stopped working'), findsOneWidget);
+    expect(
+      find.textContaining('previous link has stopped working'),
+      findsOneWidget,
+    );
 
     // The other failing state, and it must not be worded as the first: this
     // one was attempted and refused, so the box is not the thing to go and fix.
@@ -580,8 +621,10 @@ void main() {
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Revoke'));
 
-    expect(find.text('Only an administrator may revoke an invitation.'),
-        findsOneWidget);
+    expect(
+      find.text('Only an administrator may revoke an invitation.'),
+      findsOneWidget,
+    );
     expect(
       find.text('bea@example.com'),
       findsOneWidget,
@@ -617,10 +660,7 @@ void main() {
 
     // Both places somebody is assigned — §4 allows several, and showing only
     // the first would hide half of their reach.
-    expect(
-      find.text('bea@example.com · Connecticut · Texas'),
-      findsOneWidget,
-    );
+    expect(find.text('bea@example.com · Connecticut · Texas'), findsOneWidget);
   });
 
   testWidgets('opening a record shows their Training card, asked about them', (
@@ -666,7 +706,11 @@ void main() {
     await _tap(tester, _section('Employment'));
     await _choose(tester, 'Role', 'Technician');
 
-    expect(path, isNull, reason: 'Choosing is not saving — the section has a Save.');
+    expect(
+      path,
+      isNull,
+      reason: 'Choosing is not saving — the section has a Save.',
+    );
 
     await _tap(tester, find.text('Save employment'));
 
@@ -734,8 +778,10 @@ void main() {
 
     // The owner's rule, stated where the decision is made: every employee is a
     // user account and the record survives deactivation.
-    expect(find.textContaining('The record stays exactly where it is'),
-        findsOneWidget);
+    expect(
+      find.textContaining('The record stays exactly where it is'),
+      findsOneWidget,
+    );
     expect(patched, isNull);
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Make inactive'));
@@ -758,7 +804,21 @@ void main() {
       tester,
       _handler(
         onPostPerson: (path) => posted = path,
-        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view']},
+        me: {
+          ..._me,
+          'permissions': [
+            'hr.view',
+            'hr.edit',
+            'hr.security.reset',
+            'hr.dashboard.view',
+            'hr.hours.view',
+            'hr.onboarding.view',
+            'hr.records.view',
+            'hr.invitations.view',
+            'hr.pto.view',
+            'hr.contracts.view',
+          ],
+        },
       ),
     );
 
@@ -787,7 +847,21 @@ void main() {
       tester,
       _handler(
         onPostPerson: (path) => posted = path,
-        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view']},
+        me: {
+          ..._me,
+          'permissions': [
+            'hr.view',
+            'hr.edit',
+            'hr.security.reset',
+            'hr.dashboard.view',
+            'hr.hours.view',
+            'hr.onboarding.view',
+            'hr.records.view',
+            'hr.invitations.view',
+            'hr.pto.view',
+            'hr.contracts.view',
+          ],
+        },
       ),
     );
 
@@ -799,7 +873,10 @@ void main() {
     expect(posted, '/api/v1/hr/people/u-2/reset-link');
     // The link is on screen to copy, not emailed — somebody locked out of
     // their mailbox is the case this exists for.
-    expect(find.text('https://app.example.test/reset?token=abc123'), findsOneWidget);
+    expect(
+      find.text('https://app.example.test/reset?token=abc123'),
+      findsOneWidget,
+    );
     expect(find.text('Copy and close'), findsOneWidget);
   });
 
@@ -826,9 +903,16 @@ void main() {
             )
             .first,
       );
-      expect(button.onPressed, isNull, reason: '"$label" was offered without the key');
+      expect(
+        button.onPressed,
+        isNull,
+        reason: '"$label" was offered without the key',
+      );
     }
-    expect(find.textContaining('reset somebody’s sign-in security'), findsNWidgets(2));
+    expect(
+      find.textContaining('reset somebody’s sign-in security'),
+      findsNWidgets(2),
+    );
 
     await _tap(tester, find.text('Reset their authenticator'));
     expect(posted, isNull, reason: 'a refused item still posted');
@@ -1120,7 +1204,8 @@ void main() {
 
     final edge = find.byKey(const ValueKey('hr-list-edge'));
     double list() =>
-        tester.getTopLeft(edge).dx - tester.getTopLeft(find.byType(RecordsTab)).dx;
+        tester.getTopLeft(edge).dx -
+        tester.getTopLeft(find.byType(RecordsTab)).dx;
 
     expect(list(), 300);
 
@@ -1186,8 +1271,11 @@ void main() {
 
     await _tap(tester, find.text('Back to Bea Okafor'));
 
-    expect(find.text('41 Elm St, Stamford CT'), findsNothing,
-        reason: 'It came back to the Onboarding section, not Personal.');
+    expect(
+      find.text('41 Elm St, Stamford CT'),
+      findsNothing,
+      reason: 'It came back to the Onboarding section, not Personal.',
+    );
     expect(find.byIcon(Icons.chevron_right), findsWidgets);
   });
 
@@ -1208,7 +1296,11 @@ void main() {
 
     await _openPerson(tester, 'Bea Okafor');
 
-    expect(find.text('Jose Silva'), findsNothing, reason: 'The list is still drawn beside the record.');
+    expect(
+      find.text('Jose Silva'),
+      findsNothing,
+      reason: 'The list is still drawn beside the record.',
+    );
     expect(find.byTooltip('All people'), findsOneWidget);
 
     await _tap(tester, find.byTooltip('All people'));
@@ -1287,21 +1379,32 @@ void main() {
 
     await _pump(
       tester,
-      _handler(onDetail: (method, path, body) => writes.add((method, path, body))),
+      _handler(
+        onDetail: (method, path, body) => writes.add((method, path, body)),
+      ),
     );
     await _tap(tester, _tab('Records'));
     await _openPerson(tester, 'Bea Okafor');
     await _tap(tester, _section('Emergency contacts'));
     await _tap(tester, find.text('Add emergency contact'));
 
-    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ana Okafor');
-    await tester.enterText(find.widgetWithText(TextField, 'Phone'), '(203) 555-0101');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name'),
+      'Ana Okafor',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Phone'),
+      '(203) 555-0101',
+    );
     await tester.pump();
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
 
     expect(writes, hasLength(1));
     expect(writes.single.$1, 'POST');
-    expect(writes.single.$2, '/api/v1/hr/people/u-2/details/emergency-contacts');
+    expect(
+      writes.single.$2,
+      '/api/v1/hr/people/u-2/details/emergency-contacts',
+    );
     expect(writes.single.$3, {
       'name': 'Ana Okafor',
       'relationship': null,
@@ -1371,7 +1474,10 @@ void main() {
 
     expect(find.text('Prefers the Stamford jobs.'), findsOneWidget);
     expect(find.textContaining('Jose Silva ·'), findsOneWidget);
-    expect(find.textContaining('The person does not see these.'), findsOneWidget);
+    expect(
+      find.textContaining('The person does not see these.'),
+      findsOneWidget,
+    );
   });
 
   /// "Abandoned" used to be one word for two different things — nobody came,
@@ -1449,7 +1555,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: HrScreen(api: api, session: session)),
+      home: Scaffold(
+        body: HrScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -1505,10 +1613,7 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
 
 /// Open a dropdown by its label and take the named option.
 Future<void> _choose(WidgetTester tester, String label, String option) async {
-  await _tap(
-    tester,
-    find.widgetWithText(SearchPickerField<String>, label),
-  );
+  await _tap(tester, find.widgetWithText(SearchPickerField<String>, label));
   await _tap(tester, find.text(option).last);
 }
 
@@ -1525,9 +1630,8 @@ FilledButton _inviteButton(WidgetTester tester) => tester.widget<FilledButton>(
 
 /// The header's own button, which is dead whenever there is no complete
 /// invitation this person could send.
-FilledButton _inviteSomebody(WidgetTester tester) => tester.widget<FilledButton>(
-  find.widgetWithText(FilledButton, 'Invite somebody'),
-);
+FilledButton _inviteSomebody(WidgetTester tester) => tester
+    .widget<FilledButton>(find.widgetWithText(FilledButton, 'Invite somebody'));
 
 MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onInvite,
@@ -1658,15 +1762,15 @@ MockClientHandler _handler({
     if (path.endsWith('/hr/people/scope-options')) {
       return scopeOptionsStatus == 200
           ? _json({'data': scopeOptions})
-          : _json(
-              {'message': 'You may not invite people.'},
-              scopeOptionsStatus,
-            );
+          : _json({
+              'message': 'You may not invite people.',
+            }, scopeOptionsStatus);
     }
 
     // One person's record — HrPeopleController::show, the list row plus what
     // the list deliberately leaves out.
-    if (request.method == 'GET' && RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
+    if (request.method == 'GET' &&
+        RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
       final id = path.split('/').last;
       onRecord?.call(id);
       return _json({
@@ -1695,7 +1799,9 @@ MockClientHandler _handler({
             ? null
             : jsonDecode(request.body) as Map<String, dynamic>,
       );
-      return _json({'data': <String, Object?>{'id': 'd-1'}}, 201);
+      return _json({
+        'data': <String, Object?>{'id': 'd-1'},
+      }, 201);
     }
 
     if (path.endsWith('/hr/people')) {
@@ -1714,17 +1820,22 @@ MockClientHandler _handler({
     if (path.contains('/hr/people/') && request.method == 'POST') {
       onPostPerson?.call(path);
       if (path.endsWith('/totp/reset')) {
-        return _json({'data': {
-          'had_factor': true,
-          'note': 'Their authenticator is removed and they have been signed out everywhere.',
-        }});
+        return _json({
+          'data': {
+            'had_factor': true,
+            'note':
+                'Their authenticator is removed and they have been signed out everywhere.',
+          },
+        });
       }
       if (path.endsWith('/reset-link')) {
-        return _json({'data': {
-          'url': 'https://app.example.test/reset?token=abc123',
-          'expires_at': '2026-09-03T21:00:00-04:00',
-          'note': 'Single use, valid one hour.',
-        }});
+        return _json({
+          'data': {
+            'url': 'https://app.example.test/reset?token=abc123',
+            'expires_at': '2026-09-03T21:00:00-04:00',
+            'note': 'Single use, valid one hour.',
+          },
+        });
       }
     }
 
@@ -1738,9 +1849,12 @@ MockClientHandler _handler({
 
     if (path.endsWith('/resend')) {
       onResend?.call(path);
-      onResendBody?.call(path, request.body.isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(request.body) as Map<String, dynamic>);
+      onResendBody?.call(
+        path,
+        request.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(request.body) as Map<String, dynamic>,
+      );
       return _json({'data': _resent});
     }
 
@@ -1811,9 +1925,19 @@ const _scopeOptions = {
     },
   ],
   'franchises': [
-    {'id': 'fr-9', 'name': 'Connecticut', 'company_id': 'co-1', 'is_active': true},
+    {
+      'id': 'fr-9',
+      'name': 'Connecticut',
+      'company_id': 'co-1',
+      'is_active': true,
+    },
     // Switched off. §4: an assignment to it would grant nothing at all.
-    {'id': 'fr-4', 'name': 'Rhode Island', 'company_id': 'co-1', 'is_active': false},
+    {
+      'id': 'fr-4',
+      'name': 'Rhode Island',
+      'company_id': 'co-1',
+      'is_active': false,
+    },
   ],
   'roles': [
     {
@@ -2045,9 +2169,25 @@ const _me = {
   // What the Records tab actually exercises. It held `hr.view` alone while the
   // screen checked nothing, so tests drove Deactivate and Change their role
   // through a role that could do neither.
-  'permissions': ['hr.view', 'hr.create', 'hr.edit', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view'],
+  'permissions': [
+    'hr.view',
+    'hr.create',
+    'hr.edit',
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
+  ],
   'modules': [
-    {'key': 'hr', 'label': 'Human Resources', 'available': true, 'reachable': true},
+    {
+      'key': 'hr',
+      'label': 'Human Resources',
+      'available': true,
+      'reachable': true,
+    },
   ],
   'preferences': <String, dynamic>{},
   'organization': {

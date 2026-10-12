@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/contracts_tab.dart';
@@ -154,7 +155,11 @@ class _HrScreenState extends State<HrScreen> {
       'onboarding',
       'Onboarding',
       Icons.how_to_reg_outlined,
-      () => OnboardingTab(api: widget.api, session: widget.session),
+      () => OnboardingTab(
+        api: widget.api,
+        session: widget.session,
+        link: _onboardingLink,
+      ),
     ),
   ];
 
@@ -206,6 +211,34 @@ class _HrScreenState extends State<HrScreen> {
     _tab = tab;
     _shown.add(tab);
   });
+
+  /// The onboarding a tapped notification named (Notifications, 2026-10-12:
+  /// "an onboarding notification opens that onboarding"). Handed to the tab
+  /// as the link itself, so tapping the same one twice opens it twice.
+  DeepLink? _onboardingLink;
+
+  @override
+  void initState() {
+    super.initState();
+    _takeLink();
+    DeepLinks.pending.addListener(_linkArrived);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_linkArrived);
+    super.dispose();
+  }
+
+  void _takeLink() {
+    final link = DeepLinks.take('hr');
+    if (link == null || link.type != 'onboarding') return;
+    _onboardingLink = link;
+    _tab = 'onboarding';
+    _shown.add('onboarding');
+  }
+
+  void _linkArrived() => setState(_takeLink);
 
   /// `hr.view` and not one tab inside it — a blank module, said out loud.
   ///
