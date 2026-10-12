@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Leads: Call opens a dial pad with the number already typed in, instead of the whole Communication screen over Leads.',
         'Leads: Book fills in the street, unit, city, state and ZIP from the customer\'s website form.',
+        'Leads: Messenger is now called Facebook and has a blue tag.',
       ],
     ),
     VersionRelease(
