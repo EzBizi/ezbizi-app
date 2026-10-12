@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
 
@@ -10,6 +10,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/status_pill.dart';
 import 'device_display.dart';
 
 /// Files — browse and download a monitored machine's files (the viewer half of
@@ -93,6 +94,23 @@ class _FilesTabState extends State<FilesTab> {
   String _sortBy = 'name';
   bool _ascending = true;
 
+  /// Files is behind the person's own authenticator (Jose, 2026-10-12; UI
+  /// queue 79): set when the server answers `locked`, cleared by a code.
+  bool _locked = false;
+  bool _unlocking = false;
+  String? _unlockError;
+  final TextEditingController _code = TextEditingController();
+
+  /// Explorer's Quick access from the roots' listing; empty from an agent too
+  /// old to send it.
+  List<QuickLink> _quickLinks = const [];
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -134,6 +152,7 @@ class _FilesTabState extends State<FilesTab> {
     setState(() {
       _device = device;
       _roots = const [];
+      _quickLinks = const [];
       _selected = null;
       _previews.clear();
       _previewErrors.clear();
@@ -171,12 +190,19 @@ class _FilesTabState extends State<FilesTab> {
       setState(() {
         _listing = listing;
         _browsing = false;
-        if (path.isEmpty) _roots = listing.entries;
+        if (path.isEmpty) {
+          _roots = listing.entries;
+          _quickLinks = listing.quickLinks;
+        }
       });
     } on FileAccessException catch (e) {
       if (!mounted) return;
       setState(() {
         _browsing = false;
+        if (e.slug == 'locked') {
+          _locked = true;
+          return;
+        }
         _browseError = e.slug == 'offline' ? _offlineSentence(device) : e.slug;
       });
     }
@@ -224,7 +250,10 @@ class _FilesTabState extends State<FilesTab> {
       if (!mounted) return;
       setState(() {
         item.status = _DownloadStatus.error;
-        item.error = e.slug == 'offline'
+        if (e.slug == 'locked') _locked = true;
+        item.error = e.slug == 'locked'
+            ? 'Files locked'
+            : e.slug == 'offline'
             ? 'Device offline'
             : (FilesTab.errorNotes[e.slug] ?? 'Could not download.');
       });
@@ -257,6 +286,20 @@ class _FilesTabState extends State<FilesTab> {
         // details list, and the preview beside it when there is room.
         final phone = width < FilesTab.splitAbove;
         final previewBeside = width >= FilesTab.previewBesideAbove;
+
+        // Locked: the code is asked for where the files were, never in a
+        // dialog, and nothing behind it shows.
+        if (_locked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _pickerBar(context, device, phone: phone),
+              const Divider(height: 1),
+              Expanded(child: _lockCard(context)),
+            ],
+          );
+        }
+
         final selected = _selected;
         final Widget middle = !previewBeside && selected != null
             ? _preview(context, selected, framed: false)
@@ -364,6 +407,23 @@ class _FilesTabState extends State<FilesTab> {
               ],
             ),
           if (!phone) const Spacer(),
+          if (!_locked && _browser.unlockedUntil != null) ...[
+            Tooltip(
+              message: 'Locks after 15 minutes without use.',
+              child: StatusPill(
+                phone
+                    ? 'Unlocked'
+                    : 'Unlocked until ${_clock(_browser.unlockedUntil!)}',
+                key: const Key('files-unlocked-pill'),
+                tone: Tone.ok,
+              ),
+            ),
+            TextButton(
+              key: const Key('files-lock-now'),
+              onPressed: _lockNow,
+              child: const Text('Lock now'),
+            ),
+          ],
           // Accountability, worded as UI/UX asked: every open is recorded.
           Tooltip(
             message: 'Every file you open here is recorded.',
@@ -417,6 +477,17 @@ class _FilesTabState extends State<FilesTab> {
 
     return ListView(
       children: [
+        if (_quickLinks.isNotEmpty) ...[
+          heading('Quick access'),
+          for (final link in _quickLinks)
+            item(
+              link.label,
+              _quickIcon(link.label),
+              link.label,
+              here == link.path,
+              () => _openQuick(link),
+            ),
+        ],
         heading('This PC'),
         item('this-pc', Icons.computer_outlined, 'This PC', here.isEmpty, () {
           _navigateTo(0);
@@ -430,6 +501,155 @@ class _FilesTabState extends State<FilesTab> {
             () => _openRoot(drive.name),
           ),
       ],
+    );
+  }
+
+  /// Straight to Desktop, Downloads… as Explorer's Quick access does: the
+  /// crumbs read This PC › Downloads, not the whole path.
+  void _openQuick(QuickLink link) {
+    setState(() {
+      _trail
+        ..removeRange(1, _trail.length)
+        ..add((label: link.label, path: link.path));
+      _selected = null;
+    });
+    _open(link.path);
+  }
+
+  static IconData _quickIcon(String label) => switch (label.toLowerCase()) {
+    'desktop' => Icons.desktop_windows_outlined,
+    'documents' => Icons.description_outlined,
+    'downloads' => Icons.download_outlined,
+    'pictures' => Icons.image_outlined,
+    'videos' => Icons.movie_outlined,
+    'music' => Icons.music_note_outlined,
+    _ => Icons.folder_outlined,
+  };
+
+  /// Asks the server, then walks back into the folder that asked for it.
+  Future<void> _unlock() async {
+    final code = _code.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(
+        () => _unlockError = 'Enter the 6 digits from your authenticator app.',
+      );
+      return;
+    }
+
+    setState(() {
+      _unlocking = true;
+      _unlockError = null;
+    });
+    final why = await _browser.unlock(code);
+    if (!mounted) return;
+
+    setState(() {
+      _unlocking = false;
+      _unlockError = why;
+      if (why == null) {
+        _locked = false;
+        _code.clear();
+      }
+    });
+    if (why == null) _open(_trail.isEmpty ? '' : _trail.last.path);
+  }
+
+  /// Locks on the server, and forgets every picture fetched while open.
+  Future<void> _lockNow() async {
+    await _browser.lock();
+    if (!mounted) return;
+    setState(() {
+      _locked = true;
+      _selected = null;
+      _previews.clear();
+      _previewErrors.clear();
+    });
+  }
+
+  String _clock(DateTime at) {
+    final local = at.toLocal();
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    return formats.formatTime(local.hour, local.minute);
+  }
+
+  /// The code, asked for in place of the files (UI queue 79).
+  Widget _lockCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            key: const Key('files-lock-card'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 32,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text('Files is locked', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 6),
+              Text(
+                'Enter the 6-digit code from your authenticator app, the same '
+                'one you sign in with. Files stays open while you use it, and '
+                'locks after 15 minutes without use.',
+                style: muted,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('files-unlock-code'),
+                controller: _code,
+                enabled: !_unlocking,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  letterSpacing: 8,
+                ),
+                decoration: const InputDecoration(
+                  counterText: '',
+                  hintText: '······',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _unlock(),
+              ),
+              if (_unlockError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _unlockError!,
+                  key: const Key('files-unlock-error'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              FilledButton(
+                key: const Key('files-unlock-submit'),
+                onPressed: _unlocking ? null : _unlock,
+                child: Text(_unlocking ? 'Checking…' : 'Unlock'),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Each file you open or download is logged under your name.',
+                style: muted,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -558,6 +778,46 @@ class _FilesTabState extends State<FilesTab> {
     return LayoutBuilder(
       builder: (context, box) {
         final columns = box.maxWidth >= 480;
+
+        // A phone has no Quick access column: at This PC its links come
+        // first, above the drives (UI queue 79, phone 4).
+        if (!columns && _trail.length == 1 && _quickLinks.isNotEmpty) {
+          final theme = Theme.of(context);
+          Widget heading(String text) => Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: Text(
+              text.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 0.6,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+
+          return ListView(
+            key: const Key('files-listing'),
+            children: [
+              heading('Quick access'),
+              for (final link in _quickLinks)
+                ListTile(
+                  key: ValueKey('files-quick-${link.label}'),
+                  leading: Icon(
+                    _quickIcon(link.label),
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(link.label),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openQuick(link),
+                ),
+              heading('This PC'),
+              for (final entry in sorted) ...[
+                _entryRow(context, entry, columns: false),
+                const Divider(height: 1),
+              ],
+            ],
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -732,6 +992,10 @@ class _FilesTabState extends State<FilesTab> {
       if (!mounted) return;
       setState(() {
         _previews.remove(path);
+        if (e.slug == 'locked') {
+          _locked = true;
+          return;
+        }
         _previewErrors[path] = e.slug == 'offline'
             ? _offlineSentence(device)
             : (FilesTab.errorNotes[e.slug] ?? 'It could not be shown.');

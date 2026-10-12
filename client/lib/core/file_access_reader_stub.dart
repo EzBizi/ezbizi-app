@@ -15,6 +15,10 @@ class StubFileAccessReader implements FileAccessReader {
   @override
   Future<Map<String, Object?>> read(String path, int maxBytes) async =>
       throw UnsupportedError('Remote file access runs only on the Windows agent.');
+
+  @override
+  Future<List<Map<String, String>>> quickLinks() async =>
+      throw UnsupportedError('Remote file access runs only on the Windows agent.');
 }
 
 /// The instance the conditional import exposes as `reader`.

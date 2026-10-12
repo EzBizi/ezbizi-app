@@ -93,4 +93,56 @@ void main() {
     // And it is a listing, not a throw — the bug was the whole call failing.
     expect(roots, isNotEmpty);
   });
+
+  group('quickLinks', () {
+    late Directory profile;
+    setUp(() => profile = Directory.systemTemp.createTempSync('ezb-profile-'));
+    tearDown(() => profile.deleteSync(recursive: true));
+
+    test('follows a redirected folder, falls back to the profile, skips missing ones',
+        () async {
+      Directory('${profile.path}\\Downloads').createSync();
+      final oneDriveDesktop =
+          Directory('${profile.path}\\OneDrive\\Desktop')..createSync(recursive: true);
+      // A stale, empty <profile>\Desktop that Explorer no longer uses.
+      Directory('${profile.path}\\Desktop').createSync();
+
+      final reader = IoFileAccessReader(
+        home: profile.path,
+        shellFolders: () async => {'Desktop': oneDriveDesktop.path},
+      );
+
+      final links = await reader.quickLinks();
+      final byLabel = {for (final l in links) l['label']: l['path']};
+
+      expect(byLabel['Desktop'], oneDriveDesktop.path,
+          reason: 'Where Windows says Desktop is, not the leftover folder.');
+      expect(byLabel['Downloads'], '${profile.path}\\Downloads',
+          reason: 'No record → the profile folder.');
+      expect(byLabel.containsKey('Videos'), isFalse,
+          reason: 'A folder that does not exist is not offered.');
+      expect(links.first['label'], 'Desktop', reason: "Explorer's order.");
+    });
+
+    test('a failing registry read still yields the profile folders', () async {
+      Directory('${profile.path}\\Documents').createSync();
+      final reader = IoFileAccessReader(
+        home: profile.path,
+        shellFolders: () async => throw const ProcessException('reg', []),
+      );
+      // Never throws: an empty or partial list, not a failed drive list.
+      expect(await reader.quickLinks(), isA<List<Map<String, String>>>());
+    });
+
+    // The real thing, on a real Windows profile: the registry query and its
+    // parsing against actual `reg` output, not a hand-written map.
+    test('on this Windows machine, finds the real Desktop', () async {
+      final links = await const IoFileAccessReader().quickLinks();
+      final desktop = links.where((l) => l['label'] == 'Desktop').toList();
+      expect(desktop, hasLength(1));
+      expect(Directory(desktop.single['path']!).existsSync(), isTrue);
+      expect(desktop.single['path'], isNot(contains('%')),
+          reason: 'Environment variables must be expanded.');
+    }, skip: !Platform.isWindows);
+  });
 }
