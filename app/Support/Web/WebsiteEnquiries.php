@@ -246,23 +246,92 @@ final class WebsiteEnquiries
         return preg_match('/turnstile|recaptcha|captcha/i', $label) === 1;
     }
 
-    /** An emoji before each field, by what the label says it is (Jose, 2026-10-09). */
-    public static function fieldMark(string $label): string
+    /**
+     * A form condensed to one line per thing, values only, in the order a
+     * dispatcher reads it (Bar via Jose, 2026-10-12): name, phone, email, when,
+     * the address on one line, service, note. Empty fields are left out; a
+     * field it cannot place keeps its label underneath, so nothing is lost.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, mixed>  $visitor  the form's own name, phone and email, when the fields lack them
+     * @return list<string>
+     */
+    public static function condensed(array $fields, array $visitor = []): array
     {
-        $mark = match (true) {
-            (bool) preg_match('/rating/i', $label) => '⭐',
-            (bool) preg_match('/e-?mail/i', $label) => '✉️',
-            (bool) preg_match('/phone|mobile|cell|tel/i', $label) => '📞',
-            (bool) preg_match('/name/i', $label) => '👤',
-            (bool) preg_match('/date|day/i', $label) => '📅',
-            (bool) preg_match('/time|window/i', $label) => '🕒',
-            (bool) preg_match('/address|street|city|state|zip|postal/i', $label) => '📍',
-            (bool) preg_match('/service|need|job|work/i', $label) => '🛠️',
-            (bool) preg_match('/note|message|comment|detail|describe|happened/i', $label) => '📝',
-            default => '▫️',
-        };
+        $f = array_fill_keys(['rating', 'first', 'last', 'name', 'phone', 'email', 'date', 'time',
+            'line1', 'line2', 'city', 'state', 'zip', 'service', 'note'], '');
+        $other = [];
 
-        return $mark.' ';
+        foreach ($fields as $label => $value) {
+            $label = (string) $label;
+            $value = trim((string) $value);
+            if ($value === '' || self::isRobotCheck($label)) {
+                continue;
+            }
+            $key = match (true) {
+                (bool) preg_match('/rating/i', $label) => 'rating',
+                (bool) preg_match('/e-?mail/i', $label) => 'email',
+                (bool) preg_match('/phone|mobile|cell|\btel/i', $label) => 'phone',
+                (bool) preg_match('/first.?name/i', $label) => 'first',
+                (bool) preg_match('/last.?name|surname/i', $label) => 'last',
+                (bool) preg_match('/^(full.?)?name$|your name/i', $label) => 'name',
+                (bool) preg_match('/date|day|when/i', $label) => 'date',
+                (bool) preg_match('/time|window/i', $label) => 'time',
+                (bool) preg_match('/line.?2|suite|apt|unit/i', $label) => 'line2',
+                (bool) preg_match('/city|town/i', $label) => 'city',
+                (bool) preg_match('/^state|province/i', $label) => 'state',
+                (bool) preg_match('/zip|postal/i', $label) => 'zip',
+                (bool) preg_match('/address|street/i', $label) => 'line1',
+                (bool) preg_match('/service|need|job|work/i', $label) => 'service',
+                (bool) preg_match('/note|message|comment|detail|describe|happened/i', $label) => 'note',
+                default => null,
+            };
+            if ($key === null || $f[$key] !== '') {
+                $other[] = '▫️ '.$label.': '.$value;   // unplaced, or a second of the same
+            } else {
+                $f[$key] = $value;
+            }
+        }
+
+        foreach (['name' => 'name', 'phone' => 'phone', 'email' => 'email'] as $key => $from) {
+            if ($f[$key] === '' && ($key !== 'name' || $f['first'].$f['last'] === '')) {
+                $f[$key] = trim((string) ($visitor[$from] ?? ''));
+            }
+        }
+
+        $digits = preg_replace('/\D+/', '', $f['phone']) ?? '';
+        if (strlen($digits) === 11 && $digits[0] === '1') {
+            $digits = substr($digits, 1);
+        }
+        $phone = strlen($digits) === 10
+            ? '('.substr($digits, 0, 3).') '.substr($digits, 3, 3).'-'.substr($digits, 6)
+            : $f['phone'];
+
+        $join = fn (string $sep, string ...$parts) => implode($sep, array_filter($parts, fn ($p) => $p !== ''));
+        $name = $join(' ', $f['first'], $f['last']);
+        if ($name === '') {
+            $name = $f['name'];
+        } elseif ($f['name'] !== '') {
+            $other[] = '▫️ Name: '.$f['name'];
+        }
+
+        $lines = [];
+        foreach ([
+            '⭐ ' => $f['rating'],
+            '👤 ' => $name,
+            '📞 ' => $phone,
+            '✉️ ' => $f['email'],
+            '📅 ' => $join(' ', $f['date'], $f['time']),
+            '📍 ' => $join(', ', $join(' ', $f['line1'], $f['line2']), $f['city'], $join(' ', $f['state'], $f['zip'])),
+            '🛠️ ' => $f['service'],
+            '📝 ' => $f['note'],
+        ] as $mark => $value) {
+            if ($value !== '') {
+                $lines[] = $mark.$value;
+            }
+        }
+
+        return [...$lines, ...$other];
     }
 
     /**
@@ -288,22 +357,13 @@ final class WebsiteEnquiries
             ])->save();
         }
 
-        $lines = [];
-
-        foreach ($fields as $label => $value) {
-            $value = trim((string) $value);
-
-            if ($value !== '' && ! self::isRobotCheck((string) $label)) {
-                $lines[] = self::fieldMark((string) $label).$label.': '.$value;
-            }
-        }
+        $lines = self::condensed($fields, $visitor);
 
         $this->thread->store($lead, $remoteId, [
             'channel' => self::CHANNEL_FORM,
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => now(),
-            // A blank line between fields, so each reads on its own (Jose, 2026-10-09).
-            'text' => implode("\n\n", $lines),
+            'text' => implode("\n", $lines),
             'attachments' => $attachments === [] ? null : $attachments,
         ]);
 

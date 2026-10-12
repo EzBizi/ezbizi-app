@@ -22,7 +22,7 @@ class CallReportTranscript extends Model implements HoldsPersonalData
 
     public const SOURCES = ['lead', 'whisper', 'failed'];
 
-    protected $fillable = ['organization_id', 'call_id', 'transcript', 'source'];
+    protected $fillable = ['organization_id', 'call_id', 'transcript', 'transcript_labelled', 'source'];
 
     public static function personalDataPurpose(): string
     {
@@ -44,6 +44,10 @@ class CallReportTranscript extends Model implements HoldsPersonalData
                 'The words of a recorded call, transcribed on EzBizi\'s own server from '
                 .'RingCentral\'s recording, or copied from the same call\'s Local Services lead. '
                 .'The audio is fetched, transcribed and deleted; only the words are kept.',
+                Erasure::erase()),
+            new PersonalDataEntry('transcript_labelled', PersonalDataEntry::CONTENT,
+                'The same words split by who said them (phone menu, dispatcher, caller), by Grok '
+                .'from the transcript above.',
                 Erasure::erase()),
         ];
     }

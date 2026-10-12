@@ -1,6 +1,7 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/files.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -143,11 +144,26 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   @override
   void initState() {
     super.initState();
+    _takeLink();
+    DeepLinks.pending.addListener(_linkArrived);
     _load();
   }
 
+  /// A tapped notification about one suggestion opens that one (Bar,
+  /// 2026-10-12: a notification "should open the exact thing").
+  void _takeLink() {
+    final link = DeepLinks.take('suggestions');
+    if (link == null || link.type != 'suggestion') return;
+    _selectedId = link.id;
+    _composing = false;
+    _openNarrow = true;
+  }
+
+  void _linkArrived() => setState(_takeLink);
+
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_linkArrived);
     _composeController.dispose();
     _editController.dispose();
     super.dispose();

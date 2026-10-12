@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/client_platform.dart';
+import '../core/deep_links.dart';
 import '../core/os_notifications.dart';
 import '../core/push_registration.dart';
 import '../core/session.dart';
@@ -147,6 +148,7 @@ class _NotificationBellState extends State<NotificationBell>
     // and a click can arrive the moment it does — on Windows, a toast clicked
     // while EzBizi was not running is exactly what launched it.
     OsNotifications.onClick = _openFromToast;
+    unawaited(OsNotifications.listenForPushTaps());
 
     if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
 
@@ -369,7 +371,7 @@ class _NotificationBellState extends State<NotificationBell>
 
     final destination = _destinationOf(payload);
     if (destination != null && widget.onOpenModule != null) {
-      widget.onOpenModule!(destination.module, destination.filter, destination.record);
+      _go(destination);
       return;
     }
 
@@ -383,7 +385,9 @@ class _NotificationBellState extends State<NotificationBell>
   /// Read after a refresh deliberately — the refresh re-reads the governed
   /// feed, and a notification that has since stopped being visible must not
   /// still navigate on a stale copy.
-  ({String module, String? filter, String? record})? _destinationOf(String id) {
+  ({String module, String? filter, String? record, DeepLink? link})? _destinationOf(
+    String id,
+  ) {
     final current = _items
         .where((item) => item['id']?.toString() == id)
         .firstOrNull;
@@ -391,11 +395,37 @@ class _NotificationBellState extends State<NotificationBell>
     final module = meta?['module'] as String?;
     if (module == null) return null;
 
+    // The exact record (Bar, 2026-10-12: "a new email notification should
+    // open that email"). From the server's meta.record, which names the
+    // MESSAGE for an email and the CALL for a missed call — neither of which
+    // is the notification's subject.
+    final record = meta?['record'] as Map<String, dynamic>?;
+    final type = record?['type'] as String?;
+    final recordId = record?['id'] as String?;
+
     return (
       module: module,
       filter: meta?['filter'] as String?,
       record: (current?['subject'] as Map<String, dynamic>?)?['id'] as String?,
+      link: type == null || recordId == null
+          ? null
+          : DeepLink(
+              module: module,
+              type: type,
+              id: recordId,
+              mailbox: record?['mailbox'] as String?,
+            ),
     );
+  }
+
+  /// Go where a notification points: hand its record to the owning screen,
+  /// then switch to that module. The row tap, the desktop toast and a phone
+  /// push all arrive here.
+  void _go(
+    ({String module, String? filter, String? record, DeepLink? link}) destination,
+  ) {
+    if (destination.link case final link?) DeepLinks.open(link);
+    widget.onOpenModule!(destination.module, destination.filter, destination.record);
   }
 
   Future<void> _markAllRead() async {
@@ -599,11 +629,7 @@ class _NotificationBellState extends State<NotificationBell>
 
                         if (destination != null && widget.onOpenModule != null) {
                           Navigator.of(context).pop();
-                          widget.onOpenModule!(
-                            destination.module,
-                            destination.filter,
-                            destination.record,
-                          );
+                          _go(destination);
                           return;
                         }
 

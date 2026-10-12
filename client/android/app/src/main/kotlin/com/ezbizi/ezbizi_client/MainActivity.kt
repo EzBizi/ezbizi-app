@@ -2,6 +2,7 @@ package com.ezbizi.ezbizi_client
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Intent
 import android.os.Bundle
 import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
@@ -31,9 +32,39 @@ import io.flutter.plugin.common.MethodChannel
 /// working the day this was written. This costs no download size and has no
 /// iOS surface at all.
 class MainActivity : FlutterActivity() {
+    /// The bell row a push tap names, waiting for Dart to ask for it.
+    private var pendingTap: String? = null
+    private var tapChannel: MethodChannel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super: the engine, and so the channel Dart asks on, is set up
+        // inside super.onCreate. A recreation (rotation, a dark-mode switch)
+        // replays the launch intent, so it must not open the record twice.
+        if (savedInstanceState == null) pendingTap = notificationIdOf(intent)
         super.onCreate(savedInstanceState)
         createNotificationChannel()
+    }
+
+    /// A tap on a push while the app is already running (launchMode
+    /// singleTop delivers it here, not to onCreate).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val id = notificationIdOf(intent) ?: return
+        val channel = tapChannel
+        if (channel == null) pendingTap = id else channel.invokeMethod("tapped", id)
+    }
+
+    /// The `notification_id` FCM copies from the push's data into the extras
+    /// of the intent it launches when the notification is tapped.
+    ///
+    /// Null when the app was reopened from Recents: Android re-delivers the
+    /// ORIGINAL launch intent then, extras and all, and opening a record the
+    /// person tapped yesterday would be a ghost navigation.
+    private fun notificationIdOf(intent: Intent?): String? {
+        if (intent == null) return null
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        return intent.extras?.getString("notification_id")?.takeIf { it.isNotBlank() }
     }
 
     /// Makes the one EzBizi notification channel exist, at launch, always.
@@ -86,6 +117,20 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Cold start: Dart asks once for the tap that launched the app, and
+        // the answer is consumed so a later rebuild cannot replay it.
+        tapChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TAP_CHANNEL)
+            .also { channel ->
+                channel.setMethodCallHandler { call, result ->
+                    if (call.method == "initialTap") {
+                        result.success(pendingTap)
+                        pendingTap = null
+                    } else {
+                        result.notImplemented()
+                    }
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method != "getToken") {
@@ -124,5 +169,6 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val CHANNEL = "com.ezbizi.app/fcm"
+        const val TAP_CHANNEL = "com.ezbizi.app/notification_tap"
     }
 }
