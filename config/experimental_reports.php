@@ -31,15 +31,15 @@ return [
     // (deploy desk, 2026-10-06). Turn on with REPORT_CALL_TRANSCRIPTS=true.
     'transcribe' => (bool) env('REPORT_CALL_TRANSCRIPTS', false),
 
-    // Labelling transcribed calls with AI, Claude and Grok side by side
-    // (Jose, 2026-10-06: "build for both, so i can try both"). OFF until the
-    // privacy page names Anthropic and xAI. Each provider runs only with its key;
-    // the models are settings so either can change without code.
     // AI coaching scores for dispatchers' calls (Jose, 2026-10-12). OFF until
     // the privacy page says so (ac795a4e, published) and dispatchers have been
     // told (Jose: contract clause + one notice). ezbizi:score-report-calls.
     'scoring' => (bool) env('REPORT_CALL_SCORING', false),
 
+    // Labelling transcribed calls with AI, Claude and Grok side by side
+    // (Jose, 2026-10-06: "build for both, so i can try both"). OFF until the
+    // privacy page names Anthropic and xAI. Each provider runs only with its key;
+    // the models are settings so either can change without code.
     'tagging' => [
         'enabled' => (bool) env('REPORT_CALL_TAGGING', false),
         'claude' => [

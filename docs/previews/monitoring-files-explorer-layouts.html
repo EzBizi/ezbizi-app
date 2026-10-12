@@ -1,0 +1,378 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Files like Explorer</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a;white-space:nowrap}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:20px;border-bottom:1px solid var(--line);padding:0 2px;flex:0 0 auto}
+.under span{padding:6px 0 7px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.rowb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}
+.win.tall{height:700px}
+.ex{display:flex;flex:1;min-height:0;background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.rail{width:230px;border-right:1px solid var(--line);display:flex;flex-direction:column;flex:0 0 auto;background:#fbfcfd}
+.rail .sec{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px 4px}
+.rail .it{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:#33404a}
+.rail .it.on{background:var(--pric);color:var(--prid);font-weight:700}
+.rail .it .d{width:8px;height:8px;border-radius:50%;background:#2f9a4c;flex:0 0 auto}
+.rail .it .d.off{background:#c9d4d9}
+.rail .it .s{font-size:10.5px;color:var(--muted);display:block;font-weight:400}
+.rail .it.sub{padding-left:28px}
+.qa{width:180px;border-right:1px solid var(--line);display:flex;flex-direction:column;flex:0 0 auto;padding:6px 0}
+.qa .sec{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 12px 4px}
+.qa .it{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:#33404a}
+.qa .it.on{background:var(--pric);color:var(--prid);font-weight:700}
+.fi{width:18px;height:18px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:0 0 auto}
+.f-dir{background:#fde9b8;color:#8a5a00}.f-img{background:#e4ecfb;color:#2c55a8}.f-doc{background:#e3f0f5;color:var(--prid)}.f-pdf{background:#fbe3e3;color:#a12a2a}.f-xls{background:#e1f2e5;color:var(--ok)}.f-zip{background:#eee;color:#555}
+.main2{flex:1;min-width:0;display:flex;flex-direction:column}
+.tb2{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.crumb{display:flex;align-items:center;gap:4px;font-size:12.5px;color:#33404a;flex:1;min-width:0;white-space:nowrap;overflow:hidden}
+.crumb b{color:var(--ink)}
+.crumb .sep{color:var(--muted)}
+.lock{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:var(--okc);color:var(--ok);font-size:11px;font-weight:700;white-space:nowrap}
+.dl{--cols:minmax(0,1fr) 128px 76px;display:grid;grid-template-columns:var(--cols);gap:10px;align-items:center;min-height:32px;padding:0 12px;border-top:1px solid var(--line2);font-size:12.5px}
+.dl.h{border-top:0;border-bottom:1px solid var(--line);min-height:28px;font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;background:#fafcfd}
+.dl .nm{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .m{color:var(--muted);font-size:11.5px}
+.dl .r{text-align:right}
+.dl.on{background:var(--pric)}
+.pv{width:290px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:8px;padding:12px;flex:0 0 auto;background:#fbfcfd;font-size:12px}
+.pv .img{height:180px;border-radius:8px;background:linear-gradient(135deg,#c9d9e0,#6f93a2 60%,#3b5f6d);position:relative}
+.pv .img:after{content:"";position:absolute;left:18%;top:30%;width:34%;height:40%;border-radius:50% 50% 8px 8px;background:rgba(255,255,255,.35)}
+.pv .nm{font-weight:800;font-size:13px;word-break:break-all}
+.pv .kv{display:grid;grid-template-columns:70px 1fr;gap:3px 8px;color:#33404a}
+.pv .kv span:nth-child(odd){color:var(--muted)}
+.note3{font-size:11px;color:var(--muted)}
+.lockcard{margin:auto;max-width:400px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;gap:12px;align-items:stretch;box-shadow:0 6px 22px rgba(6,8,8,.06)}
+.lockcard .ic{width:44px;height:44px;border-radius:12px;background:var(--pric);color:var(--prid);display:inline-flex;align-items:center;justify-content:center;font-size:20px}
+.lockcard h3{margin:0;font-size:16px}
+.code{display:flex;gap:6px}
+.code span{flex:1;height:44px;border:1px solid #b9c7cd;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;background:#fff}
+.code span.f{border-color:var(--pri);box-shadow:inset 0 0 0 1px var(--pri)}
+.err{font-size:12px;color:var(--bad)}
+.chipq{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a;white-space:nowrap}
+.chipq.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.devsel{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:12.5px;font-weight:700}
+.devsel .d{width:8px;height:8px;border-radius:50%;background:#2f9a4c}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qt{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}
+.qt .fi{width:28px;height:28px;font-size:15px;border-radius:8px}
+.lst3{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.lr3{display:flex;align-items:center;gap:10px;padding:9px 10px;border-top:1px solid var(--line2);font-size:12.5px}
+.lr3:first-child{border-top:0}
+.lr3 .g{flex:1;min-width:0}.lr3 .g b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lr3 .g span{display:block;font-size:11px;color:var(--muted)}
+.phn .pb{gap:8px}
+</style>
+<div class="wrap">
+<h1>Monitoring · Files · like Windows Explorer, behind the authenticator</h1>
+<p class="sub">Jose, 2026-10-12, via the Monitoring session: <i>"have the files system require the authenticator code as well for extra
+security, and also if possible, can we make it sort of like windows explorer, where for example it shows previews of pictures,
+etc ? as well as quicklinks like desktop download, etc."</i> Today it has a computer rail, a breadcrumb, and a plain list of names
+with chevrons. Downloads go to a tray.</p>
+<p class="need"><b>What the server will give (Monitoring is building it).</b>
+<ul class="need" style="margin:4px 0 0;padding-left:28px">
+<li>An unlock with your authenticator code. It lasts 15 minutes and every file action extends it. When it lapses, the next
+action says "locked" and the code is asked for again in place, with no dialog.</li>
+<li><b>Quick links</b> (Desktop, Documents, Downloads, Pictures, Videos, Music), only the ones that exist on that computer.
+An older agent sends none.</li>
+<li><b>Previews</b>: the file is fetched when you select it, up to 5 MB, and the fetch is logged as a download, so there are
+no thumbnails for a whole folder. A thumbnail grid would need a new agent operation (later, if wanted).</li>
+<li>Every entry has a name, folder or file, size and modified date.</li>
+</ul>
+Names, paths and files here are invented.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Explorer's three panes, with the computer chosen at the top <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Once a computer is chosen, the computer rail folds into a picker at the top ("Maya Lopez · FRONT-DESK-PC ▾"),
+which makes room for Explorer's layout. <b>Quick access</b> runs down the left (the links that exist, then the drives). The
+middle is a <b>details list</b>: Name, Modified, Size, sortable, with a type icon. The right is a <b>preview pane</b>: a picture
+shows itself, and anything else shows its icon, name, size, date and Download. A green "Unlocked · 14 min" in the toolbar shows
+how long is left, with <b>Lock now</b>.</p>
+<div class="lab">Unlocked, a picture selected</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Monitoring</div>
+ <div class="under"><span>General</span><span>Map</span><span>PC Specs</span><span class="on">Files</span><span>Camera Monitoring</span><span>Desktop Monitoring</span></div>
+ <div class="rowb"><span class="devsel"><span class="d"></span>Maya Lopez · FRONT-DESK-PC ▾</span><span class="sp"></span><span class="lock">🔓 Unlocked · 14 min</span><span class="btn sm">Lock now</span></div>
+ <div class="ex">
+  <div class="qa"><div class="sec">Quick access</div>
+   <div class="it"><span class="fi f-dir">▣</span>Desktop</div>
+   <div class="it"><span class="fi f-dir">⤓</span>Downloads</div>
+   <div class="it"><span class="fi f-dir">▤</span>Documents</div>
+   <div class="it on"><span class="fi f-img">▧</span>Pictures</div>
+   <div class="it"><span class="fi f-dir">▶</span>Videos</div>
+   <div class="it"><span class="fi f-dir">♪</span>Music</div>
+   <div class="sec">This PC</div>
+   <div class="it"><span class="fi f-zip">⛁</span>C:</div>
+   <div class="it"><span class="fi f-zip">⛁</span>D: (Data)</div>
+  </div>
+  <div class="main2">
+   <div class="tb2"><span class="btn t sm">‹</span><span class="btn t sm">↑</span><div class="crumb"><span>This PC</span><span class="sep">›</span><span>C:</span><span class="sep">›</span><span>Users</span><span class="sep">›</span><span>maya</span><span class="sep">›</span><b>Pictures</b></div><span class="tiny">23 items</span></div>
+   <div class="dl h"><span>Name ↑</span><span>Modified</span><span class="r">Size</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-dir">▣</span>Job photos</span><span class="m">Oct 9, 4:12 PM</span><span class="r m">—</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-dir">▣</span>Screenshots</span><span class="m">Oct 12, 9:30 AM</span><span class="r m">—</span></div>
+   <div class="dl on"><span class="nm"><span class="fi f-img">▧</span>chimney-cap-before.jpg</span><span class="m">Oct 11, 2:05 PM</span><span class="r">2.4 MB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-img">▧</span>chimney-cap-after.jpg</span><span class="m">Oct 11, 2:41 PM</span><span class="r">2.6 MB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-pdf">▤</span>estimate-1042.pdf</span><span class="m">Oct 10, 11:20 AM</span><span class="r">188 KB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-xls">▦</span>october-routes.xlsx</span><span class="m">Oct 8, 8:02 AM</span><span class="r">54 KB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-img">▧</span>team-photo.png</span><span class="m">Sep 30, 5:47 PM</span><span class="r">7.9 MB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-zip">▥</span>old-invoices.zip</span><span class="m">Sep 2, 3:15 PM</span><span class="r">41 MB</span></div>
+  </div>
+  <div class="pv"><div class="img"></div><div class="nm">chimney-cap-before.jpg</div>
+   <div class="kv"><span>Type</span><span>JPEG picture</span><span>Size</span><span>2.4 MB</span><span>Modified</span><span>Oct 11, 2:05 PM</span><span>Where</span><span>C:\Users\maya\Pictures</span></div>
+   <span class="btn f sm" style="align-self:flex-start">⤓ Download</span>
+   <span class="note3">Opening a preview counts as a download in the log.</span>
+  </div>
+ </div>
+</div></div></div>
+
+<div class="lab">Locked: asked for in place</div>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Monitoring</div>
+ <div class="under"><span>General</span><span>Map</span><span>PC Specs</span><span class="on">Files</span><span>Camera Monitoring</span><span>Desktop Monitoring</span></div>
+ <div class="ex" style="background:#f6f9fa">
+  <div class="lockcard">
+   <span class="ic">🔒</span>
+   <h3>Files is locked</h3>
+   <p class="lead" style="margin:0;font-size:12.5px;color:var(--muted)">Enter the 6-digit code from your authenticator app, the same one you sign in with. Files stays open while you use it, and locks after 15 minutes without use.</p>
+   <div class="code"><span>4</span><span>1</span><span>7</span><span class="f">2</span><span></span><span></span></div>
+   <span class="err">That code did not verify. Check that your phone's clock is right and try the newest code.</span>
+   <span class="btn f">Unlock</span>
+   <span class="note3">Each file you open or download is logged under your name.</span>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>The computer rail stays, quick links as chips, preview in a side panel</h2>
+<p class="cap">The smallest change from today. The rail of computers stays, quick links sit as chips above the list, and the
+list gains columns. A selected file opens in the side panel the app uses elsewhere. Every computer stays one click away, but
+the panel covers the list while you look at a picture, so going through a folder of photos means opening and closing it each
+time.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Monitoring</div>
+ <div class="under"><span>General</span><span>Map</span><span>PC Specs</span><span class="on">Files</span><span>Camera Monitoring</span><span>Desktop Monitoring</span></div>
+ <div class="ex">
+  <div class="rail"><div class="sec">Computers</div>
+   <div class="it on"><span class="d"></span><span>Maya Lopez<span class="s">FRONT-DESK-PC</span></span></div>
+   <div class="it"><span class="d"></span><span>Owen Price<span class="s">DISPATCH-2</span></span></div>
+   <div class="it"><span class="d off"></span><span>Rae Kim<span class="s">LAPTOP-RK</span></span></div>
+  </div>
+  <div class="main2">
+   <div class="tb2"><div class="crumb"><span>This PC</span><span class="sep">›</span><span>C:</span><span class="sep">›</span><b>Pictures</b></div><span class="lock">🔓 14 min</span></div>
+   <div class="rowb" style="padding:8px 12px;border-bottom:1px solid var(--line)"><span class="chipq">Desktop</span><span class="chipq">Downloads</span><span class="chipq">Documents</span><span class="chipq on">Pictures</span><span class="chipq">Videos</span><span class="chipq">C:</span></div>
+   <div class="dl h"><span>Name ↑</span><span>Modified</span><span class="r">Size</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-dir">▣</span>Job photos</span><span class="m">Oct 9, 4:12 PM</span><span class="r m">—</span></div>
+   <div class="dl on"><span class="nm"><span class="fi f-img">▧</span>chimney-cap-before.jpg</span><span class="m">Oct 11, 2:05 PM</span><span class="r">2.4 MB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-pdf">▤</span>estimate-1042.pdf</span><span class="m">Oct 10, 11:20 AM</span><span class="r">188 KB</span></div>
+  </div>
+ </div>
+ <div class="panel" style="width:380px"><div class="phd"><b>chimney-cap-before.jpg</b></div><div class="pbd"><div style="height:200px;border-radius:8px;background:linear-gradient(135deg,#c9d9e0,#6f93a2 60%,#3b5f6d)"></div><span class="tiny">JPEG · 2.4 MB · Oct 11, 2:05 PM</span><span class="btn f sm" style="align-self:flex-start">⤓ Download</span></div></div>
+</div></div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>One navigation tree: computers, and each one's quick access under it</h2>
+<p class="cap">Like Explorer's left pane, but with computers at the top level. The chosen computer opens to its quick links and
+drives, then the list and preview sit as in option 1. Everything is in one column, but with several computers the tree gets
+long and the links move down the page as it grows.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Monitoring</div>
+ <div class="under"><span>General</span><span>Map</span><span>PC Specs</span><span class="on">Files</span><span>Camera Monitoring</span><span>Desktop Monitoring</span></div>
+ <div class="ex">
+  <div class="rail">
+   <div class="it on"><span class="d"></span><span>Maya Lopez<span class="s">FRONT-DESK-PC</span></span></div>
+   <div class="it sub"><span class="fi f-dir">▣</span>Desktop</div><div class="it sub"><span class="fi f-dir">⤓</span>Downloads</div><div class="it sub" style="background:var(--pric);color:var(--prid);font-weight:700"><span class="fi f-img">▧</span>Pictures</div><div class="it sub"><span class="fi f-zip">⛁</span>C:</div>
+   <div class="it"><span class="d"></span><span>Owen Price<span class="s">DISPATCH-2</span></span></div>
+   <div class="it"><span class="d off"></span><span>Rae Kim<span class="s">LAPTOP-RK</span></span></div>
+  </div>
+  <div class="main2">
+   <div class="tb2"><div class="crumb"><span>C:</span><span class="sep">›</span><b>Pictures</b></div><span class="lock">🔓 14 min</span></div>
+   <div class="dl h"><span>Name ↑</span><span>Modified</span><span class="r">Size</span></div>
+   <div class="dl on"><span class="nm"><span class="fi f-img">▧</span>chimney-cap-before.jpg</span><span class="m">Oct 11, 2:05 PM</span><span class="r">2.4 MB</span></div>
+   <div class="dl"><span class="nm"><span class="fi f-pdf">▤</span>estimate-1042.pdf</span><span class="m">Oct 10, 11:20 AM</span><span class="r">188 KB</span></div>
+  </div>
+  <div class="pv"><div class="img"></div><div class="nm">chimney-cap-before.jpg</div><span class="btn f sm" style="align-self:flex-start">⤓ Download</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">One job per screen, as today. The code first, then the computer, then its quick links as big tiles above the
+drives, then the list. A picture opens full width with Download under it, and back returns to the folder.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">Locked</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Files</span></div><div class="pb" style="justify-content:center">
+  <div class="lockcard" style="margin:0;padding:18px"><span class="ic">🔒</span><h3>Files is locked</h3><p style="margin:0;font-size:12px;color:var(--muted)">Enter the 6-digit code from your authenticator app.</p><div class="code"><span>4</span><span>1</span><span>7</span><span class="f">2</span><span></span><span></span></div><span class="btn f">Unlock</span></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">Quick access</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Maya Lopez</span></div><div class="pb">
+  <div class="rowb"><span class="tiny">FRONT-DESK-PC</span><span class="sp"></span><span class="lock">🔓 14 min</span></div>
+  <div class="tiles"><div class="qt"><span class="fi f-dir">▣</span>Desktop</div><div class="qt"><span class="fi f-dir">⤓</span>Downloads</div><div class="qt"><span class="fi f-dir">▤</span>Documents</div><div class="qt"><span class="fi f-img">▧</span>Pictures</div><div class="qt"><span class="fi f-dir">▶</span>Videos</div><div class="qt"><span class="fi f-dir">♪</span>Music</div></div>
+  <div class="hh" style="font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">This PC</div>
+  <div class="lst3"><div class="lr3"><span class="fi f-zip">⛁</span><div class="g"><b>C:</b></div><span class="m">›</span></div><div class="lr3"><span class="fi f-zip">⛁</span><div class="g"><b>D: (Data)</b></div><span class="m">›</span></div></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">A picture</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Pictures</span></div><div class="pb">
+  <div style="height:260px;border-radius:10px;background:linear-gradient(135deg,#c9d9e0,#6f93a2 60%,#3b5f6d)"></div>
+  <b style="font-size:13px">chimney-cap-before.jpg</b><span class="tiny">2.4 MB · Oct 11, 2:05 PM</span>
+  <span class="btn f">⤓ Download</span><span class="note3">Opening a preview counts as a download in the log.</span>
+ </div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">The quick links as a strip of chips above the list.</p>
+<div class="phones"><div class="pcol"><span class="pl">A folder</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Maya Lopez</span></div><div class="pb">
+ <div class="rowb" style="flex-wrap:nowrap;overflow:hidden"><span class="chipq">Desktop</span><span class="chipq">Downloads</span><span class="chipq on">Pictures</span><span class="chipq">C:</span></div>
+ <div class="lst3"><div class="lr3"><span class="fi f-dir">▣</span><div class="g"><b>Job photos</b><span>Oct 9</span></div></div><div class="lr3"><span class="fi f-img">▧</span><div class="g"><b>chimney-cap-before.jpg</b><span>2.4 MB · Oct 11</span></div></div><div class="lr3"><span class="fi f-pdf">▤</span><div class="g"><b>estimate-1042.pdf</b><span>188 KB · Oct 10</span></div></div></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">Computers and their links as one list, expanding in place.</p>
+<div class="phones"><div class="pcol"><span class="pl">Computers</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Files</span></div><div class="pb">
+ <div class="lst3"><div class="lr3"><span style="width:8px;height:8px;border-radius:50%;background:#2f9a4c"></span><div class="g"><b>Maya Lopez</b><span>FRONT-DESK-PC</span></div><span>⌃</span></div><div class="lr3" style="padding-left:28px"><span class="fi f-dir">▣</span><div class="g"><b>Desktop</b></div></div><div class="lr3" style="padding-left:28px"><span class="fi f-img">▧</span><div class="g"><b>Pictures</b></div></div><div class="lr3"><span style="width:8px;height:8px;border-radius:50%;background:#2f9a4c"></span><div class="g"><b>Owen Price</b><span>DISPATCH-2</span></div><span>⌄</span></div></div>
+</div></div></div></div>
+
+<p class="need" style="margin-top:28px"><b>Recommendation: 1 and 4.</b> It is the layout Jose described: quick access on the left,
+details in the middle, a preview on the right. Choosing the computer at the top gives the three panes room without cramping
+the list. The lock asks in place and says how long it lasts, and the preview says it is logged. Owner: Monitoring
+(<code>files_tab.dart</code>). I build the screen when their server half lands.</p>
+</div>

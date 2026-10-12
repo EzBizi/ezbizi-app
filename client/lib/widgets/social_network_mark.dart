@@ -14,6 +14,7 @@ class SocialNetworkMark extends StatelessWidget {
 
   static const _assets = {
     'facebook_page': 'assets/social/facebook.svg',
+    'facebook_ads': 'assets/social/facebook.svg',
     'instagram_professional': 'assets/social/instagram.svg',
     'threads': 'assets/social/threads.svg',
     'linkedin': 'assets/social/linkedin.svg',

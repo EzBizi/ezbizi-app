@@ -8,6 +8,7 @@ use App\Support\Ai\GrokCli;
 use App\Support\Ai\NameDecision;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -92,54 +93,80 @@ class LeadInsights
      */
     public function read(Lead $lead): ?array
     {
-        $thread = $this->thread($lead);
+        $read = $this->readMany([$lead])[0];
 
-        if ($thread === '' || ! self::grok()) {
-            return null;
+        if ($read instanceof RuntimeException) {
+            throw $read;
         }
 
-        $json = GrokCli::ask(
-            "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
-            ."inspections). Calls are machine transcripts and start with the business's own phone "
-            ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
-            ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
-            ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
-            ."a vendor selling something, a hang-up, or nothing to act on).\n"
-            ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
-            ."- name: the CUSTOMER's own name, as they gave it (keep accents, hyphens, apostrophes; "
-            ."one name is fine), only from: the customer introducing themselves (\"My name is ...\", "
-            ."\"This is ...\"), the customer's answer when asked their name, a \"Name:\" line they "
-            ."wrote, or the customer spelling or correcting it (use the spelled form). NEVER a "
-            ."dispatcher, technician, the phone menu, the business, a review author, or someone "
-            ."the customer mentions (\"my husband Mark\", \"ask for Andy\"); never made from an "
-            ."email handle. Null if not given.\n"
-            ."- name_basis: how the name was given: self_introduction, answer_to_name_question, "
-            ."spelled_or_corrected, or none when name is null.\n"
-            ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
-            ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
-            ."something, a robocall, or a wrong number. A real person asking about any "
-            ."service, even one we may not offer, or who declined a price, is false.\n"
-            ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
-            ."- lost: true when a real customer will not book: they declined the price or said no, or "
-            ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
-            ."\n\n".$thread,
-            [
-                'type' => 'object',
-                'properties' => [
-                    'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
-                    'summary' => ['type' => 'string'],
-                    'name' => ['type' => ['string', 'null']],
-                    'name_basis' => ['type' => 'string', 'enum' => NameDecision::BASES],
-                    'zip' => ['type' => ['string', 'null']],
-                    'not_a_lead' => ['type' => 'boolean'],
-                    'lost' => ['type' => 'boolean'],
-                    'job_applicant' => ['type' => 'boolean'],
-                ],
-                'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
-                'additionalProperties' => false,
-            ],
-        );
+        return $read;
+    }
 
+    /**
+     * read() for several leads side by side (GrokCli::askMany, Jose's AI item
+     * 4). A failure stays with its lead, which the caller leaves unread.
+     *
+     * @param  list<Lead>  $leads
+     * @return list<array|RuntimeException|null> in order; null: nothing said yet, or Grok off
+     */
+    public function readMany(array $leads): array
+    {
+        $threads = array_map(fn (Lead $lead) => self::grok() ? $this->thread($lead) : '', $leads);
+        $asked = array_filter($threads, fn ($t) => $t !== '');
+        $answers = $asked === [] ? [] : array_combine(array_keys($asked),
+            GrokCli::askMany(array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA));
+
+        return array_map(fn ($i) => match (true) {
+            ! isset($answers[$i]) => null,
+            $answers[$i] instanceof RuntimeException => $answers[$i],
+            default => self::parseRead($answers[$i]),
+        }, array_keys($leads));
+    }
+
+    private const READ_PROMPT = "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
+        ."inspections). Calls are machine transcripts and start with the business's own phone "
+        ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
+        ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
+        ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
+        ."a vendor selling something, a hang-up, or nothing to act on).\n"
+        ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
+        ."- name: the CUSTOMER's own name, as they gave it (keep accents, hyphens, apostrophes; "
+        ."one name is fine), only from: the customer introducing themselves (\"My name is ...\", "
+        ."\"This is ...\"), the customer's answer when asked their name, a \"Name:\" line they "
+        ."wrote, or the customer spelling or correcting it (use the spelled form). NEVER a "
+        ."dispatcher, technician, the phone menu, the business, a review author, or someone "
+        ."the customer mentions (\"my husband Mark\", \"ask for Andy\"); never made from an "
+        ."email handle. Null if not given.\n"
+        ."- name_basis: how the name was given: self_introduction, answer_to_name_question, "
+        ."spelled_or_corrected, or none when name is null.\n"
+        ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
+        ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
+        ."something, a robocall, or a wrong number. A real person asking about any "
+        ."service, even one we may not offer, or who declined a price, is false.\n"
+        ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
+        ."- lost: true when a real customer will not book: they declined the price or said no, or "
+        ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
+        ."\n\n";
+
+    private const READ_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
+            'summary' => ['type' => 'string'],
+            'name' => ['type' => ['string', 'null']],
+            'name_basis' => ['type' => 'string', 'enum' => NameDecision::BASES],
+            'zip' => ['type' => ['string', 'null']],
+            'not_a_lead' => ['type' => 'boolean'],
+            'lost' => ['type' => 'boolean'],
+            'job_applicant' => ['type' => 'boolean'],
+        ],
+        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
+        'additionalProperties' => false,
+    ];
+
+    /** @param  array<string, mixed>  $json */
+    private static function parseRead(array $json): array
+    {
         $class = strtoupper(trim((string) ($json['classification'] ?? '')));
         $name = trim((string) ($json['name'] ?? ''));
         $zip = trim((string) ($json['zip'] ?? ''));

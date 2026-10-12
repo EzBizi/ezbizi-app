@@ -171,4 +171,22 @@ class LeadsReadTest extends TestCase
 
         $this->assertSame('Nora Vale', $this->inTenant($this->t['org'], fn () => $lead->refresh()->contact_name));
     }
+
+    /** AI item 4: read side by side; a failed lead stays unread for the next run. */
+    public function test_leads_are_read_together_and_a_failure_stays_with_its_lead(): void
+    {
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result('', 'not logged in', 1))
+            ->push(Process::result(json_encode(['structuredOutput' => [
+                'classification' => 'BOOK', 'summary' => 'Wants a sweep.', 'name' => null, 'name_basis' => 'none',
+                'zip' => null, 'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+            ]])))]);
+        $a = $this->callLead('A', 'I need a sweep');
+        $b = $this->callLead('B', 'I need a sweep');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $read = $this->inTenant($this->t['org'], fn () => array_filter([$a->refresh()->classification, $b->refresh()->classification]));
+        $this->assertCount(1, $read, 'one read, one left for the next run');
+    }
 }

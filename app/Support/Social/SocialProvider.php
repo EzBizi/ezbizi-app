@@ -89,6 +89,10 @@ enum SocialProvider: string
      */
     case Airtable = 'airtable';
 
+    // Ad spend and results per campaign, read by Reports. Its own connect so
+    // ads_read never rides on the Page connect (Jose, 2026-10-12).
+    case FacebookAds = 'facebook_ads';
+
     public function label(): string
     {
         return match ($this) {
@@ -107,6 +111,7 @@ enum SocialProvider: string
             self::Thumbtack => 'Thumbtack',
             self::Workiz => 'Workiz',
             self::Airtable => 'Airtable',
+            self::FacebookAds => 'Facebook Ads',
         };
     }
 
@@ -134,6 +139,7 @@ enum SocialProvider: string
             // visibly rather than throwing an UnhandledMatchError.
             self::Workiz => 'workiz',
             self::Airtable => 'airtable',
+            self::FacebookAds => 'facebook-ads',
         };
     }
 
@@ -203,7 +209,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable, self::FacebookAds];
     }
 
     /**
@@ -352,6 +358,9 @@ enum SocialProvider: string
              */
             self::Airtable => 'profit_loss.view',
 
+            // Spend is read by the Meta tab in Reports, like Workiz.
+            self::FacebookAds => 'reports.build',
+
             default => 'marketing.edit',
         };
     }
@@ -393,6 +402,7 @@ enum SocialProvider: string
             self::GoogleBusinessProfile => 'connect a Business Profile',
             self::Workiz => 'connect a Workiz account',
             self::Airtable => 'connect an Airtable base',
+            self::FacebookAds => 'connect a Facebook Ads account',
             default => 'connect a social account',
         };
     }
@@ -494,6 +504,18 @@ enum SocialProvider: string
                 : sprintf(
                     '%s is connected to EzBizi. You can close this window — its jobs appear in '
                     .'the Performance report under Reports.',
+                    $name,
+                ),
+
+            self::FacebookAds => $many
+                ? sprintf(
+                    '%d Facebook ad accounts are connected to EzBizi. You can close this window — '
+                    .'their spend and results appear under Reports.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its spend and results '
+                    .'appear under Reports.',
                     $name,
                 ),
 

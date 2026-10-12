@@ -40,7 +40,20 @@ class VehicleList extends StatelessWidget {
     required this.pageError,
     required this.onMore,
     required this.organizationName,
+    this.places = const [],
+    this.place,
+    this.onPlace,
   });
+
+  /// The states the register spans, from the server's `meta.places`:
+  /// `{id, name, count}`. Eve, 2026-10-12, as in A-1 Tools: "I click
+  /// Connecticut and I see all of Connecticut". Drawn only when there is more
+  /// than one, since a single state has nothing to choose between.
+  final List<Map<String, dynamic>> places;
+
+  /// The open state's id, or null for every state at once.
+  final String? place;
+  final ValueChanged<String?>? onPlace;
 
   final List<Map<String, dynamic>> vehicles;
   final TextEditingController search;
@@ -81,7 +94,33 @@ class VehicleList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final total = places.fold<int>(
+      0,
+      (sum, p) => sum + ((p['count'] as num?)?.toInt() ?? 0),
+    );
+
     final filters = [
+      if (places.length > 1 && onPlace != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final p in places)
+                ChoiceChip(
+                  label: Text('${p['name']}  ${p['count']}'),
+                  selected: place == p['id'],
+                  onSelected: (_) => onPlace!(p['id'] as String?),
+                ),
+              ChoiceChip(
+                label: Text('All states  $total'),
+                selected: place == null,
+                onSelected: (_) => onPlace!(null),
+              ),
+            ],
+          ),
+        ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: TextField(
