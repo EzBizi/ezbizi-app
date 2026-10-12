@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
@@ -98,6 +99,18 @@ void main() {
     expect(find.byKey(const Key('automation-open-try')), findsOneWidget);
     // Really sends, so it is not one of the buttons beside Edit.
     expect(find.byKey(const Key('automation-open-run-now')), findsOneWidget);
+  });
+
+  /// Notifications, 2026-10-12: tapping a notification about a rule opens
+  /// that rule, not the Automations home.
+  testWidgets('a notification about a rule opens that rule', (tester) async {
+    DeepLinks.open(
+      const DeepLink(module: 'automations', type: 'automation', id: 'a-1'),
+    );
+    await _pump(tester, _handler());
+
+    expect(find.text('Recent runs'), findsOneWidget);
+    expect(DeepLinks.pending.value, isNull, reason: 'taken once, never reopened');
   });
 
   testWidgets('the list and the builder are two tabs, and switching works', (

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -98,7 +99,25 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   @override
   void initState() {
     super.initState();
+    DeepLinks.pending.addListener(_openLinked);
     _load();
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_openLinked);
+    super.dispose();
+  }
+
+  /// A tapped notification about a rule opens that rule (Notifications,
+  /// 2026-10-12). Taken only once the list is in, so the rule can be found;
+  /// one this person's view does not list stays on the list.
+  void _openLinked() {
+    if (_automations.isEmpty) return;
+    final link = DeepLinks.take('automations');
+    if (link == null || link.type != 'automation') return;
+    final rule = _automations.where((a) => a['id'] == link.id).firstOrNull;
+    if (rule != null) _open(rule);
   }
 
   Future<void> _load() async {
@@ -135,6 +154,9 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       }
 
       _automations = List<Map<String, dynamic>>.from(automations.data as List);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openLinked();
+      });
       // The catalogue is what makes the builder possible at all; without it the
       // create button would offer nothing, so its failure is worth saying.
       if (catalogue == null) {
