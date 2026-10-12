@@ -6,6 +6,7 @@ use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
+use App\Models\WorkizCall;
 use App\Models\WorkizJob;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,6 +112,36 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame(1, $body['totals']['answered']);
         $this->assertSame('Trey Brannan', $body['people'][0]['person']);
         $this->assertSame(1, $body['people'][0]['answered']);
+    }
+
+    /** Workiz's own scores per person, beside ours (Jose, 2026-10-12). */
+    public function test_workiz_scores_are_summed_per_person_for_the_dates(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([
+                ['2026-09-14 09:00:00', 80, true, 'great'],
+                ['2026-09-14 17:00:00', 60, false, 'negative'],
+                ['2026-09-15 09:00:00', 10, false, 'negative'],   // another day
+                ['2026-09-14 10:00:00', null, null, null],        // not scored
+            ] as $n => [$at, $score, $booked, $sentiment]) {
+                WorkizCall::query()->create([
+                    'franchise_id' => $tenant['franchise']->id, 'remote_id' => 'call-'.$n,
+                    'direction' => 'inbound', 'status' => 'answered', 'user_name' => 'Trey Brannan',
+                    'dispatcher_score' => $score, 'booked' => $booked, 'sentiment' => $sentiment,
+                    'pricing_discussed' => $booked, 'called_at' => $at, 'synced_at' => now(),
+                ]);
+            }
+        });
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14&timezone=America/New_York')
+            ->assertOk()
+            ->assertJsonPath('workiz_scores.Trey Brannan', [
+                'calls' => 2, 'score' => 70, 'booked' => 50, 'pricing' => 50, 'positive' => 50,
+            ]);
     }
 
     /**
