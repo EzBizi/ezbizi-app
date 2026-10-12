@@ -1642,6 +1642,33 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
+  /// "IVR menu:", "Dispatcher:" and "Customer:" in bold, where Grok has
+  /// divided the call by speaker (Jose, 2026-10-12).
+  static final _bySpeaker = RegExp(
+    r'^(IVR menu|Dispatcher|Customer): ',
+    multiLine: true,
+  );
+
+  static TextSpan _speakers(String text) {
+    final label = RegExp(r'^(IVR menu|Dispatcher|Customer): ');
+    final lines = text.split('\n');
+    return TextSpan(
+      children: [
+        for (var i = 0; i < lines.length; i++) ...[
+          if (label.firstMatch(lines[i]) case final m?) ...[
+            TextSpan(
+              text: m.group(0),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(text: lines[i].substring(m.end)),
+          ] else
+            TextSpan(text: lines[i]),
+          if (i < lines.length - 1) const TextSpan(text: '\n'),
+        ],
+      ],
+    );
+  }
+
   /// Transcripts opened to their full length, by conversation id.
   final _openTranscripts = <String>{};
 
@@ -1671,14 +1698,27 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
           const SizedBox(height: 2),
-          open
-              ? SelectableText(text, style: theme.textTheme.bodySmall)
-              : Text(
-                  text,
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
+          if (!_bySpeaker.hasMatch(text))
+            open
+                ? SelectableText(text, style: theme.textTheme.bodySmall)
+                : Text(
+                    text,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  )
+          else
+            open
+                ? SelectableText.rich(
+                    _speakers(text),
+                    style: theme.textTheme.bodySmall,
+                  )
+                : Text.rich(
+                    _speakers(text),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
           if (text.length > 240)
             Align(
               alignment: Alignment.centerLeft,

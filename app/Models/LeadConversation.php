@@ -74,6 +74,10 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 .'recording Google keeps. The audio is fetched once, transcribed and deleted; '
                 .'the words are kept here, with the enquiry.',
                 Erasure::erase()),
+            new PersonalDataEntry('transcript_labelled', PersonalDataEntry::CONTENT,
+                'The same transcript divided by who was speaking (menu, dispatcher, '
+                .'customer), done by Grok so it reads more easily.',
+                Erasure::erase()),
             new PersonalDataEntry('recording_url', PersonalDataEntry::CONTENT,
                 'Where Google keeps the recording of a call with this person — their voice. '
                 .'EzBizi never copies the audio; it streams it on request with the connected '

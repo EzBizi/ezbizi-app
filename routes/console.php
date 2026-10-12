@@ -362,6 +362,7 @@ Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '09:00')
 Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
+Schedule::command('ezbizi:label-call-transcripts')->everyTwoMinutes()->withoutOverlapping(15);
 // Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).
 Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
 

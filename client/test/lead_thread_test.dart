@@ -187,6 +187,34 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
   });
 
+  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
+  testWidgets('a transcript divided by speaker shows each label in bold', (
+    tester,
+  ) async {
+    const labelled =
+        'IVR menu: Press 1 for service.\n\nDispatcher: A1 Chimney, this is Ana.'
+        '\n\nCustomer: I saw you are hiring.';
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callTranscript: labelled,
+    );
+    final text = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (w) => w is Text && w.textSpan?.toPlainText() == labelled,
+      ),
+    );
+    final bold = <String>[];
+    text.textSpan!.visitChildren((span) {
+      if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
+        bold.add(span.text!);
+      }
+      return true;
+    });
+    expect(bold, ['IVR menu: ', 'Dispatcher: ', 'Customer: ']);
+  });
+
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
   /// Jose, 2026-10-01: the website visitor sees "Lenin is typing…", and the
   /// dispatcher sees the visitor typing. Only on a live website chat.

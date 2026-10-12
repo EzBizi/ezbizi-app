@@ -879,8 +879,9 @@ class LeadsController extends Controller
             'occurred_at' => $c->occurred_at?->toIso8601String(),
             'duration_ms' => $c->duration_ms,
             'text' => $c->text,
-            // A call's words, machine-transcribed from the recording.
-            'transcript' => $c->transcript,
+            // A call's words, machine-transcribed from the recording, divided
+            // by speaker once Grok has (ezbizi:label-call-transcripts).
+            'transcript' => $c->transcript_labelled ?? $c->transcript,
             // Waiting its turn with the transcriber (ezbizi-transcribe.timer):
             // an answered, recorded customer call from the last week, not done.
             'transcript_pending' => $c->transcript === null && $c->transcribed_at === null

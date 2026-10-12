@@ -1,0 +1,114 @@
+<?php
+
+namespace Tests\Feature\Leads;
+
+use App\Models\Lead;
+use App\Models\LeadConversation;
+use App\Support\Ai\TranscriptSpeakers;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Process;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/** Jose, 2026-10-12: transcripts divided "IVR Menu: / Dispatcher: / Customer:". */
+class LabelCallTranscriptsTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private const RAW = 'Thank you for calling A1 Chimney, press 1 for service. Thank you for calling A1 Chimney, '
+        .'press 1 for service. A1 Chimney, this is Ana. Hi, I saw you are hiring technicians in Baltimore. '
+        .'Yes, send your resume to the office. Great, thank you.';
+
+    private array $t;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->t = $this->provisionTenant('A1-Group');
+        config()->set('ezbizi.leads_ai_grok', true);
+        config()->set('services.grok_cli.home', '/var/lib/ezbizi-grok');
+    }
+
+    private function aCall(): LeadConversation
+    {
+        return $this->inTenant($this->t['org'], function () {
+            $lead = Lead::create([
+                'organization_id' => $this->t['org']->id, 'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => uniqid(), 'lead_type' => 'PHONE_CALL', 'status' => Lead::STATUS_NEW, 'received_at' => now(),
+            ]);
+
+            return LeadConversation::create([
+                'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => uniqid(),
+                'channel' => LeadConversation::CHANNEL_PHONE_CALL, 'participant' => LeadConversation::FROM_CONSUMER,
+                'occurred_at' => now(), 'duration_ms' => 148000, 'transcript' => self::RAW,
+            ]);
+        });
+    }
+
+    private function reread(LeadConversation $row): LeadConversation
+    {
+        return $this->inTenant($this->t['org'], fn () => $row->fresh());
+    }
+
+    private function grokSays(array $turns): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => ['turns' => $turns]]))]);
+    }
+
+    public function test_a_call_is_divided_by_speaker_with_the_menu_once_and_the_raw_kept(): void
+    {
+        $row = $this->aCall();
+        $this->grokSays([
+            ['speaker' => 'IVR menu', 'text' => 'Thank you for calling A1 Chimney, press 1 for service.'],
+            ['speaker' => 'IVR menu', 'text' => 'Thank you for calling A1 Chimney, press 1 for service.'],
+            ['speaker' => 'Dispatcher', 'text' => 'A1 Chimney, this is Ana.'],
+            ['speaker' => 'Customer', 'text' => 'Hi, I saw you are hiring technicians in Baltimore.'],
+            ['speaker' => 'Dispatcher', 'text' => 'Yes, send your resume'],
+            ['speaker' => 'Dispatcher', 'text' => 'to the office.'],
+            ['speaker' => 'Customer', 'text' => 'Great, thank you.'],
+        ]);
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $row = $this->reread($row);
+        $this->assertSame(self::RAW, $row->transcript, 'the Whisper words stay');
+        $this->assertSame(
+            "IVR menu: Thank you for calling A1 Chimney, press 1 for service.\n\n"
+            ."Dispatcher: A1 Chimney, this is Ana.\n\n"
+            ."Customer: Hi, I saw you are hiring technicians in Baltimore.\n\n"
+            ."Dispatcher: Yes, send your resume to the office.\n\n"
+            .'Customer: Great, thank you.',
+            $row->transcript_labelled,
+        );
+
+        // Labelled once: the next run asks Grok nothing (still the one call).
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+        Process::assertRanTimes(fn () => true, 1);
+    }
+
+    public function test_an_answer_that_lost_the_words_falls_back_to_the_raw_transcript(): void
+    {
+        $row = $this->aCall();
+        $this->grokSays([['speaker' => 'Customer', 'text' => 'Wants a job.']]);
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $this->assertSame(self::RAW, $this->reread($row)->transcript_labelled);
+    }
+
+    public function test_grok_failing_leaves_it_for_the_next_run(): void
+    {
+        $row = $this->aCall();
+        Process::fake(['*' => Process::result('', 'not signed in', 1)]);
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        $this->assertNull($this->reread($row)->transcript_labelled);
+    }
+
+    public function test_a_speaker_grok_was_not_asked_for_is_dropped(): void
+    {
+        $this->assertNull(TranscriptSpeakers::assemble([['speaker' => 'Narrator', 'text' => self::RAW]], self::RAW));
+    }
+}
