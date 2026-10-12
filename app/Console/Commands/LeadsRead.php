@@ -46,13 +46,16 @@ class LeadsRead extends Command
         $read = 0;
         foreach ($leads->groupBy('organization_id') as $orgId => $group) {
             $tenant->run(Organization::withoutGlobalScopes()->findOrFail($orgId), function () use ($group, $insights, $events, &$read) {
-                foreach ($group as $lead) {
-                    try {
-                        $answer = $insights->read($lead);
-                    } catch (RuntimeException $e) {
-                        $this->warn('Grok: '.$e->getMessage());
+                // Side by side (GrokCli::askMany); a failed lead stays unread
+                // and is asked again next run.
+                $answers = $insights->readMany($group->values()->all());
 
-                        return;   // an expired sign-in fails every call; try the rest next run
+                foreach ($group->values() as $n => $lead) {
+                    $answer = $answers[$n];
+                    if ($answer instanceof RuntimeException) {
+                        $this->warn('Grok: '.$answer->getMessage());
+
+                        continue;
                     }
                     if ($answer === null) {
                         continue;
