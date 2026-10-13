@@ -47,7 +47,9 @@ final class CallLabels
      * suggestions/EZBIZI-TRANSCRIPTION-AND-CUSTOMER-IDENTITY-HANDOFF.md, §4),
      * so a quote or an offered time is not read as a booking.
      */
-    private const BOOKING_RULES = 'A price quote or an offered time is not a booking: the caller must accept a visit. '
+    private const BOOKING_RULES = 'Booked means a NEW appointment created on this call. Moving, cancelling or confirming an '
+        .'appointment the caller already had is not booked: use confirmation or cancel. '
+        .'A price quote or an offered time is not a booking: the caller must accept a visit. '
         .'A caller who declines, says they will call back, or is shopping around has not booked. '
         .'If a booking is cancelled later in the same call, it is not booked.';
 
