@@ -246,3 +246,20 @@ Run on 0.0.0324 (a04ea003, which carries 42de4013) from the Dismantler's bundle 
 - **Progress:** 17 learners' `last_screen` moved down by the number of removed topics at or before it, so nobody gained or lost a completed topic. The guide now has 18 topics; all 16 people who had completed it still have, and every one of them is at topic 17.
 - **Record:** one `training.dead_videos_removed` audit row with every removed block, topic and progress change. The guide and its progress as they were before are backed up at `/var/www/ezbizi-backups/training-before-dead-videos-20260930T194656.json` on the app box.
 - **To put a video back:** re-upload it, then add it in Training › Settings › the guide, as a Video block (for a removed topic, add a topic back in its place, all under chapter "Dispatcher Essentials": the three Booking topics in section "Scheduled New Client", the five Lost/Missed/Inspection-level topics in "Unscheduled New Client", and Complaint Scenario in "Complaints Simulation"; they sat between "Complaints" and "Scheduling a Job in Workiz"). Unlisted links carry their hash (`?h=`) and play.
+
+### 8 restored from YouTube (2026-10-12)
+
+Jose found YouTube copies. Matched by video title, these 8 topics went back to their places (topics 11–18, between "Complaints" and "Scheduling a Job in Workiz") with their A1 chapter and section. Progress moved up by 8 for the 18 people past that point. There is one `training.videos_restored` audit row; the backup from before is `/var/www/ezbizi-backups/training-before-video-restore-20261012T134914.json`.
+
+- Perfect Booking Call: dZA_UfKYyw0
+- Booking with Availability Resistance: TBci0k79PoU
+- Call With Question About Inspection Level: Z7WTPRAO_tQ
+- Missed Emergency Booking Due to Slow Response: oaEC1EoIU6o
+- Lost Booking from Time Overstatement and No Same-Day Booking: 5a557cMOpUM
+- Lost Booking from Poor Call Flow: irF3JC2Ck0o
+- Lost Booking Due to Uncertainty: jeTQG071ffY
+- Complaint Scenario: 22fjpVN-RPQ ("Customer Complaint")
+
+**Still missing:**
+- Booking with Price Resistance. Two of the links match no topic by title: OzP7fPZFFOM ("Lost Booking Due to Premature Fee Disclosure") and 9vx5RbTywhM ("Dispatcher Video 1 chf3").
+- The 7 how-to videos (Workiz scheduling, job source, rescheduling, ETA call, complaint handling, cancellation, RingCentral).

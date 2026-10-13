@@ -104,6 +104,55 @@ final class GuideScreens
     }
 
     /**
+     * A guide's topics, optionally only those under one chapter (and section),
+     * in order — what the WhatsApp staff bot's curated menus read.
+     *
+     * @return list<array{title: string, chapter: ?string, section: ?string, topic: array<string, mixed>}>
+     */
+    public static function topics(TrainingGuide $guide, ?string $chapter = null, ?string $section = null): array
+    {
+        $out = [];
+
+        foreach ($guide->screens ?? [] as $screen) {
+            $topic = self::topic((array) $screen);
+
+            if (($chapter !== null && $topic['chapter'] !== $chapter) || ($section !== null && $topic['section'] !== $section)) {
+                continue;
+            }
+
+            $out[] = ['title' => $topic['title'], 'chapter' => $topic['chapter'], 'section' => $topic['section'], 'topic' => $topic];
+        }
+
+        return $out;
+    }
+
+    /**
+     * One topic as plain text for a chat: text blocks, tables as "a · b · c"
+     * lines, each video's public link on its own line. Images are skipped:
+     * a held image's link is signed and dies in two hours.
+     *
+     * @param  array<string, mixed>  $topic  a topic as [topic] returns it
+     */
+    public static function plainText(array $topic): string
+    {
+        $parts = [];
+
+        foreach ($topic['blocks'] ?? [] as $block) {
+            $parts[] = match ($block['type'] ?? null) {
+                'text' => trim((string) ($block['text'] ?? '')),
+                'table' => implode('
+', array_map(fn ($row) => implode(' · ', (array) $row), (array) ($block['rows'] ?? []))),
+                'video' => (string) ($block['url'] ?? ''),
+                default => '',
+            };
+        }
+
+        return implode('
+
+', array_filter($parts, fn ($p) => $p !== ''));
+    }
+
+    /**
      * The EzBizi page that plays a Vimeo or YouTube link, or null for any
      * other link.
      *
