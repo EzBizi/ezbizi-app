@@ -240,10 +240,12 @@ class _EmailScreenState extends State<EmailScreen> {
 
       final data = response.data;
 
+      // Jose, 2026-10-13: Eve was given 10 inboxes and saw all 30 -- the
+      // rest were ones she may manage but not open. Only openable ones here.
       _mailboxes = [
         for (final entry in (data is List ? data : const []))
           if (entry is Map<String, dynamic>) Mailbox.fromJson(entry),
-      ];
+      ].where((mailbox) => mailbox.mayRead).toList();
 
       // Two or more inboxes land on All inboxes so mail in the second
       // one is not hidden behind a pick. One inbox is that inbox —
