@@ -1927,6 +1927,8 @@ class AutomationsController extends Controller
                 // and the two lists add up rather than intersect. Named people
                 // are how somebody reaches a name their roles do not cover.
                 $parameter('user_ids', 'And these people by name', 'people', false),
+                // Task Board (Jose, 2026-10-13): only means anything on a task trigger.
+                $parameter('to_assignee', "Also tell whoever the task is given to", 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),

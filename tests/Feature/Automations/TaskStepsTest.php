@@ -4,10 +4,10 @@ namespace Tests\Feature\Automations;
 
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\Notification;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Support\Automations\ActionRunner;
-use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -53,6 +53,28 @@ class TaskStepsTest extends TestCase
             $refused = $runner->run(['type' => 'change_status', 'value' => 'stuck'], $event, $task->fresh(), automation: $theirs);
             $this->assertFalse($refused['ok']);
             $this->assertSame('done', $task->fresh()->status);
+        });
+    }
+
+    public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $worker = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $worker) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $runner = app(ActionRunner::class);
+            $step = ['type' => 'notify', 'message' => 'A task for you', 'to_assignee' => true];
+
+            $given = new AutomationEvent(['event_key' => 'task.created', 'payload' => ['assignee_user_id' => $worker->id, 'after' => []]]);
+            $told = $runner->run($step, $given, null, automation: $rule);
+            $this->assertTrue($told['ok'], $told['detail']);
+            $this->assertSame([$worker->id], Notification::query()->pluck('user_id')->unique()->values()->all());
+
+            // Nobody assigned and nobody else named is skipped, never "tell everybody".
+            $nobody = $runner->run($step, new AutomationEvent(['event_key' => 'task.created', 'payload' => ['after' => []]]), null, automation: $rule);
+            $this->assertTrue($nobody['skipped'] ?? false);
+            $this->assertSame(1, Notification::query()->count());
         });
     }
 }

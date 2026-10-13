@@ -1551,6 +1551,9 @@ class ActionRunner
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
     private const RECIPIENT_USER = 'user:';
 
+    /** Whoever a task is given to, read when the rule runs (Jose, 2026-10-13). */
+    private const RECIPIENT_ASSIGNEE = 'assignee:';
+
     /**
      * The customer the rule is about — the job's, the report's, or the
      * customer itself. Jose, 2026-09-24: "when a job changes status to Done,
@@ -1621,6 +1624,10 @@ class ActionRunner
                 : (($id = $subject?->getAttribute('customer_id')) ? Customer::query()->find($id) : null);
 
             return $customer?->getAttribute($column);
+        }
+
+        if ($stored === self::RECIPIENT_ASSIGNEE) {
+            return $this->assigneeOf($event, $subject)?->getAttribute($column);
         }
 
         if (str_starts_with($stored, self::RECIPIENT_USER)) {
@@ -3064,6 +3071,17 @@ class ActionRunner
             (array) ($action['user_ids'] ?? []),
         ), fn (string $id) => $id !== ''));
 
+        // "Also tell the task's assignee". Nobody assigned, and nobody else
+        // named, is said and skipped: an empty audience would tell everybody.
+        if (filter_var($action['to_assignee'] ?? false, FILTER_VALIDATE_BOOL)) {
+            $assignee = $this->assigneeOf($event, $subject);
+            if ($assignee !== null) {
+                $userIds[] = $assignee->getKey();
+            } elseif ($userIds === [] && $roleIds === []) {
+                return ['type' => 'notify', 'ok' => true, 'skipped' => true, 'detail' => 'The task has nobody assigned, so nobody was told.'];
+            }
+        }
+
         /*
          * A BAD ROLE ID IS A REFUSAL, NOT A 500.
          *
@@ -3309,5 +3327,15 @@ class ActionRunner
         return is_string($stored) && str_starts_with($stored, 'user:')
             ? User::query()->where('is_active', true)->find(substr($stored, 5))
             : null;
+    }
+
+    /** The task's assignee: the event's assignee_user_id, else the subject's. Active people only. */
+    private function assigneeOf(AutomationEvent $event, ?Model $subject): ?User
+    {
+        $id = data_get($event->payload, 'assignee_user_id')
+            ?? data_get($event->payload, 'after.assignee_user_id')
+            ?? $subject?->getAttribute('assignee_user_id');
+
+        return is_string($id) && $id !== '' ? User::query()->where('is_active', true)->find($id) : null;
     }
 }

@@ -3259,6 +3259,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 value: 'customer',
                 label: 'The customer it is about',
               ),
+            // Whoever the task is given to, on a task trigger (Jose, 2026-10-13).
+            if (typedAllowed && (_trigger ?? '').startsWith('task.'))
+              const SearchOption(
+                value: 'assignee',
+                label: 'Whoever the task is given to',
+              ),
             SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
@@ -3269,7 +3275,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               ? null
               : (chosen) => setState(() {
                   row.recipientKind = chosen;
-                  controller.text = chosen == 'customer' ? 'customer:' : '';
+                  controller.text = switch (chosen) {
+                    'customer' => 'customer:',
+                    'assignee' => 'assignee:',
+                    _ => '',
+                  };
                 }),
         ),
         const SizedBox(height: 10),
@@ -3580,6 +3590,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     // because it is the one value that could be any of the three.
     if (value.startsWith('user:')) return 'person';
     if (value == 'customer:') return 'customer';
+    if (value == 'assignee:') return 'assignee';
     // An assignment names a person or a field and never a typed value, so a
     // non-empty value there can only be a field.
     if (kindOf != 'person_or_field') {
