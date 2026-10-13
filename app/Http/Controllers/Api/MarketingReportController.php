@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
 use App\Support\Reports\MarketingReport;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -36,10 +38,21 @@ class MarketingReportController extends Controller
             ->orderBy('name')
             ->get();
 
-        $rows = [];
-        foreach ($branches as $branch) {
-            array_push($rows, ...$report->forBranch($branch, $dates['from'], $dates['to']));
-        }
+        // ponytail: 10 minutes per organization and dates. Every branch asks
+        // Google Ads and Airtable live (about 15 s for a fresh week, measured
+        // 2026-10-13); a P&L line or ad cost edited since shows within 10 min.
+        $rows = Cache::remember(
+            'reports.marketing:'.app(TenantContext::class)->idOrFail().':'.$dates['from'].':'.$dates['to'],
+            600,
+            function () use ($branches, $report, $dates) {
+                $rows = [];
+                foreach ($branches as $branch) {
+                    array_push($rows, ...$report->forBranch($branch, $dates['from'], $dates['to']));
+                }
+
+                return $rows;
+            },
+        );
 
         return response()->json(['data' => ['from' => $dates['from'], 'to' => $dates['to'], 'rows' => $rows]]);
     }

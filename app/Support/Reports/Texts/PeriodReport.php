@@ -43,6 +43,9 @@ final class PeriodReport
     /** @var array<string, list<array<string,mixed>>|null> rows per table, for one consolidated run */
     private array $tables = [];
 
+    /** @var array<string, list<string>> each base's table names, asked once per run */
+    private array $baseTables = [];
+
     public function __construct(
         private readonly AirtableBase $airtable,
         private readonly AirtablePnl $pnl,
@@ -307,7 +310,11 @@ final class PeriodReport
             $token = (string) (($c->credentials ?? [])['api_token'] ?? '');
 
             try {
-                if (! in_array($code, $this->airtable->verify($token, (string) $c->remote_id)['tables'], true)) {
+                // Asked once per base per run: the Marketing tab reads every
+                // branch, and asking each time cost a round trip per branch.
+                $tables = $this->baseTables[$c->getKey()] ??= $this->airtable->verify($token, (string) $c->remote_id)['tables'];
+
+                if (! in_array($code, $tables, true)) {
                     continue;
                 }
 

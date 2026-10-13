@@ -66,6 +66,12 @@ class MarketingReportTest extends TestCase
         // No ad cost: null, not zero; profit is still the margin's.
         $this->assertNull($by['GMB /SEO']['cost_minor']);
         $this->assertSame(25000, $by['GMB /SEO']['net_profit_minor']);
+        $this->assertNull($ls['profit_missing']);
+
+        // A part week the P&L has no figures for: no profit, and why.
+        $part = collect(app(MarketingReport::class)->rows(Franchise::query()->withoutGlobalScopes()->find($f->id), '2026-09-22', '2026-09-23'))->keyBy('source');
+        $this->assertNull($part['LS Ads']['profit_minor']);
+        $this->assertNotNull($part['LS Ads']['profit_missing']);
 
         // PPC is paid for but had nothing and no cost: left out.
         $this->assertFalse($by->has('PPC'));

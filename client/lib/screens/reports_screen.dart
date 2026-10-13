@@ -321,7 +321,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         (
           'Marketing',
           Icons.campaign_outlined,
-          () => MarketingReport(api: widget.api),
+          () => MarketingReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
         ),
       // Facebook ad spend (Jose, 2026-10-12). Editing the campaign mapping
       // asks for Build, as the server does.
@@ -329,14 +332,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         (
           'Meta',
           Icons.campaign_outlined,
-          () => MetaAdsReport(api: widget.api, canEdit: canBuildHere),
+          () => MetaAdsReport(
+            api: widget.api,
+            canEdit: canBuildHere,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
         ),
       // Thumbtack lead spend (Jose, 2026-10-13).
       if (_mayOpen('thumbtack'))
         (
           'Thumbtack',
           Icons.request_quote_outlined,
-          () => ThumbtackReport(api: widget.api),
+          () => ThumbtackReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
         ),
       if (me != null)
         for (final module in me.reachableModules)
