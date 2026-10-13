@@ -2965,6 +2965,27 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 81 · App-wide · a walkthrough and a how-to video beside every tab's title (`docs/previews/tab-walkthrough-video-layouts.html`)
+
+Jose 2026-10-13, via the desk: *"on a1tools for each main tab we had this ... a walkthrough and how to use video buttons, so
+im wondering if we can put those back ... 1 - Clicking the Walkthrough icon would basically help the user navigate the tab
+for the first time, highlighting parts of the app and giving description as to what does what ... using color highlighing.
+obscuring the rest of the app ... 2 - The video would basically be something manual we'll be making for each tab ... voiced
+... this is an app level feature, not tied to any organizations or companies btw."*
+
+The same in every option: a tab's walkthrough is a short list of steps beside its code (the control it points at, a title,
+a sentence or two, an optional "try it"), with a version. A step whose control you can't see is skipped. Seen is stored per
+person on the server. A raised version offers only the new steps as What's new here. The video button shows only on a tab
+with a video. EzBizi staff keep the tab → video list, so a new video needs no release. Nothing opens as a dialog.
+
+Desktop **1** (recommended): (?) and ▶ beside the title, as in A1 Tools. A first visit offers the walkthrough in one line and
+never starts it by itself. The spotlight dims everything but the control and puts the step card beside it (Back / Next /
+Skip, dots). The video plays in the side panel with chapters and captions, and Keep it small shrinks it to a corner. **2**:
+one (?) with a menu, and the video floats in a corner. **3**: (?) opens a Help panel with the video and the steps, each with
+Show me. Phone **4** (recommended): both icons in the app bar, the step card along the bottom, and the video full width;
+**5**: menu and a docked mini player; **6**: a Help page. Owner: UI/UX builds the engine, the buttons and the staff list.
+Module owners write their own tab's steps. The desk makes the videos, Scheduling first.
+
 ### 80 · Task Board · boards for every company, franchise and person — **Jose: "as you recommend" — 1 and 4** (`docs/previews/task-board-layouts.html`)
 
 From the Task Board session, relaying Jose: *a "Task Board" tab, Monday.com-style. Tied to Organization → Company →
@@ -2984,6 +3005,18 @@ Desktop **1** (recommended): the boards as tabs (My board · the franchise · th
 **2**: a rail of boards, like Monday's workspace. **3**: "My work" across every board, plus a board picker. Phone **4**
 (recommended): scrolling tabs, then cards with a status edge, grouped; **5**: the board list first; **6**: My work. Owner:
 the Task Board session (backend, Automations, Reports); UI/UX builds the screens.
+
+Built (`task_board_screen.dart`, on the Task Board backend). The boards in the view are underlined tabs, My board first,
+each with your open count. Under them sit Table or Kanban and a search over task, owner, status and About. Table: each
+group is a foldable card with its colour down its rows (an all-done group opens folded), with Task · Owner · Status · Due ·
+About · Updates. The status cell wears the pill's colours, and a click changes it in place. Due reads Today / Tomorrow /
+Yesterday or the organization's date, red when late and not done. "Add task" at a group's foot opens a box: Enter adds it
+(yours on My board) and keeps the box open. Kanban: a column per status. The side panel has the name, status chips, owner,
+due (Late under the label), About, Made by (an automation by name), updates with a box to write one, and a two-step Delete.
+A board you can only read says View only and has no Add. Below 760 px each task is a card with its status down its edge.
+Not built yet: the Owner and Status filter menus (search covers both), dragging between Kanban columns, opening the About
+record, and @mentions. The Owner picker offers you and the people already on the board until the board sends who can be
+given tasks (asked of Task Board).
 
 ### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **Jose: "as u recommend on everything" — 1 and 4** (`docs/previews/monitoring-files-explorer-layouts.html`)
 
