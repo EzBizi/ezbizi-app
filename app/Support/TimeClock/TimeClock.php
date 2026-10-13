@@ -28,8 +28,12 @@ final class TimeClock
 {
     use ScopesToPlaces;
 
-    /** Out and back in in LESS than this continues the same shift. */
-    public const MERGE_MINUTES = 2;
+    /**
+     * Out and back in in LESS than this is one shift (2 until 2026-10-13, when
+     * Jose asked for 5: "if the difference between a clock out and a clock in
+     * is less than 5 mins they should merge").
+     */
+    public const MERGE_MINUTES = 5;
 
     /** How early a punch may be before it is "outside schedule" (design 2026-09-08 §6). */
     private const EARLY_GRACE_MINUTES = 30;
@@ -428,7 +432,75 @@ final class TimeClock
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
                 ],
             ]);
+
+            $this->joinNeighbours($shift);
         });
+    }
+
+    /**
+     * Join `$shift` with a neighbour less than MERGE_MINUTES away (2026-10-13).
+     *
+     * Clock-in already continues a shift that just closed; this is the same
+     * rule after an edit or an added shift, which is how Jose's own week kept
+     * two rows: the punches were 5:43 and 7:49 apart, and his corrections
+     * then closed the gaps to seconds, but nothing joined them. The earlier
+     * row survives and takes the later one's end, its ender and its
+     * scheduled end; extensions add up; a correction request on the later
+     * row moves to the survivor; the audit keeps both rows' times.
+     *
+     * @return TimeClockShift the row that holds the time now
+     */
+    private function joinNeighbours(TimeClockShift $shift): TimeClockShift
+    {
+        $gap = self::MERGE_MINUTES * 60;
+        $near = fn () => TimeClockShift::query()->where('user_id', $shift->user_id)->whereKeyNot($shift->getKey());
+
+        $before = $near()->whereNotNull('clocked_out_at')
+            ->where('clocked_out_at', '<=', $shift->clocked_in_at)
+            ->where('clocked_out_at', '>', $shift->clocked_in_at->copy()->subSeconds($gap))
+            ->latest('clocked_out_at')->first();
+        if ($before !== null) {
+            $shift = $this->join($before, $shift);
+        }
+
+        if ($shift->clocked_out_at !== null) {
+            $after = $near()->where('clocked_in_at', '>=', $shift->clocked_out_at)
+                ->where('clocked_in_at', '<', $shift->clocked_out_at->copy()->addSeconds($gap))
+                ->oldest('clocked_in_at')->first();
+            if ($after !== null) {
+                $shift = $this->join($shift, $after);
+            }
+        }
+
+        return $shift;
+    }
+
+    private function join(TimeClockShift $earlier, TimeClockShift $later): TimeClockShift
+    {
+        $before = [
+            'earlier' => ['id' => $earlier->id, 'clocked_in_at' => $this->instant($earlier->clocked_in_at), 'clocked_out_at' => $this->instant($earlier->clocked_out_at)],
+            'later' => ['id' => $later->id, 'clocked_in_at' => $this->instant($later->clocked_in_at), 'clocked_out_at' => $this->instant($later->clocked_out_at)],
+        ];
+
+        DB::table('time_clock_correction_requests')->where('shift_id', $later->id)->update(['shift_id' => $earlier->id]);
+        // The later row goes first: an open later row and the survivor taking
+        // its open end would otherwise be two open shifts for a moment.
+        $later->delete();
+
+        $earlier->forceFill([
+            'clocked_out_at' => $later->clocked_out_at,
+            'ended_by' => $later->ended_by,
+            'scheduled_end_at' => $later->scheduled_end_at,
+            'extensions' => (int) $earlier->extensions + (int) $later->extensions,
+            'edit_source' => $earlier->edit_source ?? $later->edit_source,
+        ])->save();
+
+        $this->audit->log('time_clock.merged', $earlier, changes: [
+            'before' => $before,
+            'after' => ['clocked_in_at' => $this->instant($earlier->clocked_in_at), 'clocked_out_at' => $this->instant($earlier->clocked_out_at)],
+        ]);
+
+        return $earlier;
     }
 
     /**
@@ -555,7 +627,7 @@ final class TimeClock
                 ],
             ]);
 
-            return $shift;
+            return $this->joinNeighbours($shift);
         });
     }
 

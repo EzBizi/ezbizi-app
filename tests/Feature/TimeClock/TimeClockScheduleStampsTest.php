@@ -81,7 +81,9 @@ class TimeClockScheduleStampsTest extends TestCase
         $this->assertTrue($this->open($alpha, $person)->outside_schedule);
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-out')->assertOk();
 
-        Carbon::setTestNow(Carbon::parse('2026-09-08 12:31:00', 'UTC')); // 07:31 local
+        // The next working day: a re-punch within 5 minutes would continue
+        // the first shift rather than stamp a new one (2026-10-13).
+        Carbon::setTestNow(Carbon::parse('2026-09-09 12:31:00', 'UTC')); // Wed 07:31 local
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
         $this->assertFalse($this->open($alpha, $person)->outside_schedule);
     }
