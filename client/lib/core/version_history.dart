@@ -17,7 +17,8 @@ class VersionHistory {
       version: '0.0.0424',
       date: '13 Oct 2026',
       items: [
-        'Walkthroughs: the (?) beside the title on Leads, Jobs, Customers, Scheduling, Dashboard, Work Hours, Communication, Email, Services and Inspection now walks you through each part of the tab.',
+        'Walkthroughs: the (?) beside the title on Leads, Jobs, Customers, Scheduling, Dashboard, Work Hours, Communication, Email, Services, Inspection, Field, Fleet, Inventory, Marketing, Training and A1 Leads GBP now walks you through each part of the tab.',
+        'Fleet: in a narrow vehicle list on a computer, the search and filters scroll with the vehicles instead of filling the pane.',
         'Reports: call reasons show Grok\'s reading by default.',
       ],
     ),
