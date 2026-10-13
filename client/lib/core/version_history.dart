@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0427',
       date: '13 Oct 2026',
       items: [
+        'Work Hours: a clock-out and clock-in less than 5 minutes apart are one shift, including after an edit.',
         'Automations: a rule can move a task to another group on its board.',
       ],
     ),
