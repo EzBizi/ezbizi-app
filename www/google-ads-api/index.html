@@ -25,7 +25,7 @@
 <meta name="twitter:description" content="Per-tenant OAuth, read-dominant access, no aggregation and no resale.">
 <meta name="twitter:image" content="https://www.ezbizi.com/og.png">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.ezbizi.com/google-ads-api/#page","url":"https://www.ezbizi.com/google-ads-api/","name":"Google Ads API — how EzBizi uses it","dateModified":"2026-10-12","inLanguage":"en-US","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}}}
+{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.ezbizi.com/google-ads-api/#page","url":"https://www.ezbizi.com/google-ads-api/","name":"Google Ads API — how EzBizi uses it","dateModified":"2026-10-13","inLanguage":"en-US","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}}}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -58,7 +58,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;bac
 <nav><a href="https://www.ezbizi.com/">EzBizi</a></nav>
 
 <h1>How EzBizi uses the Google Ads API</h1>
-<p class="meta">EZBIZI LLC · Manager account 706-109-4046 · Last updated 12 October 2026</p>
+<p class="meta">EZBIZI LLC · Manager account 706-109-4046 · Last updated 13 October 2026</p>
 
 <p>This page is written for Google's API compliance reviewers. It states what EzBizi is, which
 Google Ads and Local Services data it reads, on whose behalf, and what it does not do.</p>
@@ -178,7 +178,9 @@ from request input.</p>
 combined with another's, sold, or used by EzBizi to train models. It is shared with one service
 provider: the text of Local Services messages and call transcripts goes to xAI (Grok), with data
 retention switched off on our account, to sort and summarise each enquiry and draft a reply that
-the business reviews before sending, and to assess how the business's own staff handled a call, for coaching. See the <a href="/privacy/">privacy policy</a>.</p>
+the business reviews before sending, and to assess how the business's own staff handled a call, for coaching. When a person at that
+business asks a question on its WhatsApp staff line, the Google Ads, Local Services and Business
+Profile data their own role can see may also be sent to xAI as text to answer them. See the <a href="/privacy/">privacy policy</a>.</p>
 <p><span class="k">Revocation.</span> Disconnecting deletes the stored grant. Customers may also
 revoke access in their Google Account, which EzBizi detects and surfaces as a broken connection
 rather than failing silently.</p>
