@@ -27,6 +27,7 @@ class TaskBoardMembersTest extends TestCase
             ->assertJsonPath('data.visibility', 'private')
             ->assertJsonPath('data.my_role', 'owner')
             ->assertJsonPath('data.members_count', 1)
+            ->assertJsonPath('data.can_manage', true)
             ->json('data.id');
     }
 
@@ -61,6 +62,7 @@ class TaskBoardMembersTest extends TestCase
 
         $this->signedInAs($other)->getJson("/api/v1/task-boards/{$id}")->assertOk()
             ->assertJsonPath('data.my_role', 'viewer')
+            ->assertJsonPath('data.can_manage', false)
             ->assertJsonPath('data.can_edit', false);
         $this->signedInAs($other)->postJson('/api/v1/tasks', ['board_id' => $id, 'title' => 'Nope'])->assertForbidden();
         // A viewer does not manage members either.
