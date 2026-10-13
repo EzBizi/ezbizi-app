@@ -1892,6 +1892,10 @@ check('a happy face with a link goes straight to Google', str_contains($faces, "
 check('and no membership offer on the page (Jose, 2026-10-08: it is a text of its own)', str_contains($faces, "'/api/v1/web/membership/join'"), false);
 check('without one it asks, and can be skipped', str_contains($faces, 'data-step="ask"') && str_contains($faces, 'ezbizi-rf-skip'), true);
 check('a sad face is told too, with what happened', str_contains($faces, "tell({rating:'sad'"), true);
+// Jose, 2026-10-13: ask for detail, then apologise and stop; no Google offer after a complaint.
+check('the sad form asks for detail', str_contains($faces, 'Please be as descriptive as possible.'), true);
+check('after a complaint, no review button', (bool) preg_match('~data-step="sent".*?ezbizi-rf-btn~s', $faces), false);
+check('and the thanks apologises', str_contains($faces, 'investigate the issue'), true);
 
 reset_site();
 serve_preset_payload([], [], ['public_key' => 'pk_testkey']);

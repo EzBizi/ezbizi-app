@@ -455,12 +455,13 @@ final class WidgetPresets
                 'sad_title' => 'We are sorry we missed the mark',
                 'sad_text' => 'Tell us what went wrong and how we can make it right.',
                 'submit' => 'Send feedback',
-                'thanks' => 'Thank you! We have received your feedback and will be in touch shortly.',
+                'thanks' => "Thank you for letting us know, and we're sorry this wasn't the experience you expected. We have received your feedback and will investigate the issue. We may contact you to provide further support.",
                 // After the private feedback is sent. A switch rather than
                 // "leave it empty": an emptied box arrives as null and comes
                 // back as this default, so empty cannot mean anything.
                 'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
-                'ask_public' => true,
+                // Off: after a complaint the page apologises and stops (Jose, 2026-10-13).
+                'ask_public' => false,
             ],
             'team' => [
                 'columns' => 3,

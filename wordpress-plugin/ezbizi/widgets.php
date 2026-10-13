@@ -386,9 +386,10 @@ function ezbizi_preset_fallback($widget) {
         'sad_title' => 'We are sorry we missed the mark',
         'sad_text' => 'Tell us what went wrong and how we can make it right.',
         'submit' => 'Send feedback',
-        'thanks' => 'Thank you! We have received your feedback and will be in touch shortly.',
+        'thanks' => "Thank you for letting us know, and we're sorry this wasn't the experience you expected. We have received your feedback and will investigate the issue. We may contact you to provide further support.",
         'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
-        'ask_public' => true,
+        // Off: after a complaint the page apologises and stops (Jose, 2026-10-13).
+        'ask_public' => false,
     );
 
     return isset($fallbacks[$widget]) ? $fallbacks[$widget] : array();
@@ -1983,6 +1984,7 @@ function ezbizi_review_faces_shortcode($atts) {
         . 'body:has(' . $s . ') .ezbizi-chat-launch-text{display:none}'
         . $s . ' form{text-align:left}'
         . $s . ' label{display:block;margin:10px 0 4px;font-weight:600}'
+        . $s . ' .ezbizi-rf-hint{display:block;margin:-2px 0 6px;font-size:.85em;opacity:.8}'
         . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:12px;font:inherit;min-height:48px}'
         . $s . ' .ezbizi-rf-hp{position:absolute;left:-9999px}'
         . '</style>';
@@ -1998,13 +2000,15 @@ function ezbizi_review_faces_shortcode($atts) {
             . '<path d="' . $mouth . '" fill="none" stroke="' . $colour . '" stroke-width="4" stroke-linecap="round"/></svg>';
     };
 
-    $field = function ($name, $label, $type) use ($id) {
+    $field = function ($name, $label, $type, $hint = '') use ($id) {
         $fid = $id . '-' . $name;
+        $described = $hint === '' ? '' : ' aria-describedby="' . $fid . '-hint"';
         $input = $type === 'textarea'
-            ? '<textarea id="' . $fid . '" name="' . $name . '" rows="4" required></textarea>'
-            : '<input id="' . $fid . '" name="' . $name . '" type="' . $type . '" required />';
+            ? '<textarea id="' . $fid . '" name="' . $name . '" rows="4" required' . $described . '></textarea>'
+            : '<input id="' . $fid . '" name="' . $name . '" type="' . $type . '" required' . $described . ' />';
 
-        return '<label for="' . $fid . '">' . esc_html($label) . '</label>' . $input;
+        return '<label for="' . $fid . '">' . esc_html($label) . '</label>'
+            . ($hint === '' ? '' : '<small class="ezbizi-rf-hint" id="' . $fid . '-hint">' . esc_html($hint) . '</small>') . $input;
     };
 
     $out .= '<div class="ezbizi-review-faces" id="' . esc_attr($id) . '">'
@@ -2035,7 +2039,8 @@ function ezbizi_review_faces_shortcode($atts) {
         . $field('name', 'Your name', 'text')
         . $field('phone', 'Phone', 'tel')
         . $field('email', 'Email', 'email')
-        . $field('feedback', 'What happened?', 'textarea')
+        // Jose, 2026-10-13: ask for detail, so the office can act on it.
+        . $field('feedback', 'What happened?', 'textarea', __('Please be as descriptive as possible.', 'ezbizi'))
         . '<input class="ezbizi-rf-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />'
         . ezbizi_turnstile_box()
         . '<p><button type="submit" class="ezbizi-rf-btn">' . $t('submit') . '</button></p>'
