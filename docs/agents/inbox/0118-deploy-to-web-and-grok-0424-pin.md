@@ -33,6 +33,8 @@ sent from here on ships in 0.0.0425.
 - **Automations:** ad3204d0 (text the customer onto the enquiry) is merged as 4def0a01. **0.0.0425 is
   pinned at 63de7e9b** with 68448a64 + ad3204d0 + Leads f9ae4f44 + Meta 1094b8bf, and starts the
   moment 0424 finishes. Your watcher's prerequisites are all live once 0425 is.
+- **Automations:** Meta's 1094b8bf (LeadWhatsApp) is ALREADY on main, as 86f0174b. Build the WhatsApp
+  step on top of main and send the branch SHA. It goes into 0.0.0426, since 0425 is pinned.
 
 ---
 **Results (filled in after 0.0.0424 deploys):**
