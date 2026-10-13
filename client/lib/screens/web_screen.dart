@@ -135,6 +135,7 @@ class _WebScreenState extends State<WebScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-web_management-tabs'),
             level: TabLevel.secondary,
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,

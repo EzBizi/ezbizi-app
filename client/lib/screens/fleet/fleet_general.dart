@@ -173,6 +173,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
         : null;
 
     final attention = OverviewSection(
+      key: const ValueKey('tour-fleet_management-attention'),
       title: 'Needs attention',
       child: OverviewWarnings(warnings: warnings),
     );
@@ -213,6 +214,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
       key: const Key('fleet-general-spending'),
       title: 'Spending',
       trailing: OverviewPeriodPicker(
+        key: const ValueKey('tour-fleet_management-period'),
         period: _period,
         onChanged: (period) {
           setState(() => _period = period);

@@ -578,6 +578,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         stale ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant;
 
     return Material(
+      key: const ValueKey('tour-a1leads_gbp-source'),
       color: colour,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -616,6 +617,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Wrap(
+        key: const ValueKey('tour-a1leads_gbp-filters'),
         spacing: 12,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -714,6 +716,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           // replaced, so the control is absent rather than present and bad.
           if (MediaQuery.sizeOf(context).width >= _tableFrom)
             SegmentedButton<bool>(
+              key: const ValueKey('tour-a1leads_gbp-view-toggle'),
               showSelectedIcon: false,
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
               segments: const [

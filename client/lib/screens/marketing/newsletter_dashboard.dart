@@ -126,6 +126,7 @@ class NewsletterDashboard extends StatelessWidget {
         Refused(
           reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
           child: FilledButton.icon(
+            key: const ValueKey('tour-marketing-new-newsletter'),
             onPressed: can ? onNew : null,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('New newsletter'),
@@ -143,6 +144,7 @@ class NewsletterDashboard extends StatelessWidget {
   /// would filter nothing.
   Widget _tiles(BuildContext context) {
     final filters = FilterTiles(
+      key: const ValueKey('tour-marketing-status-tiles'),
       prefix: 'newsletters',
       picked: status,
       onPick: onStatus,

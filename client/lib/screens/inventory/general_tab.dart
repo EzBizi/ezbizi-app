@@ -181,8 +181,10 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
         const SizedBox(height: 16),
         OverviewPair(
           first: OverviewSection(
+            key: const ValueKey('tour-inventory-movement'),
             title: 'Movement',
             trailing: OverviewPeriodPicker(
+              key: const ValueKey('tour-inventory-period'),
               period: _period,
               onChanged: (period) {
                 setState(() => _period = period);
@@ -192,6 +194,7 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
             child: _movement(context, data['movement']),
           ),
           second: OverviewSection(
+            key: const ValueKey('tour-inventory-attention'),
             title: 'Needs attention',
             child: OverviewWarnings(warnings: warnings),
           ),

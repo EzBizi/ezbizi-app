@@ -493,4 +493,230 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'field': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-field-tabs',
+        title: 'Field',
+        body: 'Dashboard, Map, Route and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-field-sos',
+        title: 'You, and SOS',
+        body:
+            'Whether your location is being shared right now. SOS takes two '
+            'taps, so it is never sent by accident.',
+      ),
+      TourStep(
+        anchor: 'tour-field-counts',
+        title: 'Right now',
+        body:
+            'Who is tracked, reporting, at a job, stopped too long or out of '
+            'signal, and how many alerts are open.',
+      ),
+      TourStep(
+        anchor: 'tour-field-alerts',
+        title: 'Alerts',
+        body:
+            'What needs a look. Acknowledge one once it is handled, if your role allows.',
+      ),
+    ],
+  ),
+  'fleet_management': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-fleet_management-tabs',
+        title: 'Fleet',
+        body:
+            'General for the overview, and Vehicles for the list, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'fleet-general-vehicles',
+        title: 'The fleet in figures',
+        body:
+            'Vehicles, active, in the shop, out of service, and those nobody '
+            'has the keys to. Click a figure for the vehicles behind it.',
+      ),
+      TourStep(
+        anchor: 'fleet-general-spending',
+        title: 'Spending',
+        body: 'What the fleet cost, by category.',
+      ),
+      TourStep(
+        anchor: 'tour-fleet_management-period',
+        title: 'The period',
+        body: 'Which stretch of time Spending covers.',
+      ),
+      TourStep(
+        anchor: 'tour-fleet_management-attention',
+        title: 'Needs attention',
+        body: 'Anything about a vehicle that wants a look.',
+      ),
+      TourStep(
+        anchor: 'fleet-list',
+        title: 'The vehicles',
+        body: 'Click one to open it beside the list.',
+      ),
+    ],
+  ),
+  'inventory': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-inventory-tabs',
+        title: 'Inventory',
+        body:
+            'General, Stock, Items, Orders and Locations, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'inventory-general-items',
+        title: 'Inventory in figures',
+        body:
+            'Items, stock value, below reorder, out of stock, locations and '
+            'open purchase orders. Click a figure for what is behind it.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-movement',
+        title: 'Movement',
+        body: 'What came in and went out.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-period',
+        title: 'The period',
+        body: 'Which stretch of time Movement covers.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-attention',
+        title: 'Needs attention',
+        body: 'Anything in stock that wants a look.',
+      ),
+      TourStep(
+        anchor: 'inventory-list',
+        title: 'The list',
+        body: 'Click a row to open it beside the list.',
+      ),
+    ],
+  ),
+  'marketing': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-marketing-tabs',
+        title: 'Marketing',
+        body:
+            'Newsletter, Social Media Management, and the modules inside '
+            'Marketing, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-newsletter-panes',
+        title: 'Newsletter',
+        body: 'Dashboard, Composer and Settings.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-new-newsletter',
+        title: 'New newsletter',
+        body: 'Opens the composer on a new one.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-status-tiles',
+        title: 'Sent, Scheduled, Drafts',
+        body: 'Each one narrows the list, with how many are in it.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-social-panes',
+        title: 'Social Media Management',
+        body:
+            'Dashboard, Compose, Calendar, Accounts and QR Codes, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-social-tiles',
+        title: 'Your posts',
+        body: 'Scheduled, Sent and Failed narrow the timeline, with counts.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-new-post',
+        title: 'New post',
+        body: 'Write a post once, for the pages you pick.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-tabs',
+        title: 'Web Management',
+        body: 'SEO and Widgets, for each of your websites.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-sites',
+        title: 'Your websites',
+        body: 'Every website and subdomain, each with its own details.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-add-site',
+        title: 'Add a website',
+        body: 'Adds another website or subdomain to the list.',
+      ),
+      TourStep(
+        anchor: 'seo-sections',
+        title: 'Its details',
+        body: "The open website's details, one part at a time.",
+      ),
+    ],
+  ),
+  'training': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-training-tabs',
+        title: 'Training',
+        body: 'Learn, then Dashboard and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'learn-continue',
+        title: 'Continue',
+        body: 'The guide you were reading, at the page you left it.',
+      ),
+      TourStep(
+        anchor: 'learn-assigned',
+        title: 'Assigned to you',
+        body: 'What you have been given to read or take.',
+      ),
+      TourStep(
+        anchor: 'learn-search',
+        title: 'Find a guide or test',
+        body: 'Narrows the library as you type.',
+      ),
+      TourStep(
+        anchor: 'learn-library',
+        title: 'The library',
+        body: 'Everything you can read. Click one to open it.',
+      ),
+    ],
+  ),
+  'a1leads_gbp': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-a1leads_gbp-source',
+        title: 'How fresh this is',
+        body:
+            'Where these reviews were read from, and when. It warns you when '
+            'the data has stopped refreshing.',
+      ),
+      TourStep(
+        anchor: 'tour-a1leads_gbp-filters',
+        title: 'Narrow the reviews',
+        body: 'By rating, reply, period and whether a customer was matched.',
+      ),
+      TourStep(
+        anchor: 'tour-a1leads_gbp-view-toggle',
+        title: 'Board or Table',
+        body: 'The same reviews as cards or as rows.',
+      ),
+      TourStep(
+        anchor: 'gbp-panel',
+        title: 'The review',
+        body: 'The open review, beside the list.',
+      ),
+    ],
+  ),
 };

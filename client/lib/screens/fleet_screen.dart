@@ -236,6 +236,7 @@ class _FleetScreenState extends State<FleetScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-fleet_management-tabs'),
             labels: [
               ('General', Icons.dashboard_outlined),
               if (vehicles) ('Vehicles', Icons.local_shipping_outlined),
