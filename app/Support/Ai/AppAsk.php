@@ -18,16 +18,14 @@ use Illuminate\Support\Facades\Route;
  * kernel with a two-minute token of their own, so every permission and
  * current-view rule applies - and Grok answers from what came back. Read-only
  * by construction: only GET routes are offered, and anything else is refused
- * before it is dispatched.
+ * before it is dispatched. Jose, 2026-10-13: "Everything, as asked" - Google
+ * data and older records included, on this staff Q&A path only.
  */
 final class AppAsk
 {
     public const MAX_CALLS = 3;
 
-    // Website, 2026-10-13: no Google Ads / LSA / Business Profile data to xAI (Jose 10-12,
-    // "Facebook only for now"), and no mailbox or monitoring contents.
-    private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions',
-        'ads', 'business-profile', 'a1leads-gbp', 'email', 'mail', 'monitoring'];
+    private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions'];
 
     private const MAX_CHARS = 12000;
 
@@ -129,30 +127,13 @@ final class AppAsk
                 $json = str_contains((string) $response->headers->get('Content-Type'), 'json');
                 $out[$path] = $response->getStatusCode() >= 400
                     ? 'HTTP '.$response->getStatusCode()
-                    : ($json ? self::cut(self::withoutLocalServices(json_decode($raw, true) ?? $raw)) : 'not readable here');
+                    : ($json ? self::cut(json_decode($raw, true) ?? $raw) : 'not readable here');
             }
 
             return $out;
         } finally {
             $token->accessToken->delete();
         }
-    }
-
-    /** Drops every row whose source is Google Local Services, at any depth. */
-    public static function withoutLocalServices(mixed $value): mixed
-    {
-        if (! is_array($value)) {
-            return $value;
-        }
-        $out = [];
-        foreach ($value as $k => $v) {
-            if (is_array($v) && ($v['source'] ?? null) === Lead::SOURCE_LOCAL_SERVICES) {
-                continue;
-            }
-            $out[$k] = self::withoutLocalServices($v);
-        }
-
-        return array_is_list($value) ? array_values($out) : $out;
     }
 
     private static function cut(mixed $value): mixed
