@@ -27,3 +27,6 @@ needs: answer-read
 - `ezbizi:match-leads-to-jobs --all` → "Matched 160 lead(s) to a job."
 - Migration 2026_10_13_140000 (a1leads review_key) Ran. At deploy, 0 of 14,065 rows were keyed;
   a1leads-delta-sync runs every minute. The desk re-measures in about 15 min.
+- **A1Leads GBP rebuild done** (~17:40 UTC): a1leads_reviews holds 13,333 rows, every one with a review_key.
+  Before the rebuild there were 14,065 rows, so 732 duplicate rows collapsed. The 415 comparison and the decision on 01a13160 are yours.
+- 0.0.0421 natives finished: windows.json reads 0.0.0421.
