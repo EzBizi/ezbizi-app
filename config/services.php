@@ -620,6 +620,8 @@ return [
     'grok_cli' => [
         // Questions asked side by side (GrokCli::askMany); 1 if rate-limited.
         'concurrency' => (int) env('GROK_CLI_CONCURRENCY', 4),
+        // Grok's reasoning effort; 'low' is ~3.5x faster on transcripts.
+        'effort' => env('GROK_CLI_EFFORT', 'low'),
         'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
     ],
 

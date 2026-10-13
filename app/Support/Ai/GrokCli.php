@@ -92,6 +92,9 @@ final class GrokCli
                         '--no-subagents',
                         '--tools', '',
                         '--cwd', $work.'/cwd',
+                        // Measured on prod 2026-10-13, one 2.3k-char call:
+                        // default 215 s, low 61 s, same speakers and summary.
+                        '--reasoning-effort', (string) config('services.grok_cli.effort', 'low'),
                     ]);
                 }
                 $results = [];
