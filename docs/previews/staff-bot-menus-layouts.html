@@ -1,0 +1,361 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Staff bot menus</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.menus{width:280px;flex:0 0 auto;display:flex;flex-direction:column;gap:10px}
+.menu{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:6px}
+.menu.on{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.menu b{font-size:14px}
+.roles{display:flex;gap:4px;flex-wrap:wrap}
+.role{font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--neuc);color:var(--neu)}
+.items{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-width:0}
+.it{display:grid;grid-template-columns:18px 22px minmax(0,1fr) minmax(0,1.3fr) 110px;gap:10px;align-items:center;min-height:50px;padding:4px 12px;border-top:1px solid var(--line2);font-size:12.5px}
+.it:first-child{border-top:0}
+.it.sel{background:var(--pric)}
+.it .h{color:#9aa6ad;font-weight:800;cursor:grab}
+.it .n{font-weight:800;color:var(--muted)}
+.it .tx b{display:block;font-weight:700}
+.it .tx span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.src{display:flex;align-items:center;gap:6px;font-size:11.5px;min-width:0}
+.src span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.src .ic{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:0 0 auto}
+.ic.g{background:#e3f0f5}.ic.l{background:#efe9f8}.ic.r{background:#e7f3e9}.ic.m{background:var(--cauc)}
+.stt{font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;justify-self:end;white-space:nowrap}
+.stt.ok{background:var(--okc);color:var(--ok)}.stt.miss{background:var(--cauc);color:var(--cau)}
+.ed{width:400px;flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.ed h3{margin:0;font-size:15px}
+.opt3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.opt3 span{border:1px solid #b9c7cd;border-radius:10px;padding:8px;font-size:11.5px;font-weight:600;text-align:center}
+.opt3 span.on{background:var(--pric);border-color:var(--pri);color:var(--prid)}
+.crumb{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:12px}
+.crumb .seg2{border:1px solid #b9c7cd;border-radius:8px;padding:4px 8px;background:#fff;font-weight:600}
+.count{font-size:10.5px;color:var(--muted);text-align:right}
+/* WhatsApp */
+.wa{background:#efeae2;flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;padding:10px;overflow:hidden}
+.wa .hd{background:#075e54;color:#fff;height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;font-weight:700;font-size:13.5px;flex:0 0 auto}
+.wa .hd .av{background:#dcf8c6;color:#075e54}
+.bub{max-width:82%;background:#fff;border-radius:8px;padding:7px 9px;font-size:12.5px;box-shadow:0 1px .5px rgba(0,0,0,.13);display:flex;flex-direction:column;gap:4px}
+.bub.me{align-self:flex-end;background:#dcf8c6}
+.bub .tm{font-size:10px;color:#8a969e;align-self:flex-end}
+.bub .btnrow{border-top:1px solid #e3e3e3;margin:4px -9px -7px;padding:7px;text-align:center;color:#027eb5;font-weight:700;font-size:12.5px}
+.bub .btnrow+.btnrow{margin-top:0}
+.link{background:#f0f2f5;border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:1px}
+.link b{font-size:12px}.link span{font-size:11px;color:#667781}
+.vid{height:110px;border-radius:6px;background:linear-gradient(135deg,#3b4a54,#16222a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px}
+.ph2{display:grid;grid-template-columns:1fr 1fr;gap:3px}.ph2 i{height:70px;border-radius:5px;display:block;background:linear-gradient(135deg,#8d6e63,#4e342e)}.ph2 i:nth-child(2){background:linear-gradient(135deg,#a1887f,#6d4c41)}
+.sheet{background:#fff;border-radius:14px 14px 0 0;margin:0 -10px -10px;padding:10px 0 4px;display:flex;flex-direction:column;box-shadow:0 -4px 14px rgba(0,0,0,.15)}
+.sheet .tt{font-weight:800;text-align:center;font-size:13px;padding-bottom:6px;border-bottom:1px solid #eee}
+.sheet .sec{font-size:11px;font-weight:800;color:#008069;padding:8px 14px 2px}
+.sheet .row{display:flex;justify-content:space-between;align-items:center;padding:6px 14px;font-size:12.5px;border-bottom:1px solid #f2f2f2}
+.sheet .row div b{display:block;font-weight:600}.sheet .row div span{display:block;font-size:11px;color:#667781}
+.radio{width:16px;height:16px;border-radius:50%;border:2px solid #8a969e;flex:0 0 auto}
+.phw{width:300px;height:620px;border:9px solid #111;border-radius:34px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column;background:#efeae2}
+.qa{display:flex;gap:6px;flex-wrap:wrap}.qa span{background:#fff;border-radius:16px;padding:5px 10px;font-size:12px;color:#027eb5;font-weight:700;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+</style>
+
+<div class="wrap">
+<h1>AI Assistance › Staff bot: one number, a menu for each role</h1>
+<p class="subt">Jose asked for one WhatsApp number whose menu changes with the person's role. Everything it says is kept in EzBizi, where it can be edited. The Office and Technician menus below are Jose's list. Every person, phone number and figure here is invented.</p>
+<p class="cap"><b>Linked, never copied.</b> Most items point at a Training guide, down to its chapter and section. Editing the guide changes what the bot says, and nothing is kept twice. Where nothing in EzBizi covers an item yet (Monday training, the Before &amp; After gallery, the trainers' videos, the Google reviews link, a stand-alone dispatch speech), the item becomes a <b>Library entry</b> written in place: text, a link, a video or photos. One item, Daily Conversion Updates, is <b>made from Reports</b> each day. The bot knows who is writing from their phone number on their EzBizi profile, and that person's role decides the menu they get.</p>
+<div class="need"><b>Who builds what:</b> Training keeps the guides; Meta runs the WhatsApp number and sends the menus; Grok AI writes the free answers over them; UI/UX builds this editor. <b>WhatsApp's limits shape the editor:</b> one list holds at most 10 rows, a row's title 24 characters and its description 72. The counters below show how much is left of each.</div>
+
+<!-- ───────── Desktop 1 ───────── -->
+<h2><span class="n">1</span> Menus on the left, items in order, the editor and a live preview <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Pick a menu to see who gets it and its items in WhatsApp's order. Drag ⋮⋮ to reorder. Each item shows where its answer comes from and whether that content exists yet. The panel on the right edits the picked item: its title and line as WhatsApp shows them, then <b>Guide · Library entry · From Reports</b>. A guide is picked as guide › chapter › section.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">AI Assistance</div>
+ <div class="tabs"><span>AI</span><span>Library</span><span>WhatsApp groups</span><span class="on">Staff bot</span><span>Settings</span></div>
+ <div class="cols">
+  <div class="menus">
+   <div class="menu on"><b>Office</b><span class="tiny">7 items · 7 of 10 rows</span><div class="roles"><span class="role">Dispatcher</span><span class="role">Remote Dispatcher</span><span class="role">Office Manager</span></div></div>
+   <div class="menu"><b>Technicians</b><span class="tiny">6 items · 2 need content</span><div class="roles"><span class="role">Technician</span><span class="role">Lead Technician</span></div></div>
+   <span class="btn sm">+ Another menu</span>
+   <span class="tiny">A role in no menu gets "Ask a question" only. A person in two menus' roles gets the first one.</span>
+  </div>
+  <div class="items" style="flex:1">
+   <div class="it sel"><span class="h">⋮⋮</span><span class="n">1</span><div class="tx"><b>Locations</b><span>Branches, hours and addresses</span></div><div class="src"><span class="ic l">📍</span><span>Library › Locations</span></div><span class="stt ok">Ready</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">2</span><div class="tx"><b>Dispatch guidelines</b><span>How we answer and what we say</span></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide › Essentials › Customer Service</span></div><span class="stt ok">Ready</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">3</span><div class="tx"><b>Each call type</b><span>New client, scheduled or not</span></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide › New Client calls</span></div><span class="stt ok">Ready</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">4</span><div class="tx"><b>Software videos</b><span>Workiz, Monday, RingCentral</span></div><div class="src"><span class="ic g">📘</span><span>Know Our Scheduling/CRM · Phone Software</span></div><span class="stt miss">7 videos missing</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">5</span><div class="tx"><b>Call scripts</b><span>Examples to read from</span></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide › New Client calls › Scripts</span></div><span class="stt ok">Ready</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">6</span><div class="tx"><b>Chimney knowledge</b><span>The chimney training program</span></div><div class="src"><span class="ic g">📘</span><span>Knowing the Company</span></div><span class="stt ok">Ready</span></div>
+   <div class="it"><span class="h">⋮⋮</span><span class="n">7</span><div class="tx"><b>Daily conversion</b><span>New clients only, today so far</span></div><div class="src"><span class="ic r">📊</span><span>From Reports · Performance</span></div><span class="stt ok">Made daily</span></div>
+   <div class="it" style="color:var(--muted)"><span></span><span></span><span class="tiny">+ Add an item</span><span></span><span></span></div>
+  </div>
+  <div class="ed">
+   <h3>Locations</h3>
+   <div class="fld"><label>Title in the menu</label><div class="in">Locations</div><span class="count">9 / 24</span></div>
+   <div class="fld"><label>Line under it</label><div class="in">Branches, hours and addresses</div><span class="count">29 / 72</span></div>
+   <div class="fld"><label>The answer comes from</label><div class="opt3"><span>📘 A Training guide</span><span class="on">📍 Library entry</span><span>📊 From Reports</span></div></div>
+   <div class="fld"><label>Library entry</label><div class="crumb"><span class="seg2">Library ▾</span>›<span class="seg2">Locations ▾</span></div><span class="tiny">6 branches, kept in the Library already. The bot sends the one nearest the person, and the list on request.</span></div>
+   <div class="fld"><label>Attach</label><div class="bar2"><span class="btn sm">🔗 Link</span><span class="btn sm">🎬 Video</span><span class="btn sm">🖼 Photos</span></div></div>
+   <div class="foot"><span class="tiny">Saved as you type · edits reach WhatsApp at once</span><span class="sp"></span><span class="btn sm">Send me a test</span></div>
+  </div>
+ </div>
+</div></div></div>
+
+<div class="lab">1 · an item linked to a guide, and one still missing</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+ <div class="ed" style="width:420px">
+  <h3>Dispatch guidelines</h3>
+  <div class="fld"><label>The answer comes from</label><div class="opt3"><span class="on">📘 A Training guide</span><span>📍 Library entry</span><span>📊 From Reports</span></div></div>
+  <div class="fld"><label>Guide › chapter › section</label><div class="crumb"><span class="seg2">Dispatcher guide ▾</span>›<span class="seg2">Dispatcher Essentials ▾</span>›<span class="seg2">Customer Service ▾</span></div></div>
+  <div class="card" style="background:var(--ground);gap:4px"><span class="tiny b">What WhatsApp gets</span><span>The section's first two paragraphs, then "Read the whole section" linking to it in EzBizi. Edit the guide and this changes with it.</span><span class="tiny">Open in Training ›</span></div>
+ </div>
+ <div class="ed" style="width:420px;border-color:var(--caue)">
+  <h3>Before &amp; After gallery <span class="stt miss">Needs content</span></h3>
+  <div class="fld"><label>The answer comes from</label><div class="opt3"><span>📘 A Training guide</span><span class="on">📍 Library entry</span><span>📊 From Reports</span></div></div>
+  <div class="fld"><label>Write it here</label><div class="in area"><span class="ph">A few words the bot sends before the photos…</span></div></div>
+  <div class="fld"><label>Photos</label><div class="bar2"><span class="btn sm">🖼 Add photos</span><span class="tiny">0 of 10 · sent as one album</span></div></div>
+  <span class="tiny">Until it has content, the item stays in the menu and answers: "Coming soon, ask your manager."</span>
+ </div>
+</div>
+
+<!-- ───────── Desktop 2 ───────── -->
+<h2><span class="n">2</span> Both menus side by side</h2>
+<p class="cap">Office and Technicians as two columns of cards, with the roles at the head of each. A card can be dragged within a column or across to the other. Clicking a card opens its editor in a panel over the columns.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>AI</span><span>Library</span><span>WhatsApp groups</span><span class="on">Staff bot</span><span>Settings</span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;min-height:0">
+  <div class="items" style="padding:10px;gap:8px"><div class="bar2"><b>Office</b><span class="sp"></span><span class="role">Dispatcher</span><span class="role">Remote Dispatcher</span><span class="role">Office Manager</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">1</span><div class="tx"><b>Locations</b></div><div class="src"><span class="ic l">📍</span><span>Library</span></div><span class="stt ok">Ready</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">2</span><div class="tx"><b>Dispatch guidelines</b></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide</span></div><span class="stt ok">Ready</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">3</span><div class="tx"><b>Each call type</b></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide</span></div><span class="stt ok">Ready</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">4</span><div class="tx"><b>Software videos</b></div><div class="src"><span class="ic g">📘</span><span>2 guides</span></div><span class="stt miss">7 missing</span></div>
+   <span class="tiny">+ 3 more · 7 of 10 rows</span></div>
+  <div class="items" style="padding:10px;gap:8px"><div class="bar2"><b>Technicians</b><span class="sp"></span><span class="role">Technician</span><span class="role">Lead Technician</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">1</span><div class="tx"><b>Core values</b></div><div class="src"><span class="ic g">📘</span><span>Technician guide</span></div><span class="stt ok">Ready</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">2</span><div class="tx"><b>Before &amp; After</b></div><div class="src"><span class="ic m">🖼</span><span>Library entry</span></div><span class="stt miss">Needs content</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">3</span><div class="tx"><b>How-to videos</b></div><div class="src"><span class="ic g">📘</span><span>Platform and Reports</span></div><span class="stt ok">Ready</span></div>
+   <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">4</span><div class="tx"><b>Guidelines</b></div><div class="src"><span class="ic g">📘</span><span>Conduct and Behaviour</span></div><span class="stt miss">Trainer videos missing</span></div>
+   <span class="tiny">+ 2 more · 6 of 10 rows</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Desktop 3 ───────── -->
+<h2><span class="n">3</span> Write on the left, see WhatsApp on the right</h2>
+<p class="cap">One menu at a time, with a phone always showing that menu exactly as WhatsApp will. Clicking a row in the phone opens that item's editor on the left, and edits appear in the phone as you type.</p>
+<div class="win" style="height:640px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>AI</span><span>Library</span><span>WhatsApp groups</span><span class="on">Staff bot</span><span>Settings</span></div>
+ <div class="bar2"><span class="seg"><span class="on">Office</span><span>Technicians</span></span><span class="tiny">for Dispatcher, Remote Dispatcher, Office Manager</span></div>
+ <div style="display:flex;gap:16px;flex:1;min-height:0">
+  <div class="ed" style="flex:1;width:auto"><h3>Call scripts</h3>
+   <div class="fld"><label>Title in the menu</label><div class="in">Call scripts</div><span class="count">12 / 24</span></div>
+   <div class="fld"><label>Line under it</label><div class="in">Examples to read from</div><span class="count">21 / 72</span></div>
+   <div class="fld"><label>Guide › chapter › section</label><div class="crumb"><span class="seg2">Dispatcher guide ▾</span>›<span class="seg2">New Client calls ▾</span>›<span class="seg2">Scripts ▾</span></div></div>
+   <span class="tiny">The bot sends the scripts as text, each with its video when the guide has one.</span>
+  </div>
+  <div class="phw" style="height:520px;width:270px"><div class="wa"><div class="sheet" style="margin-top:auto"><div class="tt">Office menu</div><div class="sec">Office</div>
+   <div class="row"><div><b>Locations</b><span>Branches, hours and addresses</span></div><span class="radio"></span></div>
+   <div class="row"><div><b>Dispatch guidelines</b><span>How we answer and what we say</span></div><span class="radio"></span></div>
+   <div class="row"><div><b>Each call type</b><span>New client, scheduled or not</span></div><span class="radio"></span></div>
+   <div class="row"><div><b>Software videos</b><span>Workiz, Monday, RingCentral</span></div><span class="radio"></span></div>
+   <div class="row" style="background:#e7fce3"><div><b>Call scripts</b><span>Examples to read from</span></div><span class="radio" style="border-color:#008069"></span></div>
+   <div class="row"><div><b>Chimney knowledge</b><span>The chimney training program</span></div><span class="radio"></span></div>
+   <div class="row"><div><b>Daily conversion</b><span>New clients only, today so far</span></div><span class="radio"></span></div></div></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── WhatsApp ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> How it looks on WhatsApp</h2>
+<p class="cap"><b>4</b> (recommended): a greeting by name with one <b>Open menu</b> button, then WhatsApp's own list of the role's items. A pick answers with a card: the text, then the guide's link, a video or photos, and two buttons, <b>Menu</b> and <b>Ask a question</b>. A typed question goes to Grok AI's answers. <b>5</b>: a numbered text menu ("reply 1–7"). It is plainer, and works where WhatsApp's buttons do not. <b>6</b>: three buttons at a time, with "More" for the next three.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · greeting and menu <span class="rec">RECOMMENDED</span></span>
+  <div class="phw"><div class="wa"><div class="hd" style="margin:-10px -10px 4px"><span class="av">EZ</span>Northwind Staff</div>
+   <div class="bub me">hi<span class="tm">8:02</span></div>
+   <div class="bub">Good morning Dana. You're on the Office menu. Pick a topic, or just ask me anything.<span class="tm">8:02</span><div class="btnrow">☰ Open menu</div></div>
+   <div class="sheet" style="margin-top:auto"><div class="tt">Office menu</div><div class="sec">Office</div>
+    <div class="row"><div><b>Locations</b><span>Branches, hours and addresses</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Dispatch guidelines</b><span>How we answer and what we say</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Each call type</b><span>New client, scheduled or not</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Software videos</b><span>Workiz, Monday, RingCentral</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Call scripts</b><span>Examples to read from</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Chimney knowledge</b><span>The chimney training program</span></div><span class="radio"></span></div>
+    <div class="row"><div><b>Daily conversion</b><span>New clients only, today so far</span></div><span class="radio"></span></div>
+   </div></div></div></div>
+ <div class="pcol"><span class="pl">4 · an answer from a guide</span>
+  <div class="phw"><div class="wa"><div class="hd" style="margin:-10px -10px 4px"><span class="av">EZ</span>Northwind Staff</div>
+   <div class="bub me">Dispatch guidelines<span class="tm">8:03</span></div>
+   <div class="bub"><b>Dispatch guidelines</b>Answer by the third ring with the company name, then your name. Get the caller's name and address before the problem, so nobody is asked twice…<div class="link"><b>Read the whole section</b><span>Dispatcher guide › Customer Service · EzBizi</span></div><span class="tm">8:03</span><div class="btnrow">☰ Menu</div><div class="btnrow">💬 Ask a question</div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · Technicians: video and photos</span>
+  <div class="phw"><div class="wa"><div class="hd" style="margin:-10px -10px 4px"><span class="av">EZ</span>Northwind Staff</div>
+   <div class="bub me">How-to videos<span class="tm">7:41</span></div>
+   <div class="bub"><div class="vid">▶</div><b>Cap install, start to finish</b><span style="font-size:11px;color:#667781">4:12 · from Platform and Reports</span><span class="tm">7:41</span></div>
+   <div class="bub me">Before &amp; After<span class="tm">7:44</span></div>
+   <div class="bub"><div class="ph2"><i></i><i></i></div>Rebuilt crown, Maple Grove · 2 of 8<span class="tm">7:44</span><div class="btnrow">☰ Menu</div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · numbered text menu</span>
+  <div class="phw"><div class="wa"><div class="hd" style="margin:-10px -10px 4px"><span class="av">EZ</span>Northwind Staff</div>
+   <div class="bub me">menu<span class="tm">8:02</span></div>
+   <div class="bub">Office menu. Reply with a number:<br>1 Locations<br>2 Dispatch guidelines<br>3 Each call type<br>4 Software videos<br>5 Call scripts<br>6 Chimney knowledge<br>7 Daily conversion<span class="tm">8:02</span></div>
+   <div class="bub me">2<span class="tm">8:03</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · three at a time</span>
+  <div class="phw"><div class="wa"><div class="hd" style="margin:-10px -10px 4px"><span class="av">EZ</span>Northwind Staff</div>
+   <div class="bub">Good morning Dana. What do you need?<span class="tm">8:02</span><div class="btnrow">Locations</div><div class="btnrow">Dispatch guidelines</div><div class="btnrow">More…</div></div>
+  </div></div></div>
+</div>
+
+<!-- ───────── Phone editor ───────── -->
+<h2><span class="n">7</span> Editing from a phone</h2>
+<p class="cap">The same editor, one step at a time inside the tab: the menus, then a menu's items (with ↑ ↓ to reorder), then one item. A back arrow at each step.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">7 · a menu's items</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">AI Assistance</span></div><div class="pb">
+   <span class="back">← Staff bot</span><b>Technicians</b><div class="roles"><span class="role">Technician</span><span class="role">Lead Technician</span></div>
+   <div class="lst">
+    <div class="li"><div class="g"><b>1 · Core values</b><span>📘 Technician guide › Conduct</span></div><span class="stt ok">Ready</span></div>
+    <div class="li"><div class="g"><b>2 · Before &amp; After</b><span>🖼 Library entry</span></div><span class="stt miss">Needs content</span></div>
+    <div class="li"><div class="g"><b>3 · How-to videos</b><span>📘 Platform and Reports</span></div><span class="stt ok">Ready</span></div>
+    <div class="li"><div class="g"><b>4 · Guidelines</b><span>📘 Conduct and Behaviour</span></div><span class="stt miss">Videos missing</span></div>
+    <div class="li"><div class="g"><b>5 · Lead sale structure</b><span>📘 Sales &amp; Performance</span></div><span class="stt ok">Ready</span></div>
+    <div class="li"><div class="g"><b>6 · Google reviews</b><span>🔗 Library entry · a link</span></div><span class="stt miss">Needs the link</span></div>
+   </div>
+   <span class="btn">+ Add an item</span>
+  </div></div></div>
+</div>
+</div>

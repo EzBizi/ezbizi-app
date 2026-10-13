@@ -2965,6 +2965,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 88 · AI Assistance › Staff bot · one WhatsApp number, a menu for each role — **sent 2026-10-13, awaiting Jose** (`docs/previews/staff-bot-menus-layouts.html`)
+
+Relayed by Grok AI, Jose 2026-10-13, verbatim: *"One number, menu by role"*; content: *"all of it is in ezbizi already, from
+the training guides, but i also want to see it all in ezbizi so it can be modified as well, please talk to ui - ux to make a
+good experience"*. Menus are Jose's: Office (locations, dispatch guidelines, each call type, software videos, call scripts,
+chimney knowledge, daily conversion) and Technicians (core values, Before & After, how-to videos, guidelines, lead sale
+structure, Google reviews link). Items LINK to a Training guide › chapter › section (Training's mapping), or are a Library
+entry written in place where EzBizi has nothing yet, or are made from Reports (daily conversion). Editor counters follow
+WhatsApp's list limits (10 rows, 24-character titles, 72-character lines). Desktop **1** (recommended): menus with their
+roles on the left, the ordered items with source and Ready / Needs content, the item's editor on the right. **2**: both
+menus as side-by-side columns of cards. **3**: an editor beside a live WhatsApp phone. WhatsApp **4** (recommended): a
+greeting with Open menu, WhatsApp's list, then answer cards (text, the guide's link, video or photos) with Menu and Ask a
+question; **5**: a numbered text menu; **6**: three buttons at a time. Phone editor **7**. Owners: Training (guides), Meta
+(the number and its messages), Grok AI (answers); UI/UX builds the editor.
+
 ### 87 · Reports · one look for every tab — **Jose: "yes, as u recommend" — desktop 1, phone 4** — **BUILT** 34706c55 (session/uiux-reports-1: d6ba03b5 shell and bugs, b6be86b5 ReportGrid on Marketing/Meta/Thumbtack, 1b666c22 Google Ads and P&L, 34706c55 empty pages, library, scores). Left for later: Performance's own tables and Sources panel, the Builder preview (`docs/previews/reports-one-look-layouts.html`)
 
 Jose 2026-10-13, verbatim: *"Please whenever you can take a look at all the tabs in reports, specially the new ones ( also
