@@ -77,6 +77,9 @@ class SmsWebhookController extends Controller
             ]);
 
             $this->events->emit('phone.sms.received', $message, $this->payload($message));
+
+            // An answer to a text we sent about a lead goes on that lead's thread (Leads, 2026-10-13).
+            app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid);
         });
 
         return response('', Status::HTTP_OK);
