@@ -13,6 +13,7 @@ use App\Models\TrainingGuide;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
+use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\ReportAsk;
 use App\Support\Social\WhatsAppStaffBot;
@@ -975,5 +976,17 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('"me/api-keys":"refused"', $data, 'a blocked path is never dispatched');
         $this->assertStringContainsString('Zelda Quarry', json_encode($this->sent, JSON_UNESCAPED_UNICODE));
         $this->assertSame(0, PersonalAccessToken::where('name', 'WhatsApp AI (read only)')->count(), 'the token is gone');
+    }
+
+    /** Website, 2026-10-13: no Google Ads / LSA / Business Profile, mail or monitoring data reaches xAI. */
+    public function test_the_app_reader_never_offers_google_mail_or_monitoring_data(): void
+    {
+        $catalogue = AppAsk::catalogue();
+        foreach (['ads/', 'business-profile', 'a1leads-gbp', 'email/', 'monitoring'] as $blocked) {
+            $this->assertDoesNotMatchRegularExpression('#^'.preg_quote($blocked, '#').'#m', $catalogue, $blocked);
+        }
+        $this->assertStringContainsString("\ncustomers\n", "\n".$catalogue."\n");
+        $this->assertSame(['data' => [['id' => 2, 'source' => 'facebook']]], AppAsk::withoutLocalServices(
+            ['data' => [['id' => 1, 'source' => 'local_services'], ['id' => 2, 'source' => 'facebook']]]));
     }
 }

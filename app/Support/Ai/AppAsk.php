@@ -2,6 +2,7 @@
 
 namespace App\Support\Ai;
 
+use App\Models\Lead;
 use App\Models\User;
 use App\Support\Http\InternalRequest;
 use Illuminate\Http\Request;
@@ -23,7 +24,10 @@ final class AppAsk
 {
     public const MAX_CALLS = 3;
 
-    private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions'];
+    // Website, 2026-10-13: no Google Ads / LSA / Business Profile data to xAI (Jose 10-12,
+    // "Facebook only for now"), and no mailbox or monitoring contents.
+    private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions',
+        'ads', 'business-profile', 'a1leads-gbp', 'email', 'mail', 'monitoring'];
 
     private const MAX_CHARS = 12000;
 
@@ -123,13 +127,37 @@ final class AppAsk
                 $raw = (string) $response->getContent();
                 $out[$path] = $response->getStatusCode() >= 400
                     ? 'HTTP '.$response->getStatusCode()
-                    : (strlen($raw) > self::MAX_CHARS ? mb_strcut($raw, 0, self::MAX_CHARS).' …(cut)' : json_decode($raw, true) ?? $raw);
+                    : self::cut(self::withoutLocalServices(json_decode($raw, true) ?? $raw));
             }
 
             return $out;
         } finally {
             $token->accessToken->delete();
         }
+    }
+
+    /** Drops every row whose source is Google Local Services, at any depth. */
+    public static function withoutLocalServices(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        $out = [];
+        foreach ($value as $k => $v) {
+            if (is_array($v) && ($v['source'] ?? null) === Lead::SOURCE_LOCAL_SERVICES) {
+                continue;
+            }
+            $out[$k] = self::withoutLocalServices($v);
+        }
+
+        return array_is_list($value) ? array_values($out) : $out;
+    }
+
+    private static function cut(mixed $value): mixed
+    {
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        return strlen($json) > self::MAX_CHARS ? mb_strcut($json, 0, self::MAX_CHARS).' …(cut)' : $value;
     }
 
     private static function readable(string $path): bool
