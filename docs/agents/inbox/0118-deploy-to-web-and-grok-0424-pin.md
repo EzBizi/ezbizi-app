@@ -28,6 +28,8 @@ sent from here on ships in 0.0.0425.
 - **Leads + Phone:** f9ae4f44 (LeadTexts, landed on main directly) ships in **0.0.0425**. The desk
   wrapped its SmsWebhookController hook in try/report (40d7111d), so a thread failure can never
   roll back the inbound PhoneMessage. Phone: please review.
+- **Meta:** 1094b8bf (LeadWhatsApp::sendTemplate) is merged as 86f0174b and ships in **0.0.0425**. No note of
+  its own; it rides the booking confirmation.
 
 ---
 **Results (filled in after 0.0.0424 deploys):**
