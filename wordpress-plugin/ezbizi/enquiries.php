@@ -1179,7 +1179,9 @@ function load(){
     if(!x.ok){note.textContent=x.d.message||" . wp_json_encode(__('That did not work. Please call us.', 'ezbizi')) . ";return;}
     if(!x.d.days.length){note.textContent=" . wp_json_encode(__('We have no open times online in the next few weeks. Please call us.', 'ezbizi')) . ";return;}
     st.zip=z;var g=q('.ezb-days');g.innerHTML='';
-    x.d.days.forEach(function(d){var n=d.windows.length;card(g,'<small>'+day(d.date,{weekday:'short'})+'</small><strong>'+day(d.date,{day:'numeric'})+'</strong><small>'+day(d.date,{month:'short'})+'</small><small style=\"text-transform:none;opacity:.75\">'+n+' '+(n===1?" . wp_json_encode(__('window', 'ezbizi')) . ":" . wp_json_encode(__('windows', 'ezbizi')) . ")+'</small>',function(){
+    // The window Scheduling routes best goes first in its day, unlabelled (Jose, 2026-10-13).
+    var pf=x.d.preferred;
+    x.d.days.forEach(function(d){if(pf&&pf.date===d.date)d.windows.sort(function(a,b){return(b.start_time===pf.start_time)-(a.start_time===pf.start_time);});var n=d.windows.length;card(g,'<small>'+day(d.date,{weekday:'short'})+'</small><strong>'+day(d.date,{day:'numeric'})+'</strong><small>'+day(d.date,{month:'short'})+'</small><small style=\"text-transform:none;opacity:.75\">'+n+' '+(n===1?" . wp_json_encode(__('window', 'ezbizi')) . ":" . wp_json_encode(__('windows', 'ezbizi')) . ")+'</small>',function(){
       st.date=d.date;q('.ezb-dayname').textContent=day(d.date,{weekday:'long',month:'long',day:'numeric'});var t=q('.ezb-times');t.innerHTML='';
       d.windows.forEach(function(w){card(t,win(w),function(){st.win=w;q('.ezb-pill').textContent=day(d.date,{weekday:'long',month:'long',day:'numeric'})+' · '+win(w);show('details');});});
       show('time');});});

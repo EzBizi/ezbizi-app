@@ -907,6 +907,7 @@ check('it books behind the robot check and the Turnstile box', str_contains($boo
 // Jose, 2026-10-13: a lead's own link (?l=) books onto that lead and skips what it holds.
 check('a lead link is read and sent with the booking', str_contains($booking, "get('l')") && str_contains($booking, 'if(lt)v.l=lt'), true);
 check('and asks what the lead already holds', str_contains($booking, "'/api/v1/web/booking/lead?key='"), true);
+check('the preferred window goes first in its day', str_contains($booking, 'pf.date===d.date'), true);
 check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);

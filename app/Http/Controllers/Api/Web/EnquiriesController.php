@@ -16,6 +16,7 @@ use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Files\FileStore;
 use App\Support\Memberships\CustomerLinks;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -352,9 +353,14 @@ class EnquiriesController extends Controller
         return $this->tenant->run($organization, function () use ($site, $zip, $organization): JsonResponse {
             $area = $this->bookingArea($site, $zip);
 
-            return $area === null
-                ? $this->noBooking()
-                : response()->json(['days' => $this->bookingOpen($area, $organization)])->withHeaders($this->browserHeaders());
+            if ($area === null) {
+                return $this->noBooking();
+            }
+
+            $days = $this->bookingOpen($area, $organization);
+
+            return response()->json(['days' => $days, 'preferred' => $this->bookingPreferred($area, $zip, $organization, $days)])
+                ->withHeaders($this->browserHeaders());
         });
     }
 
@@ -530,6 +536,36 @@ class EnquiriesController extends Controller
         }
 
         return $open;
+    }
+
+    /**
+     * The window Scheduling would route best (Jose, 2026-10-13: bookings "inline
+     * with the new scheduling", and "the client does not need to see the
+     * recommendation"). The widget lists it first in its day, unlabelled.
+     *
+     * Only the date and start time leave here: the rest of the suggestion names
+     * booked customers and their addresses, which never reach a public endpoint.
+     * Null when nothing nearby is booked, or when the pick is not an open window.
+     *
+     * @param  list<array{date: string, windows: list<array{start_time: string, end_time: string}>}>  $days
+     * @return array{date: string, start_time: string}|null
+     */
+    private function bookingPreferred(ServiceArea $area, string $zip, mixed $organization, array $days): ?array
+    {
+        try {
+            $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $organization));
+            $pick = app(NearbySuggestion::class)->for($area, $zip, $from)['suggested'] ?? null;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        $date = (string) ($pick['date'] ?? '');
+        $start = (string) ($pick['window']['start_time'] ?? '');
+        $open = collect($days)->firstWhere('date', $date);
+
+        return $open !== null && collect($open['windows'])->contains('start_time', $start) ? ['date' => $date, 'start_time' => $start] : null;
     }
 
     /** An honest unknown: not "we don't serve you", just not bookable online. */

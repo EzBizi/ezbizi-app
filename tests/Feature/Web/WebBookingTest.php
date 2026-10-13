@@ -8,6 +8,7 @@ use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
 use App\Models\WebBooking;
 use App\Models\WebSite;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Web\BookingLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -98,6 +99,37 @@ class WebBookingTest extends TestCase
         // A lead that already has its visit is told to call.
         $this->inTenant($tenant['org'], fn () => $lead->forceFill(['status' => Lead::STATUS_BOOKED])->save());
         $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))->assertStatus(409);
+    }
+
+    /**
+     * Jose, 2026-10-13: the window Scheduling routes best is offered first, and
+     * only its date and time leave the server; the suggestion's booked customers
+     * and their addresses never do.
+     */
+    public function test_the_preferred_window_carries_only_a_date_and_time(): void
+    {
+        [$site] = $this->siteWithArea();
+        $first = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')
+            ->assertOk()->assertJsonPath('preferred', null)->json('days.0.date');
+
+        // NearbySuggestion is final; the controller only calls for() on what the container gives.
+        $this->app->instance(NearbySuggestion::class, new class($first)
+        {
+            public function __construct(private string $date) {}
+
+            public function for(): array
+            {
+                return ['suggested' => [
+                    'date' => $this->date, 'window' => ['start_time' => '08:00', 'end_time' => '11:00'],
+                    'nearby' => [['name' => 'Pat Customer', 'address' => '9 Elm St']],
+                ]];
+            }
+        });
+
+        $body = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->assertOk();
+        $this->assertSame(['date' => $first, 'start_time' => '08:00'], $body->json('preferred'));
+        $this->assertStringNotContainsString('Pat Customer', $body->getContent());
+        $this->assertStringNotContainsString('Elm', $body->getContent());
     }
 
     /** @return array{0: WebSite, 1: array} */

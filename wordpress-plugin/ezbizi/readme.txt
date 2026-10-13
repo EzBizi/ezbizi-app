@@ -236,6 +236,8 @@ new token" in EzBizi for that.
 = 1.26.15 =
 * NEW: The booking widget reads a lead's own link (?l=): the booking lands on
   that lead, and the ZIP, name and phone it already holds are not asked again.
+* CHANGE: The booking widget lists first, in its day, the window Scheduling
+  routes best; nothing says so to the customer.
 
 = 1.26.14 =
 * CHANGE: The review faces' green face goes straight to the Google review
