@@ -2795,7 +2795,7 @@ review drafts. Privacy needed no change: "audit entries showing who changed
 what" already covers the key activity log, and the customer's own AI tool is
 their choice of recipient, not our processor. `sitemap.xml` `/` lastmod 2026-10-13.
 
-## 2026-10-13 evening: three privacy-side commits unpublished, nothing new to claim
+## 2026-10-13 evening: two privacy commits unpublished, nothing new to claim
 
 Live `/` , `/terms/`, `/social-media/`, `/download/`, `/delete-account/`,
 `robots.txt`, `sitemap.xml` are byte-identical to `www/`. **`/privacy/` matches
