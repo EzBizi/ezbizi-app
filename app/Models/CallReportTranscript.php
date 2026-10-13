@@ -22,7 +22,12 @@ class CallReportTranscript extends Model implements HoldsPersonalData
 
     public const SOURCES = ['lead', 'whisper', 'failed'];
 
-    protected $fillable = ['organization_id', 'call_id', 'transcript', 'transcript_labelled', 'source'];
+    protected $fillable = ['organization_id', 'call_id', 'transcript', 'transcript_labelled', 'source', 'answered_by', 'call_started_at'];
+
+    protected function casts(): array
+    {
+        return ['call_started_at' => 'datetime'];
+    }
 
     public static function personalDataPurpose(): string
     {
@@ -49,6 +54,10 @@ class CallReportTranscript extends Model implements HoldsPersonalData
                 'The same words split by who said them (phone menu, dispatcher, caller), by Grok '
                 .'from the transcript above.',
                 Erasure::erase()),
+            new PersonalDataEntry('answered_by', PersonalDataEntry::IDENTITY,
+                'The name of the staff member who answered the call, as the report shows it, '
+                .'so the score and review of a call belong to the person who took it.',
+                Erasure::keep('a work record of who handled a business call; it goes with the row after a year')),
         ];
     }
 
