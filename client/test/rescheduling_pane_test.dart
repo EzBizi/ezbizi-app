@@ -33,7 +33,8 @@ void main() {
     'area_name': areaName,
     'job': {
       'kind': 'job',
-      'job_id': id,
+      'job_id': 'ez-$id',
+      'workiz_job_id': id,
       'lead_id': null,
       'number': number,
       'status': 'Scheduled',

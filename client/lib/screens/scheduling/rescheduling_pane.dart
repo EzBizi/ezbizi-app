@@ -97,7 +97,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
 
   static String _id(Map<String, dynamic> row) {
     final job = _map(row['job']);
-    return '${job['job_id'] ?? job['lead_id'] ?? job['number']}';
+    return '${job['workiz_job_id'] ?? job['job_id'] ?? job['lead_id'] ?? job['number']}';
   }
 
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -158,7 +158,9 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
 
   Future<void> _move(Map<String, dynamic> row) async {
     final job = _map(row['job']);
-    final id = job['job_id'];
+    // The Workiz row the dispatch call takes; job_id is EzBizi's own job,
+    // which that call does not find (Scheduling, 50a609b6).
+    final id = job['workiz_job_id'];
     final s = _map(row['suggested']);
     final w = _map(s['window']);
     if (id == null) return;
@@ -684,7 +686,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                   ),
                 ],
                 const SizedBox(height: 10),
-                if (!_canMove || job['job_id'] == null)
+                if (!_canMove || job['workiz_job_id'] == null)
                   Text(
                     _canMove
                         ? 'Only a Workiz job can be moved from here.'
