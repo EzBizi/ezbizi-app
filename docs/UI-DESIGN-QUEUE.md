@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 86 · Scheduling › Re-Scheduling, and the Availability map's dots — **sent 2026-10-13, awaiting Jose** (`docs/previews/scheduling-rescheduling-layouts.html`)
+
+Relayed by Scheduling, Jose 2026-10-13: *"a separate tab in scheduling called Re-Scheduling where it shows such suggestions
+and what to replace them for, to better fit a comprehensive route for the technicians"*; on the map: *"when hovering or
+click on the dot i would like to get the information from the job, like customer name, type of job, etc, see how it can
+look better, also we want zoom buttons too"*; and *"make it so i can change that in the app as well on the scheduling
+settings"* (the radius). Server: Scheduling's `GET /scheduling/reschedules` (42e4981b, held at the desk for this screen).
+Moving changes the customer's appointment, so every option shows the suggestion first and Move is a separate confirmed
+step on the existing reschedule call, for schedule editors only. Desktop **1** (recommended): rows of from → to with the
+nearest job now and after and the miles saved, a map, before/after panels and Move beside the picked row. **2**: before-
+and-after cards with area chips. **3**: the current and suggested day drawn side by side. Phone **4** (recommended): rows
+as cards, a tap opening the job in the tab with the map; **5**: by area, folded; **6**: one at a time. Map **7**
+(recommended): a hover/tap card per dot (customer, service, number, time, technicians, status, address, miles), pinned on
+click, + − ⤢ top-right; **8**: label on hover, card on click; **9**: the dot picks its row in the list. Settings: the radius
+and look-ahead as a Suggestions sub-tab of Scheduling › Settings, the stock settings control, built without a vote.
+
 ### 85 · Reports › Scoring · a card per person, a ranking, and Grok's read — **sent 2026-10-13, awaiting Jose** (`docs/previews/reports-scoring-layouts.html`)
 
 Jose 2026-10-13, verbatim: *"I also want you to build an extra tab related to performance, but more focused on the Scoring
