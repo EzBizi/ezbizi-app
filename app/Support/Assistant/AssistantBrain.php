@@ -140,7 +140,7 @@ final class AssistantBrain
      *
      * @throws \RuntimeException when Grok fails, so a caller can say so
      */
-    public function aiAnswer(?User $viewer, Organization $organization, string $query, int $timeout = 60): ?array
+    public function aiAnswer(?User $viewer, Organization $organization, string $query, int $timeout = 60, bool $forWhatsApp = false): ?array
     {
         if (! GrokCli::configured()) {
             return null;
@@ -157,7 +157,7 @@ final class AssistantBrain
             ."ONLY from the Library and branch details below; if they do not contain the answer, set "
             ."answered to false and reply with an empty string. Never invent prices, phone numbers, "
             ."addresses or policies. Reply in 1-5 short plain sentences, in the question's language. "
-            ."List the ids of the Library entries you used.\n\nLIBRARY:\n".($library ?: '(empty)')
+            ."List the ids of the Library entries you used.\n".($forWhatsApp ? GrokCli::WHATSAPP_STYLE."\n" : '')."\nLIBRARY:\n".($library ?: '(empty)')
             ."\n\nBRANCHES:\n".($sites ?: '(none matched)')."\n\nQUESTION: ".$query,
             [
                 'type' => 'object',

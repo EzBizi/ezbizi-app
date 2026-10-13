@@ -52,7 +52,8 @@ class AiWeeklySummary extends Command
                         ."- headline: one line, the single most important thing.\n"
                         ."- summary: 5 to 8 short plain-English lines: what went well, what went badly, "
                         ."which branch stands out either way, and one or two things to do this week. Use the "
-                        ."numbers; never invent one. No greetings, no sign-off.\n\n".$figures,
+                        ."numbers; never invent one. No greetings, no sign-off.\n"
+                        .'The summary goes to a WhatsApp group: '.GrokCli::WHATSAPP_STYLE."\n\n".$figures,
                         [
                             'type' => 'object',
                             'properties' => ['headline' => ['type' => 'string'], 'summary' => ['type' => 'string']],
