@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\CallReportPersonReview;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +34,11 @@ class ScoringReportTest extends TestCase
                 CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => $score,
                     'checks' => ['greeted' => $score >= 7], 'strength' => "good $id", 'improve' => "better $id"]);
             }
+
+            foreach (['2026-10-13', '2026-10-14', '2026-10-15'] as $day) {
+                CallReportPersonReview::query()->create(['person' => 'Cy', 'period' => 'daily', 'from' => $day, 'to' => $day,
+                    'calls' => 2, 'avg_score' => 9, 'summary' => "Cy on $day", 'strengths' => ['a', 'b'], 'work_on' => ['c', 'd'], 'trend' => 'up']);
+            }
         });
 
         $people = $this->signedInAs($this->userWithRole($t, 'Lead Manager', ['reports.experimental.view']))
@@ -46,6 +52,11 @@ class ScoringReportTest extends TestCase
         $this->assertSame([10, 9, 7], array_map(fn ($p) => (int) $p['avg_score'], $people));
         $this->assertSame(3, $people[2]['calls_scored']);
         $this->assertSame(67, $people[2]['checks']['greeted']);
+
+        // The latest review ending inside the dates, not one after them.
+        $this->assertSame('Cy on 2026-10-14', $people[1]['review_daily']['summary']);
+        $this->assertNull($people[1]['review_weekly']);
+        $this->assertNull($people[2]['review_daily']);
 
         $this->signedInAs($this->userWithRole($t, 'Tech', []))
             ->getJson('/api/v1/reports/scoring?from=2026-10-01&to=2026-10-14')

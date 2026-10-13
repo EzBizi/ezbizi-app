@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\LabelReportCalls;
 use App\Console\Commands\ScoreReportCalls;
+use App\Models\CallReportPersonReview;
 use App\Models\WorkizCall;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -51,7 +52,20 @@ class ScoringReportController extends Controller
             ->selectRaw('user_name, count(*) calls, avg(dispatcher_score) score')
             ->get()->keyBy('user_name');
 
-        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz) {
+        // Grok's latest daily and weekly read of each person ending by the
+        // last day shown (ezbizi:ai-person-reviews).
+        $reviews = CallReportPersonReview::query()
+            ->where('to', '<=', $to->toDateString())
+            ->orderByDesc('to')
+            ->get(['person', 'period', 'from', 'to', 'calls', 'avg_score', 'summary', 'strengths', 'work_on', 'trend'])
+            ->groupBy('person');
+        $review = fn ($person, $period) => ($r = $reviews->get($person)?->firstWhere('period', $period)) === null ? null : [
+            'from' => $r->from->toDateString(), 'to' => $r->to->toDateString(), 'calls' => $r->calls,
+            'avg_score' => $r->avg_score, 'summary' => $r->summary, 'strengths' => $r->strengths,
+            'work_on' => $r->work_on, 'trend' => $r->trend,
+        ];
+
+        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review) {
             $checks = [];
             foreach (ScoreReportCalls::CHECKS as $check) {
                 $met = $calls->filter(fn ($c) => (json_decode((string) $c->checks, true)[$check] ?? false) === true)->count();
@@ -69,6 +83,8 @@ class ScoringReportController extends Controller
                 'workiz' => isset($workiz[$person])
                     ? ['calls' => (int) $workiz[$person]->calls, 'score' => (int) round($workiz[$person]->score)]
                     : null,
+                'review_daily' => $review($person, 'daily'),
+                'review_weekly' => $review($person, 'weekly'),
                 'rank' => null,
             ];
         })->sortByDesc('avg_score')->values()->all();
