@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../widgets/report_grid.dart';
 import '../../widgets/module_overview.dart';
 import '../../core/theme.dart';
@@ -273,7 +274,12 @@ class _MarketingReportState extends State<MarketingReport> {
         else if (_loading)
           const Center(child: CircularProgressIndicator())
         else if (_rows.isEmpty)
-          Text('No Workiz jobs in these dates.', style: muted)
+          const EmptyState(
+            key: Key('marketing-empty'),
+            icon: Icons.campaign_outlined,
+            title: 'Nothing in these dates',
+            message: 'No Workiz jobs in these dates.',
+          )
         else
           ..._figuresAndTable(),
         const SizedBox(height: 12),

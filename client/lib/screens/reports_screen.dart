@@ -909,7 +909,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 return Material(
                   key: ValueKey('library-row-${row.id}'),
                   color: row.id == _openHours
-                      ? scheme.primaryContainer
+                      ? scheme.primaryContainer.withValues(alpha: .45)
                       : Colors.transparent,
                   child: InkWell(
                     onTap: () => _openRow(row),
@@ -962,7 +962,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           children: [
                             Text(
                               sent.when,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: sent.quiet
                                   ? muted
@@ -1066,10 +1066,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                   ),
                   if (row.built != null && canBuild)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Delete report',
-                      onPressed: () => setState(() => _confirming = row.id),
+                    PopupMenuButton<String>(
+                      tooltip: 'More for ${row.name}',
+                      icon: const Icon(Icons.more_vert),
+                      onSelected: (_) => setState(() => _confirming = row.id),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete report'),
+                        ),
+                      ],
                     )
                   else
                     const SizedBox(width: 10),

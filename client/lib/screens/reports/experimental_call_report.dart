@@ -1990,7 +1990,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     },
     'score' => switch (_avgScore(person)) {
       null => '—',
-      final avg => avg.toStringAsFixed(1),
+      final avg => '${avg.toStringAsFixed(1)} / 10',
     },
     _ => '${person[key] ?? 0}',
   };
@@ -2222,7 +2222,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // shows the score given by AI"); a dash until the call is scored.
     final aiScore = (call['score'] as Map?)?['score'];
     final score = Text(
-      aiScore == null ? '—' : '$aiScore/10',
+      aiScore == null ? '—' : '$aiScore / 10',
       key: ValueKey('score-cell-$callId'),
       style: aiScore == null ? TextStyle(color: muted) : null,
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../widgets/report_grid.dart';
 import '../../widgets/module_overview.dart';
 import '../../core/numbers.dart';
@@ -172,7 +173,12 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
         if (data == null && _error == null)
           const Center(child: CircularProgressIndicator())
         else if (rows.isEmpty)
-          Text('No Thumbtack leads in these dates.', style: muted)
+          const EmptyState(
+            key: ValueKey('thumbtack-empty'),
+            icon: Icons.request_quote_outlined,
+            title: 'No Thumbtack leads',
+            message: 'None arrived in these dates.',
+          )
         else ...[
           // UI queue 87, desktop 1: the figures, then the one table.
           OverviewFigures(

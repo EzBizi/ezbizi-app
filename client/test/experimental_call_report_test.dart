@@ -54,7 +54,8 @@ void main() {
 
     expect(find.text('SCORE'), findsOneWidget);
     final c1 = find.byKey(const ValueKey('score-cell-c1'));
-    expect(tester.widget<Text>(c1).data, '7/10');
+    // One way to write a score in Reports (UI queue 87).
+    expect(tester.widget<Text>(c1).data, '7 / 10');
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('score-cell-c2'))).data,
       '—',
@@ -202,7 +203,7 @@ void main() {
     await _pump(tester, width: 1400, view: 'People', report: () => scored);
 
     expect(find.text('Call score'), findsOneWidget);
-    expect(find.text('7.0'), findsOneWidget);
+    expect(find.text('7.0 / 10'), findsOneWidget);
 
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();

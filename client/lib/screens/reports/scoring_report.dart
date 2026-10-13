@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -228,15 +229,13 @@ class _ScoringReportState extends State<ScoringReport> {
         } else if (_error != null) {
           body = ErrorNote(_error!);
         } else if (team == null || team.people.isEmpty) {
-          body = Padding(
-            key: const Key('scoring-empty'),
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'No scored calls in these dates. AI scores a call once it is '
-              'transcribed, and only calls from October 13, 2026 on.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+          body = const EmptyState(
+            key: Key('scoring-empty'),
+            icon: Icons.leaderboard_outlined,
+            title: 'No scored calls yet',
+            message:
+                'None in these dates. AI scores a call once it is '
+                'transcribed, and only calls from October 13, 2026 on.',
           );
         } else if (open != null) {
           body = _Detail(

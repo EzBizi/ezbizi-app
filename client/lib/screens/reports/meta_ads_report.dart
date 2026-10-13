@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../widgets/report_grid.dart';
 import '../../widgets/module_overview.dart';
 import '../../core/numbers.dart';
@@ -199,10 +200,13 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
         if (data == null && _error == null)
           const Center(child: CircularProgressIndicator())
         else if (rows.isEmpty)
-          Text(
-            'No Facebook ad spend for these dates and filters. Facebook Ads '
-            'is connected in Settings › Integrations.',
-            style: muted,
+          const EmptyState(
+            key: ValueKey('meta-empty'),
+            icon: Icons.campaign_outlined,
+            title: 'No Facebook ad spend',
+            message:
+                'None for these dates and filters. Facebook Ads is connected '
+                'in Settings › Integrations.',
           )
         else ...[
           // UI queue 87, desktop 1: the figures, then the one table.
