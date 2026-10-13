@@ -20,6 +20,7 @@ class VersionHistory {
         'Walkthroughs: every main tab now has a (?) beside its title that walks you through each part of the tab.',
         'Fleet: in a narrow vehicle list on a computer, the search and filters scroll with the vehicles instead of filling the pane.',
         'Reports: call reasons show Grok\'s reading by default.',
+        'Reports: calls AI says were booked but have no Workiz job get their own list in Calls, and a daily alert you can route in Automations.',
       ],
     ),
     VersionRelease(
