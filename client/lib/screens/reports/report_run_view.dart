@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/job_money.dart';
 import '../../widgets/error_note.dart';
 
 /// One run of one saved report (spec 2026-09-10).
@@ -67,7 +68,10 @@ class _ReportRunViewState extends State<ReportRunView> {
       _error = null;
     });
 
-    final response = await widget.api.post('/reports/${widget.reportId}/run', {});
+    final response = await widget.api.post(
+      '/reports/${widget.reportId}/run',
+      {},
+    );
 
     if (!mounted) return;
 
@@ -110,15 +114,15 @@ class _ReportRunViewState extends State<ReportRunView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!wide) ...[
-              // The count leads on a phone, because "how many" is the question
-              // it is usually asked.
-              Text(
-                run.count == 1 ? '1 row' : '${run.count} rows',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 12),
-            ],
+            // The count leads, because "how many" is the question it is
+            // usually asked; on a computer it was missing altogether.
+            Text(
+              run.count == 1 ? '1 row' : '${run.count} rows',
+              style: wide
+                  ? Theme.of(context).textTheme.titleMedium
+                  : Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 12),
             if (run.capped) ...[_capLine(context), const SizedBox(height: 12)],
             Expanded(child: wide ? _table(context, run) : _cards(context, run)),
           ],
@@ -150,7 +154,10 @@ class _ReportRunViewState extends State<ReportRunView> {
         child: DataTable(
           columns: [
             for (final column in run.columns)
-              DataColumn(label: Text(column.label)),
+              DataColumn(
+                label: Text(column.label),
+                numeric: column.type == 'integer' || column.type == 'money',
+              ),
           ],
           rows: [
             for (final row in run.rows)
@@ -160,7 +167,7 @@ class _ReportRunViewState extends State<ReportRunView> {
                     // `column.key` contains a dot — `jobs.title` — and is a
                     // FLAT key rather than a path. Splitting on it finds
                     // nothing and draws a blank table.
-                    DataCell(Text(_cell(row[column.key]))),
+                    DataCell(Text(_cell(row[column.key], column.type))),
                 ],
               ),
           ],
@@ -186,9 +193,15 @@ class _ReportRunViewState extends State<ReportRunView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final column in run.columns) ...[
-                  Text(column.label.toUpperCase(), style: theme.textTheme.labelSmall),
+                  Text(
+                    column.label.toUpperCase(),
+                    style: theme.textTheme.labelSmall,
+                  ),
                   const SizedBox(height: 4),
-                  Text(_cell(row[column.key]), style: theme.textTheme.bodyMedium),
+                  Text(
+                    _cell(row[column.key], column.type),
+                    style: theme.textTheme.bodyMedium,
+                  ),
                   if (column != run.columns.last) const SizedBox(height: 12),
                 ],
               ],
@@ -224,10 +237,16 @@ class _ReportRunViewState extends State<ReportRunView> {
     );
   }
 
-  String _cell(Object? value) {
+  /// As the Builder's preview writes the same column: money is kept in
+  /// cents, and the run printed "29320" where the preview said $293.20.
+  String _cell(Object? value, String type) {
     if (value == null) return '';
     if (value is bool) return value ? 'Yes' : 'No';
-    return value.toString();
+    return switch (type) {
+      'money' when value is num => formatMoney(value.round()),
+      'datetime' || 'date' => '$value'.split('T').first,
+      _ => value.toString(),
+    };
   }
 }
 
@@ -267,7 +286,11 @@ class ReportRun {
 }
 
 class ReportColumn {
-  const ReportColumn({required this.key, required this.label, required this.type});
+  const ReportColumn({
+    required this.key,
+    required this.label,
+    required this.type,
+  });
 
   factory ReportColumn.fromJson(Map<String, dynamic> json) => ReportColumn(
     key: json['key'] as String,

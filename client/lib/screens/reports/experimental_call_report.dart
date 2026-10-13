@@ -2594,9 +2594,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final parsed = DateTime.tryParse('$stamp')?.toLocal();
     if (parsed == null) return '';
 
-    final hour = parsed.hour.toString().padLeft(2, '0');
-    final minute = parsed.minute.toString().padLeft(2, '0');
-    if (_span.single) return '$hour:$minute';
+    // In the organization's own clock: "13:33" with 12-hour time set read
+    // as a talk time beside the real ones (UI audit, 2026-10-13).
+    final time = widget.formats.formatTime(parsed.hour, parsed.minute);
+    if (_span.single) return time;
 
     final day = dayWords(
       parsed,
@@ -2604,7 +2605,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       widget.formats,
       weekday: _span.days <= 7,
     );
-    return '$day $hour:$minute';
+    return '$day $time';
   }
 
   Widget _card(

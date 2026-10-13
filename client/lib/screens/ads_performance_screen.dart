@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/job_money.dart';
+import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/dashboard_chart.dart';
@@ -508,16 +510,20 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// `cost` arrives as a number, and a whole figure crosses JSON as an int, so
   /// `as double` throws on a campaign that spent exactly 900. `as num` then
   /// `toDouble()` is the only cast that holds for both.
+  /// As every other Reports tab writes money: `$32,520.77`, where this tab
+  /// alone wrote "32520.77 USD" (UI queue 87). Another currency keeps its
+  /// code in front (`EUR 12.00`); none known, the figure alone.
   String _money(dynamic value, dynamic currency) {
-    final amount = (value as num?)?.toDouble() ?? 0;
+    final minor = (((value as num?)?.toDouble() ?? 0) * 100).round();
     final code = (currency as String?) ?? '';
-    return '${amount.toStringAsFixed(2)}${code.isEmpty ? '' : ' $code'}';
+    final text = formatMoney(minor, currency: code.isEmpty ? 'USD' : code);
+    return code.isEmpty ? text.replaceFirst(r'$', '') : text;
   }
 
   String _number(dynamic value) {
     final n = (value as num?) ?? 0;
     return n is int || n == n.roundToDouble()
-        ? n.round().toString()
+        ? formatCount(n.round())
         : n.toStringAsFixed(2);
   }
 

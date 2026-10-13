@@ -235,7 +235,7 @@ void main() {
       );
     }
 
-    expect(find.text('1234.56 USD'), findsOneWidget);
+    expect(find.text(r'$1,234.56'), findsOneWidget);
   });
 
   // Jose, 2026-09-30: A1 Leads' Channel Performance table, spend by kind of
@@ -277,11 +277,11 @@ void main() {
 
     expect(top('Local Services'), lessThan(top('Search (PPC)')));
     expect(
-      find.descendant(of: table, matching: find.text('900.50 USD')),
+      find.descendant(of: table, matching: find.text(r'$900.50')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: table, matching: find.text('75.00 USD')),
+      find.descendant(of: table, matching: find.text(r'$75.00')),
       findsOneWidget,
     );
     expect(
@@ -316,7 +316,7 @@ void main() {
 
     // A round number rendered as money. Had the widget cast it to double it
     // would have thrown before reaching here.
-    expect(find.text('900.00 USD'), findsOneWidget);
+    expect(find.text(r'$900.00'), findsOneWidget);
   });
 
   /// LS ADS / SEARCH ADS. Jose, 2026-09-17.
@@ -584,7 +584,7 @@ void main() {
     // The account figures above the table are the whole account and must not
     // move when the table below is filtered - a total that tracks the filter is
     // a different and wrong statement.
-    expect(find.text('1234.56 USD'), findsOneWidget);
+    expect(find.text(r'$1,234.56'), findsOneWidget);
   });
 
   testWidgets('the table reorders on the column that was clicked', (
@@ -801,7 +801,7 @@ void main() {
     // Summed across the children.
     final figures = find.byKey(const ValueKey('ads-rollup-figures'));
     expect(
-      find.descendant(of: figures, matching: find.text('1300.00 USD')),
+      find.descendant(of: figures, matching: find.text(r'$1,300.00')),
       findsOneWidget,
     );
 
