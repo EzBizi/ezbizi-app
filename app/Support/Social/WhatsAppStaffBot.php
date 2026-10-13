@@ -2,11 +2,13 @@
 
 namespace App\Support\Social;
 
+use App\Jobs\AnswerWhatsAppWithAi;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\GrokCli;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Support\Collection;
 
@@ -344,6 +346,13 @@ final class WhatsAppStaffBot
         $matches = $this->brain->locations($organization, $query);
 
         if ($matches->isEmpty()) {
+            // Grok reads the Library in the background: it takes seconds, and
+            // the webhook must answer Meta at once (Jose, 2026-10-12).
+            if (GrokCli::configured() && mb_strlen($query) > 3) {
+                AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
+
+                return;
+            }
             $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
 
             return;
@@ -392,5 +401,25 @@ final class WhatsAppStaffBot
             'type' => 'text',
             'text' => ['preview_url' => $preview, 'body' => $body],
         ], $body);
+    }
+
+    /** AnswerWhatsAppWithAi's half: Grok's answer, or the usual "nothing matched" menu. */
+    public function aiReply(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
+    {
+        $organization = Organization::findOrFail($number->organization_id);
+
+        try {
+            $answer = $this->brain->aiAnswer($viewer, $organization, $query);
+        } catch (\RuntimeException) {
+            $answer = null;
+        }
+
+        if ($answer === null) {
+            $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
+
+            return;
+        }
+
+        $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
     }
 }

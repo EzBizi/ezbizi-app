@@ -6,6 +6,7 @@ use App\Models\AssistantEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\WebValue;
+use App\Support\Ai\GrokCli;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -127,6 +128,59 @@ final class AssistantBrain
         }
 
         return $scored->map(fn (array $s) => $s[0]);
+    }
+
+    /**
+     * Grok's answer in its own words, from only the Library entries this viewer
+     * may read and the branches the words name (Jose, 2026-10-12: "Grok
+     * answers in own words", in the app and on WhatsApp). Null when Grok is
+     * off or the Library does not hold the answer - never a made-up one.
+     *
+     * @return array{reply: string, entry_ids: list<string>}|null
+     *
+     * @throws \RuntimeException when Grok fails, so a caller can say so
+     */
+    public function aiAnswer(?User $viewer, Organization $organization, string $query): ?array
+    {
+        if (! GrokCli::configured()) {
+            return null;
+        }
+
+        $entries = $this->entries($viewer);
+        $library = $entries->map(fn (AssistantEntry $e) => "[{$e->id}] {$e->section} / {$e->title}\n"
+            .trim(($e->description ? $e->description."\n" : '').$e->body))->implode("\n\n");
+        $sites = $this->locations($organization, $query)->take(5)
+            ->map(fn (array $s) => json_encode($s))->implode("\n");
+
+        $json = GrokCli::ask(
+            "You answer staff questions for {$this->name($organization)}, a home-services business. Answer "
+            ."ONLY from the Library and branch details below; if they do not contain the answer, set "
+            ."answered to false and reply with an empty string. Never invent prices, phone numbers, "
+            ."addresses or policies. Reply in 1-5 short plain sentences, in the question's language. "
+            ."List the ids of the Library entries you used.\n\nLIBRARY:\n".($library ?: '(empty)')
+            ."\n\nBRANCHES:\n".($sites ?: '(none matched)')."\n\nQUESTION: ".$query,
+            [
+                'type' => 'object',
+                'properties' => [
+                    'answered' => ['type' => 'boolean'],
+                    'reply' => ['type' => 'string'],
+                    'entry_ids' => ['type' => 'array', 'items' => ['type' => 'string']],
+                ],
+                'required' => ['answered', 'reply', 'entry_ids'],
+                'additionalProperties' => false,
+            ],
+        );
+
+        $reply = trim((string) ($json['reply'] ?? ''));
+        if (($json['answered'] ?? false) !== true || $reply === '') {
+            return null;
+        }
+
+        return [
+            'reply' => mb_substr($reply, 0, AssistantEntry::MAX_BODY),
+            // Only ids this viewer could read: a hallucinated id is dropped.
+            'entry_ids' => array_values(array_intersect((array) $json['entry_ids'], $entries->pluck('id')->all())),
+        ];
     }
 
     public function name(Organization $organization): string

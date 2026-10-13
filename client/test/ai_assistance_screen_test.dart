@@ -40,6 +40,24 @@ void main() {
     expect(find.text('A1 Chimney - CHI'), findsOneWidget);
   });
 
+  /// Jose, 2026-10-12: the AI tab answers in its own words, marked as AI.
+  testWidgets('Ask also shows an answer by AI under the matches', (
+    tester,
+  ) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    await tester.enterText(find.byType(TextField), 'flue size');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('assistant-ai-answer')), findsOneWidget);
+    expect(find.text('Answer by AI'), findsOneWidget);
+    expect(
+      find.text('Size the round flue at 1/12 of the opening.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Library without manage has no Add answer', (tester) async {
     await _pump(tester, grants: ['ai_assistance.library.view']);
 
@@ -249,6 +267,14 @@ Future<void> _pump(
                 ],
               },
             ],
+          },
+        });
+      }
+      if (path.endsWith('/ai-assistance/answer')) {
+        return _json({
+          'data': {
+            'reply': 'Size the round flue at 1/12 of the opening.',
+            'entry_ids': ['e-1'],
           },
         });
       }

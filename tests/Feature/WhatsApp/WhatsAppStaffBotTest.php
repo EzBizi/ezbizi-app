@@ -683,4 +683,37 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertSame('CSIA', $rows->firstWhere('direction', 'in')->body);
         $this->assertStringContainsString('Chimney & Venting Essentials', $rows->firstWhere('direction', 'out')->body);
     }
+
+    /** Jose, 2026-10-12: Grok answers from the Library what the words did not match. */
+    public function test_a_question_the_words_miss_is_answered_by_ai_off_the_webhook(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            'answered' => true, 'reply' => 'Use the flue sizing chart in the Library.', 'entry_ids' => ['made-up-id'],
+        ]]))]);
+
+        $this->inbound(self::BOT, $this->text('who approves overtime pay'))->assertOk();
+
+        $this->assertSame('text', $this->sent[0]['type']);
+        $this->assertStringContainsString('Use the flue sizing chart', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('Answered by AI', $this->sent[0]['text']['body']);
+    }
+
+    public function test_when_ai_has_no_answer_the_usual_nothing_matched_menu_follows(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            'answered' => false, 'reply' => '', 'entry_ids' => [],
+        ]]))]);
+
+        $this->inbound(self::BOT, $this->text('what is the wifi password'))->assertOk();
+
+        $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
+    }
 }
