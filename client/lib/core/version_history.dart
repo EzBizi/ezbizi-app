@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0420',
+      date: '13 Oct 2026',
+      items: [
+        'Scheduling › Availability: a zip search shows the earliest opening beside a suggested one near work already booked, with a small map of the route. The radius is in Settings › Scheduling.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0419',
       date: '13 Oct 2026',
       items: [
