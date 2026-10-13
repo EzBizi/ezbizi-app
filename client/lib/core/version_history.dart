@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0423',
+      date: '13 Oct 2026',
+      items: [
+        'Scheduling: suggested availability looks for booked work within 30 miles instead of 5; you can still change this in Settings › Scheduling. Jobs Workiz could not place on the map no longer show as dots in Africa.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0422',
       date: '13 Oct 2026',
       items: [
