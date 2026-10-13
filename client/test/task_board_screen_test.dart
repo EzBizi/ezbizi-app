@@ -126,6 +126,10 @@ void main() {
               'name': 'Maya Lopez',
               'can_edit': true,
               'statuses': statuses,
+              // A personal board is given only to its owner.
+              'assignable': [
+                {'id': 'me', 'name': 'Maya Lopez'},
+              ],
               'groups': [
                 {
                   'id': 'g2',
@@ -363,6 +367,20 @@ void main() {
     await tester.pumpAndSettle();
     sent(log.last, 'DELETE', '/tasks/t2', null);
     expect(find.byKey(const ValueKey('task-t2')), findsNothing);
+  });
+
+  testWidgets("the Owner picker offers the board's assignable people, not "
+      'everybody who owns a task on it', (tester) async {
+    await pumpBoard(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-panel-owner')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nobody'), findsWidgets);
+    // Omar owns t2 on this board but is not assignable here.
+    expect(find.text('Omar Feld'), findsNothing);
   });
 
   testWidgets('a board I may only read says so and offers no add', (

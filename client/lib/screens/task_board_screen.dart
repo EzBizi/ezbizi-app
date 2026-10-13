@@ -276,13 +276,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   Future<void> _openTask(_Json task) async {
+    // The board says who may own its tasks; a server from before it did
+    // offers you and the people already owning one here.
+    final assignable = _board!['assignable'];
     final people = <String, String>{
-      if (widget.session.me != null)
-        widget.session.me!.id: widget.session.me!.name,
-      for (final t in _tasks)
-        if (t['owner'] is Map)
-          (t['owner'] as Map)['id'] as String:
-              (t['owner'] as Map)['name'] as String,
+      if (assignable is List)
+        for (final p in assignable.cast<Map>())
+          p['id'] as String: p['name'] as String
+      else ...{
+        if (widget.session.me != null)
+          widget.session.me!.id: widget.session.me!.name,
+        for (final t in _tasks)
+          if (t['owner'] is Map)
+            (t['owner'] as Map)['id'] as String:
+                (t['owner'] as Map)['name'] as String,
+      },
     };
     final groups = _groups(_board!);
     final group = groups.firstWhere(
@@ -938,8 +946,7 @@ class _TaskPanel extends StatefulWidget {
   /// The group, under the board's name.
   final String where;
 
-  /// Who it can be given to, by id: you and everybody already owning a task
-  /// here. ponytail: until the board sends its own list of assignable people.
+  /// Who it can be given to, by id: the board's `assignable`.
   final Map<String, String> people;
 
   @override
