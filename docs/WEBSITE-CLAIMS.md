@@ -2794,3 +2794,23 @@ claude.ai/ChatGPT connectors (no OAuth), call scoring, the Monday summary,
 review drafts. Privacy needed no change: "audit entries showing who changed
 what" already covers the key activity log, and the customer's own AI tool is
 their choice of recipient, not our processor. `sitemap.xml` `/` lastmod 2026-10-13.
+
+## 2026-10-13 evening: three privacy-side commits unpublished, nothing new to claim
+
+Live `/` , `/terms/`, `/social-media/`, `/download/`, `/delete-account/`,
+`robots.txt`, `sitemap.xml` are byte-identical to `www/`. **`/privacy/` matches
+`323a93e0` and `/google-ads-api/` matches `ac795a4e` exactly — a stale deploy,
+not a hand edit:** live `Last-Modified` 21:01 UTC precedes `ff16feb1` (21:44 UTC,
+WhatsApp staff questions can send any record the asker sees to xAI) and
+`5e5bacd1` (21:45 UTC, call recordings to staff over WhatsApp). Both are
+disclosures the live pages lack — the under-disclosure direction — so asked the
+desk to publish. `sitemap.xml` `lastmod` for `/privacy/` (was 10-10) and
+`/google-ads-api/` (was 09-30) moved to 2026-10-13 to match the pages'
+`dateModified`. `/download/windows.json` 0.0.0425 (`ba4eb0e6`).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0363.
+
+Still owed: lead counts by source with `is_test = 0`, the resolved ring-group
+fraction, the Scheduling count, an `estimates` row count.
