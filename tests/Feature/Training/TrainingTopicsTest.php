@@ -117,6 +117,37 @@ class TrainingTopicsTest extends TestCase
         $this->get('/api/v1/training/video/dailymotion/1115529948')->assertNotFound();
     }
 
+    /** What the WhatsApp staff bot reads: a chapter's topics, as chat text. */
+    public function test_topics_filter_by_chapter_and_section_and_read_as_plain_text(): void
+    {
+        [, $guide] = $this->aGuide([
+            ['title' => 'Goals', 'chapter' => 'Intro', 'section' => 'A', 'blocks' => [['type' => 'text', 'text' => 'Answer fast.']]],
+            ['title' => 'Booking', 'chapter' => 'Calls', 'section' => 'New', 'blocks' => [
+                ['type' => 'text', 'text' => 'Lead the call.'],
+                ['type' => 'image', 'media_id' => '01a0f3a5-0000-7000-8000-000000000000'],
+                ['type' => 'table', 'rows' => [['Level', 'When'], ['1', 'Annually']]],
+                ['type' => 'video', 'url' => 'https://www.youtube.com/watch?v=dZA_UfKYyw0'],
+            ]],
+            ['title' => 'Old', 'chapter' => 'Calls', 'section' => 'Other', 'body' => 'Legacy words.', 'media_kind' => 'none'],
+        ]);
+
+        $this->assertSame(['Booking', 'Old'], array_column(GuideScreens::topics($guide, 'Calls'), 'title'));
+        $this->assertSame(['Booking'], array_column(GuideScreens::topics($guide, 'Calls', 'New'), 'title'));
+        $this->assertCount(3, GuideScreens::topics($guide));
+
+        $this->assertSame(
+            'Lead the call.
+
+Level · When
+1 · Annually
+
+https://www.youtube.com/watch?v=dZA_UfKYyw0',
+            GuideScreens::plainText(GuideScreens::topics($guide, 'Calls', 'New')[0]['topic']),
+        );
+        // A topic stored before blocks reads the same way.
+        $this->assertSame('Legacy words.', GuideScreens::plainText(GuideScreens::topics($guide, 'Calls', 'Other')[0]['topic']));
+    }
+
     /** @return array{0: array, 1: TrainingGuide} */
     private function aGuide(array $screens = [], string $status = TrainingGuide::DRAFT): array
     {
