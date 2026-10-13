@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_suggestion.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -71,6 +72,13 @@ void main() {
                   'window': null,
                   'technicians': <dynamic>[],
                   'nearby': miles <= 5,
+                  if (i == 0) ...{
+                    'customer': 'Rita Vance',
+                    'service': 'Chimney sweep',
+                    'number': '4102',
+                    'status': 'Online booking',
+                    'address': '12 Elm St',
+                  },
                 },
             ],
           },
@@ -222,6 +230,62 @@ void main() {
     );
     // "First available" gave way to the two cards.
     expect(find.text('First available'), findsNothing);
+  });
+
+  testWidgets('a dot shows its job on hover, a click keeps it, + zooms in', (
+    tester,
+  ) async {
+    await pump(tester, data: suggestion());
+    final dot = find.byKey(const Key('route-dot-0'));
+    final card = find.byKey(const Key('route-dot-card'));
+    expect(dot, findsOneWidget);
+    expect(card, findsNothing);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(dot));
+    await tester.pump();
+    expect(card, findsOneWidget);
+    expect(find.text('Rita Vance'), findsOneWidget);
+    expect(find.text('Chimney sweep · #4102'), findsOneWidget);
+    expect(find.text('9 AM'), findsOneWidget);
+    expect(find.text('12 Elm St · 1.2 mi away'), findsOneWidget);
+    expect(find.text('Online booking'), findsOneWidget);
+
+    // Hover alone goes when the pointer does; a click keeps it.
+    await mouse.moveTo(Offset.zero);
+    await tester.pump();
+    expect(card, findsNothing);
+    await tester.tap(dot);
+    await tester.pump();
+    expect(card, findsOneWidget);
+
+    // A job with no details still says what it is.
+    await tester.tap(find.byKey(const Key('route-dot-1')));
+    await tester.pump();
+    expect(find.text('Booked job'), findsOneWidget);
+    expect(find.text('Rita Vance'), findsNothing);
+
+    final apart =
+        (tester.getCenter(find.byKey(const Key('route-dot-0'))) -
+                tester.getCenter(find.byKey(const Key('route-dot-1'))))
+            .distance;
+    await tester.tap(find.byKey(const Key('route-zoom-in')));
+    await tester.pumpAndSettle();
+    final zoomed =
+        (tester.getCenter(find.byKey(const Key('route-dot-0'))) -
+                tester.getCenter(find.byKey(const Key('route-dot-1'))))
+            .distance;
+    expect(zoomed, greaterThan(apart * 1.8));
+    await tester.tap(find.byKey(const Key('route-zoom-fit')));
+    await tester.pumpAndSettle();
+    expect(
+      (tester.getCenter(find.byKey(const Key('route-dot-0'))) -
+              tester.getCenter(find.byKey(const Key('route-dot-1'))))
+          .distance,
+      moreOrLessEquals(apart, epsilon: 1),
+    );
   });
 
   testWidgets('when the earliest day is the best fit, one card says so', (

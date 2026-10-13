@@ -107,6 +107,64 @@ void main() {
     expect(find.text('Locations'), findsNWidgets(2));
   });
 
+  testWidgets('Settings › Suggestions holds the nearby radius', (tester) async {
+    // Jose, 2026-10-13: "make it so i can change that in the app as well on
+    // the scheduling settings". The rows are Settings' own, group scheduling.
+    await _pump(
+      tester,
+      ['scheduling.view', 'scheduling.settings.view'],
+      onRequest: (request) => request.url.path.endsWith('/settings')
+          ? _json({
+              'data': [
+                for (final (key, label, value) in [
+                  (
+                    'scheduling.suggest_radius_miles',
+                    'Suggested availability: nearby radius',
+                    30,
+                  ),
+                  (
+                    'scheduling.suggest_days',
+                    'Suggested availability: look ahead',
+                    14,
+                  ),
+                  ('time_format', 'Time format', '12h'),
+                ])
+                  {
+                    'key': key,
+                    'label': label,
+                    'type': 'enum',
+                    'group': key.startsWith('scheduling.')
+                        ? 'scheduling'
+                        : 'general',
+                    'group_label': key.startsWith('scheduling.')
+                        ? 'Scheduling'
+                        : 'General',
+                    'value': value,
+                    'is_sensitive': false,
+                    'options': [value],
+                    'help': null,
+                    'not_yet_in_effect': null,
+                    'editable_here': true,
+                    'may_edit': true,
+                    'may_edit_reason': null,
+                    'allowed_scopes': ['organization', 'franchise'],
+                    'source': null,
+                  },
+              ],
+            })
+          : null,
+    );
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Suggestions'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Suggested availability: nearby radius'), findsOneWidget);
+    expect(find.text('Suggested availability: look ahead'), findsOneWidget);
+    // Only Scheduling's group: the rest of Settings stays in Settings.
+    expect(find.text('Time format'), findsNothing);
+  });
+
   /// The clamp has to live in ONE place — and this test does NOT prove a blank
   /// screen, which is worth saying because I claimed one before measuring.
   ///
