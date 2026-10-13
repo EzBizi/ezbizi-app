@@ -2965,6 +2965,20 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 89 · Task Board · your own boards, who is on them, and Automate — **sent 2026-10-13, awaiting Jose** (`docs/previews/task-board-members-automate-layouts.html`)
+
+Jose 2026-10-13, verbatim (inbox 0120): *"we also need to be able to assign people to certain boards and create boards,
+etc. so the owner of a board can assign other people to the board, read up on how monday works with those sort of
+assignments. we also want easy automations as well on task board, which should be synced with the automations tab, but
+easy access and only task board related stuff"*. monday.com's model carried over: Owner / Member / Viewer per board, Open
+(found and joined by its company or branch) or Private (members only); a task given to someone off the board offers
+membership; Administrator sees every board. Automate recipes are real Automations rules limited to the board (shown in
+Automations › Your automations). Desktop **1** (recommended): + New board at the foot of the Board ▾ picker, the board's
+faces, Invite and ⚡ Automate in its header, each opening a panel over the board's right side (no dialog). **2**: a board
+page with People · Automate · Columns and statuses tabs. **3**: small pop-overs from the header. Phone **4** (recommended):
+the board's ⋯ opens People and Automate as pages in the tab; **5**: faces and ⚡ under the name; **6**: a Board tab.
+Owners: Task Board (boards, members), Automations (board scoping); UI/UX builds the screens.
+
 ### 88 · AI Assistance › Staff bot · one WhatsApp number, a menu for each role — **Jose: "great, go ahead" — editor 1, WhatsApp 4** — **BUILT** c6a1ed63 (session/uiux-staff-bot: model, API, the WhatsAppStaffBot hook, the tab). Not yet: Daily conversion has no writer (answers "coming soon"); the content Training lists as missing is entered as Library entries (`docs/previews/staff-bot-menus-layouts.html`)
 
 Relayed by Grok AI, Jose 2026-10-13, verbatim: *"One number, menu by role"*; content: *"all of it is in ezbizi already, from

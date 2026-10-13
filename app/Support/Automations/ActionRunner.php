@@ -452,6 +452,7 @@ class ActionRunner
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
+            'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
 
@@ -3353,6 +3354,24 @@ class ActionRunner
             app(TaskWriter::class)->update($subject, ['assignee_user_id' => $user->getKey()], $actor);
 
             return 'Gave the task to '.$user->name.'.';
+        });
+    }
+
+    /** Task Board recipes (Jose, 2026-10-13): "when status becomes Done, move it to Finished". TaskWriter checks the group is on the task's board. */
+    private function moveTaskToGroup(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        if (! $subject instanceof Task) {
+            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $groupId = (string) ($action['group_id'] ?? '');
+        if ($subject->group_id === $groupId) {
+            return ['type' => 'task.move_group', 'ok' => true, 'skipped' => true, 'detail' => 'The task is already in that group.'];
+        }
+
+        return $this->onTaskBoard('task.move_group', $automation, $subject->board, function (User $actor) use ($subject, $groupId) {
+            app(TaskWriter::class)->update($subject, ['group_id' => $groupId], $actor);
+
+            return 'Moved the task to another group.';
         });
     }
 
