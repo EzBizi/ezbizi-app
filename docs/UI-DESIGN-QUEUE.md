@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 85 · Reports › Scoring · a card per person, a ranking, and Grok's read — **sent 2026-10-13, awaiting Jose** (`docs/previews/reports-scoring-layouts.html`)
+
+Jose 2026-10-13, verbatim: *"I also want you to build an extra tab related to performance, but more focused on the Scoring
+and Performance of each employee ... name it Scoring or something ... i want to see the employees as cards, and clicking on
+them shows me the current analysis that the Grok AI has given them, their score, etc, and outside of that i want to see sort
+of like a ranking system, talk to grok ai, reports, etc to figure it out, i want this to be very visual"*. Built on what
+Performance already holds per call (AI's score /10, the seven checks, the "to improve" note, Workiz's own /100 where Workiz
+scores the branch). A person is ranked after 10 scored calls in the dates chosen; every card repeats "a guide for coaching,
+not a verdict". Desktop **1** (recommended): four team figures, the ranking as bars on the left, cards with a score ring,
+trend, sparkline and seven check marks on the right; a card opens in the tab (back arrow) with the score by week, the
+checks against the team, Grok's read and the "to improve" notes, the ranking staying beside it. **2**: a podium for the top
+three, cards below, detail in a side panel. **3**: the cards are the ranking; one opens into a wide row in place. Phone
+**4** (recommended): team figure, ranked cards, a tap opens the person in the tab; **5**: podium and a ranking list;
+**6**: one card at a time, swiped. Needs: a person-list/ranking endpoint and a per-person Grok read (Reports and Grok AI
+asked); scoring itself is off until Grok AI's notice and privacy steps are done. UI/UX builds the client.
+
 ### 81 · App-wide · a walkthrough and a how-to video beside every tab's title — **Jose: "as u recommend" — 1 and 4** — **BUILT** (`docs/previews/tab-walkthrough-video-layouts.html`)
 
 Jose 2026-10-13, via the desk: *"on a1tools for each main tab we had this ... a walkthrough and how to use video buttons, so
