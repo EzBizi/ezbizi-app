@@ -1379,6 +1379,26 @@ class ActionRunner
             ];
         }
 
+        // "The customer it is about" on an ENQUIRY is the enquiry itself: sent
+        // through LeadWhatsApp, so the message and their answer are on its
+        // thread (Meta, 2026-10-13; booking confirmations). No phone is skipped.
+        if ($field === self::RECIPIENT_CUSTOMER && $subject instanceof Lead) {
+            if (Lead::e164($subject->phone) === null) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The enquiry has no phone number, so no WhatsApp was sent.'];
+            }
+
+            try {
+                app(\App\Support\Social\LeadWhatsApp::class)->sendTemplate($subject, $template, array_map(
+                    fn ($value) => $this->interpolate((string) $value, $event, $subject),
+                    array_values((array) ($action['parameters'] ?? [])),
+                ), automatic: true, from: ($action['from'] ?? '') !== '' ? (string) $action['from'] : null);
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return ['type' => $type, 'ok' => true, 'detail' => "Handed the \"{$template}\" template to WhatsApp for the customer; it is on the enquiry."];
+        }
+
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
