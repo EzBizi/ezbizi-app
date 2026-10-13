@@ -5,14 +5,17 @@ namespace App\Support\Tasks;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskGroup;
+use App\Models\TaskStatus;
 use App\Models\User;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Which boards exist, and which ones a person sees and may write.
@@ -32,6 +35,14 @@ class TaskBoards
         ['This week', '#579BFC'],
         ['Next week', '#A25DDC'],
         ['Done', '#00C875'],
+    ];
+
+    /** key, name, colour, is_done — every new board starts with these. */
+    public const BUILT_IN_STATUSES = [
+        [Task::STATUS_NOT_STARTED, 'Not started', '#C4C4C4', false],
+        [Task::STATUS_WORKING_ON_IT, 'Working on it', '#FDAB3D', false],
+        [Task::STATUS_STUCK, 'Stuck', '#E2445C', false],
+        [Task::STATUS_DONE, 'Done', '#00C875', true],
     ];
 
     public function __construct(private readonly TenantContext $tenant) {}
@@ -61,6 +72,21 @@ class TaskBoards
                         'colour' => $colour,
                         'position' => $position,
                     ]);
+                }
+                // The 2026-10-13 board migration runs this before task_statuses
+                // exists; the statuses migration seeds those boards itself.
+                if (Schema::hasTable('task_statuses')) {
+                    foreach (self::BUILT_IN_STATUSES as $position => [$key, $name, $colour, $done]) {
+                        TaskStatus::query()->create([
+                            'organization_id' => $board->organization_id,
+                            'board_id' => $board->id,
+                            'key' => $key,
+                            'name' => $name,
+                            'colour' => $colour,
+                            'position' => $position,
+                            'is_done' => $done,
+                        ]);
+                    }
                 }
             }
 
