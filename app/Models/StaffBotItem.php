@@ -5,10 +5,13 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use App\Support\Reports\Texts\NewClientConversion;
 use App\Support\Training\GuideScreens;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\URL;
 
 /**
  * One row of a staff-line menu, and where its answer comes from: a Training
@@ -29,8 +32,16 @@ class StaffBotItem extends Model implements StatesRetention
 
     public const SOURCES = [self::SOURCE_GUIDE, self::SOURCE_LIBRARY, self::SOURCE_REPORT];
 
-    /** Reports an item can be made from. None writes itself yet. */
+    /** Reports an item can be made from, each written by Reports when asked for. */
     public const REPORTS = ['daily_conversion' => 'Daily conversion (new clients)'];
+
+    /** Pictures sent after a guide row's text (Meta: about three a topic). */
+    public const MAX_IMAGES = 3;
+
+    /** WhatsApp's limit on an image it fetches, and the kinds it takes. */
+    private const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+    private const IMAGE_TYPES = ['image/jpeg', 'image/png'];
 
     /** WhatsApp's lengths for a list row. */
     public const MAX_TITLE = 24;
@@ -72,8 +83,96 @@ class StaffBotItem extends Model implements StatesRetention
         return match ($this->source) {
             self::SOURCE_GUIDE => $this->guideText(),
             self::SOURCE_LIBRARY => trim((string) $this->entry?->body) === '' ? null : (string) $this->entry->body,
+            self::SOURCE_REPORT => $this->reportText(),
             default => null,
         };
+    }
+
+    /**
+     * Whether the bot has something to send, without writing it: a report
+     * is read from RingCentral when asked for, which the editor must not do
+     * once a row on every load.
+     */
+    public function isReady(): bool
+    {
+        return $this->source === self::SOURCE_REPORT
+            ? array_key_exists((string) $this->report, self::REPORTS)
+            : $this->answer() !== null;
+    }
+
+    /**
+     * Today so far, in the organization's own clock: Reports' WhatsApp-ready
+     * line (App\Support\Reports\Texts\NewClientConversion, 506f3b22).
+     */
+    private function reportText(): ?string
+    {
+        if ($this->report !== 'daily_conversion') {
+            return null;
+        }
+        $organization = Organization::find($this->organization_id);
+        if ($organization === null) {
+            return null;
+        }
+        $zone = (string) config('app.timezone');
+        try {
+            $text = trim(NewClientConversion::line($organization, CarbonImmutable::now($zone)->startOfDay()));
+        } catch (\Throwable $e) {
+            // RingCentral out of reach: "coming soon" beats a bot gone quiet.
+            report($e);
+
+            return null;
+        }
+
+        return $text === '' ? null : $text;
+    }
+
+    /**
+     * The pictures of a guide row, to follow its text as image messages:
+     * each one this guide holds as a link signed for 15 minutes (Meta
+     * fetches it when the message is sent), or a jpg/png the guide links to.
+     * Only jpg and png under 5 MB, and at most [MAX_IMAGES].
+     *
+     * @return list<array{link: string, caption: string}>
+     */
+    public function guideImages(): array
+    {
+        if ($this->source !== self::SOURCE_GUIDE || $this->guide === null) {
+            return [];
+        }
+
+        $out = [];
+        foreach (GuideScreens::topics($this->guide, $this->chapter, $this->section) as $topic) {
+            foreach ($topic['topic']['blocks'] as $block) {
+                if (($block['type'] ?? null) !== 'image' || count($out) >= self::MAX_IMAGES) {
+                    continue;
+                }
+                $link = $this->imageLink($block);
+                if ($link !== null) {
+                    $out[] = ['link' => $link, 'caption' => (string) $topic['title']];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param array<string, mixed> $block */
+    private function imageLink(array $block): ?string
+    {
+        if (($block['media_id'] ?? null) !== null) {
+            // Owned by THIS guide only, as TrainingMediaLinks resolves them.
+            $media = TrainingMedia::query()->where('guide_id', $this->training_guide_id)
+                ->whereKey($block['media_id'])->first();
+
+            return $media !== null && in_array($media->mime, self::IMAGE_TYPES, true)
+                && (int) $media->bytes <= self::MAX_IMAGE_BYTES
+                ? URL::temporarySignedRoute('training.media', now()->addMinutes(15), ['media' => $media->getKey()])
+                : null;
+        }
+
+        $url = (string) ($block['url'] ?? '');
+
+        return preg_match('~^https://\S+\.(jpe?g|png)(\?\S*)?$~i', $url) === 1 ? $url : null;
     }
 
     private function guideText(): ?string

@@ -129,6 +129,13 @@ final class CallReconciliation
             $calls,
             fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Outbound' && ($call['result'] ?? null) !== 'Call connected',
         ));
+        // Outbound calls that connected: rows only, never counted, so a search
+        // by number finds every call with that customer (Jose, 2026-10-13: "be
+        // able to search all calls by number as well").
+        $connectedOut = array_values(array_filter(
+            $calls,
+            fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Outbound' && ($call['result'] ?? null) === 'Call connected',
+        ));
         $calls = array_values(array_filter($calls, fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Inbound'));
 
         $booked = $this->jobsCreatedBetween($jobs, $from, $to);
@@ -391,7 +398,24 @@ final class CallReconciliation
                 'answered_by' => null,
                 'placed_by' => $this->canonical($call['caller_label'] ?? null),
                 'rang' => [],
-            ], $unansweredOut)],
+            ], $unansweredOut), ...array_map(fn (array $call): array => [
+                'id' => $call['id'] ?? null,
+                'direction' => 'Outbound',
+                'to_number' => $call['to_number'] ?? null,
+                'started_at' => $call['started_at'] ?? null,
+                'from' => $call['to_number'] ?? null,
+                'caller_label' => null,
+                'queue' => null,
+                'result' => $call['result'] ?? null,
+                'outcome' => 'connected',
+                'booked' => false,
+                'converted' => false,
+                'talk_seconds' => $call['talk_seconds'] ?? null,
+                'recording_id' => $call['recording_id'] ?? null,
+                'answered_by' => null,
+                'placed_by' => $this->canonical($call['caller_label'] ?? null),
+                'rang' => [],
+            ], $connectedOut)],
         ];
     }
 

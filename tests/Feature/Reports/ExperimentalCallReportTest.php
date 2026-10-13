@@ -261,7 +261,10 @@ class ExperimentalCallReportTest extends TestCase
 
         $out = array_column($day['calls'], null, 'id')['out-1'];
         $this->assertSame(['Outbound', 'no_answer', '+12125551212', 'Trey Brannan'], [$out['direction'], $out['outcome'], $out['from'], $out['placed_by']]);
-        $this->assertArrayNotHasKey('out-2', array_column($day['calls'], null, 'id'));
+        // A connected outbound call is a row for a search by number (Jose,
+        // 2026-10-13), never counted: the totals above did not move.
+        $connected = array_column($day['calls'], null, 'id')['out-2'];
+        $this->assertSame(['Outbound', 'connected', '+12125550000'], [$connected['direction'], $connected['outcome'], $connected['from']]);
     }
 
     // ── new versus existing ──────────────────────────────────────

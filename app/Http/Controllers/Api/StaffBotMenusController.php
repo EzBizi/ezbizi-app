@@ -211,7 +211,7 @@ class StaffBotMenusController extends Controller
             'report' => $item->report,
             // "Ready" when the bot has something to send; the editor shows
             // "Needs content" otherwise.
-            'ready' => $item->answer() !== null,
+            'ready' => $item->isReady(),
         ];
     }
 }

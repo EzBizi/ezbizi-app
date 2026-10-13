@@ -93,6 +93,37 @@ void main() {
     expect(find.text('Existing job'), findsNothing);
   });
 
+  testWidgets('a number in the search finds outbound calls that connected '
+      'too, with their recording', (tester) async {
+    final withOut = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (withOut['calls'] as List).add({
+      'id': 'o9',
+      'direction': 'Outbound',
+      'outcome': 'connected',
+      'started_at': '2026-09-16T18:00:00Z',
+      'from': '+19524572594',
+      'placed_by': 'Ada',
+      'answered_by': null,
+      'recording_id': 'rec-9',
+      'talk_seconds': 60,
+      'rang': [],
+      'booked': false,
+    });
+    await _pump(tester, width: 1400, view: 'Calls', report: () => withOut);
+
+    expect(find.text('Called by Ada'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('calls-search')),
+      '952-457-2594',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Called by Ada'), findsOneWidget);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.byKey(const ValueKey('listen-rec-9')), findsOneWidget);
+  });
+
   testWidgets('no Booked per AI list while no call is one', (tester) async {
     await _pump(tester, width: 1400, view: 'Calls');
     expect(
