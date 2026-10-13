@@ -125,12 +125,19 @@ final class ReportAsk
         return [$f->toDateString(), $t->toDateString()];
     }
 
-    /** @return array<string, int> leads received per source, the branch's own */
-    private static function leads(Franchise $branch, string $from, string $to): array
+    /**
+     * Leads received per source, the branch's own. Never Google Local
+     * Services: its counts are Google user data, and Jose ruled on 2026-10-12
+     * that no Google Ads or LSA figures go to xAI (privacy page, Website 62ae8683).
+     *
+     * @return array<string, int>
+     */
+    public static function leads(Franchise $branch, string $from, string $to): array
     {
         return Lead::query()->withoutGlobalScopes()
             ->where('franchise_id', $branch->getKey())
             ->where('is_test', false)
+            ->where('source', '!=', Lead::SOURCE_LOCAL_SERVICES)
             ->whereBetween('received_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->select('source', DB::raw('count(*) n'))->groupBy('source')
             ->pluck('n', 'source')->map(fn ($n) => (int) $n)->all();

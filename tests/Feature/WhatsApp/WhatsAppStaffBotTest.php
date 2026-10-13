@@ -771,6 +771,25 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringNotContainsString('From EzBizi Reports', json_encode($this->sent));
     }
 
+    /** Jose, 2026-10-12: no Google Ads or LSA figures go to xAI. */
+    public function test_google_local_services_leads_are_not_in_the_figures_sent_to_ai(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $branch = $this->inTenant($t['org'], fn () => \App\Models\Franchise::query()->firstOrFail());
+        $this->inTenant($t['org'], function () use ($t, $branch) {
+            foreach ([\App\Models\Lead::SOURCE_LOCAL_SERVICES, \App\Models\Lead::SOURCE_THUMBTACK] as $source) {
+                \App\Models\Lead::create([
+                    'organization_id' => $t['org']->id, 'franchise_id' => $branch->id, 'source' => $source,
+                    'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
+                ]);
+            }
+        });
+
+        $counts = \App\Support\Ai\ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
+
+        $this->assertSame([\App\Models\Lead::SOURCE_THUMBTACK => 1], $counts);
+    }
+
     public function test_a_misread_period_is_clamped_to_a_year_ending_today(): void
     {
         $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
