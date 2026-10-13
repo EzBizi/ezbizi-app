@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 89 · Task Board · your own boards, who is on them, and Automate — **sent 2026-10-13, awaiting Jose** (`docs/previews/task-board-members-automate-layouts.html`)
+### 89 · Task Board · your own boards, who is on them, and Automate — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — building (`docs/previews/task-board-members-automate-layouts.html`)
 
 Jose 2026-10-13, verbatim (inbox 0120): *"we also need to be able to assign people to certain boards and create boards,
 etc. so the owner of a board can assign other people to the board, read up on how monday works with those sort of
