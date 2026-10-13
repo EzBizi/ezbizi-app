@@ -812,9 +812,12 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('library', 'Library'),
                     // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
                     new TabDefinition('whatsapp_groups', 'WhatsApp groups'),
+                    // The staff line's menu for each role (Jose, 2026-10-13: "One
+                    // number, menu by role"; UI queue 88).
+                    new TabDefinition('staff_bot', 'Staff bot'),
                     new TabDefinition('settings', 'Settings'),
                 ],
-                auditActionPrefixes: ['assistant_entry', 'whatsapp_group'],
+                auditActionPrefixes: ['assistant_entry', 'whatsapp_group', 'staff_bot'],
                 automationExemptBecause: 'The Library is reference material an administrator '
                     .'writes, like a training guide: editing an answer is not something that happened '
                     .'to the business, and a rule firing on it would act on a reworded sentence. The '

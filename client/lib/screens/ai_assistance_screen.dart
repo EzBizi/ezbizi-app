@@ -22,6 +22,7 @@ import '../core/theme.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
+import 'ai_assistance/staff_bot_tab.dart';
 import 'ai_assistance/whatsapp_groups_tab.dart';
 import 'settings_screen.dart';
 
@@ -79,6 +80,15 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
         'WhatsApp groups',
         Icons.groups_outlined,
         () => WhatsAppGroupsTab(api: widget.api),
+      ),
+    // The staff line's menu for each role (UI queue 88). Its own grant, and
+    // manage, which every endpoint behind it asks for.
+    if (_may('ai_assistance.staff_bot.view') && _may('ai_assistance.manage'))
+      (
+        'staff_bot',
+        'Staff bot',
+        Icons.smart_toy_outlined,
+        () => StaffBotTab(api: widget.api),
       ),
     if (_may('ai_assistance.settings.view'))
       (

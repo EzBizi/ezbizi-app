@@ -3,6 +3,9 @@
 namespace Tests\Feature\WhatsApp;
 
 use App\Models\AssistantEntry;
+use App\Models\StaffBotItem;
+use App\Models\StaffBotMenu;
+use App\Models\TrainingGuide;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
@@ -796,5 +799,98 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertSame(['2025-10-13', '2026-10-13'], \App\Support\Ai\ReportAsk::period('1990-01-01', '2030-01-01', $today));
         $this->assertSame(['2026-10-01', '2026-10-13'], \App\Support\Ai\ReportAsk::period('nonsense', 'x', $today));
         $this->assertSame(['2026-10-05', '2026-10-11'], \App\Support\Ai\ReportAsk::period('2026-10-05', '2026-10-11', $today));
+    }
+
+    // ── A menu for each role (AI Assistance › Staff bot, UI queue 88) ─────
+
+    /**
+     * Office's menu for this tenant's admin role: a guide section, a Library
+     * entry and a report nothing writes yet. Returns the three items.
+     *
+     * @return array{0: StaffBotItem, 1: StaffBotItem, 2: StaffBotItem}
+     */
+    private function roleMenu(array $t, ?string $roleId = null): array
+    {
+        return $this->inTenant($t['org'], function () use ($t, $roleId) {
+            $guide = TrainingGuide::create([
+                'company_id' => null, 'franchise_id' => null, 'title' => 'Dispatcher guide',
+                'status' => TrainingGuide::PUBLISHED,
+                'screens' => [['title' => 'Answering', 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service',
+                    'blocks' => [['type' => 'text', 'text' => 'Answer by the third ring, with the company name.']]]],
+            ]);
+            $menu = StaffBotMenu::create(['name' => 'Office', 'role_ids' => [$roleId ?? $t['admin']->role_id]]);
+            $item = fn (int $p, array $a) => StaffBotItem::create(['organization_id' => $t['org']->id,
+                'menu_id' => $menu->id, 'position' => $p, ...$a]);
+
+            return [
+                $item(1, ['title' => 'Dispatch guidelines', 'line' => 'How we answer', 'source' => 'guide',
+                    'training_guide_id' => $guide->id, 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service']),
+                $item(2, ['title' => 'Codes', 'source' => 'library',
+                    'assistant_entry_id' => AssistantEntry::query()->orderBy('position')->value('id')]),
+                $item(3, ['title' => 'Daily conversion', 'source' => 'report', 'report' => 'daily_conversion']),
+            ];
+        });
+    }
+
+    public function test_a_role_with_its_own_menu_gets_that_menu(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        [$guide, $library, $report] = $this->roleMenu($t);
+
+        $this->inbound(self::BOT, $this->text('hi'))->assertOk();
+
+        $this->assertSame([
+            WhatsAppStaffBot::ITEM.$guide->id,
+            WhatsAppStaffBot::ITEM.$library->id,
+            WhatsAppStaffBot::ITEM.$report->id,
+            WhatsAppStaffBot::FIND_LOCATION,
+        ], $this->menuIds());
+        $this->assertSame('Office', $this->sent[0]['interactive']['action']['sections'][0]['title']);
+    }
+
+    public function test_a_row_answers_from_what_it_links_to(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        [$guide, $library, $report] = $this->roleMenu($t);
+        $entryBody = $this->inTenant($t['org'], fn () => (string) AssistantEntry::query()->orderBy('position')->value('body'));
+
+        // The guide's section, as the guide says it today.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN1')->assertOk();
+        $this->assertStringContainsString('*Dispatch guidelines*', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('Answer by the third ring', $this->sent[0]['text']['body']);
+
+        // The Library entry, read through AssistantBrain.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$library->id, 'Codes'), 'wamid.IN2')->assertOk();
+        $this->assertStringContainsString(mb_substr($entryBody, 0, 40), $this->sent[1]['text']['body']);
+
+        // Nothing writes the report yet: it says so rather than going quiet.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$report->id, 'Daily conversion'), 'wamid.IN3')->assertOk();
+        $this->assertStringContainsString('coming soon', $this->sent[2]['text']['body']);
+    }
+
+    public function test_another_roles_menu_is_neither_shown_nor_answered(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        $technician = $this->userWithRole($t, 'Technician', ['leads.view']);
+        [$guide] = $this->roleMenu($t, $technician->role_id);
+
+        // The admin's role is in no menu: the Library sections, as before.
+        $this->inbound(self::BOT, $this->text('hi'), 'wamid.IN1')->assertOk();
+        $this->assertNotContains(WhatsAppStaffBot::ITEM.$guide->id, $this->menuIds());
+        $this->assertContains(WhatsAppStaffBot::FIND_LOCATION, $this->menuIds());
+
+        // And a technician's row, tapped by somebody else, is refused.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN2')->assertOk();
+        $this->assertStringContainsString('for staff only', $this->sent[1]['text']['body']);
+        $this->assertStringNotContainsString('third ring', $this->sent[1]['text']['body']);
     }
 }
