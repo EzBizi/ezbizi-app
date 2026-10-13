@@ -69,7 +69,8 @@ class TranscribeReportCalls extends Command
 
         $zone = (string) config('app.timezone');
         $end = CarbonImmutable::now($zone);
-        $start = $end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
+        // Only calls from LabelReportCalls::aiSince() on (Jose, 2026-10-13).
+        $start = max($end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay(), LabelReportCalls::aiSince());
         $until = now()->addMinutes((int) $this->option('minutes'));
 
         $queues = [RingCentralCallLog::NEW_CLIENT_QUEUE, RingCentralCallLog::EXISTING_CLIENT_QUEUE];
