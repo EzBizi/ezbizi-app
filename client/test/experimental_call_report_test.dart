@@ -79,6 +79,19 @@ void main() {
     expect(find.text('Not booked 0'), findsOneWidget);
   });
 
+  testWidgets('an existing job AI read as a reschedule says Rescheduled', (
+    tester,
+  ) async {
+    final moved = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final first = (moved['calls'] as List).first as Map;
+    first['existing_job'] = {'created_at': '2026-10-05 10:00:00'};
+    first['labels'] = {'grok': 'reschedule'};
+    await _pump(tester, width: 1400, view: 'Calls', report: () => moved);
+
+    expect(find.text('Rescheduled'), findsOneWidget);
+    expect(find.text('Existing job'), findsNothing);
+  });
+
   testWidgets('no Booked per AI list while no call is one', (tester) async {
     await _pump(tester, width: 1400, view: 'Calls');
     expect(

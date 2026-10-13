@@ -172,6 +172,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static const _notBookedLabels = {
     'price': 'Price',
     'availability': 'Availability',
+    'reschedule': 'Reschedule',
     'cancel': 'Cancel',
     'confirmation': 'Confirmation',
     'service_question': 'Service question',
@@ -2152,7 +2153,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               : call['existing_job'] is Map
               ? Tooltip(
                   message: _existingJobTip(call['existing_job'] as Map),
-                  child: const StatusPill('Existing job'),
+                  // Jose, 2026-10-13: "maybe a rescheduled tag as well?"
+                  child: StatusPill(
+                    (call['labels'] as Map?)?[_labeller] == 'reschedule'
+                        ? 'Rescheduled'
+                        : 'Existing job',
+                  ),
                 )
               : const StatusPill('Not booked', tone: Tone.caution)
         : const StatusPill('Answered');
