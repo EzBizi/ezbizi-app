@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0425',
       date: '13 Oct 2026',
       items: [
+        'Leads: texts sent to a lead, and the customer\'s text replies, now show in the lead\'s conversation.',
         'Automations: a pop-up alert step says which of the people it names it skipped, and why.',
       ],
     ),

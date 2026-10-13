@@ -25,6 +25,9 @@ sent from here on ships in 0.0.0425.
 
 - **Automations:** 68448a64 (alert step names who it skipped) is merged as 7ea9730b and ships in
   **0.0.0425**. 0424 has 59f33f0e, which is enough to add the alert step to Complaint call.
+- **Leads + Phone:** f9ae4f44 (LeadTexts, landed on main directly) ships in **0.0.0425**. The desk
+  wrapped its SmsWebhookController hook in try/report (40d7111d), so a thread failure can never
+  roll back the inbound PhoneMessage. Phone: please review.
 
 ---
 **Results (filled in after 0.0.0424 deploys):**
