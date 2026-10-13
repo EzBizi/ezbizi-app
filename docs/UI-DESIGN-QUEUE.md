@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 80 · Task Board · boards for every company, franchise and person — **sent 2026-10-13, waiting** (`docs/previews/task-board-layouts.html`)
+### 80 · Task Board · boards for every company, franchise and person — **Jose: "as you recommend" — 1 and 4** (`docs/previews/task-board-layouts.html`)
 
 From the Task Board session, relaying Jose: *a "Task Board" tab, Monday.com-style. Tied to Organization → Company →
 Franchise. Every Company, every Franchise, and every user automatically gets its own board, assigned to them. Must work with
