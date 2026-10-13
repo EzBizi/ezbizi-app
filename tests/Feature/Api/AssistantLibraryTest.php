@@ -166,4 +166,22 @@ class AssistantLibraryTest extends TestCase
         $this->patchJson("/api/v1/ai-assistance/entries/{$answer->id}", ['title' => 'Mine now'])->assertNotFound();
         $this->assertNotContains('Theirs', $this->menuTitles());
     }
+
+    /** Jose, 2026-10-12: the AI tab answers in its own words, from what this person may read. */
+    public function test_ai_answers_from_the_library_and_cites_only_readable_entries(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $a = $this->answers($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            'answered' => true, 'reply' => 'Your place says so.', 'entry_ids' => [$a['mine']->id, $a['sibling']->id],
+        ]]))]);
+        $this->signedInAs($this->userWithRole($t, 'Tech', ['ai_assistance.view', 'ai_assistance.ai.view'], onlyAt: $t['franchise']));
+
+        $this->getJson('/api/v1/ai-assistance/answer?q=what+does+my+place+say')
+            ->assertOk()
+            ->assertJsonPath('data.reply', 'Your place says so.')
+            ->assertJsonPath('data.entry_ids', [$a['mine']->id]);
+
+    }
 }

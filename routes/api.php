@@ -1627,6 +1627,7 @@ Route::prefix('v1')
         Route::middleware('permission:ai_assistance.ai.view')->group(function () {
             Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
+        Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')

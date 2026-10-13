@@ -49,4 +49,22 @@ class AssistantController extends Controller
             'locations' => $this->brain->locations($user->organization, $q)->take(20),
         ]]);
     }
+
+    /**
+     * GET /api/v1/ai-assistance/answer?q= - Grok's answer from the Library,
+     * asked after /ask so the matches show at once and this follows.
+     */
+    public function answer(Request $request): JsonResponse
+    {
+        $q = (string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:200']])['q'];
+        $user = $request->user();
+
+        try {
+            $answer = $this->brain->aiAnswer($user, $user->organization, $q);
+        } catch (\RuntimeException) {
+            return response()->json(['message' => 'AI could not answer just now.'], 503);
+        }
+
+        return response()->json(['data' => $answer]);
+    }
 }
