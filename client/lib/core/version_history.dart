@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0421',
+      date: '13 Oct 2026',
+      items: [
+        'Reports: calls can be tagged Cancel, Confirmation or Service question, and every call is now split by speaker for coaching.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0420',
       date: '13 Oct 2026',
       items: [
