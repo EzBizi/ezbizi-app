@@ -120,6 +120,38 @@ void main() {
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
 
+  /// Jose, 2026-10-13: the dispatcher sees the scheduling fit; the customer
+  /// never does.
+  testWidgets('a pending booking says where a better window is', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-11',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+        'fit': {
+          'verdict': 'better',
+          'date': '2026-10-15',
+          'start_time': '11:00',
+          'end_time': '14:00',
+          'nearby': 2,
+          'nearest_miles': 1.4,
+        },
+      },
+    );
+
+    expect(
+      find.text('Better: Thursday, Oct 15 · 11:00 AM - 2:00 PM (2 jobs nearby, nearest 1.4 mi)'),
+      findsOneWidget,
+    );
+  });
+
   /// Jose, 2026-09-30: chimney prices went to a garage-door lead. The header
   /// tags the company the lead belongs to.
   testWidgets('the header tags the company the lead belongs to', (

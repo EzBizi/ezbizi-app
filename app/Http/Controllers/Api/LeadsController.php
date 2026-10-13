@@ -677,6 +677,7 @@ class LeadsController extends Controller
         $this->authorize('update', $lead);
 
         $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+        $wasApproved = $booking->status === WebBooking::APPROVED;
 
         $booking->forceFill([
             'status' => $decision === 'approve' ? WebBooking::APPROVED : WebBooking::DECLINED,
@@ -684,7 +685,28 @@ class LeadsController extends Controller
             'decided_at' => now(),
         ])->save();
 
+        // The confirmation to the customer (Jose, 2026-10-13: "an automation
+        // that sends the confirmation to the client ... plus the number to call
+        // if they need to reschedule"). Once: approving twice is not news.
+        if ($decision === 'approve' && ! $wasApproved) {
+            $this->events->emit('lead.booking_approved', $lead, ['after' => [
+                'booking_when' => self::bookingWhen($booking),
+                'booking_date' => $booking->date->toDateString(),
+                'office_phone' => $lead->office_phone,
+                'contact_name' => $lead->contact_name,
+                'phone' => $lead->phone,
+            ]]);
+        }
+
         return response()->json(['data' => $this->presentBooking($booking)]);
+    }
+
+    /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */
+    public static function bookingWhen(WebBooking $booking): string
+    {
+        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+
+        return $booking->date->format('l, F j').', between '.$at((string) $booking->start_time).' and '.$at((string) $booking->end_time);
     }
 
     /** @return array<string, mixed> */
@@ -697,6 +719,44 @@ class LeadsController extends Controller
             'status' => $booking->status,
             'decided_at' => $booking->decided_at?->toIso8601String(),
             'decided_by' => $booking->decided_by === null ? null : User::query()->whereKey($booking->decided_by)->value('name'),
+            'fit' => $booking->status === WebBooking::PENDING ? self::bookingFit($booking) : null,
+        ];
+    }
+
+    /**
+     * How the asked-for window sits beside work already booked, for the
+     * dispatcher only (Jose, 2026-10-13: "the client does not need to see the
+     * recommendation"): Scheduling's NearbySuggestion for the lead's ZIP. Null
+     * when there is no ZIP, no area or nothing booked nearby.
+     *
+     * @return array{verdict: string, date: string, start_time: string, end_time: string, nearby: int, nearest_miles: ?float}|null
+     */
+    private static function bookingFit(WebBooking $booking): ?array
+    {
+        $zip = substr(preg_replace('/\D/', '', (string) $booking->lead?->postal_code) ?? '', 0, 5);
+        $area = $booking->serviceArea;
+        if (strlen($zip) !== 5 || $area === null) {
+            return null;
+        }
+
+        $tz = (string) app(SettingsResolver::class)->get('timezone', $booking->lead?->organization);
+        $best = app(\App\Support\Scheduling\NearbySuggestion::class)
+            ->for($area, $zip, \App\Support\Scheduling\Openings::tomorrow($tz))['suggested'] ?? null;
+        if ($best === null) {
+            return null;
+        }
+
+        $same = $best['date'] === $booking->date->toDateString()
+            && $best['window']['start_time'] === substr((string) $booking->start_time, 0, 5);
+
+        return [
+            // "good": what they asked for is the best fit; "better": another window is.
+            'verdict' => $same ? 'good' : 'better',
+            'date' => $best['date'],
+            'start_time' => $best['window']['start_time'],
+            'end_time' => $best['window']['end_time'],
+            'nearby' => (int) $best['nearby'],
+            'nearest_miles' => is_numeric($best['nearest_miles'] ?? null) ? round((float) $best['nearest_miles'], 1) : null,
         ];
     }
 

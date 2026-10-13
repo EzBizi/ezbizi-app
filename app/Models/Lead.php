@@ -624,9 +624,27 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public static function automationMessageFields(): array
     {
         return [
-            'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens', 'photos_email',
-            'reply_headline', 'reply_preview', 'source_name', 'thank_you',
+            'booking_link', 'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens',
+            'office_phone', 'photos_email', 'reply_headline', 'reply_preview', 'source_name', 'thank_you',
         ];
+    }
+
+    /**
+     * `{{booking_link}}`: the branch's booking page with this lead's token, so
+     * a booking made from it lands on this lead instead of a new one (Jose,
+     * 2026-10-13). Empty when the branch has no booking page.
+     */
+    public function getBookingLinkAttribute(): string
+    {
+        $url = trim((string) app(SettingsResolver::class)->get('leads.booking_url', $this->franchise ?? $this->company ?? $this->organization));
+
+        return $url === '' ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
+    }
+
+    /** `{{office_phone}}`: the number a customer calls the branch on. */
+    public function getOfficePhoneAttribute(): string
+    {
+        return trim((string) app(SettingsResolver::class)->get('leads.office_phone', $this->franchise ?? $this->company ?? $this->organization));
     }
 
     /*

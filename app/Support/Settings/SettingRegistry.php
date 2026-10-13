@@ -1127,6 +1127,26 @@ class SettingRegistry
                 help: 'Where a customer who mentions pictures or documents is asked to email them, '
                     .'e.g. office@ny.a-1chimney.com. Set per branch. Empty: they are not asked.',
             ),
+            // Jose, 2026-10-13: send the booking link when the office is
+            // closed, and the number to call to reschedule once approved.
+            new SettingDefinition(
+                key: 'leads.booking_url',
+                label: 'Online booking page',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                editPermission: 'leads.edit',
+                help: 'The page with the booking widget, e.g. https://www.a-1chimney.com/booking/. '
+                    .'{{booking_link}} in an auto reply is this page with a link that files the '
+                    .'booking on the same lead. Empty: no link.',
+            ),
+            new SettingDefinition(
+                key: 'leads.office_phone',
+                label: 'Office phone for customers',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                editPermission: 'leads.edit',
+                help: 'The number a customer calls to reschedule, {{office_phone}} in a message. Set per branch.',
+            ),
         ];
     }
 

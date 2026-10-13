@@ -1522,6 +1522,25 @@ class _LeadThreadState extends State<LeadThread> {
       '${hm(b['start_time'])} - ${hm(b['end_time'])}',
     ].join(' · ');
     final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
+    // How it sits beside booked work, for the dispatcher only (Jose,
+    // 2026-10-13: "the client does not need to see the recommendation").
+    final fit = b['fit'] is Map ? b['fit'] as Map : null;
+    String? fitLine;
+    if (fit != null) {
+      final near = (fit['nearby'] as num?)?.toInt() ?? 0;
+      final miles = fit['nearest_miles'] is num ? ', nearest ${fit['nearest_miles']} mi' : '';
+      final jobs = '$near job${near == 1 ? '' : 's'} nearby$miles';
+      if (fit['verdict'] == 'good') {
+        fitLine = 'Good fit: $jobs';
+      } else {
+        final d = DateTime.tryParse('${fit['date']}');
+        final at = [
+          if (d != null) '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}',
+          '${hm(fit['start_time'])} - ${hm(fit['end_time'])}',
+        ].join(' · ');
+        fitLine = 'Better: $at ($jobs)';
+      }
+    }
 
     return Padding(
       key: const ValueKey('lead-booking'),
@@ -1549,6 +1568,14 @@ class _LeadThreadState extends State<LeadThread> {
               '${status == 'approved' ? 'Approved' : 'Declined'}$by',
               key: const ValueKey('booking-status'),
               style: theme.textTheme.bodySmall,
+            ),
+          if (fitLine != null)
+            Text(
+              fitLine,
+              key: const ValueKey('booking-fit'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ToneColours.of(context, fit!['verdict'] == 'good' ? Tone.ok : Tone.caution).ink,
+              ),
             ),
         ],
       ),

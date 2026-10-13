@@ -2681,6 +2681,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'raise this.',
                     ),
                     new TriggerDefinition(
+                        key: 'lead.booking_approved',
+                        label: 'Online booking approved',
+                        description: 'A dispatcher approved a booking made on the website. It carries '
+                            .'the day and arrival window as the customer reads them ({{booking_when}}) '
+                            .'and the branch phone for rescheduling ({{office_phone}}). Raised once per booking.',
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.converted',
                         label: 'Lead became a job',
                         description: 'A lead was turned into a customer and a booked job, carrying '
