@@ -37,14 +37,16 @@ class Tour {
 /// By module key, as `module_screens.dart` keys its screens.
 const Map<String, Tour> tabTours = {
   'tasks': Tour(
-    version: 1,
+    // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tasks-boards',
         title: 'Your boards',
         body:
-            'My board is yours alone. The franchise and company boards in '
-            'this view sit beside it, each with how many open tasks are yours.',
+            "Pick a board here. My board is yours alone; each company's "
+            "board and its franchises' sit under the company, with how many "
+            'open tasks are yours.',
       ),
       TourStep(
         anchor: 'tasks-view',
@@ -64,7 +66,25 @@ const Map<String, Tour> tabTours = {
         title: 'Groups and tasks',
         body:
             'Click a group to fold it, and Add task at its foot to add one '
-            'there. Click a status to change it, or a task to open it.',
+            "there. Click a status to change it, ▸ for a task's subtasks, or "
+            'a task to open it.',
+      ),
+      TourStep(
+        anchor: 'column-add',
+        title: 'Your own columns',
+        since: 2,
+        body:
+            'Add a column of text, numbers, a status, a date, a person, a '
+            "dropdown or a checkbox. Click a column's name to rename it, "
+            'change its options, move or hide it.',
+      ),
+      TourStep(
+        anchor: 'tasks-statuses',
+        title: 'Your own statuses',
+        since: 2,
+        body:
+            'Name the statuses this board uses, give each a colour, and mark '
+            'which count as done.',
       ),
     ],
   ),

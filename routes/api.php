@@ -810,6 +810,15 @@ Route::prefix('v1')
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
         Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
+        Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
+        Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);
+        Route::post('task-boards/{taskBoard}/columns', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeColumn']);
+        Route::patch('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateColumn']);
+        Route::delete('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyColumn']);
+        Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
+        Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
+        Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
         Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
         Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
         Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);

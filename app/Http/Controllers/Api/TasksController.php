@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskColumnValue;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -22,12 +23,21 @@ use Illuminate\Validation\ValidationException;
 /** Task Board tasks. Every write goes through TaskWriter. */
 class TasksController extends Controller
 {
+    /** What present() reads. */
+    public const WITH = ['assignee:id,name', 'creator:id,name', 'statusRow', 'values.column'];
+
+    /** The counts present() reads. A subtask is done when its status is (tasks.status maps every done status to `done`). */
+    public static function counts(): array
+    {
+        return ['updates', 'subtasks', 'subtasks as subtasks_done' => fn ($q) => $q->where('status', Task::STATUS_DONE)];
+    }
+
     public function __construct(private readonly TaskWriter $writer) {}
 
     public function show(Task $task): JsonResponse
     {
         $this->authorize('view', $task);
-        $task->load(['assignee:id,name', 'creator:id,name', 'updates.user:id,name'])->loadCount('updates');
+        $task->load(['assignee:id,name', 'creator:id,name', 'updates.user:id,name', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
         return response()->json(['data' => self::present($task) + [
             'updates' => $task->updates->map(fn (TaskUpdate $u) => [
@@ -41,14 +51,14 @@ class TasksController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $input = $request->validate(['board_id' => ['required', 'uuid']] + $this->rules(required: true));
+        $input = $request->validate(['board_id' => ['required', 'uuid'], 'parent_task_id' => ['sometimes', 'nullable', 'uuid']] + $this->rules(required: true));
         $board = TaskBoard::query()->findOrFail($input['board_id']);
         $this->authorize('update', $board);
         $this->checkReferences($input);
 
         $task = $this->writer->create($board, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(['assignee', 'creator'])->loadCount('updates'))], 201);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))], 201);
     }
 
     public function update(Request $request, Task $task): JsonResponse
@@ -59,7 +69,7 @@ class TasksController extends Controller
 
         $task = $this->writer->update($task, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(['assignee', 'creator'])->loadCount('updates'))]);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
     }
 
     public function destroy(Request $request, Task $task): Response
@@ -91,9 +101,14 @@ class TasksController extends Controller
         return [
             'id' => $task->id,
             'board_id' => $task->board_id,
+            'parent_task_id' => $task->parent_task_id,
             'group_id' => $task->group_id,
             'title' => $task->title,
             'status' => $task->status,
+            'status_id' => $task->status_id,
+            'values' => (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
+            'subtasks_count' => (int) ($task->subtasks_count ?? 0),
+            'subtasks_done' => (int) ($task->subtasks_done ?? 0),
             'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
             'due_on' => $task->due_on?->toDateString(),
             'completed_at' => $task->completed_at?->toIso8601String(),
@@ -108,6 +123,18 @@ class TasksController extends Controller
                 default => null,
             },
         ];
+    }
+
+    /** A stored value as the client reads it, by its column's type. */
+    public static function valueOf(TaskColumnValue $v): mixed
+    {
+        return match ($v->column?->type) {
+            'number' => $v->value_number,
+            'date' => $v->value_date?->toDateString(),
+            'person' => $v->value_user_id,
+            'checkbox' => (bool) $v->value_number,
+            default => $v->value_text,
+        };
     }
 
     private static function aboutLabel(Model $about): string
@@ -128,7 +155,10 @@ class TasksController extends Controller
         return [
             'title' => [...$sometimes, 'required', 'string', 'max:255'],
             'group_id' => ['sometimes', 'nullable', 'uuid'],
-            'status' => ['sometimes', 'nullable', Rule::in(array_keys(Task::STATUSES))],
+            // A built-in key or a status name on the board; TaskWriter resolves it.
+            'status' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status_id' => ['sometimes', 'nullable', 'uuid'],
+            'values' => ['sometimes', 'array'],
             'assignee_user_id' => ['sometimes', 'nullable', 'uuid'],
             'due_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'about' => ['sometimes', 'nullable', 'array'],

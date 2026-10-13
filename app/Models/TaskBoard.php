@@ -40,6 +40,16 @@ class TaskBoard extends Model implements StatesRetention
         return $this->hasMany(TaskGroup::class, 'board_id')->orderBy('position');
     }
 
+    public function statuses(): HasMany
+    {
+        return $this->hasMany(TaskStatus::class, 'board_id')->orderBy('position');
+    }
+
+    public function columns(): HasMany
+    {
+        return $this->hasMany(TaskColumn::class, 'board_id')->orderBy('position');
+    }
+
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'board_id');

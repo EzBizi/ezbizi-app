@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/tab_tours.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/tab_help.dart';
 import 'package:flutter/material.dart';
@@ -112,7 +113,7 @@ void main() {
 
   testWidgets('(?) walks through the tab, skipping a control that is not '
       'there, and Done remembers it for the person', (tester) async {
-    final session = await signedIn(seen: {'tasks': 1});
+    final session = await signedIn(seen: {'tasks': tabTours['tasks']!.version});
     await pumpPage(tester, session);
 
     // Seen already: no offer, but (?) still runs it.
@@ -137,7 +138,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('tour-card')), findsNothing);
     expect(patches.last, {
-      'help.tours_seen': {'tasks': 1},
+      'help.tours_seen': {'tasks': tabTours['tasks']!.version},
     });
   });
 
@@ -155,7 +156,7 @@ void main() {
 
     expect(find.byKey(const Key('tab-help-offer')), findsNothing);
     expect(patches.single, {
-      'help.tours_seen': {'tasks': 1},
+      'help.tours_seen': {'tasks': tabTours['tasks']!.version},
     });
   });
 

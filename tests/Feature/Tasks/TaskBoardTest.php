@@ -124,8 +124,9 @@ class TaskBoardTest extends TestCase
 
             $changes = AutomationEvent::query()->where('event_key', 'task.status_changed')->get();
             $this->assertCount(2, $changes);
-            $toDone = $changes->firstWhere('payload.before.status', 'not_started');
-            $this->assertSame('done', $toDone->payload['after']['status']);
+            $toDone = $changes->firstWhere('payload.before.status', 'Not started');
+            $this->assertSame('Done', $toDone->payload['after']['status']);
+            $this->assertTrue($toDone->payload['after']['is_done']);
         });
 
         $this->signedInAs($tenant['admin'])->deleteJson("/api/v1/tasks/{$id}")->assertNoContent();

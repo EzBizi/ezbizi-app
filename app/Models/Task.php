@@ -50,8 +50,8 @@ class Task extends Model implements HoldsPersonalData
     ];
 
     protected $fillable = [
-        'organization_id', 'board_id', 'group_id', 'company_id', 'franchise_id', 'title',
-        'status', 'assignee_user_id', 'due_on', 'completed_at', 'about_type', 'about_id',
+        'organization_id', 'board_id', 'parent_task_id', 'group_id', 'company_id', 'franchise_id', 'title',
+        'status', 'status_id', 'assignee_user_id', 'due_on', 'completed_at', 'about_type', 'about_id',
         'created_by_user_id', 'created_by_automation_id', 'priority', 'estimate_minutes',
     ];
 
@@ -73,6 +73,26 @@ class Task extends Model implements HoldsPersonalData
     public function group(): BelongsTo
     {
         return $this->belongsTo(TaskGroup::class, 'group_id');
+    }
+
+    public function statusRow(): BelongsTo
+    {
+        return $this->belongsTo(TaskStatus::class, 'status_id');
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_task_id');
+    }
+
+    public function subtasks(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_task_id');
+    }
+
+    public function values(): HasMany
+    {
+        return $this->hasMany(TaskColumnValue::class);
     }
 
     public function assignee(): BelongsTo
