@@ -992,6 +992,16 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                             : null);
                 }
 
+                // Google sends no name or number for a booking (and often
+                // none for a call): its silence must not blank what EzBizi
+                // filled from Workiz, a booking email or Grok. Before
+                // 2026-10-13 every resync of a booking wiped them.
+                foreach (['contact_name', 'phone', 'phone_digits', 'email'] as $field) {
+                    if ($fromSource[$field] === null) {
+                        unset($fromSource[$field]);
+                    }
+                }
+
                 // `status` is absent from $fromSource, which is the point.
                 $lead->fill($fromSource);
             }
