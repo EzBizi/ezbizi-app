@@ -79,7 +79,13 @@ class SmsWebhookController extends Controller
             $this->events->emit('phone.sms.received', $message, $this->payload($message));
 
             // An answer to a text we sent about a lead goes on that lead's thread (Leads, 2026-10-13).
-            app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid);
+            // Never at the cost of the text itself: a failure here must not roll back
+            // the PhoneMessage above (desk, 2026-10-13).
+            try {
+                app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         });
 
         return response('', Status::HTTP_OK);
