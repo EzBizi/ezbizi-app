@@ -44,6 +44,8 @@ class TasksOverdue extends Command
                         $task->forceFill(['overdue_announced_at' => now()])->save();
                         $events->emitAfterCommit('task.overdue', $task, [
                             'assignee_user_id' => $task->assignee_user_id,
+                            'board_id' => $task->board_id,
+                            'board_name' => $task->board?->name,
                             'after' => [
                                 'board_id' => $task->board_id,
                                 'title' => $task->title,

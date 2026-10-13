@@ -9,16 +9,22 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * One Task Board: a person's own, a franchise's, or a company's (Jose,
  * 2026-10-13). Exactly one of owner_user_id / franchise_id / company_id is set,
  * matching `kind`. Created automatically — see App\Support\Tasks\TaskBoards.
+ *
+ * A `custom` board (inbox 0120) is made by a person: it sits on a company, a
+ * franchise or the organization (both ids null), is `main` or `private`, and
+ * has members. Automatic boards are always main and cannot be deleted.
  */
 class TaskBoard extends Model implements StatesRetention
 {
     use BelongsToTenant;
     use HasUuids;
+    use SoftDeletes;
 
     public const KIND_USER = 'user';
 
@@ -26,7 +32,13 @@ class TaskBoard extends Model implements StatesRetention
 
     public const KIND_COMPANY = 'company';
 
-    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'name'];
+    public const KIND_CUSTOM = 'custom';
+
+    public const MAIN = 'main';
+
+    public const PRIVATE = 'private';
+
+    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key'];
 
     public static function retention(): RetentionPolicy
     {
@@ -53,6 +65,21 @@ class TaskBoard extends Model implements StatesRetention
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'board_id');
+    }
+
+    public function members(): HasMany
+    {
+        return $this->hasMany(TaskBoardMember::class, 'board_id');
+    }
+
+    public function isAutomatic(): bool
+    {
+        return $this->kind !== self::KIND_CUSTOM;
+    }
+
+    public function isPrivate(): bool
+    {
+        return $this->kind === self::KIND_CUSTOM && $this->visibility === self::PRIVATE;
     }
 
     public function company(): BelongsTo

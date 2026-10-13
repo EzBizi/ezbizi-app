@@ -91,6 +91,8 @@ class TaskWriter
             $this->audit->log('task.created', $task, actor: $actor);
             $this->events->emitAfterCommit('task.created', $task, [
                 'assignee_user_id' => $task->assignee_user_id,
+                'board_id' => $task->board_id,
+                'board_name' => $task->board?->name,
                 'after' => $this->snapshot($task),
             ]);
 
@@ -146,6 +148,8 @@ class TaskWriter
             if ($statusChanged) {
                 $this->events->emitAfterCommit('task.status_changed', $task, [
                     'assignee_user_id' => $task->assignee_user_id,
+                    'board_id' => $task->board_id,
+                    'board_name' => $task->board?->name,
                     'before' => $before,
                     'after' => $this->snapshot($task),
                 ]);
