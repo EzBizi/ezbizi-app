@@ -450,7 +450,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits', 'postal_code',
         'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
-        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 

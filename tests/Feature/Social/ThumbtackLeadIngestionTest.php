@@ -308,6 +308,43 @@ class ThumbtackLeadIngestionTest extends TestCase
     // ── helpers ──────────────────────────────────────────────────
 
     /** @param  array<string, mixed>  $body */
+    /** Jose, 2026-10-13: Thumbtack financials - what each lead cost, and a refund showing later. */
+    public function test_a_lead_keeps_its_price_and_a_later_refund_shows(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $negotiation = fn (string $state) => [
+            'negotiationID' => 'neg-1', 'createdAt' => '2026-09-08T14:30:00Z',
+            'customer' => ['firstName' => 'Ada', 'lastName' => 'Sweep', 'phone' => '+15552345678'],
+            'request' => ['category' => ['name' => 'Chimney Cleaning']],
+            'leadPrice' => '$14.90', 'chargeState' => $state,
+        ];
+        // A callback, not URL patterns: the messages URL also matches negotiations/*.
+        $states = ['Charged', 'Refunded'];
+        Http::fake(function ($request) use (&$states, $negotiation) { return str_ends_with($request->url(), '/messages')
+            ? Http::response(['data' => []])
+            : Http::response($negotiation(array_shift($states) ?? 'Refunded')); });
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame(1490, $lead->lead_cost_minor);
+        $this->assertSame('USD', $lead->lead_cost_currency);
+        $this->assertSame('CHARGED', $lead->charge_status);
+
+        $this->artisan('ezbizi:thumbtack-lead-costs')->expectsOutputToContain('Read 1 of 1')->assertSuccessful();
+
+        $lead = $this->inTenant($t['org'], fn () => $lead->fresh());
+        $this->assertSame('CREDITED', $lead->charge_status, 'the refund shows');
+        $this->assertSame(1490, $lead->lead_cost_minor);
+    }
+
+    public function test_a_price_reads_in_cents_and_nothing_is_guessed(): void
+    {
+        $this->assertSame(123450, ThumbtackLeads::cost(['leadPrice' => '$1,234.5'])['lead_cost_minor']);
+        $this->assertSame(['lead_cost_minor' => null, 'lead_cost_currency' => null, 'charge_status' => null], ThumbtackLeads::cost([]));
+    }
+
     private function send(array $t, array $body): \Illuminate\Testing\TestResponse
     {
         return $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')

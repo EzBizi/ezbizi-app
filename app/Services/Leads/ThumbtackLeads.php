@@ -362,6 +362,11 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
                 'synced_at'    => now(),
             ];
 
+            // What the lead cost, when the payload says (a fetched negotiation
+            // does; the webhook's may not, and ezbizi:thumbtack-lead-costs
+            // fills it in). Never blanked by a payload that omits it.
+            $fromSource += array_filter(self::cost($raw), fn ($v) => $v !== null);
+
             if ($created) {
                 $lead = new Lead([
                     'organization_id' => $connection->organization_id,
@@ -427,6 +432,30 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
 
             return ['lead' => $lead, 'created' => $created];
         });
+    }
+
+    /**
+     * "$14.90" and "Charged" as cents and the charge_status Google's leads use.
+     *
+     * @return array{lead_cost_minor: ?int, lead_cost_currency: ?string, charge_status: ?string}
+     */
+    public static function cost(array $raw): array
+    {
+        $price = (string) ($raw['leadPrice'] ?? '');
+        $state = strtolower(trim((string) ($raw['chargeState'] ?? '')));
+
+        return [
+            'lead_cost_minor' => preg_match('/^\s*\$?\s*([\d,]+)(?:\.(\d{1,2}))?\s*$/', $price, $m) === 1
+                ? (int) str_replace(',', '', $m[1]) * 100 + (int) str_pad($m[2] ?? '0', 2, '0')
+                : null,
+            'lead_cost_currency' => $price !== '' && str_contains($price, '$') ? 'USD' : null,
+            'charge_status' => match (true) {
+                $state === '' => null,
+                str_contains($state, 'refund') || str_contains($state, 'credit') => 'CREDITED',
+                $state === 'charged' => 'CHARGED',
+                default => strtoupper(str_replace(' ', '_', $state)),
+            },
+        ];
     }
 
     /**

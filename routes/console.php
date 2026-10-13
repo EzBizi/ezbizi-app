@@ -102,6 +102,8 @@ Schedule::command('ezbizi:close-ended-shifts')->everyMinute()->withoutOverlappin
 // asks why their van phone shows as an unknown number. This reads their list
 // and sends the difference, so it repairs drift instead of adding to it.
 Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->withoutOverlapping(30);
+// Each Thumbtack lead's price and refund state, for Reports' Thumbtack tab (2026-10-13).
+Schedule::command('ezbizi:thumbtack-lead-costs')->dailyAt('04:50')->withoutOverlapping(30);
 
 // A Thumbtack grant left unused for ~15 days is refused; exchange it daily.
 Schedule::command('ezbizi:thumbtack-keep-alive')->dailyAt('04:30')->withoutOverlapping(10);
