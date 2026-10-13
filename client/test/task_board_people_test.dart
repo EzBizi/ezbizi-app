@@ -177,8 +177,9 @@ void main() {
         }
         if (request.method != 'GET') return json({'data': <String, dynamic>{}});
         for (final b in boards) {
-          if (path == '/task-boards/${b['id']}')
+          if (path == '/task-boards/${b['id']}') {
             return json({'data': board(b)});
+          }
         }
         return json({'message': 'Not found'}, 404);
       }),
@@ -360,6 +361,39 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('board-rule-on-r-1')));
     await tester.pumpAndSettle();
     sent(log.last, 'PATCH', '/automations/r-1', {'is_active': false});
+  });
+
+  testWidgets('a status recipe stores the status by name', (tester) async {
+    await pump(tester, automations: true, kind: 'franchise');
+
+    await tester.tap(find.byKey(const Key('tasks-automate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-when')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('a task is overdue').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-then')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('set the status to').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-to-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stuck').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-save')));
+    await tester.pumpAndSettle();
+
+    final body = log.first.$3 as Map;
+    expect(
+      body['name'],
+      'Spring push: When a task is overdue, set the status to Stuck',
+    );
+    expect(body['trigger_key'], 'task.overdue');
+    expect(body['actions'], [
+      {'type': 'change_status', 'value': 'Stuck'},
+    ]);
   });
 
   testWidgets('without Automations there is no Automate', (tester) async {

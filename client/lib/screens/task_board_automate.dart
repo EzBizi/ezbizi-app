@@ -28,6 +28,9 @@ const _notify = 'notify';
 const _alert = 'alert.send';
 const _move = 'task.move_group';
 
+/// A status by NAME, resolved on the task's own board by the engine.
+const _status = 'change_status';
+
 /// The person the event is about, for notify ("the person assigned").
 const _assignee = '';
 
@@ -58,6 +61,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
   String _action = _notify;
   String? _person = _assignee;
   String? _groupId;
+  String? _toStatus;
   bool _saving = false;
 
   String get _boardId => '${widget.board['id']}';
@@ -164,6 +168,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       _notify => 'notify ${ids.isEmpty ? 'somebody' : person(ids.first)}',
       _alert =>
         'send a Communication alert to ${ids.isEmpty ? 'somebody' : person(ids.first)}',
+      _status => 'set the status to ${action['value']}',
       _move =>
         'move it to ${_nameIn('groups', action['group_id']) ?? 'another group'}',
       _ => 'do ${action['type']}',
@@ -187,6 +192,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
         'user_ids': [_person],
       },
       _move => {'type': _move, 'group_id': _groupId},
+      _status => {'type': _status, 'value': _toStatus},
       _ =>
         _person == _assignee
             ? {'type': _notify, 'message': message, 'to_assignee': true}
@@ -202,6 +208,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       (_trigger != 'task.status_changed' || _statusId != null) &&
       switch (_action) {
         _move => _groupId != null,
+        _status => _toStatus != null,
         _notify => _person != null,
         _ => _person != null && _person != _assignee,
       };
@@ -382,6 +389,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                     value: _alert,
                     label: 'send a Communication alert to',
                   ),
+                const SearchOption(value: _status, label: 'set the status to'),
                 const SearchOption(value: _move, label: 'move it to a group'),
               ],
               (v) {
@@ -395,6 +403,11 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 for (final g in _list('groups'))
                   SearchOption(value: g['id'] as String, label: '${g['name']}'),
               ], (v) => _groupId = v)
+            else if (_action == _status)
+              pick<String>('board-rule-to-status', 'Status', _toStatus, [
+                for (final s in _list('statuses'))
+                  SearchOption(value: '${s['name']}', label: '${s['name']}'),
+              ], (v) => _toStatus = v)
             else
               pick<String>('board-rule-person', 'Who', _person, [
                 if (_action == _notify)
