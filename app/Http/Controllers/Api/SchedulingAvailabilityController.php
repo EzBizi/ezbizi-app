@@ -6,6 +6,7 @@ use App\Support\Leads\AddressCheck;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -48,6 +49,30 @@ class SchedulingAvailabilityController extends Controller
      * life of a test, and SettingsResolver caches per request — held here it
      * would answer a later request from an earlier one's cache.
      */
+
+    /**
+     * GET /api/v1/scheduling/availability/suggestion?zip=
+     *
+     * The earliest open window for a zip, and the one nearest work already
+     * booked, with the jobs it weighed so the screen can draw them on a map
+     * (Jose, 2026-10-13). See App\Support\Scheduling\NearbySuggestion.
+     */
+    public function suggestion(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate(['zip' => ['required', 'string', 'max:16']]);
+        $zip = $this->zip5((string) $data['zip']);
+        $area = $this->areaForZip($zip, ViewScope::forUser($request->user())->franchiseIds());
+
+        if ($area === null || ! Openings::hasCapacity($area)) {
+            return response()->json(['data' => null]);
+        }
+
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
+
+        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
+            + app(NearbySuggestion::class)->for($area, $zip, $from)]);
+    }
 
     /** GET /api/v1/scheduling/availability */
     public function show(Request $request): JsonResponse

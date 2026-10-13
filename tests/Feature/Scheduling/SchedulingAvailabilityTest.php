@@ -775,6 +775,75 @@ class SchedulingAvailabilityTest extends TestCase
         $this->signedInAs($caller)->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")->assertForbidden();
     }
 
+    /** A Workiz job with a place on the map, for the nearby suggestion. */
+    private function located(array $tenant, string $at, float $lat, float $lng, string $zip = '75201', string $tech = 'Ivan Sharkov'): void
+    {
+        app(TenantContext::class)->set($tenant['org']);
+        WorkizJob::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'service_area' => 'Dallas',
+            'postal_code' => $zip,
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'status' => 'Submitted',
+            'scheduled_for' => $at,
+            'payload' => ['Tags' => [], 'Team' => [['id' => 'USR-1', 'Name' => $tech]]],
+            'synced_at' => now(),
+        ]);
+    }
+
+    /**
+     * Jose, 2026-10-13: suggest the day with work already booked nearby. The
+     * earliest Monday has only a job 230 miles off; the next one has a job two
+     * blocks away at 11, so it is suggested, in the window beside it, and
+     * names the technician already there.
+     */
+    public function test_a_zip_is_suggested_the_day_with_booked_work_nearby(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        // A past job in 75201 gives the zip its place.
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        // Oct 5: one job, far away (Houston).
+        $this->located($tenant, '2026-10-05 07:00:00', 29.7600, -95.3700, '77002', 'Harry Jenkins');
+        // Oct 12: one job a few blocks from the customer, in the 11-2 window.
+        $this->located($tenant, '2026-10-12 11:00:00', 32.7900, -96.8010);
+
+        $data = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(5.0, (float) $data['radius_miles']);
+        $this->assertSame('2026-10-05', $data['earliest']['date']);
+        $this->assertSame(0, $data['earliest']['nearby']);
+        $this->assertGreaterThan(200, $data['earliest']['nearest_miles']);
+
+        $this->assertSame('2026-10-12', $data['suggested']['date']);
+        // That job fills 11-2 (it takes one), so the window right before it.
+        $this->assertSame('07:00', $data['suggested']['window']['start_time'], 'The window beside the nearby job.');
+        $this->assertSame(1, $data['suggested']['nearby']);
+        // The day in Availability's own shape, and which window is meant.
+        $this->assertSame(['07:00', '11:00'], array_column($data['suggested']['day']['windows'], 'start_time'));
+        $this->assertSame(0, $data['suggested']['window_index']);
+        $this->assertSame(['Ivan Sharkov'], $data['suggested']['technicians']);
+        $this->assertFalse($data['suggested']['same_as_earliest']);
+        $this->assertLessThan(1, $data['suggested']['jobs'][0]['miles']);
+        $this->assertEqualsWithDelta(32.788, $data['origin']['latitude'], 0.002, 'The centre of the zip from its jobs.');
+
+        // A wider radius from Settings changes nothing here, a 1-mile one still
+        // finds the job, and nothing nearby means no suggestion at all.
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.suggest_radius_miles', $tenant['org'], 1);
+        $this->assertSame('2026-10-12', $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested.date'));
+        app(TenantContext::class)->set($tenant['org']);
+        DB::table('workiz_jobs')->where('scheduled_for', '2026-10-12 11:00:00')->update(['latitude' => 29.7601, 'longitude' => -95.3701]);
+        $this->assertNull($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested'));
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {
