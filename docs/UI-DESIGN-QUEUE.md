@@ -2965,6 +2965,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 87 · Reports · one look for every tab — **sent 2026-10-13, awaiting Jose** (`docs/previews/reports-one-look-layouts.html`)
+
+Jose 2026-10-13, verbatim: *"Please whenever you can take a look at all the tabs in reports, specially the new ones ( also
+the old ones ) and see how you can improve them visually for UI-UX"*. Every tab and sub-tab was rendered with invented data,
+desktop and phone, 110 shots (`scratchpad/reports_audit/shots`). There are three date controls, five table styles, four
+empty-page styles, money written three ways, and padding of 16 or 32 depending on the tab. On a phone the strip clips to
+"Reports, Repor…" and the tables are wider than the screen. The frame proposed for every option: one toolbar (Performance's
+date control everywhere, filters as pickers, actions right), equal figure tiles with the change against the dates before,
+and one table style (sentence-case headings, numbers right-aligned in tabular figures, the naming columns pinned while the
+rest scroll, a Total row, losses in red, a dash for none). A row opens a panel beside the table. One empty page: what is
+missing, and the one place to fix it. Desktop **1** (recommended): that frame, shown on Marketing, on Google Ads, and on an
+empty tab. **2**: figures with sparklines and a chart first, the table folded. **3**: the nine tabs as a grouped rail.
+Phone **4** (recommended): a Reports ▾ picker listing all nine, the date as a full-width button, figures two to a row, rows
+as cards; **5**: the strip with a fade and a pinned-column table; **6**: summary first, then "See all rows". Bugs fixed
+whatever is picked: the phone date-panel blank on Marketing, Meta and Thumbtack (fixed in 0ba978af); a saved report's run
+printing raw cents; Performance writing 13:33 with 12-hour time; Google Ads writing "32520.77 USD".
+
 ### 86 · Scheduling › Re-Scheduling, and the Availability map's dots — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, map 7** — **BUILT** b5f42548 (session/uiux-resched, carries Scheduling's 42e4981b) (`docs/previews/scheduling-rescheduling-layouts.html`)
 
 Relayed by Scheduling, Jose 2026-10-13: *"a separate tab in scheduling called Re-Scheduling where it shows such suggestions
