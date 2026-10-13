@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Reports: Performance › People can show an AI call score and coaching notes per dispatcher.',
         'Task Board: the groundwork is in, with a board for every company, franchise and person. The Task Board screen comes in a later update.',
+        'Reports: Task Board tasks can be reported in the Report Builder.',
       ],
     ),
     VersionRelease(
