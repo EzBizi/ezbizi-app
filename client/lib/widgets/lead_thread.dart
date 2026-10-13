@@ -1531,7 +1531,9 @@ class _LeadThreadState extends State<LeadThread> {
       final miles = fit['nearest_miles'] is num ? ', nearest ${fit['nearest_miles']} mi' : '';
       final jobs = '$near job${near == 1 ? '' : 's'} nearby$miles';
       if (fit['verdict'] == 'good') {
-        fitLine = 'Good fit: $jobs';
+        fitLine = 'Good fit: beside $jobs';
+      } else if (fit['verdict'] == 'alone') {
+        fitLine = 'No booked work nearby that day';
       } else {
         final d = DateTime.tryParse('${fit['date']}');
         final at = [
@@ -1574,7 +1576,7 @@ class _LeadThreadState extends State<LeadThread> {
               fitLine,
               key: const ValueKey('booking-fit'),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: ToneColours.of(context, fit!['verdict'] == 'good' ? Tone.ok : Tone.caution).ink,
+                color: ToneColours.of(context, fit!['verdict'] == 'better' ? Tone.caution : Tone.ok).ink,
               ),
             ),
         ],

@@ -692,6 +692,9 @@ class LeadsController extends Controller
             $this->events->emit('lead.booking_approved', $lead, ['after' => [
                 'booking_when' => self::bookingWhen($booking),
                 'booking_date' => $booking->date->toDateString(),
+                'booking_day' => $booking->date->format('l, M j'),
+                'booking_window' => self::bookingWindow($booking),
+                'branch_name' => (string) ($lead->franchise?->name ?? ''),
                 'office_phone' => $lead->office_phone,
                 'contact_name' => $lead->contact_name,
                 'phone' => $lead->phone,
@@ -707,6 +710,14 @@ class LeadsController extends Controller
         $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
 
         return $booking->date->format('l, F j').', between '.$at((string) $booking->start_time).' and '.$at((string) $booking->end_time);
+    }
+
+    /** "8:00 AM - 11:00 AM" */
+    public static function bookingWindow(WebBooking $booking): string
+    {
+        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+
+        return $at((string) $booking->start_time).' - '.$at((string) $booking->end_time);
     }
 
     /** @return array<string, mixed> */
@@ -740,23 +751,23 @@ class LeadsController extends Controller
         }
 
         $tz = (string) app(SettingsResolver::class)->get('timezone', $booking->lead?->organization);
-        $best = app(\App\Support\Scheduling\NearbySuggestion::class)
-            ->for($area, $zip, \App\Support\Scheduling\Openings::tomorrow($tz))['suggested'] ?? null;
-        if ($best === null) {
-            return null;
-        }
-
-        $same = $best['date'] === $booking->date->toDateString()
-            && $best['window']['start_time'] === substr((string) $booking->start_time, 0, 5);
+        // Scheduling's own scoring (2799bf9a): the chosen window, and a
+        // strictly better one only when there is one.
+        $fit = app(\App\Support\Scheduling\NearbySuggestion::class)->fit($area, $zip, $booking->date->toDateString(),
+            substr((string) $booking->start_time, 0, 5), \App\Support\Scheduling\Openings::tomorrow($tz));
+        $better = $fit['better'] ?? null;
+        $shown = $better ?? $fit['chosen'];
+        $miles = $shown['nearest_miles'] ?? null;
 
         return [
-            // "good": what they asked for is the best fit; "better": another window is.
-            'verdict' => $same ? 'good' : 'better',
-            'date' => $best['date'],
-            'start_time' => $best['window']['start_time'],
-            'end_time' => $best['window']['end_time'],
-            'nearby' => (int) $best['nearby'],
-            'nearest_miles' => is_numeric($best['nearest_miles'] ?? null) ? round((float) $best['nearest_miles'], 1) : null,
+            // "better": another window sits beside more work; "good": this one
+            // is beside booked work; "alone": nothing booked nearby that day.
+            'verdict' => $better !== null ? 'better' : ((int) $fit['chosen']['nearby'] > 0 ? 'good' : 'alone'),
+            'date' => $shown['date'],
+            'start_time' => $better['window']['start_time'] ?? $shown['start_time'],
+            'end_time' => $better['window']['end_time'] ?? substr((string) $booking->end_time, 0, 5),
+            'nearby' => (int) $shown['nearby'],
+            'nearest_miles' => is_numeric($miles) ? round((float) $miles, 1) : null,
         ];
     }
 

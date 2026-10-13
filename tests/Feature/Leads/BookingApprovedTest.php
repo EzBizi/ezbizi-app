@@ -36,7 +36,7 @@ class BookingApprovedTest extends TestCase
             ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
             $lead = Lead::create([
                 'organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => Lead::SOURCE_WEBSITE_BOOKING,
-                'remote_id' => uniqid(), 'contact_name' => 'Dana', 'phone' => '+12035550100', 'status' => 'new', 'received_at' => now(),
+                'remote_id' => uniqid(), 'contact_name' => 'Dana', 'phone' => '+12035550100', 'postal_code' => '06810', 'status' => 'new', 'received_at' => now(),
             ]);
             WebBooking::create(['site_id' => $siteId, 'lead_id' => $lead->id, 'service_area_id' => $area->id, 'date' => '2026-10-15',
                 'start_time' => '08:00', 'end_time' => '11:00', 'status' => WebBooking::PENDING]);
@@ -44,7 +44,12 @@ class BookingApprovedTest extends TestCase
             return $lead;
         });
 
-        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk();
+        // The dispatcher's fit line (Scheduling's NearbySuggestion::fit): nothing booked nearby.
+        $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
+            ->assertJsonPath('data.booking.fit.verdict', 'alone');
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk()
+            ->assertJsonPath('data.fit', null);
         $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertOk();
 
         $events = AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.booking_approved')->get();
@@ -52,6 +57,8 @@ class BookingApprovedTest extends TestCase
         $after = $events->first()->payload['after'];
         $this->assertSame('Thursday, October 15, between 8:00 AM and 11:00 AM', $after['booking_when']);
         $this->assertSame('(203) 555-0199', $after['office_phone']);
+        $this->assertSame('Thursday, Oct 15', $after['booking_day']);
+        $this->assertSame('8:00 AM - 11:00 AM', $after['booking_window']);
     }
 
     public function test_the_booking_link_names_the_lead_and_is_empty_without_a_booking_page(): void
