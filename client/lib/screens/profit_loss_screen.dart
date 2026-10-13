@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/report_grid.dart';
+import '../widgets/module_overview.dart';
+import '../core/theme.dart';
+import '../core/job_money.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
@@ -371,20 +375,34 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     final categories = (figures['categories'] as Map<String, dynamic>?) ?? {};
     final net = (figures['net'] as num?)?.toDouble() ?? 0;
 
+    final income = (figures['income'] as num?)?.toDouble();
+
+    // UI queue 87, desktop 1: equal figure tiles, then the one table.
     return [
-      Row(
-        children: [
-          Expanded(child: _tile(context, 'Income', figures['income'] as num?)),
-          const SizedBox(width: 12),
-          Expanded(child: _tile(context, 'Costs', figures['costs'] as num?)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _tile(
-              context,
-              net < 0 ? 'Loss' : 'Profit',
-              net,
-              tone: net < 0 ? theme.colorScheme.error : null,
-            ),
+      OverviewFigures(
+        key: const ValueKey('pl-figures'),
+        figures: [
+          OverviewFigure(
+            label: 'Income',
+            value: income == null ? '—' : _money(income),
+          ),
+          OverviewFigure(
+            label: 'Costs',
+            value: figures['costs'] is num
+                ? _money(figures['costs'] as num)
+                : '—',
+          ),
+          OverviewFigure(
+            label: net < 0 ? 'Loss' : 'Profit',
+            value: _money(net),
+            tone: net < 0 ? Tone.bad : null,
+          ),
+          OverviewFigure(
+            label: 'Margin',
+            value: income == null || income == 0
+                ? '—'
+                : '${(net / income * 100).toStringAsFixed(1)}%',
+            note: 'of income',
           ),
         ],
       ),
@@ -395,31 +413,31 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       ],
       Text('Categories', style: theme.textTheme.titleMedium),
       const SizedBox(height: 8),
-      ...categories.entries.map(
-        (entry) => _category(context, entry.key, entry.value),
+      ReportGrid(
+        key: const ValueKey('pl-categories'),
+        columns: const [
+          GridColumn('Category', pinned: true),
+          GridColumn('Lines', numeric: true, main: true),
+          GridColumn('Total', numeric: true, headline: true),
+        ],
+        rows: [
+          for (final MapEntry(key: name, value: detail) in categories.entries)
+            switch ((detail as Map<String, dynamic>?) ?? const {}) {
+              final row => [
+                GridCell(name),
+                GridCell(
+                  (row['lines'] as num?)?.toInt() == 1
+                      ? '1 line'
+                      : '${(row['lines'] as num?)?.toInt() ?? 0} lines',
+                ),
+                row['total'] is num
+                    ? GridCell(_money(row['total'] as num))
+                    : const GridCell.none(),
+              ],
+            },
+        ],
       ),
     ];
-  }
-
-  Widget _tile(BuildContext context, String label, num? amount, {Color? tone}) {
-    final theme = Theme.of(context);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: theme.textTheme.labelLarge),
-            const SizedBox(height: 4),
-            Text(
-              amount == null ? '—' : _money(amount),
-              style: theme.textTheme.headlineSmall?.copyWith(color: tone),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   /// The sheet disagreeing with itself, said plainly.
@@ -463,48 +481,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     );
   }
 
-  Widget _category(BuildContext context, String name, dynamic detail) {
-    final theme = Theme.of(context);
-    final row = (detail as Map<String, dynamic>?) ?? {};
-    final total = row['total'] as num?;
-    final lines = (row['lines'] as num?)?.toInt() ?? 0;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(name, style: theme.textTheme.bodyLarge)),
-          Text(
-            lines == 1 ? '1 line' : '$lines lines',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 120,
-            child: Text(
-              total == null ? '—' : _money(total),
-              textAlign: TextAlign.right,
-              style: theme.textTheme.bodyLarge,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Whole dollars with thousands separators, and a minus rather than
-  /// parentheses — accountants read brackets as negative, everybody else reads
-  /// them as a footnote.
-  String _money(num amount) {
-    final negative = amount < 0;
-    final whole = amount.abs().round().toString();
-
-    final buffer = StringBuffer();
-    for (var i = 0; i < whole.length; i++) {
-      if (i > 0 && (whole.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(whole[i]);
-    }
-
-    return '${negative ? '-' : ''}\$$buffer';
-  }
+  /// Money as every Reports tab writes it (UI queue 87): `$12,480.50`, and
+  /// a minus rather than parentheses, which most people read as a footnote.
+  String _money(num amount) => formatMoney((amount * 100).round());
 }

@@ -687,17 +687,20 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Performance'), findsOneWidget);
   });
 
-  testWidgets('a phone reaches Performance beside the Builder', (tester) async {
+  testWidgets('a phone reaches Performance from the Reports picker', (
+    tester,
+  ) async {
     // This was "Experimental is still reachable when Builder is absent", with
-    // Builder dropped by WIDTH. A phone has the Builder since UI queue 72, so
-    // nothing shifts by width any more; what stays is that the chip is found
-    // by name, past the edge of a phone's strip.
+    // Builder dropped by WIDTH. A phone has the Builder since UI queue 72, and
+    // since UI queue 87 (phone 4) one picker lists every tab in place of a
+    // strip that showed two and hid the rest; what stays is that Performance
+    // is found by name and opens its own pane.
     await _pumpReports(tester, reports: [_report], width: 375);
 
-    final chip = find.widgetWithText(ChoiceChip, 'Performance');
-    await tester.ensureVisible(chip);
+    expect(find.byType(ChoiceChip), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('tour-reports-tabs')));
     await tester.pumpAndSettle();
-    await tester.tap(chip);
+    await tester.tap(find.text('Performance').last);
     await tester.pumpAndSettle();
 
     // Reached the Experimental pane, not the Builder beside it. The day bar
@@ -729,8 +732,9 @@ void main() {
     await _pumpReports(tester, reports: [_report], width: 375);
 
     // It used to say reports are built on a computer. The builder stacks on
-    // a phone now, its preview on top (UI queue 72).
-    expect(find.text('New report'), findsOneWidget);
+    // a phone now, its preview on top (UI queue 72), and New report is the +
+    // beside the picker so the picker keeps the width (UI queue 87).
+    expect(find.byTooltip('New report'), findsOneWidget);
     expect(find.textContaining('built on a computer'), findsNothing);
   });
   // ── each tab is its own grant (Jose, 2026-09-17) ───────────────

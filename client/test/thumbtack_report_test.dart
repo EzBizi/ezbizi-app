@@ -56,14 +56,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(asked.single, {'from': '2026-09-01', 'to': '2026-09-30'});
+    // The figures, then the one table with its Total row (UI queue 87).
+    final figures = find.byKey(const ValueKey('thumbtack-totals'));
     expect(
-      find.text(
-        '\$40.00 spent · 2 charged leads · \$20.00 per lead · 1 booked',
-      ),
+      find.descendant(of: figures, matching: find.text('1 refunded')),
       findsOneWidget,
     );
-    // Spend, and cost per booked (one booked lead).
-    expect(find.text('\$40.00'), findsNWidgets(2));
-    expect(find.text('\$20.00'), findsOneWidget);
+    expect(
+      find.descendant(of: figures, matching: find.text(r'$40.00 each')),
+      findsOneWidget,
+    );
+    // Spend, and cost per booked (one booked lead), on the row and in Total.
+    final table = find.byKey(const ValueKey('thumbtack-table'));
+    expect(
+      find.descendant(of: table, matching: find.text(r'$40.00')),
+      findsNWidgets(4),
+    );
+    expect(
+      find.descendant(of: table, matching: find.text(r'$20.00')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(of: table, matching: find.text('Total')),
+      findsOneWidget,
+    );
   });
 }

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_performance_screen.dart';
+import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -235,7 +236,7 @@ void main() {
       );
     }
 
-    expect(find.text('1234.56 USD'), findsOneWidget);
+    expect(find.text(r'$1,234.56'), findsOneWidget);
   });
 
   // Jose, 2026-09-30: A1 Leads' Channel Performance table, spend by kind of
@@ -277,11 +278,11 @@ void main() {
 
     expect(top('Local Services'), lessThan(top('Search (PPC)')));
     expect(
-      find.descendant(of: table, matching: find.text('900.50 USD')),
+      find.descendant(of: table, matching: find.text(r'$900.50')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: table, matching: find.text('75.00 USD')),
+      find.descendant(of: table, matching: find.text(r'$75.00')),
       findsOneWidget,
     );
     expect(
@@ -316,7 +317,7 @@ void main() {
 
     // A round number rendered as money. Had the widget cast it to double it
     // would have thrown before reaching here.
-    expect(find.text('900.00 USD'), findsOneWidget);
+    expect(find.text(r'$900.00'), findsOneWidget);
   });
 
   /// LS ADS / SEARCH ADS. Jose, 2026-09-17.
@@ -518,21 +519,24 @@ void main() {
     );
   });
 
-  /// Custom opens on today rather than empty - Jose, 2026-09-24.
-  testWidgets('custom opens with today already chosen', (tester) async {
+  /// The dates open on today rather than empty (Jose, 2026-09-24), in the
+  /// date control every Reports tab has now (UI queue 87) instead of the
+  /// preset chips and the pop-up calendar.
+  testWidgets('the dates open with today already chosen', (tester) async {
     await pump(tester, accounts: twoAccounts(), report: report());
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Custom'));
+    await tester.tap(find.byKey(const Key('date-range-button')));
     await tester.pumpAndSettle();
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final dialog = tester.widget<DateRangePickerDialog>(find.byType(DateRangePickerDialog));
+    final panel = tester.widget<DateRangePanel>(find.byType(DateRangePanel));
 
-    expect(dialog.initialDateRange, DateTimeRange(start: today, end: today));
-    expect(dialog.lastDate, today, reason: 'today must be selectable, or it could not be pre-filled');
+    expect(panel.initial, DateSpan(today, today));
+    expect(panel.today, today, reason: 'today must be selectable, or it could not be pre-filled');
+    expect(find.byType(DateRangePickerDialog), findsNothing);
   });
 
   testWidgets('searching the sidebar narrows it and keeps the rest reachable', (
@@ -584,7 +588,7 @@ void main() {
     // The account figures above the table are the whole account and must not
     // move when the table below is filtered - a total that tracks the filter is
     // a different and wrong statement.
-    expect(find.text('1234.56 USD'), findsOneWidget);
+    expect(find.text(r'$1,234.56'), findsOneWidget);
   });
 
   testWidgets('the table reorders on the column that was clicked', (
@@ -801,7 +805,7 @@ void main() {
     // Summed across the children.
     final figures = find.byKey(const ValueKey('ads-rollup-figures'));
     expect(
-      find.descendant(of: figures, matching: find.text('1300.00 USD')),
+      find.descendant(of: figures, matching: find.text(r'$1,300.00')),
       findsOneWidget,
     );
 

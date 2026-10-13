@@ -35,9 +35,57 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('a filled week: four figures, then the categories table', (
+    tester,
+  ) async {
+    // UI queue 87: equal figure tiles and the one Reports table, money as
+    // every tab writes it, a loss in the bad tone.
+    await _pump(
+      tester,
+      weeksIn: 'c',
+      week: {
+        'week': '6 Jul - 12 Jul',
+        'complete': true,
+        'income': 12480.5,
+        'costs': 14000,
+        'net': -1519.5,
+        'categories': {
+          'Jobs income': {'total': 12480.5, 'lines': 14},
+          'Fuel': {'total': 900, 'lines': 1},
+        },
+      },
+    );
+
+    final figures = find.byKey(const ValueKey('pl-figures'));
+    Finder inFigures(String text) =>
+        find.descendant(of: figures, matching: find.text(text));
+    expect(inFigures(r'$12,480.50'), findsOneWidget);
+    expect(inFigures('LOSS'), findsOneWidget);
+    expect(inFigures('−\$1,519.50'), findsOneWidget);
+    expect(inFigures('-12.2%'), findsOneWidget);
+
+    final table = find.byKey(const ValueKey('pl-categories'));
+    expect(
+      find.descendant(of: table, matching: find.text('Fuel')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: table, matching: find.text('1 line')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: table, matching: find.text(r'$900.00')),
+      findsOneWidget,
+    );
+  });
 }
 
-Future<void> _pump(WidgetTester tester, {required String? weeksIn}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  required String? weeksIn,
+  Map<String, dynamic>? week,
+}) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -73,7 +121,9 @@ Future<void> _pump(WidgetTester tester, {required String? weeksIn}) async {
           'weeks': has ? ['6 Jul - 12 Jul'] : [],
           // A week the screen can draw, so the test sees the base it chose
           // rather than a spinner.
-          'week': has ? {'week': '6 Jul - 12 Jul', 'complete': false} : null,
+          'week': has
+              ? (week ?? {'week': '6 Jul - 12 Jul', 'complete': false})
+              : null,
         });
       }
 

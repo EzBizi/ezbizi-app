@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
+import '../../widgets/report_grid.dart';
+import '../../widgets/module_overview.dart';
+import '../../core/numbers.dart';
+import '../../core/job_money.dart';
 import '../../core/api_client.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
@@ -67,16 +72,11 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
     });
   }
 
-  static String _money(Object? minor) {
-    if (minor is! num) return '—';
-    final cents = minor.round();
-    final digits = (cents ~/ 100).toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
+  /// Money as every Reports tab writes it (UI queue 87).
+  static String _money(Object? minor) =>
+      minor is num ? formatMoney(minor.round()) : '—';
 
-    return '\$$digits.${(cents % 100).toString().padLeft(2, '0')}';
-  }
+  static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
 
   Widget _filter(
     String label,
@@ -173,47 +173,83 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
         if (data == null && _error == null)
           const Center(child: CircularProgressIndicator())
         else if (rows.isEmpty)
-          Text('No Thumbtack leads in these dates.', style: muted)
+          const EmptyState(
+            key: ValueKey('thumbtack-empty'),
+            icon: Icons.request_quote_outlined,
+            title: 'No Thumbtack leads',
+            message: 'None arrived in these dates.',
+          )
         else ...[
-          Text(
-            '${_money(spend)} spent · $charged charged leads · '
-            '${charged > 0 ? _money(spend ~/ charged) : '—'} per lead · '
-            '$booked booked',
+          // UI queue 87, desktop 1: the figures, then the one table.
+          OverviewFigures(
             key: const ValueKey('thumbtack-totals'),
-            style: theme.textTheme.titleMedium,
+            figures: [
+              OverviewFigure(label: 'Spend', value: _money(spend)),
+              OverviewFigure(
+                label: 'Charged leads',
+                value: _count(charged),
+                note: '${_count(total('credited'))} refunded',
+              ),
+              OverviewFigure(
+                label: 'Cost per lead',
+                value: charged > 0 ? _money(spend ~/ charged) : '—',
+              ),
+              OverviewFigure(
+                label: 'Booked',
+                value: _count(booked),
+                note: booked > 0 ? '${_money(spend ~/ booked)} each' : '',
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Category')),
-                DataColumn(label: Text('State')),
-                DataColumn(label: Text('Branch')),
-                DataColumn(label: Text('Leads'), numeric: true),
-                DataColumn(label: Text('Refunded'), numeric: true),
-                DataColumn(label: Text('Spend'), numeric: true),
-                DataColumn(label: Text('Cost per lead'), numeric: true),
-                DataColumn(label: Text('Booked'), numeric: true),
-                DataColumn(label: Text('Cost per booked'), numeric: true),
-              ],
-              rows: [
-                for (final r in rows)
-                  DataRow(
-                    cells: [
-                      DataCell(Text('${r['category'] ?? 'No category'}')),
-                      DataCell(Text('${r['state'] ?? '—'}')),
-                      DataCell(Text('${r['branch'] ?? 'Unassigned'}')),
-                      DataCell(Text('${r['leads']}')),
-                      DataCell(Text('${r['credited']}')),
-                      DataCell(Text(_money(r['spend_minor']))),
-                      DataCell(Text(_money(r['cost_per_lead_minor']))),
-                      DataCell(Text('${r['booked']}')),
-                      DataCell(Text(_money(r['cost_per_booked_minor']))),
-                    ],
-                  ),
-              ],
-            ),
+          const SizedBox(height: 12),
+          ReportGrid(
+            key: const ValueKey('thumbtack-table'),
+            columns: const [
+              GridColumn('Category', pinned: true),
+              GridColumn('State'),
+              GridColumn('Branch'),
+              GridColumn('Leads', numeric: true, main: true),
+              GridColumn('Refunded', numeric: true),
+              GridColumn('Spend', numeric: true, main: true),
+              GridColumn('Cost per lead', numeric: true),
+              GridColumn('Booked', numeric: true, main: true),
+              GridColumn('Cost per booked', numeric: true),
+            ],
+            rows: [
+              for (final r in rows)
+                [
+                  GridCell('${r['category'] ?? 'No category'}'),
+                  r['state'] == null
+                      ? const GridCell.none()
+                      : GridCell('${r['state']}'),
+                  GridCell('${r['branch'] ?? 'Unassigned'}'),
+                  GridCell(_count(r['leads'])),
+                  GridCell(_count(r['credited'])),
+                  GridCell(_money(r['spend_minor'])),
+                  r['cost_per_lead_minor'] == null
+                      ? const GridCell.none()
+                      : GridCell(_money(r['cost_per_lead_minor'])),
+                  GridCell(_count(r['booked'])),
+                  r['cost_per_booked_minor'] == null
+                      ? const GridCell.none()
+                      : GridCell(_money(r['cost_per_booked_minor'])),
+                ],
+            ],
+            total: [
+              const GridCell('Total'),
+              const GridCell(''),
+              const GridCell(''),
+              GridCell(_count(total('leads'))),
+              GridCell(_count(total('credited'))),
+              GridCell(_money(spend)),
+              charged > 0
+                  ? GridCell(_money(spend ~/ charged))
+                  : const GridCell.none(),
+              GridCell(_count(booked)),
+              booked > 0
+                  ? GridCell(_money(spend ~/ booked))
+                  : const GridCell.none(),
+            ],
           ),
         ],
         const SizedBox(height: 12),

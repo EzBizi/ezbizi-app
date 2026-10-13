@@ -81,10 +81,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(asked.single, {'from': '2026-09-01', 'to': '2026-09-30'});
-    expect(find.text('\$100.50'), findsOneWidget);
-    expect(find.text('\$25.12'), findsOneWidget);
+    // The figures, then the one table with its Total row (UI queue 87).
+    final table = find.byKey(const ValueKey('meta-table'));
+    final figures = find.byKey(const ValueKey('meta-totals'));
     expect(
-      find.text('\$100.50 spent · 4 leads · \$25.12 per lead'),
+      find.descendant(of: table, matching: find.text(r'$100.50')),
+      findsNWidgets(2),
+      reason: 'the campaign and the Total',
+    );
+    expect(
+      find.descendant(of: table, matching: find.text(r'$25.12')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(of: table, matching: find.text('Total')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: figures, matching: find.text(r'$100.50')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: figures, matching: find.text(r'$25.12')),
       findsOneWidget,
     );
 
