@@ -188,6 +188,17 @@ final class WhatsAppStaffBot
             $item->source === StaffBotItem::SOURCE_GUIDE => "\u{1F4D8} *{$item->title}*\n\n".$answer,
             default => $answer,
         }, 0, AssistantEntry::MAX_BODY));
+
+        // A guide's pictures follow the text, each its own message (Meta:
+        // one media a message, fetched from the link when sent).
+        if ($answer !== null) {
+            foreach ($item->guideImages() as $image) {
+                $this->cloud->replyFreeForm($number, $to, [
+                    'type' => 'image',
+                    'image' => ['link' => $image['link'], 'caption' => mb_substr($image['caption'], 0, 1024)],
+                ], $image['caption']);
+            }
+        }
     }
 
     /**
