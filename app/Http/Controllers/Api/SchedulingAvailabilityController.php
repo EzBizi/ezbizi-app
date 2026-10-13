@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Support\Leads\AddressCheck;
+use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
+use App\Support\Scheduling\Reschedules;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
@@ -72,6 +74,37 @@ class SchedulingAvailabilityController extends Controller
 
         return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
             + app(NearbySuggestion::class)->for($area, $zip, $from)]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/reschedules[?area_id=]
+     *
+     * Scheduling › Re-Scheduling (Jose, 2026-10-13): booked jobs alone on
+     * their day, each with the open window beside other work it could move
+     * to. One area, or every area in view. See App\Support\Scheduling\Reschedules.
+     */
+    public function reschedules(Request $request): JsonResponse
+    {
+        $data = $request->validate(['area_id' => ['nullable', 'uuid']]);
+        $inView = ViewScope::forUser($request->user())->franchiseIds();
+        $areas = ServiceArea::query()->whereIn('franchise_id', $inView)->whereNull('shares_with_id')
+            ->when($data['area_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->orderBy('name')->get()
+            ->filter(fn (ServiceArea $a) => Openings::hasCapacity($a));
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
+
+        $found = $areas->flatMap(fn (ServiceArea $a) => collect(app(Reschedules::class)->for($a, $from))
+            ->map(fn (array $r) => $r + ['area' => $a]));
+        $customers = Customer::query()->whereIn('id', $found->pluck('row.customer_id')->filter()->unique())->get()->keyBy('id');
+
+        return response()->json(['data' => $found->map(fn (array $r) => [
+            'area_id' => $r['area']->id,
+            'area_name' => $r['area']->name,
+            'job' => SchedulingOverbookingController::detail($r['row'], $customers[$r['row']->customer_id ?? ''] ?? null)
+                + ['date' => $r['current']['date'], 'latitude' => (float) $r['row']->latitude, 'longitude' => (float) $r['row']->longitude],
+            'current_nearest_miles' => $r['current']['nearest_miles'],
+            'suggested' => $r['suggested'],
+        ])->values()->all()]);
     }
 
     /** GET /api/v1/scheduling/availability */
