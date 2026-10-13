@@ -77,6 +77,34 @@ class SchedulingAvailabilityController extends Controller
     }
 
     /**
+     * GET /api/v1/scheduling/availability/fit?zip=&date=&start_time=
+     *
+     * How a window already picked — a website booking on Leads' Online
+     * Booking card — sits beside booked work, and a better day if there is
+     * one. See NearbySuggestion::fit().
+     */
+    public function fit(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate([
+            'zip' => ['required', 'string', 'max:16'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'start_time' => ['required', 'date_format:H:i'],
+        ]);
+        $zip = $this->zip5((string) $data['zip']);
+        $area = $this->areaForZip($zip, ViewScope::forUser($request->user())->franchiseIds());
+
+        if ($area === null || ! Openings::hasCapacity($area)) {
+            return response()->json(['data' => null]);
+        }
+
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
+
+        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
+            + app(NearbySuggestion::class)->fit($area, $zip, $data['date'], $data['start_time'], $from)]);
+    }
+
+    /**
      * GET /api/v1/scheduling/reschedules[?area_id=]
      *
      * Scheduling › Re-Scheduling (Jose, 2026-10-13): booked jobs alone on

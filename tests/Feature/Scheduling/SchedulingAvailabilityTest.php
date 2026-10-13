@@ -852,6 +852,39 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * Jose, 2026-10-13: a website booking, seen by the dispatcher, says how it
+     * sits beside booked work and names a better day if there is one. A
+     * booking already beside work gets no "better".
+     */
+    public function test_a_picked_window_is_told_its_fit_and_a_better_day(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-05 07:00:00', 29.7600, -95.3700, '77002');
+        $this->located($tenant, '2026-10-12 11:00:00', 32.7900, -96.8010);
+
+        $fit = fn (string $date) => $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/availability/fit?zip=75201&date={$date}&start_time=07:00")
+            ->assertOk()->json('data');
+
+        $lone = $fit('2026-10-05');
+        $this->assertSame(0, $lone['chosen']['nearby']);
+        $this->assertGreaterThan(200, $lone['chosen']['nearest_miles']);
+        $this->assertSame('2026-10-12', $lone['better']['date']);
+        $this->assertSame(['Ivan Sharkov'], $lone['better']['technicians']);
+
+        $paired = $fit('2026-10-12');
+        $this->assertSame(1, $paired['chosen']['nearby']);
+        $this->assertSame('Dana Reyes', $paired['chosen']['jobs'][0]['customer']);
+        $this->assertNull($paired['better']);
+
+        // An equally good day that is merely earlier is not "better".
+        $this->located($tenant, '2026-10-05 11:00:00', 32.7900, -96.8010);
+        $this->assertNull($fit('2026-10-12')['better']);
+    }
+
+    /**
      * Found on production 2026-10-13 (Atlanta): a later, farther day won
      * because its open window sat next to the job. The day is chosen first,
      * closest work then earliest; the window beside the job only picks within it.

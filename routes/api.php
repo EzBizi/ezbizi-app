@@ -1356,6 +1356,7 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.availability.view')->group(function () {
             Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion']);
+            Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
