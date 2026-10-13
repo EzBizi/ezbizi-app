@@ -161,6 +161,48 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
+  // UI audit 2026-10-08: AI Assistance's welcome message read "Choose an
+  // optio" in the box a number gets.
+  testWidgets('a sentence gets the width of one, and reads from the left', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'ai_assistance.welcome',
+            label: 'Welcome message',
+            type: 'string',
+            value: 'Choose an option below.',
+            source: null,
+          ),
+          _row(
+            'jobs.tax_rate',
+            label: 'Tax rate',
+            type: 'decimal',
+            value: 8.5,
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    final sentence = find.byWidgetPredicate(
+      (w) => w is TextField && w.controller?.text == 'Choose an option below.',
+    );
+    final number = find.byWidgetPredicate(
+      (w) => w is TextField && w.controller?.text == '8.5',
+    );
+    expect(tester.getSize(sentence).width, 320);
+    expect(tester.widget<TextField>(sentence).textAlign, TextAlign.start);
+    expect(tester.getSize(number).width, 150);
+    expect(tester.widget<TextField>(number).textAlign, TextAlign.right);
+  });
+
   testWidgets('on a phone a row reads across, with its control underneath', (
     tester,
   ) async {

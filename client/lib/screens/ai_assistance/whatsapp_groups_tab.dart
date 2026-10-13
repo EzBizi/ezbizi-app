@@ -341,7 +341,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
           for (final p in unset)
             ActionChip(
               key: ValueKey('whatsapp-unset-${p.key}'),
-              label: Text(p.label),
+              // An ellipsis rather than a cut mid-word on a phone.
+              label: Text(p.label, overflow: TextOverflow.ellipsis),
               onPressed: () => _create(p.key),
             ),
           Text(
@@ -455,10 +456,19 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
                         ),
                       ),
                     ),
-                    label: Text(
-                      m.hasPhone
+                    // Short enough for a phone's width, with an ellipsis
+                    // past it rather than a cut mid-word (UI audit,
+                    // 2026-10-08). The red already says it won't arrive;
+                    // the tooltip says why.
+                    label: Tooltip(
+                      message: m.hasPhone
                           ? m.name
-                          : '${m.name} · no phone · won\'t receive',
+                          : "${m.name} has no phone number, so won't receive "
+                                'what is sent to this group.',
+                      child: Text(
+                        m.hasPhone ? m.name : '${m.name} · no phone',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     labelStyle: m.hasPhone ? null : TextStyle(color: bad.ink),
                     backgroundColor: m.hasPhone ? null : bad.fill,
