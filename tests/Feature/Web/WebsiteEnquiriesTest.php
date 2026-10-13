@@ -3,6 +3,8 @@
 namespace Tests\Feature\Web;
 
 use App\Models\AutomationEvent;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
@@ -95,11 +97,11 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertSame('5550100100', $lead->phone_digits);
         $this->assertCount(1, $rows);
         $this->assertSame(
-            "👤 Dana Reyes
+            '👤 Dana Reyes
 📞 (555) 010-0100
 ✉️ dana@example.com
 📅 Next week if possible
-🛠️ Chimney sweep",
+🛠️ Chimney sweep',
             $rows->first()->text,
         );
 
@@ -320,9 +322,9 @@ class WebsiteEnquiriesTest extends TestCase
         ])->assertOk()->assertJsonPath('data.franchise.id', $tenant['franchise']->getKey());
 
         $other = $this->inTenant($tenant['org'], function () use ($tenant) {
-            $company = \App\Models\Company::create(['organization_id' => $tenant['org']->getKey(), 'name' => 'Other Co']);
+            $company = Company::create(['organization_id' => $tenant['org']->getKey(), 'name' => 'Other Co']);
 
-            return \App\Models\Franchise::create(['organization_id' => $tenant['org']->getKey(),
+            return Franchise::create(['organization_id' => $tenant['org']->getKey(),
                 'company_id' => $company->getKey(), 'name' => 'Other branch', 'is_active' => true]);
         });
 
@@ -555,6 +557,12 @@ class WebsiteEnquiriesTest extends TestCase
             $this->assertContains("👤 Laura\n📞 (216) 224-5383", $text);
             $this->assertStringNotContainsString('turnstile', implode(' ', $text));
             $this->assertSame(['BAD_RATING'], Lead::query()->whereNotNull('lead_type')->pluck('lead_type')->all());
+
+            // Jose, 2026-10-13: a complaint rule triggers on lead.received with rating = sad.
+            $received = AutomationEvent::query()->where('event_key', 'lead.received')->get()
+                ->map(fn ($e) => $e->payload['after'] ?? [])->all();
+            $this->assertSame([null, 'sad'], array_column($received, 'rating'));
+            $this->assertSame([null, 'Late'], array_column($received, 'comment'));
         });
     }
 
