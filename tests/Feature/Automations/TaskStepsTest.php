@@ -47,12 +47,22 @@ class TaskStepsTest extends TestCase
             $this->assertTrue($moved['ok'], $moved['detail']);
             $this->assertSame('done', $task->fresh()->status);
 
+            // A board's own status, by name in any case; one it lacks is refused.
+            \App\Models\TaskStatus::create(['organization_id' => $t['org']->id, 'board_id' => $task->board_id,
+                'name' => 'Waiting on parts', 'position' => 9, 'is_done' => false]);
+            $custom = $runner->run(['type' => 'change_status', 'value' => 'waiting ON parts'], $event, $task->fresh(), automation: $rule);
+            $this->assertTrue($custom['ok'], $custom['detail']);
+            $unknown = $runner->run(['type' => 'change_status', 'value' => 'Invented'], $event, $task->fresh(), automation: $rule);
+            $this->assertFalse($unknown['ok']);
+            $this->assertStringContainsString('no status called Invented', $unknown['detail']);
+
             // A rule may do nothing its creator could not: a viewer cannot edit
             // a franchise board by hand, so their rule is refused, not obeyed.
             $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $viewer->id]);
+            $before = $task->fresh()->status_id;
             $refused = $runner->run(['type' => 'change_status', 'value' => 'stuck'], $event, $task->fresh(), automation: $theirs);
             $this->assertFalse($refused['ok']);
-            $this->assertSame('done', $task->fresh()->status);
+            $this->assertSame($before, $task->fresh()->status_id, 'a refused rule changes nothing');
         });
     }
 

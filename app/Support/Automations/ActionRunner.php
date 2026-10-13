@@ -261,8 +261,10 @@ class ActionRunner
                 'job_applicant' => 'Job applicant',
             ],
         ],
+        // Names, not keys: since custom statuses the event carries the name,
+        // and TaskWriter takes either. Custom names come from real events.
         Task::class => [
-            'status' => Task::STATUSES,
+            'status' => ['Not started' => 'Not started', 'Working on it' => 'Working on it', 'Stuck' => 'Stuck', 'Done' => 'Done'],
         ],
         Vehicle::class => [
             'body_type' => VehicleBodyType::class,
@@ -2297,14 +2299,12 @@ class ActionRunner
         }
 
         if ($subject instanceof Task) {
-            if (! array_key_exists((string) $value, Task::STATUSES)) {
-                return ['type' => 'change_status', 'ok' => false, 'detail' => "'{$value}' is not a task status."];
-            }
-
+            // A status NAME, resolved on the task's own board (Task Board v2,
+            // custom statuses): TaskWriter refuses one that board does not have.
             return $this->onTaskBoard('change_status', $automation, $subject->board, function (User $actor) use ($subject, $value) {
                 app(TaskWriter::class)->update($subject, ['status' => (string) $value], $actor);
 
-                return 'Moved the task to '.Task::STATUSES[(string) $value].'.';
+                return 'Moved the task to '.(Task::STATUSES[(string) $value] ?? (string) $value).'.';
             });
         }
 
