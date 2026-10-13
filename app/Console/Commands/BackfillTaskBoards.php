@@ -21,7 +21,9 @@ class BackfillTaskBoards extends Command
 
         foreach ([Company::class, Franchise::class, User::class] as $class) {
             // withoutGlobalScopes also drops SoftDeletes, so trashed rows are excluded by hand.
-            $query = $class::query()->withoutGlobalScopes()->orderBy('id');
+            // Skip orphans: a throw inside the migration's up() would leave it half-applied.
+            $query = $class::query()->withoutGlobalScopes()->orderBy('id')
+                ->whereIn('organization_id', \App\Models\Organization::query()->withoutGlobalScopes()->select('id'));
             if ($class !== User::class) {
                 $query->whereNull('deleted_at');
             }
