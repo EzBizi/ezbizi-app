@@ -920,6 +920,9 @@ class SchedulingAvailabilityTest extends TestCase
         // is full.
         $this->assertSame(['2026-10-05', '08:00'], [$rows[0]['job']['date'], $rows[0]['job']['time']]);
         $this->assertNull($rows[0]['current_nearest_miles'], 'Nothing else booked on Oct 5.');
+        // The id POST scheduling/board/jobs/{job}/reschedule takes.
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame('2026-10-05 08:00', substr((string) WorkizJob::findOrFail($rows[0]['job']['workiz_job_id'])->getRawOriginal('scheduled_for'), 0, 16));
         $this->assertSame('2026-10-12', $rows[0]['suggested']['date']);
         $this->assertSame('11:00', $rows[0]['suggested']['window']['start_time']);
         $this->assertSame(1, $rows[0]['suggested']['nearby']);

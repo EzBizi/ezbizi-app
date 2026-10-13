@@ -407,13 +407,13 @@ final class Openings
 
     /** What a placed job row carries, for counting and for showing it. */
     private const JOB_COLUMNS = [
-        'jobs.id as job_id', 'jobs.customer_id', 'workiz_jobs.remote_id', 'jobs.scheduled_for', 'jobs.status',
+        'jobs.id as job_id', 'workiz_jobs.id as workiz_job_id', 'jobs.customer_id', 'workiz_jobs.remote_id', 'jobs.scheduled_for', 'jobs.status',
         'workiz_jobs.payload', 'workiz_jobs.address', 'workiz_jobs.city', 'workiz_jobs.postal_code',
         'workiz_jobs.latitude', 'workiz_jobs.longitude',
     ];
 
     /** What a mirrored, not yet projected Workiz row carries. */
-    private const MIRROR_COLUMNS = ['remote_id', 'scheduled_for', 'status', 'payload', 'address', 'city', 'postal_code', 'latitude', 'longitude'];
+    private const MIRROR_COLUMNS = ['id as workiz_job_id', 'remote_id', 'scheduled_for', 'status', 'payload', 'address', 'city', 'postal_code', 'latitude', 'longitude'];
 
     private function kinds(Collection $placed, Collection $pending, Collection $online): Collection
     {
