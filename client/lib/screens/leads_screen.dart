@@ -821,6 +821,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   // ── the list's own controls ──────────────────────────────────────
 
   Widget _searchField() => TextField(
+    key: const ValueKey('tour-leads-search'),
     controller: _search,
     onSubmitted: (_) {
       _searchDebounce?.cancel();
@@ -852,6 +853,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   // Bounded by its caller: an InputDecorator in a Row with no width
   // constraint asserts rather than shrinking to fit.
   Widget _statusPicker() => SearchPickerField<String>(
+    key: const ValueKey('tour-leads-status'),
     value: _status,
     isDense: true,
     options: [
@@ -892,6 +894,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _filterRow(ThemeData theme, {required bool withStatus}) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
     child: Wrap(
+      key: const ValueKey('tour-leads-filters'),
       spacing: 6,
       runSpacing: 4,
       crossAxisAlignment: WrapCrossAlignment.center,

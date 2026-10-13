@@ -301,6 +301,7 @@ class _JobsScreenState extends State<JobsScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-jobs-tabs'),
             labels: const [
               ('Jobs', Icons.construction_outlined),
               ('Estimates', Icons.request_quote_outlined),
@@ -386,6 +387,7 @@ class _JobsScreenState extends State<JobsScreen> {
                       // one (§8).
                       reason: refused,
                       child: FilledButton.icon(
+                        key: const ValueKey('tour-jobs-add'),
                         onPressed: refused == null ? _create : null,
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('Add job'),
@@ -477,6 +479,7 @@ class _JobsScreenState extends State<JobsScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: Wrap(
+        key: const ValueKey('tour-jobs-status'),
         spacing: 6,
         runSpacing: 6,
         children: [
@@ -549,6 +552,7 @@ class _JobsScreenState extends State<JobsScreen> {
     ];
 
     return Padding(
+      key: const ValueKey('tour-jobs-money'),
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: wide
           ? Wrap(
@@ -729,6 +733,7 @@ class _JobsScreenState extends State<JobsScreen> {
           SizedBox(
             width: 320,
             child: TextField(
+              key: const ValueKey('tour-jobs-search'),
               controller: _search,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
@@ -863,6 +868,7 @@ class _JobsScreenState extends State<JobsScreen> {
 
     if (!wide) {
       return GroupedList<Map<String, dynamic>>(
+        key: const ValueKey('tour-jobs-list'),
         groups: groups,
         idOf: _id,
         tile: _tile,
@@ -873,6 +879,7 @@ class _JobsScreenState extends State<JobsScreen> {
 
     if (_openId == null) {
       return GroupedTable<Map<String, dynamic>>(
+        key: const ValueKey('tour-jobs-list'),
         columns: _columns(context),
         groups: groups,
         idOf: _id,

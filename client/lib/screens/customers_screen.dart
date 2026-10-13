@@ -265,6 +265,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 // anything, ever (§5.2), and a control that looks like a merge
                 // button is a worse lie than a wordy one.
                 OutlinedButton(
+                  key: const ValueKey('tour-customers-duplicates'),
                   onPressed: _duplicates,
                   child: const Text('Possible duplicates'),
                 ),
@@ -286,6 +287,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   // rather than going dark or disappearing.
                   reason: refused,
                   child: FilledButton.icon(
+                    key: const ValueKey('tour-customers-add'),
                     onPressed: refused == null ? _create : null,
                     icon: const Icon(Icons.person_add_outlined, size: 18),
                     label: const Text('Add customer'),
@@ -339,6 +341,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: Wrap(
+        key: const ValueKey('tour-customers-segments'),
         spacing: 6,
         runSpacing: 6,
         children: [
@@ -376,6 +379,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               SizedBox(
                 width: wide ? 360 : constraints.maxWidth,
                 child: TextField(
+                  key: const ValueKey('tour-customers-search'),
                   controller: _search,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
@@ -428,6 +432,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 SizedBox(
                   width: half,
                   child: SearchPickerField<String?>(
+                    key: const ValueKey('tour-customers-franchise'),
                     value: _franchiseId,
                     label: label,
                     options: [
@@ -532,6 +537,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     if (!wide) {
       return GroupedList<Map<String, dynamic>>(
+        key: const ValueKey('tour-customers-list'),
         groups: groups,
         idOf: _id,
         tile: _tile,
@@ -542,6 +548,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     if (_openId == null) {
       return GroupedTable<Map<String, dynamic>>(
+        key: const ValueKey('tour-customers-list'),
         columns: _columns(context),
         groups: groups,
         idOf: _id,

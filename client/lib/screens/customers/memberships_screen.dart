@@ -45,6 +45,7 @@ class _CustomersWithMembershipsState extends State<CustomersWithMemberships> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-customers-tabs'),
             labels: const [
               ('Customers', Icons.people_outline),
               ('Memberships', Icons.card_membership_outlined),

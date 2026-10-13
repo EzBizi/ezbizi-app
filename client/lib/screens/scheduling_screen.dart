@@ -171,6 +171,7 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-scheduling-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: _select,

@@ -337,6 +337,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
                     return IntrinsicHeight(
                       child: Row(
+                        key: const ValueKey('tour-scheduling-modes'),
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(
@@ -470,6 +471,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
             ),
             const SizedBox(width: 8),
             FilledButton(
+              key: const ValueKey('tour-scheduling-check'),
               onPressed: _check,
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
