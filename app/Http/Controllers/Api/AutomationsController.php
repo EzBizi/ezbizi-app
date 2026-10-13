@@ -121,6 +121,7 @@ class AutomationsController extends Controller
         'assign_to_user',
         'task.create',
         'task.assign',
+        'alert.send',
         'unassign',
 
         // HR's, through App\Support\Hr\InvitationActions so the screen and the
@@ -2094,6 +2095,11 @@ class AutomationsController extends Controller
             $type('task.create', 'Add a task', true, [
                 $parameter('title', 'Task', 'text', variables: true),
                 $parameter('assignee', 'Give it to', 'person', false, true),
+            ]),
+            // Communication › Alerts, from a rule (Jose, 2026-10-13).
+            $type('alert.send', 'Send an alert (pop-up)', false, [
+                $parameter('user_ids', 'Who gets it', 'people'),
+                $parameter('message', 'Message', 'text', variables: true),
             ]),
             $type('task.assign', 'Give the task to somebody', true, [
                 $parameter('user_field', 'Give it to', 'person_or_field'),

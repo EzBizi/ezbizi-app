@@ -452,6 +452,7 @@ class ActionRunner
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
+            'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -3193,6 +3194,16 @@ class ActionRunner
      */
     private function interpolate(string $template, AutomationEvent $event, ?Model $subject, bool $forMarkdown = false): string
     {
+        // "Book online now: {{booking_link}}" is a line, not a message: with no
+        // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
+        if (preg_match('/\{\{\s*booking_link\s*\}\}/i', $template)
+            && blank($subject?->getAttribute('booking_link'))) {
+            $template = implode("\n", array_filter(
+                explode("\n", $template),
+                fn (string $line) => ! preg_match('/\{\{\s*booking_link\s*\}\}/i', $line),
+            ));
+        }
+
         // Only the fields EzBizi composes itself keep their Markdown; anything
         // else may be a stranger's words and is escaped to read as text.
         $composed = $forMarkdown
@@ -3351,5 +3362,41 @@ class ActionRunner
     private static function idList(mixed $value): array
     {
         return is_string($value) ? explode(',', $value) : array_values((array) $value);
+    }
+
+    /**
+     * A Communication › Alerts pop-up from a rule (Jose, 2026-10-13: complaint
+     * calls). Exactly a person's alert - one Alert, each recipient's copy a
+     * notification with source `alert` - sent as the rule's creator, who must
+     * be allowed to send alerts by hand.
+     */
+    private function sendAlert(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        [$actor] = $this->taskContext($automation);
+        if (! $actor->hasPermission('phone.alerts.view')) {
+            return ['type' => 'alert.send', 'ok' => false, 'detail' => 'The person who made this rule may not send alerts.'];
+        }
+
+        $message = mb_substr(trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject)), 0, 500);
+        $people = User::query()->where('is_active', true)
+            ->whereIn('id', array_filter(array_map('trim', self::idList($action['user_ids'] ?? []))))->get();
+
+        if ($message === '' || $people->isEmpty()) {
+            return ['type' => 'alert.send', 'ok' => false, 'detail' => $message === '' ? 'The alert has no message.' : 'Nobody to alert.'];
+        }
+
+        $alert = \App\Models\Alert::create(['organization_id' => $actor->organization_id, 'sender_id' => $actor->id, 'message' => $message]);
+        $told = 0;
+        foreach ($people as $person) {
+            $told += $this->notifications->dispatch(
+                title: $alert->message,
+                body: 'From the automation "'.($automation?->name ?? 'a rule').'"',
+                subject: $alert,
+                onlyTo: $person,
+                source: 'alert',
+            ) > 0 ? 1 : 0;
+        }
+
+        return ['type' => 'alert.send', 'ok' => true, 'detail' => "Alerted {$told} ".($told === 1 ? 'person' : 'people').'.'];
     }
 }
