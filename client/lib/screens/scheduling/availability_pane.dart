@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +8,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import 'availability_calendar.dart';
+import 'availability_suggestion.dart';
 
 /// Availability — "When can we come out?"
 ///
@@ -80,6 +82,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
   List<Map<String, dynamic>> _franchises = [];
   String? _franchiseId;
+
+  /// Earliest and Suggested for the zip searched (UI queue 83), or null: no
+  /// zip in the search, or the server had nothing to say.
+  Map<String, dynamic>? _suggestion;
+  String? _suggestionZip;
 
   List<Map<String, dynamic>> _suggestions = [];
   int _request = 0;
@@ -234,6 +241,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       setState(() {
         _loading = true;
         _error = null;
+        _suggestion = null;
       });
     }
 
@@ -253,6 +261,24 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       _resolved = resolved is Map ? resolved.cast<String, dynamic>() : null;
       _areas = (response.body['data']?['areas'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
+    });
+
+    final zip = query['zip'] ?? (_resolved?['zip'] as String?);
+    if (response.ok && zip != null) await _askSuggestion(zip, ticket);
+  }
+
+  /// Asked beside the availability, not instead of it: a failure here only
+  /// means no cards and no map, never a broken answer.
+  Future<void> _askSuggestion(String zip, int ticket) async {
+    final response = await widget.api.get(
+      '/scheduling/availability/suggestion',
+      {'zip': zip},
+    );
+    if (!mounted || ticket != _request) return;
+    final data = response.ok ? response.body['data'] : null;
+    setState(() {
+      _suggestion = data is Map ? data.cast<String, dynamic>() : null;
+      _suggestionZip = zip;
     });
   }
 
@@ -580,20 +606,38 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _closedRow(theme, day),
                 ),
-              Text(
-                'First available',
-                style: theme.textTheme.bodySmall?.copyWith(color: muted),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _longDate(first['date'] as String),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: ToneColours.of(context, Tone.ok).ink,
+              // Earliest beside Suggested, with the route (UI queue 83),
+              // for the area the suggestion was worked out for.
+              if (_suggestion?['area_id'] == area['area_id'] &&
+                  _suggestion?['earliest'] is Map)
+                AvailabilitySuggestion(
+                  // A refresh that changes nothing does not replay the map.
+                  key: ValueKey(jsonEncode(_suggestion)),
+                  api: widget.api,
+                  data: _suggestion!,
+                  zip:
+                      (_suggestion!['origin'] as Map?)?['zip'] as String? ??
+                      _suggestionZip ??
+                      '',
+                  windowChip: _windowChip,
+                  longDate: _longDate,
+                )
+              else ...[
+                Text(
+                  'First available',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
-              ),
-              const SizedBox(height: 10),
-              _windowRow(first),
+                const SizedBox(height: 2),
+                Text(
+                  _longDate(first['date'] as String),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ToneColours.of(context, Tone.ok).ink,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _windowRow(first),
+              ],
               _noTime(theme, first),
               if (withClosed(after).isNotEmpty) ...[
                 const Divider(height: 28),
