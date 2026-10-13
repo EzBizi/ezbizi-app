@@ -3061,14 +3061,14 @@ class ActionRunner
         // which would match nothing and tell nobody.
         $roleIds = array_values(array_filter(array_map(
             fn ($id) => trim((string) $id),
-            (array) ($action['role_ids'] ?? []),
+            self::idList($action['role_ids'] ?? []),
         ), fn (string $id) => $id !== ''));
 
         // Named people, beside the roles. Same filtering as the role list: an
         // empty box means "narrow nothing", never "somebody whose id is empty".
         $userIds = array_values(array_filter(array_map(
             fn ($id) => trim((string) $id),
-            (array) ($action['user_ids'] ?? []),
+            self::idList($action['user_ids'] ?? []),
         ), fn (string $id) => $id !== ''));
 
         // "Also tell the task's assignee". Nobody assigned, and nobody else
@@ -3337,5 +3337,16 @@ class ActionRunner
             ?? $subject?->getAttribute('assignee_user_id');
 
         return is_string($id) && $id !== '' ? User::query()->where('is_active', true)->find($id) : null;
+    }
+
+    /**
+     * A list of ids, or the comma-joined string an older builder saved for
+     * named people: read as one id, it told nobody it named.
+     *
+     * @return list<string>
+     */
+    private static function idList(mixed $value): array
+    {
+        return is_string($value) ? explode(',', $value) : array_values((array) $value);
     }
 }

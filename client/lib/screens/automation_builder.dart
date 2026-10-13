@@ -232,7 +232,9 @@ class _ActionRow {
           continue;
         }
 
-        if (field.kind == 'roles') {
+        // Named people too: saved as one comma-joined id, the rule told nobody
+        // it named (Bar's edit of "Complaint call", 2026-10-13).
+        if (field.kind == 'roles' || field.kind == 'people') {
           payload[field.key] = [
             for (final id in value.split(','))
               if (id.trim().isNotEmpty) id.trim(),

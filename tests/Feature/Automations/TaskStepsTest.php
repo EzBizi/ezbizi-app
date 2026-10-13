@@ -87,4 +87,23 @@ class TaskStepsTest extends TestCase
             $this->assertSame(1, Notification::query()->count());
         });
     }
+
+    /** Bar's edit, 2026-10-13: named people saved as "a,b" told neither of them. */
+    public function test_named_people_saved_as_one_joined_string_are_all_told(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $one = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+        $two = $this->userWithRole($t, 'Clerk', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $one, $two) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $told = app(ActionRunner::class)->run(
+                ['type' => 'notify', 'message' => 'Hi', 'user_ids' => $one->id.','.$two->id],
+                new AutomationEvent(['event_key' => 'task.created', 'payload' => []]), null, automation: $rule,
+            );
+
+            $this->assertTrue($told['ok'], $told['detail']);
+            $this->assertEqualsCanonicalizing([$one->id, $two->id], Notification::query()->pluck('user_id')->unique()->values()->all());
+        });
+    }
 }
