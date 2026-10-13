@@ -2134,14 +2134,17 @@ class _LeadThreadState extends State<LeadThread> {
           Positioned(
             top: 4,
             right: 4,
+            // Solid green so it stands out on any photo (Jose, 2026-10-13:
+            // "too transparent, make it colorful ... like green").
             child: Material(
-              color: theme.colorScheme.surface.withValues(alpha: 0.85),
+              color: ToneColours.of(context, Tone.ok).ink,
               shape: const CircleBorder(),
               child: IconButton(
                 key: ValueKey('attachment-outside-$n'),
                 tooltip: 'Open in the browser',
                 visualDensity: VisualDensity.compact,
                 iconSize: 16,
+                color: ToneColours.of(context, Tone.ok).fill,
                 icon: const Icon(Icons.open_in_new),
                 onPressed: outside,
               ),
