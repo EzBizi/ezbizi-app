@@ -2995,6 +2995,21 @@ the side panel, Keep it small moves them to a corner, and where a platform has n
 browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
 steps `since:` to offer them as What's new.
 
+### 83 · Scheduling › Availability · earliest and suggested, with the route (`docs/previews/scheduling-suggested-availability-layouts.html`)
+
+Jose 2026-10-13, via Scheduling: a zip search shows **Earliest** and **Suggested** availability. Suggested is the open
+window nearest booked work, so a technician does both, with *"a small map with an animation of the route being drawn
+between the selected zip code and the other jobs it's analyzed for the suggestion"*. The radius is a setting. The same in
+every option: Earliest names its nearest booked job's distance, the trade-off. Suggested says how many jobs are within the
+radius, the nearest, and who is already there. `same_as_earliest` gives one line instead of two cards, and no suggestion
+gives a sentence. The map draws a line from the zip to each analyzed job, nearest first; those in the radius ring light
+green and the rest stay grey. It plays once, then Replay, and reduced motion shows the finished state. Field's street map
+sits behind it once Google Maps is set up, otherwise a schematic. Miles are straight-line and say so, and with no `origin`
+there is no map. Desktop **1** (recommended): the two cards side by side, the map under both. **2**: Suggested large with
+"Sooner" as a line, the map beside. **3**: a 14-day strip with both marked, the map for the picked day. Phone and the Leads
+side panel **4** (recommended): stacked, map under; **5**: Suggested first, map behind Show why; **6**: the strip. Owner:
+Scheduling (server, settings, `availability_pane.dart`). UI/UX builds the screen half once the endpoint lands.
+
 ### 82 · Settings › Integrations · every option, connected or not (`docs/previews/integrations-all-options-layouts.html`)
 
 Jose 2026-10-13, via the desk: *"going into Settings - Integrations only shows the currently connected, when it should also
