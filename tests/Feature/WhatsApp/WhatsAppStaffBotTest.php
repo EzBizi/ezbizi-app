@@ -2,19 +2,29 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\Lead;
 use App\Models\StaffBotItem;
 use App\Models\StaffBotMenu;
 use App\Models\TrainingGuide;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
+use App\Support\Ai\CallRecordingsRequest;
+use App\Support\Ai\ReportAsk;
 use App\Support\Social\WhatsAppStaffBot;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -694,7 +704,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => true, 'reply' => 'Use the flue sizing chart in the Library.', 'entry_ids' => ['made-up-id'],
         ]]))]);
 
@@ -712,7 +722,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => false, 'reply' => '', 'entry_ids' => [],
         ]]))]);
 
@@ -729,11 +739,11 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake();
+        Process::fake();
 
         $this->inbound(self::BOT, $this->text('who approves holiday requests'))->assertOk();
 
-        \Illuminate\Support\Facades\Process::assertNothingRan();
+        Process::assertNothingRan();
         $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
     }
 
@@ -744,9 +754,9 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::sequence()
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
+            ->push(Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
 
         $this->staff($t);
         $this->inbound(self::BOT, $this->text('how much did we sell last week'))->assertOk();
@@ -761,7 +771,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => false, 'reply' => '', 'entry_ids' => [],
         ]]))]);
         $tech = $this->userWithRole($t, 'technician');
@@ -778,27 +788,27 @@ class WhatsAppStaffBotTest extends TestCase
     public function test_google_local_services_leads_are_not_in_the_figures_sent_to_ai(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $branch = $this->inTenant($t['org'], fn () => \App\Models\Franchise::query()->firstOrFail());
+        $branch = $this->inTenant($t['org'], fn () => Franchise::query()->firstOrFail());
         $this->inTenant($t['org'], function () use ($t, $branch) {
-            foreach ([\App\Models\Lead::SOURCE_LOCAL_SERVICES, \App\Models\Lead::SOURCE_THUMBTACK] as $source) {
-                \App\Models\Lead::create([
+            foreach ([Lead::SOURCE_LOCAL_SERVICES, Lead::SOURCE_THUMBTACK] as $source) {
+                Lead::create([
                     'organization_id' => $t['org']->id, 'franchise_id' => $branch->id, 'source' => $source,
                     'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
                 ]);
             }
         });
 
-        $counts = \App\Support\Ai\ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
+        $counts = ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
 
-        $this->assertSame([\App\Models\Lead::SOURCE_THUMBTACK => 1], $counts);
+        $this->assertSame([Lead::SOURCE_THUMBTACK => 1], $counts);
     }
 
     public function test_a_misread_period_is_clamped_to_a_year_ending_today(): void
     {
-        $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
-        $this->assertSame(['2025-10-13', '2026-10-13'], \App\Support\Ai\ReportAsk::period('1990-01-01', '2030-01-01', $today));
-        $this->assertSame(['2026-10-01', '2026-10-13'], \App\Support\Ai\ReportAsk::period('nonsense', 'x', $today));
-        $this->assertSame(['2026-10-05', '2026-10-11'], \App\Support\Ai\ReportAsk::period('2026-10-05', '2026-10-11', $today));
+        $today = CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        $this->assertSame(['2025-10-13', '2026-10-13'], ReportAsk::period('1990-01-01', '2030-01-01', $today));
+        $this->assertSame(['2026-10-01', '2026-10-13'], ReportAsk::period('nonsense', 'x', $today));
+        $this->assertSame(['2026-10-05', '2026-10-11'], ReportAsk::period('2026-10-05', '2026-10-11', $today));
     }
 
     // ── A menu for each role (AI Assistance › Staff bot, UI queue 88) ─────
@@ -902,11 +912,11 @@ class WhatsAppStaffBotTest extends TestCase
         $this->number($t, self::BOT);
         $this->staff($t);   // the admin: holds reports.view
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
 
         $this->inbound(self::BOT, $this->text('please send me all the calls w this number 9524572594'))->assertOk();
 
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\SendCallRecordings::class,
+        Queue::assertPushed(SendCallRecordings::class,
             fn ($job) => str_contains($job->text, '9524572594'));
         $this->assertSame([], $this->sent, 'nothing is sent from the webhook itself');
     }
@@ -914,20 +924,56 @@ class WhatsAppStaffBotTest extends TestCase
     public function test_the_request_is_read_into_a_number_and_dates_or_a_question(): void
     {
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::sequence()
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        $today = CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(json_encode(['structuredOutput' => [
                 'is_request' => true, 'phone' => '(952) 457-2594', 'from' => '2026-10-13', 'to' => '2026-12-01', 'clarify' => '',
             ]])))
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            ->push(Process::result(json_encode(['structuredOutput' => [
                 'is_request' => true, 'phone' => '', 'from' => '2026-10-12', 'to' => '2026-10-12', 'clarify' => '',
             ]])))]);
 
-        $this->assertTrue(\App\Support\Ai\CallRecordingsRequest::looksLikeOne('send me all the calls w this number 9524572594'));
-        $this->assertFalse(\App\Support\Ai\CallRecordingsRequest::looksLikeOne('what is the wifi password'));
+        $this->assertTrue(CallRecordingsRequest::looksLikeOne('send me all the calls w this number 9524572594'));
+        $this->assertFalse(CallRecordingsRequest::looksLikeOne('what is the wifi password'));
         $this->assertSame(['phone' => '9524572594', 'from' => '2026-10-13', 'to' => '2026-10-13', 'clarify' => null],
-            \App\Support\Ai\CallRecordingsRequest::read('calls with 9524572594', $today), 'never later than today');
+            CallRecordingsRequest::read('calls with 9524572594', $today), 'never later than today');
         $this->assertSame('Which phone number? Send the 10 digits.',
-            \App\Support\Ai\CallRecordingsRequest::read('calls from yesterday', $today)['clarify']);
+            CallRecordingsRequest::read('calls from yesterday', $today)['clarify']);
+    }
+
+    /** Jose, 2026-10-13: "grok should be able to have access to everything ... not modify or delete stuff". */
+    public function test_staff_questions_the_library_misses_are_read_from_the_app_as_the_asker(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $this->inTenant($t['org'], fn () => Customer::create([
+            'owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Zelda Quarry', 'phone' => '(555) 010-2000',
+        ]));
+        $prompts = [];
+        Process::fake(function ($process) use (&$prompts) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompt = $prompts[] = $file && is_file($file) ? file_get_contents($file) : '';
+            $out = match (true) {
+                str_contains($prompt, 'ENDPOINTS:') => ['calls' => [
+                    ['path' => 'customers', 'query' => 'search=Quarry'],
+                    ['path' => 'me/api-keys', 'query' => ''],
+                ]],
+                str_contains($prompt, 'DATA:') => ['answered' => true, 'reply' => '*Zelda Quarry* 📞 (555) 010-2000'],
+                default => ['answered' => false, 'reply' => '', 'entry_ids' => []],
+            };
+
+            return Process::result(json_encode(['structuredOutput' => $out]));
+        });
+
+        $this->inbound(self::BOT, $this->text('what is the phone of customer Quarry'))->assertOk();
+
+        $data = collect($prompts)->first(fn ($p) => str_contains($p, 'DATA:'));
+        $this->assertStringContainsString('Zelda', $data, 'the GET ran as the asker and returned the customer');
+        $this->assertStringContainsString('"me/api-keys":"refused"', $data, 'a blocked path is never dispatched');
+        $this->assertStringContainsString('Zelda Quarry', json_encode($this->sent, JSON_UNESCAPED_UNICODE));
+        $this->assertSame(0, PersonalAccessToken::where('name', 'WhatsApp AI (read only)')->count(), 'the token is gone');
     }
 }

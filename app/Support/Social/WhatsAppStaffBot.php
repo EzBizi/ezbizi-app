@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
 use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
@@ -11,8 +12,10 @@ use App\Models\StaffBotMenu;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\ReportAsk;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Support\Collection;
 
@@ -506,7 +509,7 @@ final class WhatsAppStaffBot
         // the figures left, and nothing when under 10 s remain.
         $started = microtime(true);
         if ($viewer?->hasPermission('reports.view')) {
-            $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
+            $figures = app(ReportAsk::class)->answer($organization, $query);
             if ($figures !== null) {
                 $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
 
@@ -521,12 +524,37 @@ final class WhatsAppStaffBot
             $answer = null;
         }
 
+        if ($answer === null && $viewer !== null) {
+            // Not in the Library: staff get the app's own data, read-only (AppAsk), in a job of its own.
+            AnswerWhatsAppFromApp::dispatch($number->id, $to, $viewer->id, $query);
+
+            return;
+        }
         if ($answer === null) {
-            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
+            $this->nothingMatched($number, $to, $viewer, $query);
 
             return;
         }
 
         $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
+    }
+
+    /** AnswerWhatsAppFromApp's half: Grok reads the app as the asker, GET only. */
+    public function appReply(WhatsAppNumber $number, string $to, User $viewer, string $query): void
+    {
+        try {
+            $reply = AppAsk::answer($viewer, $query);
+        } catch (\RuntimeException) {
+            $reply = null;
+        }
+
+        $reply === null
+            ? $this->nothingMatched($number, $to, $viewer, $query)
+            : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+    }
+
+    private function nothingMatched(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
+    {
+        $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
     }
 }
