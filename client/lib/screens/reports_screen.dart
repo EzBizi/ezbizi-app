@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/error_note.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
@@ -215,44 +216,90 @@ class _ReportsScreenState extends State<ReportsScreen> {
         // Any width since UI queue 72: a phone has its own stacked builder.
         final canBuildHere = canExperiment;
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // The heading row only while a report is open: with nothing
-              // in it, its button's height stood as a gap between the title
-              // and the chips (Mia, 2026-10-02). New report sits beside the
-              // chips instead.
-              if (_open != null) ...[
-                _header(context, canBuildHere: canBuildHere),
-                const SizedBox(height: 12),
-              ],
-              Row(
+        final phone = constraints.maxWidth < 600;
+        final chips = _chips(
+          canBuildHere: canBuildHere,
+          canExperiment: canExperiment,
+        );
+        final labels = [for (final c in chips) (c.$1, c.$2)];
+        void select(int i) => setState(() {
+          _chip = i;
+          _open = null;
+          _openHours = null;
+          _confirming = null;
+        });
+        // A tab drawn by its own widget brings its own 16px; the library, the
+        // Builder and Performance get the shell's, so every tab sits 16 in
+        // (UI queue 87: five of them sat 32).
+        final ownPadding = _chip < chips.length && chips[_chip].$3 != null;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: TabBarLike(
-                      key: const ValueKey('tour-reports-tabs'),
-                      labels: _chipLabels(
-                        canBuildHere: canBuildHere,
-                        canExperiment: canExperiment,
+                  // The heading row only while a report is open: with
+                  // nothing in it, its button's height stood as a gap
+                  // between the title and the chips (Mia, 2026-10-02).
+                  if (_open != null) ...[
+                    _header(context, canBuildHere: canBuildHere),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        // Phone 4: one picker naming the tab and listing all
+                        // of them, for a strip that showed two and hid seven.
+                        child: phone && labels.isNotEmpty
+                            ? SearchPickerField<int>(
+                                key: const ValueKey('tour-reports-tabs'),
+                                value: _chip < labels.length ? _chip : 0,
+                                searchFrom: 99,
+                                options: [
+                                  for (final (i, (label, icon))
+                                      in labels.indexed)
+                                    SearchOption<int>(
+                                      value: i,
+                                      label: label,
+                                      child: Row(
+                                        children: [
+                                          Icon(icon, size: 18),
+                                          const SizedBox(width: 10),
+                                          Text(label),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (i) {
+                                  if (i != null) select(i);
+                                },
+                              )
+                            : TabBarLike(
+                                key: const ValueKey('tour-reports-tabs'),
+                                labels: labels,
+                                selected: _chip,
+                                onSelected: select,
+                              ),
                       ),
-                      selected: _chip,
-                      onSelected: (i) => setState(() {
-                        _chip = i;
-                        _open = null;
-                        _openHours = null;
-                        _confirming = null;
-                      }),
-                    ),
+                      ?_newReport(canBuildHere: canBuildHere, compact: phone),
+                    ],
                   ),
-                  ?_newReport(canBuildHere: canBuildHere),
                 ],
               ),
-              const SizedBox(height: 12),
-              Expanded(child: _body(context, constraints)),
-            ],
-          ),
+            ),
+            if (!ownPadding) const SizedBox(height: 12),
+            Expanded(
+              child: ownPadding
+                  ? _body(context, constraints)
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: _body(context, constraints),
+                    ),
+            ),
+          ],
         );
       },
     );
@@ -382,16 +429,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   bool _mayOpen(String tab) =>
       widget.session.me?.permissions.contains('reports.$tab.view') ?? false;
 
-  List<(String, IconData)> _chipLabels({
-    required bool canBuildHere,
-    required bool canExperiment,
-  }) {
-    return _chips(
-      canBuildHere: canBuildHere,
-      canExperiment: canExperiment,
-    ).map((chip) => (chip.$1, chip.$2)).toList();
-  }
-
   /// The chips shift when a tab is not granted, so a stored index would point
   /// at the wrong destination. Resolved by NAME rather than by number - and an
   /// index past the end is NOTHING, not the library. Falling back to
@@ -452,7 +489,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   /// New report, beside the chips on the library (Mia, 2026-10-02).
-  Widget? _newReport({required bool canBuildHere}) {
+  Widget? _newReport({required bool canBuildHere, bool compact = false}) {
     // canExperiment: canBuildHere already implies reports.build.
     final builder = _indexOf(
       'Report Builder',
@@ -466,19 +503,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return null;
     }
 
+    // To the Builder by NAME. `_chip = 1` was the Builder only while the
+    // library sat at 0 (deploy desk audit, 2026-09-29).
+    void open() => setState(() {
+      _chip = builder;
+      _open = null;
+    });
+
     return Padding(
       padding: const EdgeInsets.only(left: 12),
-      child: FilledButton.icon(
-        key: const ValueKey('tour-reports-new'),
-        // To the Builder by NAME. `_chip = 1` was the Builder only while the
-        // library sat at 0 (deploy desk audit, 2026-09-29).
-        onPressed: () => setState(() {
-          _chip = builder;
-          _open = null;
-        }),
-        icon: const Icon(Icons.add),
-        label: const Text('New report'),
-      ),
+      // On a phone it took the strip's width and left "Reports, Repor…" (UI
+      // audit, 2026-10-13): the icon alone there, beside the picker.
+      child: compact
+          ? IconButton.filled(
+              key: const ValueKey('tour-reports-new'),
+              tooltip: 'New report',
+              onPressed: open,
+              icon: const Icon(Icons.add),
+            )
+          : FilledButton.icon(
+              key: const ValueKey('tour-reports-new'),
+              onPressed: open,
+              icon: const Icon(Icons.add),
+              label: const Text('New report'),
+            ),
     );
   }
 
@@ -861,7 +909,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 return Material(
                   key: ValueKey('library-row-${row.id}'),
                   color: row.id == _openHours
-                      ? scheme.primaryContainer
+                      ? scheme.primaryContainer.withValues(alpha: .45)
                       : Colors.transparent,
                   child: InkWell(
                     onTap: () => _openRow(row),
@@ -914,7 +962,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           children: [
                             Text(
                               sent.when,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: sent.quiet
                                   ? muted
@@ -1018,10 +1066,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                   ),
                   if (row.built != null && canBuild)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Delete report',
-                      onPressed: () => setState(() => _confirming = row.id),
+                    PopupMenuButton<String>(
+                      tooltip: 'More for ${row.name}',
+                      icon: const Icon(Icons.more_vert),
+                      onSelected: (_) => setState(() => _confirming = row.id),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete report'),
+                        ),
+                      ],
                     )
                   else
                     const SizedBox(width: 10),

@@ -71,12 +71,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(asked.single, {'from': '2026-10-05', 'to': '2026-10-11'});
-    expect(find.text('\$30,000'), findsOneWidget);
-    expect(find.text('\$15,000'), findsOneWidget);
-    expect(find.text('20.0%'), findsOneWidget);
-    expect(find.text('-\$29,500'), findsOneWidget);
+    // One table (UI queue 87): money as every tab writes it, a Total row
+    // under the rows, and the figures above.
+    final table = find.byKey(const Key('marketing-table'));
+    Finder inTable(String text) =>
+        find.descendant(of: table, matching: find.text(text));
+    expect(inTable(r'$30,000.00'), findsNWidgets(2), reason: 'row and Total');
+    expect(inTable(r'$15,000.00'), findsOneWidget);
+    expect(inTable('20.0%'), findsOneWidget);
+    expect(inTable('−\$29,500.00'), findsNWidgets(2));
+    // Total: 3 jobs from 10 leads, $30,000 over 3 jobs, the one known profit.
+    expect(inTable('Total'), findsOneWidget);
+    expect(inTable('30.0%'), findsOneWidget);
+    expect(inTable(r'$10,000.00'), findsOneWidget);
+    // Profit on the first row, gross on the second, and the Total's profit.
+    expect(inTable(r'$500.00'), findsNWidgets(3));
+    // The figures read the Total.
+    expect(find.byKey(const Key('marketing-fact-cost')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('marketing-fact-net')),
+        matching: find.text('−\$29,500.00'),
+      ),
+      findsOneWidget,
+    );
     // No ad cost and no P&L: dashes, never $0.
-    expect(find.text('\$0'), findsNothing);
+    expect(find.text(r'$0.00'), findsNothing);
     expect(find.text('No P&L'), findsNWidgets(2));
 
     // The arrow steps a week back; the panel picks any dates.
