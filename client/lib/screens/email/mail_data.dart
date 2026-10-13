@@ -74,6 +74,7 @@ class Mailbox {
     required this.replyRefusal,
     this.provider = '',
     this.discoveredFolders,
+    this.mayRead = true,
   });
 
   final String id;
@@ -107,6 +108,10 @@ class Mailbox {
 
   /// `gmail_oauth`, `gmail_workspace`, `imap`, `microsoft`.
   final String provider;
+
+  /// Whether this person may open it. The list also carries inboxes they may
+  /// only MANAGE (Settings needs those); the Inbox tab shows only these.
+  final bool mayRead;
 
   /// Gmail folders (Starred, Sent, …) exist on this mailbox.
   bool get isGmail =>
@@ -159,6 +164,7 @@ class Mailbox {
     replyRefusal: replyRefusal,
     provider: provider,
     discoveredFolders: folders,
+    mayRead: mayRead,
   );
 
   Set<String> get folderIds => discoveredFolders ?? _guessedFolderIds;
@@ -204,6 +210,7 @@ class Mailbox {
     replyRefusal: json['reply_refusal'] as String? ??
         json['may_read_reason'] as String?,
     provider: json['provider'] as String? ?? '',
+    mayRead: json['may_read'] != false,
   );
 }
 
