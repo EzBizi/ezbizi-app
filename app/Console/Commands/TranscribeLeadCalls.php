@@ -74,7 +74,7 @@ class TranscribeLeadCalls extends Command
             ->whereNotNull('recording_url')
             ->whereNotNull('duration_ms')          // rang out: nothing to hear
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
-            ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
+            ->where('occurred_at', '>=', $this->oldest())
             ->orderByDesc('occurred_at')
             ->limit((int) $this->option('limit'))
             ->get();
@@ -148,7 +148,7 @@ class TranscribeLeadCalls extends Command
             ->whereNotNull('recording_url')
             ->whereNotNull('duration_ms')
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
-            ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
+            ->where('occurred_at', '>=', $this->oldest())
             ->orderByDesc('occurred_at')
             ->limit($limit)
             ->get();
@@ -163,5 +163,17 @@ class TranscribeLeadCalls extends Command
                 $tenant->run($organization, fn () => $group->each($each));
             }
         }
+    }
+
+    /**
+     * The window, never before GROK_AI_SINCE (Jose, 2026-10-13: "just new
+     * stuff from now on" - transcribing included). Read from config rather
+     * than GrokCli::since() so this does not wait on that branch.
+     */
+    private function oldest(): \Illuminate\Support\Carbon
+    {
+        $since = \Illuminate\Support\Carbon::parse((string) config('services.grok_cli.since', '2026-10-13'))->startOfDay();
+
+        return now()->subDays((int) $this->option('days'))->max($since);
     }
 }
