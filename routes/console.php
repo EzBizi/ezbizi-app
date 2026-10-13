@@ -28,6 +28,8 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 // week or a month opens without waiting on RingCentral's rate limit.
 Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
+// Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
+Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Everything else's retention (§10), read off each model's own declaration.
 //

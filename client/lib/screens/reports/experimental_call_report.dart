@@ -1092,6 +1092,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
       'missed' => [..._nobody(from), ..._outbound(from)],
+      // Grok read the call as booked, but no Workiz job matches it (Jose,
+      // 2026-10-13: a list for a manager to follow up).
+      'ai_booked_no_job' =>
+        from
+            .where(
+              (c) =>
+                  (c['labels'] as Map?)?['grok'] == 'booked' &&
+                  c['booked'] != true,
+            )
+            .toList(),
       _ => from.where((c) => !_isOutbound(c)).toList(),
     };
 
@@ -1153,13 +1163,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
           ('missed', 'Missed'),
+          ('ai_booked_no_job', 'Booked per AI · no job'),
         ])
-          chip(key, '$label ${byResult(key, mine).length}', _result == key, () {
-            _result = key;
-            _labelFilter = null;
-            _nobodyFilter = null;
-            _directionFilter = null;
-          }),
+          // The follow-up list only while it has calls, or is chosen.
+          if (key != 'ai_booked_no_job' ||
+              _result == key ||
+              byResult(key, mine).isNotEmpty)
+            chip(
+              key,
+              '$label ${byResult(key, mine).length}',
+              _result == key,
+              () {
+                _result = key;
+                _labelFilter = null;
+                _nobodyFilter = null;
+                _directionFilter = null;
+              },
+            ),
       ]),
       group('Client', [
         chip(
