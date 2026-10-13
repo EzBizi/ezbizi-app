@@ -817,6 +817,14 @@ Route::prefix('v1')
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
         Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        // Custom boards and members, monday-style (inbox 0120).
+        Route::post('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroy']);
+        Route::get('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'members']);
+        Route::post('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'storeMember']);
+        Route::patch('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'updateMember']);
+        Route::delete('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroyMember']);
         Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
         Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
         Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);

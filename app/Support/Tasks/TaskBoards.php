@@ -2,11 +2,13 @@
 
 namespace App\Support\Tasks;
 
+use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Models\User;
@@ -15,6 +17,7 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -60,33 +63,23 @@ class TaskBoards
 
             $board = TaskBoard::query()->firstOrCreate(
                 ['kind' => $kind, $column => $owner->getKey()],
-                ['organization_id' => $owner->organization_id, 'name' => $owner->name ?: 'Tasks'],
+                [
+                    'organization_id' => $owner->organization_id,
+                    'name' => $owner->name ?: 'Tasks',
+                    'auto_key' => $kind.':'.$owner->getKey(),
+                    'visibility' => TaskBoard::MAIN,
+                ],
             );
 
             if ($board->wasRecentlyCreated) {
-                foreach (self::DEFAULT_GROUPS as $position => [$name, $colour]) {
-                    TaskGroup::query()->create([
+                $this->seed($board);
+                if ($owner instanceof User && Schema::hasTable('task_board_members')) {
+                    TaskBoardMember::query()->create([
                         'organization_id' => $board->organization_id,
                         'board_id' => $board->id,
-                        'name' => $name,
-                        'colour' => $colour,
-                        'position' => $position,
+                        'user_id' => $owner->getKey(),
+                        'role' => TaskBoardMember::OWNER,
                     ]);
-                }
-                // The 2026-10-13 board migration runs this before task_statuses
-                // exists; the statuses migration seeds those boards itself.
-                if (Schema::hasTable('task_statuses')) {
-                    foreach (self::BUILT_IN_STATUSES as $position => [$key, $name, $colour, $done]) {
-                        TaskStatus::query()->create([
-                            'organization_id' => $board->organization_id,
-                            'board_id' => $board->id,
-                            'key' => $key,
-                            'name' => $name,
-                            'colour' => $colour,
-                            'position' => $position,
-                            'is_done' => $done,
-                        ]);
-                    }
                 }
             }
 
@@ -95,8 +88,106 @@ class TaskBoards
     }
 
     /**
+     * A custom board (inbox 0120) on a company, a franchise or the
+     * organization (no place). The caller has already been checked against
+     * the current view; they become its owner.
+     */
+    public function createCustom(User $creator, string $name, string $visibility, ?Company $company, ?Franchise $franchise): TaskBoard
+    {
+        return DB::transaction(function () use ($creator, $name, $visibility, $company, $franchise) {
+            $board = TaskBoard::query()->create([
+                'organization_id' => $creator->organization_id,
+                'kind' => TaskBoard::KIND_CUSTOM,
+                'company_id' => $franchise ? null : $company?->id,
+                'franchise_id' => $franchise?->id,
+                'created_by_user_id' => $creator->getKey(),
+                'name' => $name,
+                'visibility' => $visibility,
+            ]);
+            $this->seed($board);
+            TaskBoardMember::query()->create([
+                'organization_id' => $board->organization_id,
+                'board_id' => $board->id,
+                'user_id' => $creator->getKey(),
+                'role' => TaskBoardMember::OWNER,
+            ]);
+
+            return $board;
+        });
+    }
+
+    /** The default groups and the four built-in statuses, on a board that has none. */
+    private function seed(TaskBoard $board): void
+    {
+        foreach (self::DEFAULT_GROUPS as $position => [$name, $colour]) {
+            TaskGroup::query()->create([
+                'organization_id' => $board->organization_id,
+                'board_id' => $board->id,
+                'name' => $name,
+                'colour' => $colour,
+                'position' => $position,
+            ]);
+        }
+        // The 2026-10-13 board migration runs this before task_statuses
+        // exists; the statuses migration seeds those boards itself.
+        if (Schema::hasTable('task_statuses')) {
+            foreach (self::BUILT_IN_STATUSES as $position => [$key, $name, $colour, $done]) {
+                TaskStatus::query()->create([
+                    'organization_id' => $board->organization_id,
+                    'board_id' => $board->id,
+                    'key' => $key,
+                    'name' => $name,
+                    'colour' => $colour,
+                    'position' => $position,
+                    'is_done' => $done,
+                ]);
+            }
+        }
+    }
+
+    /** The person's role on the board: owner, member, viewer, or null. */
+    public function roleOf(User $user, TaskBoard $board): ?string
+    {
+        if ($board->kind === TaskBoard::KIND_USER) {
+            return $board->owner_user_id === $user->getKey() ? TaskBoardMember::OWNER : null;
+        }
+
+        return TaskBoardMember::query()->where('board_id', $board->getKey())
+            ->where('user_id', $user->getKey())->value('role');
+    }
+
+    /** Owners and Administrators rename, delete, and manage members. */
+    public function canManage(User $user, TaskBoard $board): bool
+    {
+        return $this->canView($user, $board)
+            && ($user->isAdministrator() || $this->roleOf($user, $board) === TaskBoardMember::OWNER);
+    }
+
+    /**
+     * Everyone whose reach covers the board's place; the whole organization
+     * for an organization-level custom board. Who may be added as a member.
+     *
+     * @return Collection<int, User>
+     */
+    public function reach(TaskBoard $board): Collection
+    {
+        // ponytail: per-user reach check over the org's users; fine at ~100 users, push into SQL if orgs grow large.
+        $place = $board->franchise ?? $board->company;
+        $users = User::query()->orderBy('name')->get();
+
+        if ($place === null) {
+            return $board->kind === TaskBoard::KIND_CUSTOM ? $users->values() : collect();
+        }
+
+        return $users
+            ->filter(fn (User $u) => $place instanceof Franchise ? $u->canActOnFranchise($place) : $u->canActOnCompany($place))
+            ->values();
+    }
+
+    /**
      * People who may own a task on this board: the owner of a personal board,
-     * otherwise everyone whose reach covers the board's place.
+     * the owners and members of a private board, otherwise everyone whose
+     * reach covers the board's place.
      *
      * @return Collection<int, User>
      */
@@ -106,12 +197,13 @@ class TaskBoards
             return User::query()->whereKey($board->owner_user_id)->get(['id', 'name']);
         }
 
-        // ponytail: per-user reach check over the org's users; fine at ~100 users, push into SQL if orgs grow large.
-        $place = $board->franchise ?? $board->company;
+        if ($board->isPrivate()) {
+            return User::query()->orderBy('name')
+                ->whereIn('id', $board->members()->whereIn('role', [TaskBoardMember::OWNER, TaskBoardMember::MEMBER])->select('user_id'))
+                ->get(['id', 'name']);
+        }
 
-        return User::query()->orderBy('name')->get()
-            ->filter(fn (User $u) => $place instanceof Franchise ? $u->canActOnFranchise($place) : $u->canActOnCompany($place))
-            ->values();
+        return $this->reach($board);
     }
 
     /** @return Builder<TaskBoard> */
@@ -129,7 +221,16 @@ class TaskBoards
         return TaskBoard::query()->where(fn (Builder $q) => $q
             ->where($mine)
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $companyIds))
-            ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds)));
+            ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds))
+            // A custom board: its place is in view (or it is organization-level),
+            // and it is main, or private and I am on it (or Administrator).
+            ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_CUSTOM)
+                ->where(fn (Builder $p) => $p->whereIn('company_id', $companyIds)
+                    ->orWhereIn('franchise_id', $franchiseIds)
+                    ->orWhere(fn (Builder $o) => $o->whereNull('company_id')->whereNull('franchise_id')))
+                ->when(! $user->isAdministrator(), fn (Builder $v) => $v->where(fn (Builder $m) => $m
+                    ->where('visibility', TaskBoard::MAIN)
+                    ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id'))))));
     }
 
     public function canView(User $user, TaskBoard $board): bool
@@ -153,9 +254,30 @@ class TaskBoards
             return $board->owner_user_id === $user->getKey();
         }
 
-        return $user->hasPermission('tasks.edit')
-            && $this->canView($user, $board)
-            && OwnedScope::mayWrite(
+        if (! $user->hasPermission('tasks.edit') || ! $this->canView($user, $board)) {
+            return false;
+        }
+
+        if ($board->kind === TaskBoard::KIND_CUSTOM) {
+            // Members and owners write; a viewer reads. Anyone else on a main
+            // board writes as they would that place's own board.
+            $role = $this->roleOf($user, $board);
+            if ($role !== null) {
+                return $role !== TaskBoardMember::VIEWER;
+            }
+            if ($board->isPrivate() && ! $user->isAdministrator()) {
+                return false;
+            }
+            [$type, $id] = match (true) {
+                $board->franchise_id !== null => [TaskBoard::KIND_FRANCHISE, $board->franchise_id],
+                $board->company_id !== null => [TaskBoard::KIND_COMPANY, $board->company_id],
+                default => [Assignment::SCOPE_ORGANIZATION, null],
+            };
+
+            return OwnedScope::mayWrite($user, $board->organization_id, $type, $id);
+        }
+
+        return OwnedScope::mayWrite(
                 $user,
                 $board->organization_id,
                 $board->kind,

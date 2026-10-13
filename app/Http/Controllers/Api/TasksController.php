@@ -12,6 +12,7 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +56,7 @@ class TasksController extends Controller
         $board = TaskBoard::query()->findOrFail($input['board_id']);
         $this->authorize('update', $board);
         $this->checkReferences($input);
+        $this->checkOnBoard($board, $input);
 
         $task = $this->writer->create($board, $this->toColumns($input), $request->user());
 
@@ -66,6 +68,9 @@ class TasksController extends Controller
         $this->authorize('update', $task);
         $input = $request->validate($this->rules(required: false));
         $this->checkReferences($input);
+        if (($input['assignee_user_id'] ?? null) !== $task->assignee_user_id) {
+            $this->checkOnBoard($task->board, $input);
+        }
 
         $task = $this->writer->update($task, $this->toColumns($input), $request->user());
 
@@ -181,6 +186,22 @@ class TasksController extends Controller
             if (! $class::query()->whereKey($input['about']['id'])->exists()) {
                 throw ValidationException::withMessages(['about.id' => 'That record was not found.']);
             }
+        }
+    }
+
+    /**
+     * A private board's tasks go to its owners and members only (inbox 0120).
+     * Offering membership is the client's job; here the answer is plain.
+     */
+    private function checkOnBoard(TaskBoard $board, array $input): void
+    {
+        $id = $input['assignee_user_id'] ?? null;
+        if ($id === null || ! $board->isPrivate()) {
+            return;
+        }
+        if (! app(TaskBoards::class)->assignable($board)->contains('id', $id)) {
+            $name = User::query()->whereKey($id)->value('name') ?? 'that person';
+            throw ValidationException::withMessages(['assignee_user_id' => "Add {$name} to this board first."]);
         }
     }
 

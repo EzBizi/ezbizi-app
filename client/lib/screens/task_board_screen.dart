@@ -12,7 +12,9 @@ import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import 'task_board_automate.dart';
 import 'task_board_columns.dart';
+import 'task_board_people.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -492,6 +494,44 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (mounted) await _load();
   }
 
+  /// Who is on a board you made, and who can find it (UI queue 89).
+  Future<void> _editPeople() async {
+    await showSidePanel<void>(
+      context,
+      builder: (_) => BoardPeoplePanel(api: widget.api, board: _board!),
+    );
+    if (mounted) await _load();
+  }
+
+  /// The board's own rules, which are Automations rules (UI queue 89).
+  Future<void> _automate() => showSidePanel<void>(
+    context,
+    builder: (_) => BoardAutomatePanel(
+      api: widget.api,
+      session: widget.session,
+      board: _board!,
+    ),
+  );
+
+  /// A new board, filed where the view is, then open on it.
+  Future<void> _newBoard() async {
+    final scope = widget.session.me?.scope;
+    final id = await showSidePanel<String>(
+      context,
+      builder: (_) => NewBoardPanel(
+        api: widget.api,
+        companyId: scope?.type == 'company' ? scope?.id : null,
+        franchiseId: scope?.type == 'franchise' ? scope?.id : null,
+      ),
+    );
+    if (id == null || !mounted) return;
+    final res = await widget.api.get('/task-boards');
+    if (!mounted || !res.ok) return;
+    _boards = (res.body['data'] as List).cast<_Json>();
+    final at = _boards.indexWhere((b) => b['id'] == id);
+    await _open(at < 0 ? 0 : at);
+  }
+
   Future<void> _editStatuses() async {
     await showSidePanel<void>(
       context,
@@ -630,6 +670,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             Icon(switch (b['kind']) {
               'user' => Icons.person_outline,
               'franchise' => Icons.storefront_outlined,
+              'custom' when b['visibility'] == 'private' => Icons.lock_outline,
+              'custom' => Icons.dashboard_customize_outlined,
               _ => Icons.business_outlined,
             }, size: 18),
             const SizedBox(width: 8),
@@ -689,6 +731,26 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             child: row(i, indent: _boards[i]['kind'] != 'company'),
           ),
       ],
+      // monday's "+ Add" at the foot of the board list.
+      if (widget.session.me?.can('tasks.edit') ?? false)
+        SearchOption(
+          value: -1,
+          label: 'New board',
+          child: Row(
+            key: const Key('tasks-new-board'),
+            children: [
+              Icon(Icons.add, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'New board',
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
     ];
 
     final field = SearchPickerField<int>(
@@ -699,7 +761,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       options: options,
       searchFrom: 6,
       onChanged: (i) {
-        if (i != null && i != _selected) _open(i);
+        if (i == -1) {
+          _newBoard();
+        } else if (i != null && i != _selected) {
+          _open(i);
+        }
       },
     );
 
@@ -762,6 +828,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               icon: const Icon(Icons.label_outline, size: 18),
               label: const Text('Statuses…'),
             ),
+          ..._boardFaces(phone: phone),
           if (!_canEdit)
             Text(
               'View only',
@@ -773,6 +840,59 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ],
       ),
     );
+  }
+
+  /// A board you made: who is on it and whether it is Open or Private; and
+  /// on any board, its own automations. On a phone behind the board's ⋯ (UI
+  /// queue 89, desktop 1 and phone 4).
+  List<Widget> _boardFaces({required bool phone}) {
+    final custom = _board!['kind'] == 'custom';
+    final automate = widget.session.me?.can('automations.view') ?? false;
+    final people = 'People · ${_board!['members_count'] ?? 0}';
+    final private = _board!['visibility'] == 'private';
+    if (!custom && !automate) return const [];
+    if (phone) {
+      return [
+        PopupMenuButton<String>(
+          key: const Key('tasks-board-menu'),
+          tooltip: 'This board',
+          icon: const Icon(Icons.more_horiz),
+          onSelected: (v) => v == 'people' ? _editPeople() : _automate(),
+          itemBuilder: (_) => [
+            if (custom)
+              PopupMenuItem(
+                value: 'people',
+                child: Text(
+                  '$people · ${boardVisibilityLabel(_board!['visibility'])}',
+                ),
+              ),
+            if (automate)
+              const PopupMenuItem(value: 'automate', child: Text('Automate')),
+          ],
+        ),
+      ];
+    }
+    return [
+      if (custom) ...[
+        OutlinedButton.icon(
+          key: const Key('tasks-people'),
+          onPressed: _editPeople,
+          icon: const Icon(Icons.group_outlined, size: 18),
+          label: Text(people),
+        ),
+        StatusPill(
+          boardVisibilityLabel(_board!['visibility']),
+          tone: private ? Tone.caution : Tone.neutral,
+        ),
+      ],
+      if (automate)
+        OutlinedButton.icon(
+          key: const Key('tasks-automate'),
+          onPressed: _automate,
+          icon: const Icon(Icons.bolt, size: 18),
+          label: const Text('Automate'),
+        ),
+    ];
   }
 
   // ── Table (and cards on a phone) ───────────────────────────────
