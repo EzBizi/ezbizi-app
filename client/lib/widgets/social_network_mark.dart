@@ -38,6 +38,12 @@ class SocialNetworkMark extends StatelessWidget {
     // Bundled with the Thumbtack connection and never mapped, so Leads drew
     // the grey square beside the one provider that has a mark of its own.
     'thumbtack': 'assets/social/thumbtack.svg',
+
+    // In assets/social all along and never mapped, so Integrations drew the
+    // grey square for them (Jose, 2026-10-13).
+    'mailchimp': 'assets/social/mailchimp.svg',
+    'workiz': 'assets/social/workiz.svg',
+    'airtable': 'assets/social/airtable.svg',
   };
 
   @override
