@@ -83,17 +83,19 @@ class StaffBotMenusApiTest extends TestCase
             ->assertJsonMissing(['name' => 'Elsewhere']);
     }
 
-    public function test_a_row_with_nothing_behind_it_is_not_ready(): void
+    public function test_a_report_with_a_writer_is_ready_and_an_empty_section_is_not(): void
     {
         $menu = $this->inTenant($this->t['org'], fn () => StaffBotMenu::create(['name' => 'Technicians', 'role_ids' => []]));
 
-        // A report nothing writes yet, and a guide section that does not exist.
+        // Reports writes the daily conversion (NewClientConversion); readiness
+        // is known without asking RingCentral. A guide section that does not
+        // exist has nothing behind it.
         $this->signedInAs($this->t['admin'])
             ->postJson(self::ENDPOINT.'/menus/'.$menu->id.'/items', [
                 'title' => 'Daily conversion', 'source' => 'report', 'report' => 'daily_conversion',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.ready', false);
+            ->assertJsonPath('data.ready', true);
 
         $guide = $this->guide($this->t);
         $this->signedInAs($this->t['admin'])

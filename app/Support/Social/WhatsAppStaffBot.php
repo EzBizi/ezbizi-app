@@ -179,10 +179,15 @@ final class WhatsAppStaffBot
             $answer = $item->answer();
         }
 
-        // Linked content not written yet says so, rather than going quiet.
-        $this->text($number, $to, $answer === null
-            ? "\u{1F6A7} *{$item->title}* is coming soon. Ask your manager in the meantime.\n\n\u{1F4CB} Text *MENU* to go back."
-            : mb_substr("*{$item->title}*\n\n".$answer, 0, AssistantEntry::MAX_BODY));
+        // The house voice (GrokCli::WHATSAPP_STYLE): a bold title with one
+        // emoji, then the text. A Library entry and Reports' line are written
+        // in that voice already and go as they are. Linked content not written
+        // yet says so rather than going quiet.
+        $this->text($number, $to, mb_substr(match (true) {
+            $answer === null => "\u{1F6A7} *{$item->title}*\n\u{23F3} Coming soon. Ask your manager in the meantime.\n\n\u{1F4CB} Text *MENU* to go back.",
+            $item->source === StaffBotItem::SOURCE_GUIDE => "\u{1F4D8} *{$item->title}*\n\n".$answer,
+            default => $answer,
+        }, 0, AssistantEntry::MAX_BODY));
     }
 
     /**

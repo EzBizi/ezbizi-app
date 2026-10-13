@@ -827,7 +827,8 @@ class WhatsAppStaffBotTest extends TestCase
                     'training_guide_id' => $guide->id, 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service']),
                 $item(2, ['title' => 'Codes', 'source' => 'library',
                     'assistant_entry_id' => AssistantEntry::query()->orderBy('position')->value('id')]),
-                $item(3, ['title' => 'Daily conversion', 'source' => 'report', 'report' => 'daily_conversion']),
+                $item(3, ['title' => 'Before & After', 'source' => 'guide',
+                    'training_guide_id' => $guide->id, 'chapter' => 'Gallery']),
             ];
         });
     }
@@ -838,14 +839,14 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         $this->staff($t);
-        [$guide, $library, $report] = $this->roleMenu($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
 
         $this->inbound(self::BOT, $this->text('hi'))->assertOk();
 
         $this->assertSame([
             WhatsAppStaffBot::ITEM.$guide->id,
             WhatsAppStaffBot::ITEM.$library->id,
-            WhatsAppStaffBot::ITEM.$report->id,
+            WhatsAppStaffBot::ITEM.$empty->id,
             WhatsAppStaffBot::FIND_LOCATION,
         ], $this->menuIds());
         $this->assertSame('Office', $this->sent[0]['interactive']['action']['sections'][0]['title']);
@@ -857,21 +858,21 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         $this->staff($t);
-        [$guide, $library, $report] = $this->roleMenu($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
         $entryBody = $this->inTenant($t['org'], fn () => (string) AssistantEntry::query()->orderBy('position')->value('body'));
 
         // The guide's section, as the guide says it today.
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN1')->assertOk();
-        $this->assertStringContainsString('*Dispatch guidelines*', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString("\u{1F4D8} *Dispatch guidelines*", $this->sent[0]['text']['body']);
         $this->assertStringContainsString('Answer by the third ring', $this->sent[0]['text']['body']);
 
         // The Library entry, read through AssistantBrain.
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$library->id, 'Codes'), 'wamid.IN2')->assertOk();
         $this->assertStringContainsString(mb_substr($entryBody, 0, 40), $this->sent[1]['text']['body']);
 
-        // Nothing writes the report yet: it says so rather than going quiet.
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$report->id, 'Daily conversion'), 'wamid.IN3')->assertOk();
-        $this->assertStringContainsString('coming soon', $this->sent[2]['text']['body']);
+        // A section with nothing in it yet says so rather than going quiet.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$empty->id, 'Before & After'), 'wamid.IN3')->assertOk();
+        $this->assertStringContainsString('Coming soon', $this->sent[2]['text']['body']);
     }
 
     public function test_another_roles_menu_is_neither_shown_nor_answered(): void
