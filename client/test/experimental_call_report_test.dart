@@ -61,6 +61,29 @@ void main() {
     );
   });
 
+  testWidgets('no Booked per AI list while no call is one', (tester) async {
+    await _pump(tester, width: 1400, view: 'Calls');
+    expect(
+      find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Booked per AI with no job is its own list, only when it has '
+      'calls', (tester) async {
+    final aiBooked = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (aiBooked['calls'] as List).first['labels'] = {'grok': 'booked'};
+    await _pump(tester, width: 1400, view: 'Calls', report: () => aiBooked);
+
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Booked per AI · no job 1'), findsOneWidget);
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+    expect(find.textContaining('Blocked drain'), findsNothing);
+  });
+
   testWidgets('Calls has headings, and the search narrows the calls', (
     tester,
   ) async {

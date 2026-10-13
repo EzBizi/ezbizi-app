@@ -137,7 +137,24 @@ final class WorkizJobs
      */
     public function stored(User $user, string $since): array
     {
-        $connections = $this->connections($user)->keyBy(fn (SocialConnection $c) => (string) $c->getKey());
+        return $this->storedFrom($this->connections($user), $since);
+    }
+
+    /**
+     * stored() across every Workiz account of the current organization, for
+     * a scheduled run that has no person to scope by (ezbizi:ai-booked-no-job).
+     *
+     * @return array{jobs: list<array<string, mixed>>, synced_at: ?string}
+     */
+    public function storedAll(string $since): array
+    {
+        return $this->storedFrom(SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->get(), $since);
+    }
+
+    /** @param  Collection<int, SocialConnection>  $connections */
+    private function storedFrom(Collection $connections, string $since): array
+    {
+        $connections = $connections->keyBy(fn (SocialConnection $c) => (string) $c->getKey());
 
         $rows = WorkizJob::query()
             ->whereIn('connection_id', $connections->keys()->all())

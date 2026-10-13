@@ -3925,6 +3925,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'one. It carries the caller\'s number, the line they rang and the company.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-10-13 ("Yes", via Grok AI): calls AI read as booked
+                    // with no Workiz job, daily for a manager. ezbizi:ai-booked-no-job.
+                    new TriggerDefinition(
+                        key: 'reports.ai_booked_no_job',
+                        label: 'Calls AI says were booked have no job',
+                        description: 'Each morning, the calls from the day before that AI read as booked but that '
+                            .'have no job in Workiz, so a manager can follow up. Raised only when there are any. '
+                            .'It carries the count, the day and a list: time, line, the caller\'s number, who answered.',
+                        composedFields: ['summary'],
+                    ),
                     // Jose, 2026-10-12: a weekly plain-English report by WhatsApp
                     // and email. ezbizi:ai-weekly-summary, Monday 7:00 New York.
                     new TriggerDefinition(
