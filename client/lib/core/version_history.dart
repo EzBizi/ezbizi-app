@@ -17,7 +17,7 @@ class VersionHistory {
       version: '0.0.0426',
       date: '13 Oct 2026',
       items: [
-        'AI Assistance: a Staff bot tab gives each group of roles its own menu on the staff WhatsApp line, with each topic linked to its Training guide section or Library entry, so editing the guide changes what the bot says.',
+        'AI Assistance: a Staff bot tab gives each group of roles its own menu on the staff WhatsApp line, with each topic linked to its Training guide section or Library entry, so editing the guide changes what the bot says. The Daily conversion topic answers with today\'s new-client calls, answered, booked and the conversion.',
       ],
     ),
     VersionRelease(
