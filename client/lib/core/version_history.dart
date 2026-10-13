@@ -18,7 +18,7 @@ class VersionHistory {
       date: '13 Oct 2026',
       items: [
         'AI: fewer calls are flagged as complaints by mistake; a confirmed or moved booking is no longer a complaint.',
-        'Leads: the button that opens a customer's photo in the browser is now solid green, so it stands out.',
+        'Leads: the button that opens a customer\'s photo in the browser is now solid green, so it stands out.',
       ],
     ),
     VersionRelease(
