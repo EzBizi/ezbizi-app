@@ -92,6 +92,7 @@ class TaskBoardsController extends Controller
             'visibility' => $taskBoard->visibility,
             'my_role' => $this->boards->roleOf($user, $taskBoard),
             'members_count' => $taskBoard->members()->count(),
+            'can_manage' => $this->boards->canManage($user, $taskBoard),
             'can_edit' => $this->boards->canEdit($user, $taskBoard),
             'statuses' => $taskBoard->statuses->map(fn (TaskStatus $s) => TaskBoardSettingsController::presentStatus($s))->all(),
             'columns' => $taskBoard->columns->map(fn (TaskColumn $c) => TaskBoardSettingsController::presentColumn($c))->all(),
