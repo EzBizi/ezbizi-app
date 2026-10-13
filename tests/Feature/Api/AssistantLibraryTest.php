@@ -184,4 +184,37 @@ class AssistantLibraryTest extends TestCase
             ->assertJsonPath('data.entry_ids', [$a['mine']->id]);
 
     }
+
+    /** Jose, 2026-10-13: the AI answers from the training guides too, the asker's role's guide only. */
+    public function test_ai_reads_the_role_guide_and_not_the_other(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach (['Dispatcher Training Guide' => 'Complaints are logged on the board.', 'Technician Training Guide' => 'Complaints about a tech go to Eve.'] as $title => $text) {
+                \App\Models\TrainingGuide::create([
+                    'company_id' => $t['company']->id, 'title' => $title, 'status' => \App\Models\TrainingGuide::PUBLISHED,
+                    'screens' => [['title' => 'Handling complaints', 'chapter' => 'Essentials', 'section' => 'Service',
+                        'blocks' => [['type' => 'text', 'text' => $text], ['type' => 'video', 'url' => 'https://vimeo.com/123']]]],
+                ]);
+            }
+        });
+        $prompts = [];
+        \Illuminate\Support\Facades\Process::fake(function ($process) use (&$prompts) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompts[] = $file && is_file($file) ? file_get_contents($file) : '';
+
+            return \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+                'answered' => true, 'reply' => 'Log it on the board.', 'entry_ids' => [],
+            ]]));
+        });
+        $this->signedInAs($this->userWithRole($t, 'Remote Dispatcher', ['ai_assistance.view', 'ai_assistance.ai.view']));
+
+        $this->getJson('/api/v1/ai-assistance/answer?q=how+do+I+handle+complaints')
+            ->assertOk()->assertJsonPath('data.reply', 'Log it on the board.');
+
+        $this->assertStringContainsString('Complaints are logged on the board.', $prompts[0]);
+        $this->assertStringContainsString('https://vimeo.com/123', $prompts[0]);
+        $this->assertStringNotContainsString('go to Eve', $prompts[0], "a dispatcher is not given the technicians' guide");
+    }
 }
