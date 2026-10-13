@@ -831,8 +831,8 @@ class _ItemEditorState extends State<_ItemEditor> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Written by EzBizi when it is asked for. Until it is, the bot '
-                'answers that it is coming soon.',
+                "Written by Reports each time somebody asks: today's new-client "
+                'calls, answered, booked and the conversion.',
                 style: muted,
               ),
             ],
