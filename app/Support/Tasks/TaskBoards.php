@@ -37,7 +37,7 @@ class TaskBoards
         ['Done', '#00C875'],
     ];
 
-    /** key, name, colour, is_done — every new board starts with these. */
+    /** key, name, colour, is_done â€” every new board starts with these. */
     public const BUILT_IN_STATUSES = [
         [Task::STATUS_NOT_STARTED, 'Not started', '#C4C4C4', false],
         [Task::STATUS_WORKING_ON_IT, 'Working on it', '#FDAB3D', false],
