@@ -26,6 +26,8 @@ class VersionHistory {
         'Reports: Scoring shows each dispatcher as a card ranked by AI\'s call score, with AI\'s daily and weekly analysis; for Administrators and Lead Managers.',
         'Reports: on a phone, Marketing, Meta and Thumbtack no longer go blank when the dates are opened.',
         'Reports: every tab now reads the same way: one date bar, the key figures, and one table with a Total row; on a phone, one menu for the tabs and each row as a card. Fixed: saved reports showing cents, 24-hour call times, Google Ads money.',
+        'WhatsApp: when a customer replies, the message appears in their lead in Leads.',
+        'Automations: a notification to several people picked by name now reaches each of them.',
       ],
     ),
     VersionRelease(
