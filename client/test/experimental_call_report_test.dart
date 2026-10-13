@@ -45,6 +45,22 @@ void main() {
   });
 
   // UI queue 78: Calls is a table, and a search narrows it.
+  testWidgets('Calls shows each call\'s AI score, a dash when unscored', (
+    tester,
+  ) async {
+    final scored = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (scored['calls'] as List).first['score'] = {'score': 7};
+    await _pump(tester, width: 1400, view: 'Calls', report: () => scored);
+
+    expect(find.text('SCORE'), findsOneWidget);
+    final c1 = find.byKey(const ValueKey('score-cell-c1'));
+    expect(tester.widget<Text>(c1).data, '7/10');
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('score-cell-c2'))).data,
+      '—',
+    );
+  });
+
   testWidgets('Calls has headings, and the search narrows the calls', (
     tester,
   ) async {

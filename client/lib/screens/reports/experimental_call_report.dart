@@ -2192,6 +2192,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       mainAxisSize: MainAxisSize.min,
       children: [?play, more],
     );
+    // AI's coaching score for the call (Jose, 2026-10-13: "a column that
+    // shows the score given by AI"); a dash until the call is scored.
+    final aiScore = (call['score'] as Map?)?['score'];
+    final score = Text(
+      aiScore == null ? '—' : '$aiScore/10',
+      key: ValueKey('score-cell-$callId'),
+      style: aiScore == null ? TextStyle(color: muted) : null,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2217,6 +2225,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                       result,
                       who,
                       why,
+                      score,
                       talkText,
                       actions,
                     ]),
@@ -2239,6 +2248,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                   when,
                                   result,
                                   ?client,
+                                  if (aiScore != null) score,
                                   if (outbound) direction,
                                   if (!missed) talkText,
                                 ],
@@ -2407,12 +2417,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         Expanded(flex: 3, child: pad(c[6])),
         Expanded(flex: 3, child: pad(c[7])),
         SizedBox(
-          width: 44,
+          width: 112,
           child: Align(alignment: Alignment.centerRight, child: c[8]),
         ),
         SizedBox(
-          width: 92,
+          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[9]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[10]),
         ),
       ],
     );
@@ -2453,6 +2467,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     tooltip:
                         'Each call was read and sorted by AI, Claude or '
                         'Grok, whichever is chosen above.',
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  heading('Score'),
+                  const SizedBox(width: 4),
+                  const AiMark(
+                    tooltip:
+                        'How well the call was handled, out of 10, scored by '
+                        'AI from the transcript. Open the call for what it '
+                        'did well and what would have helped.',
                   ),
                 ],
               ),
