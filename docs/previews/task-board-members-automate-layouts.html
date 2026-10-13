@@ -1,0 +1,317 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Task Board people</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:700px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bpick{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-weight:800;font-size:14px}
+.avs{display:inline-flex}.avs .av{margin-left:-7px;border:2px solid #fff;width:28px;height:28px}.avs .av:first-child{margin-left:0}
+.avs .more{background:var(--neuc);color:var(--neu)}
+.grp{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.grp .gh{display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:800;font-size:13px;border-left:4px solid var(--pri)}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) 130px 110px 100px;gap:8px;align-items:center;min-height:38px;padding:0 12px;border-top:1px solid var(--line2);font-size:12.5px}
+.st2{border-radius:6px;padding:3px 0;text-align:center;font-size:11.5px;font-weight:700;color:#fff}
+.st2.w{background:#e2a33a}.st2.d{background:#16662d}.st2.s{background:#9f1d1d}.st2.n{background:#8a969e}
+.dd{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);width:300px;display:flex;flex-direction:column;padding:6px;font-size:12.5px;z-index:2}
+.dd .g{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#93a3ab;padding:8px 8px 3px}
+.dd .o{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px}
+.dd .o.on{background:var(--pric);color:var(--prid);font-weight:700}
+.dd .o .c{margin-left:auto;color:var(--muted);font-size:11px}
+.dd .new{border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+.side3{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.side3 .phd{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.side3 .phd b{font-size:15px}
+.side3 .pbd{padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1;overflow:hidden}
+.mem{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.mem:first-child{border-top:0}
+.mem .g{flex:1;min-width:0}.mem .g b{display:block}.mem .g span{font-size:11px;color:var(--muted)}
+.rolepick{border:1px solid #b9c7cd;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;background:#fff}
+.priv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.priv div{border:1px solid #b9c7cd;border-radius:10px;padding:10px;font-size:12px;display:flex;flex-direction:column;gap:2px}
+.priv div.on{border-color:var(--pri);background:var(--pric)}
+.priv b{font-size:12.5px}
+.recipe{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;align-items:flex-start;gap:10px;font-size:12.5px;background:#fff}
+.recipe .sent{flex:1;line-height:1.9}
+.recipe .sent u{text-decoration:none;border-bottom:2px solid var(--pri);font-weight:700;color:var(--prid);padding:0 2px}
+.sw{width:34px;height:20px;border-radius:999px;background:var(--pri);position:relative;flex:0 0 auto;margin-top:3px}
+.sw:after{content:"";position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.sw.off{background:#c9d4d9}.sw.off:after{right:auto;left:2px}
+.tpl{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tpl div{border:1px dashed #b9c7cd;border-radius:10px;padding:10px;font-size:12px;line-height:1.5;background:var(--ground)}
+.tpl b{color:var(--prid)}
+.full{flex:1;display:flex;gap:16px;min-height:0}
+.lnk{font-size:11.5px;color:var(--pri);font-weight:700}
+</style>
+
+<div class="wrap">
+<h1>Task Board: your own boards, who is on them, and Automate</h1>
+<p class="subt">Jose's ask: anyone can create boards; a board's owner chooses who is on it, the way monday.com does; and each board gets easy automations, kept in step with the Automations tab but only about tasks. Every name here is invented.</p>
+<p class="cap"><b>How monday.com does it, carried over:</b> every board has an <b>owner</b>, who adds people as <b>Owner</b> (may change the board and who is on it), <b>Member</b> (works the tasks) or <b>Viewer</b> (reads only). A board is <b>Open</b>, which everyone at its company or branch can find and join, or <b>Private</b>, which only its members see. Giving someone a task on a board you own asks whether to add them as a member. Role permissions still apply on top, and an Administrator sees every board.</p>
+<div class="need"><b>Automate saves real rules:</b> each recipe is an ordinary rule in the Automations engine, limited to this board, so it also shows in Automations › Your automations, where it can be edited in full. No second engine. The recipes: <i>a task is created</i>, <i>its status changes</i> or <i>it is overdue</i>, then <i>assign</i>, <i>notify</i>, <i>send a Communication alert</i> or <i>move its status or group</i>. Task Board builds the boards and members; Automations agrees how a rule is limited to one board; UI/UX builds these screens.</div>
+
+<!-- ───────── Desktop 1 ───────── -->
+<h2><span class="n">1</span> The board's own header: picker, people, Automate <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The <b>Board ▾</b> picker (queue 84) gains <b>+ New board</b> at its foot. Beside the board's name sit its <b>people</b> as faces, then <b>Invite</b> and <b>⚡ Automate</b>. Each opens a panel over the board's right side, inside Task Board, with no dialog. The next two pictures are those panels.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="position:relative">
+ <div class="t">Task Board</div>
+ <div class="bar2"><span class="bpick">🗂 Spring cleaning push ▾</span><span class="pill p-neu">🔒 Private</span><span class="sp"></span><span class="avs"><span class="av">DR</span><span class="av">MO</span><span class="av">TB</span><span class="av more">+2</span></span><span class="btn sm">👤 Invite</span><span class="btn sm">⚡ Automate · 3</span><span class="btn sm t">Statuses…</span></div>
+ <div class="grp"><div class="gh">This week <span class="tiny">4 tasks</span></div>
+  <div class="trow"><span>Call back the Maple Grove cap quotes</span><span><span class="av" style="width:22px;height:22px;font-size:9px">MO</span> Maya</span><span class="st2 w">Working on it</span><span class="tiny">Oct 15</span></div>
+  <div class="trow"><span>Order 40 stainless caps</span><span><span class="av" style="width:22px;height:22px;font-size:9px">TB</span> Tom</span><span class="st2 d">Done</span><span class="tiny">Oct 12</span></div>
+  <div class="trow"><span>Print the spring door hangers</span><span class="tiny">— nobody</span><span class="st2 n">Not started</span><span class="tiny" style="color:var(--bad);font-weight:700">Oct 10 · overdue</span></div>
+  <div class="trow"><span>Book the van wrap</span><span><span class="av" style="width:22px;height:22px;font-size:9px">DR</span> Daniel</span><span class="st2 s">Stuck</span><span class="tiny">Oct 18</span></div>
+ </div>
+ <div class="dd" style="left:24px;top:112px"><div class="g">My boards</div><div class="o">🗂 My board<span class="c">6 open</span></div><div class="o on">🗂 Spring cleaning push<span class="c">Owner</span></div><div class="o">🗂 Van fleet repairs<span class="c">Member</span></div><div class="g">Northwind · Lakeview</div><div class="o">🗂 Lakeview office<span class="c">Open · join</span></div><div class="new"><div class="o" style="color:var(--pri);font-weight:700">＋ New board</div></div></div>
+</div></div></div>
+
+<div class="lab">1 · Invite: who is on the board</div>
+<div class="win" style="height:600px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="position:relative">
+ <div class="t">Task Board</div>
+ <div class="bar2"><span class="bpick">🗂 Spring cleaning push ▾</span></div>
+ <div class="grp" style="opacity:.55"><div class="gh">This week</div><div class="trow"><span>Call back the Maple Grove cap quotes</span><span></span><span class="st2 w">Working on it</span><span></span></div><div class="trow"><span>Order 40 stainless caps</span><span></span><span class="st2 d">Done</span><span></span></div></div>
+ <div class="side3"><div class="phd"><b>People on this board</b><span class="sp"></span><span>✕</span></div>
+  <div class="pbd">
+   <div class="fld"><label>Add people</label><div class="in"><span class="ph">Type a name or a role…</span></div></div>
+   <div>
+    <div class="mem"><span class="av">DR</span><div class="g"><b>Daniel Reyes</b><span>made this board</span></div><span class="rolepick">Owner ▾</span></div>
+    <div class="mem"><span class="av">MO</span><div class="g"><b>Maya Ortiz</b><span>Dispatcher · Lakeview</span></div><span class="rolepick">Member ▾</span></div>
+    <div class="mem"><span class="av">TB</span><div class="g"><b>Tom Becker</b><span>Dispatcher · Lakeview</span></div><span class="rolepick">Member ▾</span></div>
+    <div class="mem"><span class="av">LF</span><div class="g"><b>Lena Fischer</b><span>Office · Northside</span></div><span class="rolepick">Viewer ▾</span></div>
+   </div>
+   <div class="fld"><label>Who can find it</label><div class="priv"><div><b>🌐 Open</b><span class="tiny">Everyone at Lakeview sees it and can join</span></div><div class="on"><b>🔒 Private</b><span class="tiny">Only the people above</span></div></div></div>
+   <span class="tiny"><b>Owner</b> changes the board and who is on it · <b>Member</b> works the tasks · <b>Viewer</b> reads only. Administrators see every board.</span>
+  </div></div>
+</div></div></div>
+
+<div class="lab">1 · ⚡ Automate: the board's own rules</div>
+<div class="win" style="height:640px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="position:relative">
+ <div class="t">Task Board</div>
+ <div class="bar2"><span class="bpick">🗂 Spring cleaning push ▾</span></div>
+ <div class="grp" style="opacity:.55"><div class="gh">This week</div><div class="trow"><span>Call back the Maple Grove cap quotes</span><span></span><span class="st2 w">Working on it</span><span></span></div></div>
+ <div class="side3" style="width:470px"><div class="phd"><b>⚡ Automate this board</b><span class="sp"></span><span>✕</span></div>
+  <div class="pbd">
+   <div class="recipe"><span class="sw"></span><div class="sent">When <u>a task is created</u>, <u>assign</u> it to <u>Maya Ortiz</u></div><span class="tiny">⋯</span></div>
+   <div class="recipe"><span class="sw"></span><div class="sent">When the status changes to <u>Stuck</u>, <u>notify</u> <u>the board's owner</u></div><span class="tiny">⋯</span></div>
+   <div class="recipe"><span class="sw off"></span><div class="sent">When a task is <u>overdue</u>, <u>send a Communication alert</u> to <u>the person assigned</u></div><span class="tiny">⋯</span></div>
+   <span class="btn">＋ Add an automation</span>
+   <div class="lab" style="margin:2px 0 0">Start from one of these</div>
+   <div class="tpl"><div>When the status changes to <b>Done</b>, <b>move it</b> to <b>Finished</b></div><div>When a task is created with <b>nobody</b> on it, <b>notify</b> <b>the owner</b></div></div>
+   <span class="tiny">These are rules in <span class="lnk">Automations › Your automations ›</span>, limited to this board. Edit them there for everything else a rule can do.</span>
+  </div></div>
+</div></div></div>
+
+<!-- ───────── Desktop 2 ───────── -->
+<h2><span class="n">2</span> A board page with its own tabs</h2>
+<p class="cap"><b>⚙ Board</b> opens the board's page in place of its tasks, with a way back: <b>People · Automate · Columns and statuses</b>. Everything about the board sits in one place, one click further from the tasks.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="bar2"><span class="back">← Spring cleaning push</span></div>
+ <div class="t">Spring cleaning push</div>
+ <div class="tabs"><span class="on">People</span><span>Automate · 3</span><span>Columns and statuses</span></div>
+ <div class="full">
+  <div class="card" style="flex:1"><h3>On this board</h3>
+   <div class="mem"><span class="av">DR</span><div class="g"><b>Daniel Reyes</b><span>made this board</span></div><span class="rolepick">Owner ▾</span></div>
+   <div class="mem"><span class="av">MO</span><div class="g"><b>Maya Ortiz</b><span>Dispatcher · Lakeview</span></div><span class="rolepick">Member ▾</span></div>
+   <div class="mem"><span class="av">TB</span><div class="g"><b>Tom Becker</b><span>Dispatcher · Lakeview</span></div><span class="rolepick">Member ▾</span></div>
+   <div class="mem"><span class="av">LF</span><div class="g"><b>Lena Fischer</b><span>Office · Northside</span></div><span class="rolepick">Viewer ▾</span></div>
+   <div class="in"><span class="ph">＋ Add people…</span></div></div>
+  <div class="card" style="width:360px;flex:0 0 auto"><h3>Who can find it</h3><div class="priv" style="grid-template-columns:1fr"><div><b>🌐 Open</b><span class="tiny">Everyone at Lakeview sees it and can join</span></div><div class="on"><b>🔒 Private</b><span class="tiny">Only the people on it</span></div></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Desktop 3 ───────── -->
+<h2><span class="n">3</span> Small pop-overs from the header</h2>
+<p class="cap">Faces and ⚡ open small pop-overs right under them. It is the quickest option for one change, and the tightest when a board has many people or rules.</p>
+<div class="win" style="height:470px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="position:relative">
+ <div class="t">Task Board</div>
+ <div class="bar2"><span class="bpick">🗂 Spring cleaning push ▾</span><span class="sp"></span><span class="avs"><span class="av">DR</span><span class="av">MO</span><span class="av">TB</span><span class="av more">+2</span></span><span class="btn sm">⚡ 3</span></div>
+ <div class="grp" style="opacity:.6"><div class="gh">This week</div><div class="trow"><span>Call back the Maple Grove cap quotes</span><span></span><span class="st2 w">Working on it</span><span></span></div><div class="trow"><span>Order 40 stainless caps</span><span></span><span class="st2 d">Done</span><span></span></div></div>
+ <div class="dd" style="right:120px;top:100px;width:320px"><div class="g">5 people · Private</div>
+  <div class="o">DR Daniel Reyes<span class="c">Owner</span></div><div class="o">MO Maya Ortiz<span class="c">Member</span></div><div class="o">TB Tom Becker<span class="c">Member</span></div><div class="o">LF Lena Fischer<span class="c">Viewer</span></div>
+  <div class="new"><div class="o" style="color:var(--pri);font-weight:700">＋ Add people</div></div></div>
+</div></div></div>
+
+<!-- ───────── Phones ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> Phone</h2>
+<p class="cap"><b>4</b> (recommended): the board's <b>⋯</b> holds <b>People</b> and <b>Automate</b>, each a page inside Task Board with a back arrow. <b>5</b>: the faces and ⚡ stay under the board's name and open the same pages. <b>6</b>: a "Board" tab beside "Tasks".</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · the board, and ⋯ <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb" style="position:relative">
+   <div class="picker" style="display:flex;justify-content:space-between;align-items:center;height:40px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-weight:800">🗂 Spring cleaning push <span>▾ &nbsp;⋯</span></div>
+   <div class="lst"><div class="li"><div class="g"><b>Call back the cap quotes</b><span>Maya · Oct 15</span></div><span class="st2 w" style="width:84px">Working</span></div><div class="li"><div class="g"><b>Order 40 caps</b><span>Tom · Oct 12</span></div><span class="st2 d" style="width:84px">Done</span></div><div class="li"><div class="g"><b>Print door hangers</b><span style="color:var(--bad)">overdue</span></div><span class="st2 n" style="width:84px">Not started</span></div></div>
+   <div class="dd" style="right:14px;top:58px;width:200px"><div class="o">👤 People · 5</div><div class="o">⚡ Automate · 3</div><div class="o">🎨 Columns and statuses</div><div class="new"><div class="o" style="color:var(--pri);font-weight:700">＋ New board</div></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · Automate</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+   <span class="back">← Spring cleaning push</span><b>⚡ Automate this board</b>
+   <div class="recipe"><span class="sw"></span><div class="sent">When <u>a task is created</u>, <u>assign</u> it to <u>Maya Ortiz</u></div></div>
+   <div class="recipe"><span class="sw"></span><div class="sent">When the status changes to <u>Stuck</u>, <u>notify</u> <u>the owner</u></div></div>
+   <div class="recipe"><span class="sw off"></span><div class="sent">When a task is <u>overdue</u>, <u>alert</u> <u>the person assigned</u></div></div>
+   <span class="btn">＋ Add an automation</span>
+   <span class="tiny">Also in Automations › Your automations.</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · People</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+   <span class="back">← Spring cleaning push</span><b>People on this board</b>
+   <div class="in"><span class="ph">＋ Add people…</span></div>
+   <div class="lst"><div class="mem"><span class="av">DR</span><div class="g"><b>Daniel Reyes</b><span>made it</span></div><span class="rolepick">Owner ▾</span></div><div class="mem"><span class="av">MO</span><div class="g"><b>Maya Ortiz</b></div><span class="rolepick">Member ▾</span></div><div class="mem"><span class="av">LF</span><div class="g"><b>Lena Fischer</b></div><span class="rolepick">Viewer ▾</span></div></div>
+   <div class="priv"><div><b>🌐 Open</b></div><div class="on"><b>🔒 Private</b></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · faces and ⚡ under the name</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+   <div class="picker" style="display:flex;justify-content:space-between;align-items:center;height:40px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-weight:800">🗂 Spring cleaning push <span>▾</span></div>
+   <div class="bar2"><span class="avs"><span class="av">DR</span><span class="av">MO</span><span class="av more">+3</span></span><span class="sp"></span><span class="btn sm">⚡ 3</span></div>
+   <div class="lst"><div class="li"><div class="g"><b>Call back the cap quotes</b><span>Maya · Oct 15</span></div><span class="st2 w" style="width:84px">Working</span></div><div class="li"><div class="g"><b>Order 40 caps</b><span>Tom · Oct 12</span></div><span class="st2 d" style="width:84px">Done</span></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · a Board tab</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+   <div class="tabs"><span>Tasks</span><span class="on">Board</span></div>
+   <b>Spring cleaning push</b>
+   <div class="lst"><div class="li"><div class="g"><b>👤 People</b><span>5 · Private</span></div><span>›</span></div><div class="li"><div class="g"><b>⚡ Automate</b><span>3 rules, 2 on</span></div><span>›</span></div><div class="li"><div class="g"><b>🎨 Columns and statuses</b></div><span>›</span></div></div>
+  </div></div></div>
+</div>
+</div>
