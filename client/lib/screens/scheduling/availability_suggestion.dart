@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../widgets/tag.dart';
 
 /// Earliest and Suggested, with the route that explains the suggestion (UI
 /// queue 83; Jose, 2026-10-13: "go ahea with ur recommendations" — 1 and 4).
@@ -119,7 +120,8 @@ class AvailabilitySuggestion extends StatelessWidget {
         else if (suggested == null)
           Text(
             'No suggestion: no booked job is within ${_miles(radius)} of $zip '
-            'in the next $days days. The radius is in Settings › Scheduling.',
+            'in the next $days days. The radius is in Scheduling › Settings › '
+            'Suggestions.',
             key: const Key('availability-no-suggestion'),
             style: muted,
           ),
@@ -269,15 +271,17 @@ class _Card extends StatelessWidget {
 }
 
 /// The searched zip, the radius ring, and a line drawn out to each job in
-/// turn, nearest first. Not interactive: it sits inside a scrolling pane,
-/// and a map that took the scroll would trap it.
+/// turn, nearest first. The map does not take drags or the wheel: it sits
+/// inside a scrolling pane, and a map that took the scroll would trap it.
+/// Zoom is the + − ⤢ buttons instead, and a dot shows its job on hover or
+/// tap (Jose, 2026-10-13; UI queue 86).
 class RouteMap extends StatefulWidget {
   const RouteMap({
     super.key,
     required this.api,
     required this.origin,
     required this.originLabel,
-    required this.radiusMiles,
+    this.radiusMiles,
     required this.jobs,
     required this.caption,
   });
@@ -285,7 +289,10 @@ class RouteMap extends StatefulWidget {
   final ApiClient api;
   final LatLng origin;
   final String originLabel;
-  final double radiusMiles;
+
+  /// The suggestion radius drawn as a ring; null draws no ring, and a job
+  /// is near when the server says so.
+  final double? radiusMiles;
   final List<Map<String, dynamic>> jobs;
   final String caption;
 
@@ -305,6 +312,12 @@ class _RouteMapState extends State<RouteMap>
     duration: Duration(milliseconds: math.min(600 * widget.jobs.length, 4000)),
   );
   String? _tileUrl;
+  final _map = MapController();
+  bool _ready = false;
+
+  /// The job under the pointer, and the one a click kept open.
+  Map<String, dynamic>? _hover;
+  Map<String, dynamic>? _pinned;
 
   late final List<Map<String, dynamic>> _ordered = [...widget.jobs]
     ..sort(
@@ -351,7 +364,7 @@ class _RouteMapState extends State<RouteMap>
 
   bool _near(Map<String, dynamic> job) =>
       job['nearby'] == true ||
-      ((job['miles'] as num?) ?? double.infinity) <= widget.radiusMiles;
+      ((job['miles'] as num?) ?? double.infinity) <= (widget.radiusMiles ?? -1);
 
   @override
   Widget build(BuildContext context) {
@@ -361,13 +374,29 @@ class _RouteMapState extends State<RouteMap>
     final far = scheme.outline;
     final phone = MediaQuery.sizeOf(context).width < 600;
     // The jobs, and the ring's own edges, so the radius is never cut off.
-    final lat = widget.radiusMiles / 69;
+    final radius = widget.radiusMiles;
+    final lat = (radius ?? 0) / 69;
     final lng = lat / math.cos(widget.origin.latitude * math.pi / 180);
     final points = [
-      for (final (dy, dx) in [(lat, 0.0), (-lat, 0.0), (0.0, lng), (0.0, -lng)])
-        LatLng(widget.origin.latitude + dy, widget.origin.longitude + dx),
+      if (radius != null)
+        for (final (dy, dx) in [
+          (lat, 0.0),
+          (-lat, 0.0),
+          (0.0, lng),
+          (0.0, -lng),
+        ])
+          LatLng(widget.origin.latitude + dy, widget.origin.longitude + dx),
+      widget.origin,
       for (final j in _ordered) _at(j),
     ];
+
+    final height = phone ? 160.0 : 200.0;
+    final fit = CameraFit.coordinates(
+      coordinates: points,
+      padding: const EdgeInsets.all(28),
+      maxZoom: 13,
+    );
+    final shown = _hover ?? _pinned;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -375,119 +404,159 @@ class _RouteMapState extends State<RouteMap>
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: SizedBox(
-            height: phone ? 160 : 200,
-            child: Stack(
-              children: [
-                FlutterMap(
-                  options: MapOptions(
-                    initialCameraFit: CameraFit.coordinates(
-                      coordinates: points,
-                      padding: const EdgeInsets.all(28),
-                      maxZoom: 13,
-                    ),
-                    backgroundColor: scheme.surfaceContainerHighest,
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.none,
-                    ),
-                  ),
-                  children: [
-                    if (_tileUrl != null)
-                      TileLayer(
-                        urlTemplate: _tileUrl,
-                        userAgentPackageName: 'com.ezbizi.app',
+            height: height,
+            child: LayoutBuilder(
+              builder: (context, box) => Stack(
+                children: [
+                  FlutterMap(
+                    mapController: _map,
+                    options: MapOptions(
+                      onMapReady: () => setState(() => _ready = true),
+                      // The card follows its dot when the zoom changes.
+                      onPositionChanged: (_, _) {
+                        if (_hover != null || _pinned != null) {
+                          setState(() {});
+                        }
+                      },
+                      onTap: (_, _) => setState(() => _pinned = null),
+                      initialCameraFit: fit,
+                      backgroundColor: scheme.surfaceContainerHighest,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
                       ),
-                    CircleLayer(
-                      circles: [
-                        CircleMarker(
-                          point: widget.origin,
-                          radius: widget.radiusMiles * 1609.344,
-                          useRadiusInMeter: true,
-                          color: ok.fill.withValues(alpha: 0.45),
-                          borderColor: ok.ink.withValues(alpha: 0.5),
-                          borderStrokeWidth: 1,
-                        ),
-                      ],
                     ),
-                    AnimatedBuilder(
-                      animation: _draw,
-                      builder: (context, _) {
-                        final t = _draw.value * _ordered.length;
-                        return PolylineLayer(
-                          polylines: [
-                            for (final (i, job) in _ordered.indexed)
-                              if (t > i)
-                                Polyline(
-                                  points: [
-                                    widget.origin,
-                                    _lerp(
+                    children: [
+                      if (_tileUrl != null)
+                        TileLayer(
+                          urlTemplate: _tileUrl,
+                          userAgentPackageName: 'com.ezbizi.app',
+                        ),
+                      if (radius != null)
+                        CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: widget.origin,
+                              radius: radius * 1609.344,
+                              useRadiusInMeter: true,
+                              color: ok.fill.withValues(alpha: 0.45),
+                              borderColor: ok.ink.withValues(alpha: 0.5),
+                              borderStrokeWidth: 1,
+                            ),
+                          ],
+                        ),
+                      AnimatedBuilder(
+                        animation: _draw,
+                        builder: (context, _) {
+                          final t = _draw.value * _ordered.length;
+                          return PolylineLayer(
+                            polylines: [
+                              for (final (i, job) in _ordered.indexed)
+                                if (t > i)
+                                  Polyline(
+                                    points: [
                                       widget.origin,
-                                      _at(job),
-                                      (t - i).clamp(0, 1).toDouble(),
-                                    ),
-                                  ],
-                                  strokeWidth: _near(job) ? 3 : 2,
-                                  color: _near(job) ? ok.ink : far,
-                                  pattern: _near(job)
-                                      ? const StrokePattern.solid()
-                                      : StrokePattern.dashed(
-                                          segments: const [6, 5],
-                                        ),
-                                ),
-                          ],
-                        );
-                      },
-                    ),
-                    // Each job's dot lands as its line reaches it.
-                    AnimatedBuilder(
-                      animation: _draw,
-                      builder: (context, _) {
-                        final t = _draw.value * _ordered.length;
-                        return MarkerLayer(
-                          markers: [
-                            for (final (i, job) in _ordered.indexed)
-                              if (t >= i + 1)
-                                Marker(
-                                  point: _at(job),
-                                  width: 16,
-                                  height: 16,
-                                  child: _Dot(
-                                    colour: _near(job) ? ok.ink : far,
+                                      _lerp(
+                                        widget.origin,
+                                        _at(job),
+                                        (t - i).clamp(0, 1).toDouble(),
+                                      ),
+                                    ],
+                                    strokeWidth: _near(job) ? 3 : 2,
+                                    color: _near(job) ? ok.ink : far,
+                                    pattern: _near(job)
+                                        ? const StrokePattern.solid()
+                                        : StrokePattern.dashed(
+                                            segments: const [6, 5],
+                                          ),
                                   ),
-                                ),
-                          ],
-                        );
-                      },
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: widget.origin,
-                          width: 22,
-                          height: 22,
-                          child: _Dot(colour: scheme.primary, size: 18),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: Material(
-                    color: scheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    child: TextButton.icon(
-                      key: const Key('availability-route-replay'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
+                            ],
+                          );
+                        },
                       ),
-                      onPressed: () => _draw.forward(from: 0),
-                      icon: const Icon(Icons.replay, size: 16),
-                      label: const Text('Replay'),
+                      // Each job's dot lands as its line reaches it.
+                      AnimatedBuilder(
+                        animation: _draw,
+                        builder: (context, _) {
+                          final t = _draw.value * _ordered.length;
+                          return MarkerLayer(
+                            markers: [
+                              for (final (i, job) in _ordered.indexed)
+                                if (t >= i + 1)
+                                  Marker(
+                                    point: _at(job),
+                                    width: 24,
+                                    height: 24,
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      onEnter: (_) =>
+                                          setState(() => _hover = job),
+                                      onExit: (_) => setState(() {
+                                        if (identical(_hover, job)) {
+                                          _hover = null;
+                                        }
+                                      }),
+                                      child: GestureDetector(
+                                        key: ValueKey('route-dot-$i'),
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => setState(
+                                          () =>
+                                              _pinned = identical(_pinned, job)
+                                              ? null
+                                              : job,
+                                        ),
+                                        child: _Dot(
+                                          colour: _near(job) ? ok.ink : far,
+                                          size: identical(shown, job) ? 16 : 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                            ],
+                          );
+                        },
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: widget.origin,
+                            width: 22,
+                            height: 22,
+                            child: _Dot(colour: scheme.primary, size: 18),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (_ready && shown != null)
+                    _card(shown, box.maxWidth, height),
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: _ZoomButtons(
+                      onIn: () => _zoom(1),
+                      onOut: () => _zoom(-1),
+                      onFit: () => _map.fitCamera(fit),
                     ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Material(
+                      color: scheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      child: TextButton.icon(
+                        key: const Key('availability-route-replay'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => _draw.forward(from: 0),
+                        icon: const Icon(Icons.replay, size: 16),
+                        label: const Text('Replay'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -500,8 +569,9 @@ class _RouteMapState extends State<RouteMap>
             _Legend(colour: scheme.primary, label: widget.originLabel),
             _Legend(
               colour: ok.ink,
-              label:
-                  'Within ${AvailabilitySuggestion._miles(widget.radiusMiles)}',
+              label: radius == null
+                  ? 'Nearby'
+                  : 'Within ${AvailabilitySuggestion._miles(radius)}',
             ),
             _Legend(colour: far, label: 'Farther'),
             Text(
@@ -513,6 +583,30 @@ class _RouteMapState extends State<RouteMap>
           ],
         ),
       ],
+    );
+  }
+
+  void _zoom(int by) {
+    final camera = _map.camera;
+    _map.move(camera.center, (camera.zoom + by).clamp(3, 18).toDouble());
+  }
+
+  /// Beside its dot, on whichever side has room, kept inside the map.
+  Widget _card(Map<String, dynamic> job, double width, double height) {
+    final w = math.min(240.0, width - 8);
+    final at = _map.camera.latLngToScreenOffset(_at(job));
+    final left = at.dx < width / 2 ? at.dx + 14 : at.dx - 14 - w;
+
+    return Positioned(
+      left: left.clamp(4, math.max(4, width - w - 4)).toDouble(),
+      top: (at.dy - 28).clamp(4, math.max(4, height - 104)).toDouble(),
+      width: w,
+      // Only a card a click kept open takes the pointer; a hover card
+      // would otherwise sit between the pointer and the next dot.
+      child: IgnorePointer(
+        ignoring: !identical(job, _pinned),
+        child: JobDotCard(job: job),
+      ),
     );
   }
 
@@ -560,4 +654,141 @@ class _Legend extends StatelessWidget {
       Text(label, style: Theme.of(context).textTheme.bodySmall),
     ],
   );
+}
+
+/// + − ⤢ in the map's corner: the map itself takes no wheel or pinch.
+class _ZoomButtons extends StatelessWidget {
+  const _ZoomButtons({
+    required this.onIn,
+    required this.onOut,
+    required this.onFit,
+  });
+
+  final VoidCallback onIn;
+  final VoidCallback onOut;
+  final VoidCallback onFit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget button(String key, IconData icon, String tip, VoidCallback onTap) =>
+        IconButton(
+          key: Key(key),
+          visualDensity: VisualDensity.compact,
+          iconSize: 18,
+          tooltip: tip,
+          onPressed: onTap,
+          icon: Icon(icon),
+        );
+
+    return Material(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button('route-zoom-in', Icons.add, 'Zoom in', onIn),
+          button('route-zoom-out', Icons.remove, 'Zoom out', onOut),
+          button(
+            'route-zoom-fit',
+            Icons.fit_screen_outlined,
+            'Show every job',
+            onFit,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a dot on a scheduling map says about its job: who, what, when,
+/// where, and its status. Every field may be missing.
+class JobDotCard extends StatelessWidget {
+  const JobDotCard({super.key, required this.job});
+
+  final Map<String, dynamic> job;
+
+  /// "13:00" → "1 PM", "10:30" → "10:30 AM".
+  static String clock(String hm) {
+    final parts = hm.split(':');
+    final h = int.tryParse(parts.first) ?? 0;
+    final m = parts.length > 1 ? parts[1] : '00';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    final period = h < 12 ? 'AM' : 'PM';
+    return m == '00' ? '$h12 $period' : '$h12:$m $period';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    String? text(Object? v) => v is String && v.trim().isNotEmpty ? v : null;
+    final customer = text(job['customer']);
+    final what = [
+      ?text(job['service']),
+      if (text(job['number']) case final n?) '#$n',
+    ].join(' · ');
+    final technicians = [
+      for (final t in (job['technicians'] as List?) ?? const [])
+        if (t is String) t else if (t is Map && t['name'] is String) t['name'],
+    ];
+    final when = [
+      if (text(job['time']) case final t?) clock(t),
+      if (technicians.isNotEmpty) technicians.join(', '),
+    ].join(' · ');
+    final miles = job['miles'];
+    final where = [
+      ?(text(job['address']) ?? text(job['city']) ?? text(job['zip'])),
+      if (miles is num) '${AvailabilitySuggestion._miles(miles)} away',
+    ].join(' · ');
+    final status = text(job['status']);
+
+    return Material(
+      key: const Key('route-dot-card'),
+      elevation: 6,
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              customer ?? 'Booked job',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall,
+            ),
+            if (what.isNotEmpty)
+              Text(
+                what,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            if (when.isNotEmpty)
+              Text(
+                when,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+            if (where.isNotEmpty)
+              Text(
+                where,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+            if (status != null) ...[const SizedBox(height: 4), Tag(status)],
+          ],
+        ),
+      ),
+    );
+  }
 }

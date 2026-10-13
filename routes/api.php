@@ -1328,6 +1328,8 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.settings.view')->group(function () {
             Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
         });
+        Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])
+            ->middleware('permission:scheduling.rescheduling.view');
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
             Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);

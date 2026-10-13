@@ -104,7 +104,7 @@ class SchedulingOverbookingController extends Controller
     }
 
     /** One job as the Overbooking list shows it: the client, then the appointment. */
-    private function detail(object $row, ?Customer $customer): array
+    public static function detail(object $row, ?Customer $customer): array
     {
         $p = is_string($row->payload ?? null) ? (json_decode($row->payload, true) ?: []) : [];
         $hhmm = fn (?string $at) => $at === null || strlen($at) < 16 || substr($at, 11, 5) === '00:00' ? null : substr($at, 11, 5);

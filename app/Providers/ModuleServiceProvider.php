@@ -1300,6 +1300,9 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jose, 2026-09-29: "a new tab on scheduling that warns me
                     // about all the overbookings call it Overbooking".
                     new TabDefinition('overbooking', 'Overbooking'),
+                    // Jose, 2026-10-13: booked jobs that would sit better on
+                    // another day, beside other work (App\Support\Scheduling\Reschedules).
+                    new TabDefinition('rescheduling', 'Re-Scheduling'),
                     // Jovanni, 2026-10-01: company branches and the closest
                     // one to an address, for new dispatchers (queue 49).
                     new TabDefinition('locations', 'Locations'),
