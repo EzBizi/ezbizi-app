@@ -51,6 +51,18 @@ final class WhatsAppIntake
     {
         $tapped = $choice === self::LEAD || $choice === self::HIRING;
 
+        /*
+         * A CUSTOMER WE ALREADY KNOW: replying to a booking confirmation, or
+         * any lead whose phone this is (Jose, 2026-10-13: "we should be able to
+         * see if that client replies"). Their words go in that lead's thread
+         * and staff answer from Leads - not "how can we help?", not a menu.
+         */
+        if (! $tapped && $this->menuWord($inbound) === false && ($lead = $this->knownLead($number, $inbound)) !== null) {
+            $this->hold($lead, $inbound);
+
+            return true;
+        }
+
         // Switched off in AI Assistance settings: nobody is asked. A tap on a
         // question sent before it was switched off is still honoured.
         if (! $tapped && ! $this->settings->get('ai_assistance.ask_new_contacts', Organization::findOrFail($number->organization_id))) {
@@ -94,6 +106,48 @@ final class WhatsAppIntake
         $this->ask($number, $contact->counterparty);
 
         return true;
+    }
+
+    /** "MENU" and friends still reach the bot, as the thanks message promises. */
+    private function menuWord(WhatsAppMessage $inbound): bool
+    {
+        return in_array(mb_strtolower(trim((string) $inbound->body)), ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'], true);
+    }
+
+    /**
+     * The lead this sender already is: the one their WhatsApp contact made, or
+     * the newest lead of this business with their phone (last 10 digits). The
+     * contact is created or linked so the next message is one lookup.
+     */
+    private function knownLead(WhatsAppNumber $number, WhatsAppMessage $inbound): ?Lead
+    {
+        $contact = WhatsAppContact::query()
+            ->where('phone_number_id', $inbound->phone_number_id)
+            ->where('counterparty', $inbound->counterparty)
+            ->first();
+
+        if ($contact !== null) {
+            return $contact->kind === WhatsAppContact::KIND_LEAD ? Lead::query()->find($contact->lead_id) : null;
+        }
+
+        $last10 = substr((string) Lead::digits($inbound->counterparty), -10);
+
+        // ponytail: a LIKE on phone_digits scans the org's leads; index a
+        // last-10 column if WhatsApp volume ever makes this slow.
+        $lead = strlen($last10) === 10
+            ? Lead::query()->where('phone_digits', 'like', '%'.$last10)->latest('received_at')->first()
+            : null;
+
+        if ($lead !== null) {
+            WhatsAppContact::create([
+                'phone_number_id' => $inbound->phone_number_id,
+                'counterparty' => $inbound->counterparty,
+                'organization_id' => $number->organization_id,
+                'kind' => WhatsAppContact::KIND_LEAD,
+            ])->forceFill(['lead_id' => $lead->getKey(), 'classified_at' => now()])->save();
+        }
+
+        return $lead;
     }
 
     private function classify(WhatsAppContact $contact, string $kind): void

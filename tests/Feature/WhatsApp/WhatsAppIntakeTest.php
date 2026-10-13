@@ -118,6 +118,26 @@ class WhatsAppIntakeTest extends TestCase
         $this->assertSame(0, Lead::query()->withoutGlobalScopes()->count());
     }
 
+    public function test_a_customer_we_already_have_lands_in_their_lead_and_is_not_asked(): void
+    {
+        // A Thumbtack lead whose booking confirmation went out on WhatsApp; the
+        // phone is stored without the country code.
+        $lead = $this->inTenant($this->t['org'], fn () => Lead::query()->create([
+            'organization_id' => $this->t['org']->id, 'source' => Lead::SOURCE_THUMBTACK, 'remote_id' => 'neg-1',
+            'phone' => '(305) 555-0123', 'phone_digits' => '3055550123', 'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'Can you come at 3 instead?']], 'wamid.IN1')->assertOk();
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'Thanks!']], 'wamid.IN2')->assertOk();
+
+        $this->assertSame([], $this->sent);   // no question, no menu: staff answer from Leads
+        $this->assertSame(1, Lead::query()->withoutGlobalScopes()->count());
+        $this->assertSame(
+            ['Can you come at 3 instead?', 'Thanks!'],
+            LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $lead->id)->orderBy('occurred_at')->orderBy('id')->pluck('text')->all(),
+        );
+    }
+
     public function test_a_whatsapp_lead_is_answered_from_leads_on_the_number_they_wrote_to(): void
     {
         $this->inbound(['type' => 'text', 'text' => ['body' => 'Do you sweep chimneys in Miami?']], 'wamid.IN1');
