@@ -3,12 +3,15 @@
 namespace App\Console\Commands;
 
 use App\Models\Lead;
+use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Support\Email\MailboxReaders;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
  * Which job each lead became, found by the customer's phone number.
@@ -42,6 +45,7 @@ class MatchLeadsToJobs extends Command
     {
         $since = $this->option('all') ? null : now()->subDays((int) $this->option('days'));
         $matched = $this->fillGoogleBookings($tenant, $since);
+        $matched += $this->fillFromBookingEmails($tenant, $since);
 
         $organizations = Lead::query()->withoutGlobalScopes()
             ->whereNull('job_id')->whereNotNull('phone_digits')
@@ -152,6 +156,107 @@ class MatchLeadsToJobs extends Command
         }
 
         return $filled;
+    }
+
+    /**
+     * What Workiz's job data did not give, its "New online booking" email does
+     * (Jose, 2026-10-13: "look in other emails for the missing ones").
+     * Measured that day: 50 of the last fortnight's unnamed bookings had one
+     * in the branch's office inbox within 1-2 seconds of Google's booking,
+     * carrying "From: <name> Phone: ... Email: ... Address: ... When:".
+     * Paired within ten seconds, each email once; only blanks are filled.
+     */
+    private function fillFromBookingEmails(TenantContext $tenant, ?Carbon $since): int
+    {
+        $filled = 0;
+        $readers = app(MailboxReaders::class);
+        $days = $since === null ? 365 : max(1, (int) ceil($since->diffInDays(now())) + 1);
+
+        $orgs = Lead::query()->withoutGlobalScopes()
+            ->where('source', Lead::SOURCE_LOCAL_SERVICES)->where('lead_type', 'BOOKING')->whereNull('phone')
+            ->when($since, fn ($q) => $q->where('received_at', '>=', $since))
+            ->distinct()->pluck('organization_id');
+
+        foreach (Organization::query()->withoutGlobalScopes()->whereIn('id', $orgs)->get() as $organization) {
+            $tenant->run($organization, function () use ($readers, $days, $since, &$filled) {
+                $emails = [];
+                foreach (Mailbox::query()->where('status', Mailbox::STATUS_CONNECTED)->get() as $mailbox) {
+                    $cursor = null;
+                    // ponytail: 20 pages of 100 per inbox; an --all past that keeps the rest unnamed.
+                    for ($pages = 0; $pages < 20; $pages++) {
+                        try {
+                            $page = $readers->for($mailbox)->search($mailbox, 'from:notifications@mg.workiz.com "New online booking" newer_than:'.$days.'d', $cursor, 100);
+                        } catch (Throwable) {
+                            break;   // one mailbox that will not answer is not the others' problem
+                        }
+                        foreach ($page->messages as $m) {
+                            if ($m->sentAt !== null) {
+                                $emails[] = ['at' => $m->sentAt->getTimestamp(), 'text' => html_entity_decode($m->snippet, ENT_QUOTES)];
+                            }
+                        }
+                        if (($cursor = $page->nextCursor) === null) {
+                            break;
+                        }
+                    }
+                }
+                if ($emails === []) {
+                    return;
+                }
+
+                $leads = Lead::query()->where('source', Lead::SOURCE_LOCAL_SERVICES)->where('lead_type', 'BOOKING')
+                    ->whereNull('phone')->whereNotNull('received_at')
+                    ->when($since, fn ($q) => $q->where('received_at', '>=', $since))->get();
+
+                foreach ($leads as $lead) {
+                    $at = $lead->received_at->getTimestamp();
+                    $best = null;
+                    foreach ($emails as $i => $e) {
+                        if (abs($e['at'] - $at) <= 10 && ($best === null || abs($e['at'] - $at) < abs($emails[$best]['at'] - $at))) {
+                            $best = $i;
+                        }
+                    }
+                    if ($best === null) {
+                        continue;
+                    }
+                    $about = self::bookingEmail($emails[$best]['text']);
+                    unset($emails[$best]);
+                    if ($about['phone'] === null && $about['name'] === null) {
+                        continue;
+                    }
+                    $lead->forceFill([
+                        'contact_name' => $lead->contact_name ?: $about['name'],
+                        'phone' => $about['phone'],
+                        'phone_digits' => Lead::digits($about['phone']),
+                        'email' => $lead->email ?: $about['email'],
+                        'postal_code' => $lead->postal_code ?: $about['zip'],
+                    ])->save();
+                    $filled++;
+                }
+            });
+        }
+
+        return $filled;
+    }
+
+    /**
+     * "You got a new service request From: Mary Ciccolini Phone: (330) 606-3475
+     * Email: m@x.com Address: 2585 royalwood rd copley, Ohio 44203 When: ..."
+     *
+     * @return array{name: ?string, phone: ?string, email: ?string, zip: ?string}
+     */
+    public static function bookingEmail(string $text): array
+    {
+        $field = function (string $label, string $next) use ($text): ?string {
+            return preg_match('/'.$label.':\s*(.+?)\s*(?:'.$next.':|$)/u', $text, $m) === 1 && trim($m[1]) !== '' ? trim($m[1]) : null;
+        };
+        $address = $field('Address', 'When');
+
+        return [
+            'name' => $field('From', 'Phone'),
+            'phone' => Lead::e164($field('Phone', 'Email')),
+            'email' => filter_var((string) $field('Email', 'Address'), FILTER_VALIDATE_EMAIL) ?: null,
+            'zip' => $address !== null && preg_match('/\b(\d{5})(?:-\d{4})?\s*$/', $address, $z) === 1 ? $z[1] : null,
+        ];
     }
 
 }
