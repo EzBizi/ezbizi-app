@@ -55,6 +55,10 @@ class TranscribeReportCallsTest extends TestCase
         $this->assertSame('lead', $rows['rc-1']->source);
         $this->assertSame('Hi, I need a chimney sweep.', $rows['rc-1']->transcript);
 
+        // Who took it and when travel with the words, for per-person scoring.
+        $this->assertSame('Trey Brannan', $rows['rc-1']->answered_by);
+        $this->assertSame('2026-10-05 17:00:00', $rows['rc-1']->call_started_at?->utc()->format('Y-m-d H:i:s'));
+
         // Whisper is not installed in tests: marked failed, so it is not retried for ever.
         $this->assertSame('failed', $rows['rc-2']->source);
         $this->assertNull($rows['rc-2']->transcript);

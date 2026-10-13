@@ -113,6 +113,7 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\MarketingReportController;
 use App\Http\Controllers\Api\MetaAdsReportController;
+use App\Http\Controllers\Api\ScoringReportController;
 use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
@@ -1244,6 +1245,9 @@ Route::prefix('v1')
         Route::get('reports/marketing', [MarketingReportController::class, 'show'])->middleware('permission:reports.marketing.view');
         // Facebook ad spend per campaign (Jose, 2026-10-12), and the campaign
         // mapping (state, category, branch) staff keep for it.
+        // Each person's AI call scores, ranked (Jose, 2026-10-13). Performance's
+        // grant until the Scoring tab's own lands with its screen.
+        Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.experimental.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
