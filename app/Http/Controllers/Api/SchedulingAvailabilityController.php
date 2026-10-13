@@ -101,7 +101,8 @@ class SchedulingAvailabilityController extends Controller
             'area_id' => $r['area']->id,
             'area_name' => $r['area']->name,
             'job' => SchedulingOverbookingController::detail($r['row'], $customers[$r['row']->customer_id ?? ''] ?? null)
-                + ['date' => $r['current']['date'], 'latitude' => (float) $r['row']->latitude, 'longitude' => (float) $r['row']->longitude],
+                // What POST scheduling/board/jobs/{job}/reschedule takes.
+                + ['workiz_job_id' => $r['row']->workiz_job_id ?? null, 'date' => $r['current']['date'], 'latitude' => (float) $r['row']->latitude, 'longitude' => (float) $r['row']->longitude],
             'current_nearest_miles' => $r['current']['nearest_miles'],
             'suggested' => $r['suggested'],
         ])->values()->all()]);
