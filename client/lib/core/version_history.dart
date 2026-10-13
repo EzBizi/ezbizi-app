@@ -18,7 +18,7 @@ class VersionHistory {
       date: '13 Oct 2026',
       items: [
         'Reports: Performance › People can show an AI call score and coaching notes per dispatcher.',
-        'Task Board: the groundwork is in, with a board for every company, franchise and person. The Task Board screen comes in a later update.',
+        'Task Board: a new Task Board tab. Every company, franchise and person has a board, shown as a table or a kanban, with each task opening in a side panel and as cards on a phone.',
         'Reports: Task Board tasks can be reported in the Report Builder.',
         'Automations: rules can add a task, give it to somebody and change its status.',
         'Automations: a rule can notify, email, text or WhatsApp whoever a task is given to.',
