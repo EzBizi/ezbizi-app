@@ -3378,8 +3378,11 @@ class ActionRunner
         }
 
         $message = mb_substr(trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject)), 0, 500);
-        $people = User::query()->where('is_active', true)
-            ->whereIn('id', array_filter(array_map('trim', self::idList($action['user_ids'] ?? []))))->get();
+        $named = array_values(array_unique(array_filter(array_map('trim', self::idList($action['user_ids'] ?? [])))));
+        $people = User::query()->where('is_active', true)->whereIn('id', $named)->get();
+        // Skipped, not refused as a person's send is: a rule keeps alerting
+        // the rest. Said, so whoever reads the run log knows to fix the list.
+        $skipped = count($named) - $people->count();
 
         if ($message === '' || $people->isEmpty()) {
             return ['type' => 'alert.send', 'ok' => false, 'detail' => $message === '' ? 'The alert has no message.' : 'Nobody to alert.'];
@@ -3397,6 +3400,7 @@ class ActionRunner
             ) > 0 ? 1 : 0;
         }
 
-        return ['type' => 'alert.send', 'ok' => true, 'detail' => "Alerted {$told} ".($told === 1 ? 'person' : 'people').'.'];
+        return ['type' => 'alert.send', 'ok' => true, 'detail' => "Alerted {$told} ".($told === 1 ? 'person' : 'people').'.'
+            .($skipped > 0 ? " {$skipped} named ".($skipped === 1 ? 'person is' : 'people are').' no longer active here and were skipped.' : '')];
     }
 }
