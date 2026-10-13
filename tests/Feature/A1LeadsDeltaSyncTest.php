@@ -38,6 +38,9 @@ class A1LeadsDeltaSyncTest extends TestCase
     /** Http::fake stacks rather than replaces, so a refusal is a switch on the one fake. */
     private bool $refuse = false;
 
+    /** Refuse only the page at this cursor: an import interrupted mid-run. */
+    private ?string $refuseAt = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,10 +55,10 @@ class A1LeadsDeltaSyncTest extends TestCase
 
         Http::fake([
             self::LIVE.'/api/v1/ezbizi/reviews/delta*' => function (Request $r) {
-                if ($this->refuse) {
+                parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+                if ($this->refuse || ($this->refuseAt !== null && ($q['cursor'] ?? '0') === $this->refuseAt)) {
                     return Http::response(['error' => ['code' => 'forbidden']], 403);
                 }
-                parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
 
                 return Http::response($this->pages[$q['cursor'] ?? '0'] ?? ['data' => [], 'meta' => [
                     'next_cursor' => $q['cursor'] ?? '0', 'has_more' => false, 'source_as_of' => '2026-09-25T16:00:00Z',
@@ -85,11 +88,23 @@ class A1LeadsDeltaSyncTest extends TestCase
         ];
     }
 
-    private function page(string $cursor, array $records, string $next, bool $more): void
+    private function page(string $cursor, array $records, string $next, bool $more, string $feedId = 'feed-1'): void
     {
         $this->pages[$cursor] = ['data' => $records, 'meta' => [
-            'next_cursor' => $next, 'has_more' => $more, 'source_as_of' => '2026-09-25T16:00:00Z',
+            'next_cursor' => $next, 'has_more' => $more, 'source_as_of' => '2026-09-25T16:00:00Z', 'feed_id' => $feedId,
         ]];
+    }
+
+    /** The same review reached through another Google account. */
+    private static function via(string $account, array $record): array
+    {
+        $name = str_replace('accounts/a/', "accounts/{$account}/", $record['review_ref']);
+        $record['review_ref'] = $name;
+        if (is_array($record['review'] ?? null)) {
+            $record['review']['google_review_name'] = $name;
+        }
+
+        return $record + ['business_id' => 1];
     }
 
     private function rows(): array
@@ -269,5 +284,82 @@ class A1LeadsDeltaSyncTest extends TestCase
         $data = $this->signedInAs($reader)->getJson('/api/v1/a1leads-gbp')->json('data');
 
         $this->assertArrayNotHasKey('live', $data['source'], 'falls back to the snapshot, which states its own age');
+    }
+
+    // ── Rodrigo, suggestion 01a13160 (2026-10-12): one row per review ──
+
+    public function test_an_account_alias_is_one_review_and_its_retirement_keeps_the_survivor(): void
+    {
+        $this->page('0', [
+            self::via('alias', self::record(1, 'r', ['rating' => 1], replyText: 'Sorry about that')),
+            self::via('canon', self::record(2, 'r', ['rating' => 1])),
+            // The alias retired, after the survivor was asserted.
+            ['seq' => 3, 'business_id' => 1, 'review_ref' => 'accounts/alias/locations/l/reviews/r', 'kind' => 'review',
+                'tombstone' => true, 'tombstone_reason' => 'account_alias',
+                'canonical_review_ref' => 'accounts/canon/locations/l/reviews/r', 'review' => null],
+            // A plain delete of the retired alias name is not the survivor's.
+            ['seq' => 4, 'business_id' => 1, 'review_ref' => 'accounts/alias/locations/l/reviews/r', 'kind' => 'deleted', 'tombstone' => true, 'review' => null],
+        ], '4', false);
+
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $rows = $this->rows();
+        $this->assertSame(['accounts/canon/locations/l/reviews/r'], array_keys($rows), 'one row, written through the canonical name');
+        $this->assertSame('Sorry about that', $rows['accounts/canon/locations/l/reviews/r']->reply['text'], 'the sent reply is kept');
+    }
+
+    public function test_a_page_applied_twice_or_cut_short_before_its_cursor_leaves_no_duplicate(): void
+    {
+        $this->page('0', [self::via('a', self::record(1, 'r')), self::via('b', self::record(2, 's'))], '2', true);
+        $this->page('2', [self::via('c', self::record(3, 'r')), self::via('c', self::record(4, 's'))], '4', false);
+
+        // Interrupted: page 2 refused, so the cursor stops after page 0.
+        $this->refuseAt = '2';
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertFailed();
+        $this->assertSame('2', Cache::get(A1LeadsDeltaSync::STATE)['cursor']);
+
+        // Resumed, then the same pages replayed from 0.
+        $this->refuseAt = null;
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+        Cache::forever(A1LeadsDeltaSync::STATE, [...Cache::get(A1LeadsDeltaSync::STATE), 'cursor' => '0']);
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $this->assertSame(
+            ['accounts/c/locations/l/reviews/r', 'accounts/c/locations/l/reviews/s'],
+            array_keys($this->rows()),
+            'two reviews, two rows, under the latest name',
+        );
+    }
+
+    public function test_a_withdrawn_reply_or_match_is_not_the_review_deleted(): void
+    {
+        $this->page('0', [
+            self::via('a', self::record(1, 'r', replyText: 'Thanks')),
+            ['seq' => 2, 'business_id' => 1, 'review_ref' => 'accounts/a/locations/l/reviews/r', 'kind' => 'reply', 'tombstone' => true, 'review' => null],
+            ['seq' => 3, 'business_id' => 1, 'review_ref' => 'accounts/a/locations/l/reviews/r', 'kind' => 'match', 'tombstone' => true, 'review' => null],
+        ], '3', false);
+
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $row = $this->rows()['accounts/a/locations/l/reviews/r'] ?? null;
+        $this->assertNotNull($row, 'the review stays');
+        $this->assertFalse($row->has_reply);
+    }
+
+    public function test_a_new_feed_rebuilds_from_zero_and_raises_nothing(): void
+    {
+        $this->page('0', [self::via('a', self::record(1, 'r', ['rating' => 1]))], '1', false);
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        // A1 Leads restarted its history: same review, now removed, new feed.
+        $this->pages = [];
+        $this->page('1', [], '1', false, feedId: 'feed-2');
+        $this->page('0', [self::via('a', self::record(1, 'r', ['rating' => 1, 'deleted_at' => '2026-10-12T00:00:00Z'], tombstone: true))], '1', false, feedId: 'feed-2');
+
+        $this->artisan('ezbizi:a1leads-delta-sync')->assertSuccessful();
+
+        $this->assertSame('feed-2', Cache::get(A1LeadsDeltaSync::STATE)['feed_id']);
+        $this->assertTrue($this->rows()['accounts/a/locations/l/reviews/r']->removed);
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->where('event_key', 'a1leads_gbp.review_removed')->count(), 'a rebuild is not news');
     }
 }

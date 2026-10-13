@@ -27,7 +27,7 @@ class A1LeadsReview extends Model implements HoldsPersonalData
     protected $table = 'a1leads_reviews';
 
     protected $fillable = [
-        'organization_id', 'google_review_name', 'a1_review_id', 'gbp_location_name', 'rating',
+        'organization_id', 'google_review_name', 'review_key', 'a1_review_id', 'gbp_location_name', 'rating',
         'reviewer_name', 'has_reply', 'match_tier', 'removed', 'review_created_at', 'seq',
         'review', 'card', 'reply', 'report',
     ];
