@@ -83,7 +83,10 @@ final class TranscriptSpeakers
         ."and what was agreed (service, day, price if said). Empty if nobody spoke.\n"
         ."3. next_step: what the business should do next, in a few words (\"Call back with a quote\"), "
         ."or empty if nothing is left to do.\n"
-        ."4. complaint: the caller is unhappy with work done, a no-show, a charge or how they were treated.\n"
+        ."4. complaint: true ONLY when the caller is clearly upset with the business and says so: bad or unfinished "
+        ."work, a technician who did not show, an overcharge or refund demand, rude treatment, or a threat to "
+        ."review, dispute or cancel. NOT a complaint: confirming, moving or fixing an appointment, a booking "
+        ."mistake corrected on the call, asking for a status or callback, or a neutral question about a bill.\n"
         ."5. asked_price / asked_availability: the caller asked what it costs / when someone can come.\n"
         ."6. booked: an appointment was agreed on this call.\n\n";
 
