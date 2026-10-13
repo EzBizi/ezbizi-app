@@ -219,8 +219,7 @@ class LeadsController extends Controller
         // leads before any source, status or search narrowing, keyed as the
         // strip keys them - Google split into ls_call / ls_text.
         $unreadBySource = (clone $query)
-            ->where(fn ($q) => $q->whereNull('leads.read_at')
-                ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at'))
+            ->whereRaw(self::UNREAD_SQL)
             ->reorder()
             ->select(DB::raw("CASE WHEN leads.status = 'job_applicant' THEN 'job_applicant' WHEN leads.source = 'local_services' THEN "
                 ."(CASE WHEN leads.lead_type = 'PHONE_CALL' THEN 'ls_call' WHEN leads.lead_type = 'BOOKING' THEN 'ls_booking' ELSE 'ls_text' END) "
@@ -313,10 +312,7 @@ class LeadsController extends Controller
         }
 
         if ($request->boolean('unread')) {
-            $query->where(function ($q) {
-                $q->whereNull('leads.read_at')
-                    ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at');
-            });
+            $query->whereRaw(self::UNREAD_SQL);
         }
 
         if ($request->boolean('starred')) {
@@ -1578,6 +1574,14 @@ class LeadsController extends Controller
         ];
     }
 
+    /**
+     * Unread: no read mark, or one older than the newest contact. Never an LS
+     * Call (Jose, 2026-10-13: "for LS CALLS automatically mark them as read
+     * and remove them from the lead warnings, as they are non actionable").
+     */
+    private const UNREAD_SQL = "(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) "
+        ."AND NOT (leads.source = 'local_services' AND leads.lead_type = 'PHONE_CALL')";
+
     /** @return list<string> the fields whose value is still the one AI wrote */
     public static function aiHeld(Lead $lead): array
     {
@@ -1639,7 +1643,7 @@ class LeadsController extends Controller
             // Null on a single-lead read means "not asked", not "read".
             'is_unread' => ! array_key_exists('read_by_me_at', $lead->getAttributes())
                 ? null
-                : ($lead->read_by_me_at === null
+                : $lead->kind() !== Lead::KIND_LS_CALL && ($lead->read_by_me_at === null
                     || ($lead->last_contact_at ?? $lead->received_at) > Carbon::parse($lead->read_by_me_at)),
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,

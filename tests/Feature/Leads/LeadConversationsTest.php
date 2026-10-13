@@ -622,6 +622,26 @@ class LeadConversationsTest extends TestCase
         $this->assertSame([], $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json('data'));
     }
 
+    /** Jose, 2026-10-13: "for LS CALLS automatically mark them as read ... as they are non actionable". */
+    public function test_an_ls_call_is_never_unread(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $call = $this->leadRow('333', 'Caller');
+        $call['localServicesLead']['leadType'] = 'PHONE_CALL';
+        $this->fakeGoogle([$this->leadRow('111'), $call], []);
+        $this->sync($t, $connection);
+
+        $list = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data'));
+        $this->assertFalse($list->firstWhere('contact_name', 'Caller')['is_unread']);
+        $this->assertTrue($list->firstWhere('contact_name', 'Jane Doe')['is_unread'], 'a text still is');
+
+        $unread = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json();
+        $this->assertSame(['Jane Doe'], array_column($unread['data'], 'contact_name'));
+        $this->assertArrayNotHasKey('ls_call', (array) $unread['meta']['unread_by_source']);
+    }
+
     public function test_star_and_note_are_marks_on_the_lead_and_starred_filters(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
