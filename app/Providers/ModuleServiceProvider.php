@@ -26,6 +26,7 @@ use App\Models\TrainingAssignment;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
+use App\Models\Task;
 use App\Models\Vehicle;
 use App\Models\WebSite;
 use App\Support\Modules\ActionDefinition;
@@ -2176,6 +2177,68 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Update a field',
                         description: 'Sets one non-money field on the vehicle that triggered '
                             .'the rule: plate, colour, odometer, or next-due.',
+                    ),
+                ],
+            ),
+
+            /*
+             * Task Board (Jose, 2026-10-13, UI queue 80) — one board for every
+             * company, franchise and person, created automatically.
+             *
+             * Two actions only: `view` sees the team boards in the current view,
+             * `edit` writes them (create and delete travel with edit). Your own
+             * board needs neither — it is always yours.
+             *
+             * The three automation actions are catalogued here; their runner
+             * arms belong to the Automations owner and go through
+             * TaskWriter (app/Support/Tasks). Until then the builder shows them
+             * as not built (AutomationsController's built list).
+             */
+            new ModuleDefinition(
+                key: 'tasks',
+                label: 'Task Board',
+                actions: ['view', 'edit'],
+                subject: new AutomationSubject(Task::class, 'Task'),
+                emits: [Task::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'task.created',
+                        label: 'Task added',
+                        description: 'A task was added to a board, by a person or a rule.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.status_changed',
+                        label: 'Task status changed',
+                        description: 'A task moved from one status to another, for example to '
+                            .'Stuck or Done. It carries the old status as well as the new one.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.overdue',
+                        label: 'Task overdue',
+                        description: 'A task that is not done passed its due date. Raised once '
+                            .'per task; changing the due date lets it be raised again.',
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'task.create',
+                        label: 'Add a task',
+                        description: 'Adds a task to a board, optionally owned by somebody and '
+                            .'about the record the rule fired on.',
+                        // EXPLICIT: derived, this would be the bare `create`.
+                        executionType: 'task.create',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.update_status',
+                        label: 'Change the task status',
+                        description: 'Moves the task the rule fired on to a different status.',
+                        executionType: 'task.update_status',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.assign',
+                        label: 'Give the task to somebody',
+                        description: 'Makes a person the owner of the task the rule fired on.',
+                        executionType: 'task.assign',
                     ),
                 ],
             ),

@@ -261,6 +261,11 @@
                 "Settings"
             ]
         },
+        "tasks": {
+            "label": "Task Board",
+            "parent": null,
+            "tabs": []
+        },
         "time_clock": {
             "label": "Clock in",
             "parent": null,
@@ -494,6 +499,8 @@
         "services.edit",
         "services.settings.view",
         "services.view",
+        "tasks.edit",
+        "tasks.view",
         "time_clock.lock_screen",
         "time_clock.view",
         "training.assign",
