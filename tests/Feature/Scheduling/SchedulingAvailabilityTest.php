@@ -788,7 +788,7 @@ class SchedulingAvailabilityTest extends TestCase
             'longitude' => $lng,
             'status' => 'Submitted',
             'scheduled_for' => $at,
-            'payload' => ['Tags' => [], 'Team' => [['id' => 'USR-1', 'Name' => $tech]]],
+            'payload' => ['Tags' => [], 'Team' => [['id' => 'USR-1', 'Name' => $tech]], 'FirstName' => 'Dana', 'LastName' => 'Reyes', 'JobType' => 'Chimney Sweep', 'SerialId' => '4417'],
             'synced_at' => now(),
         ]);
     }
@@ -803,8 +803,10 @@ class SchedulingAvailabilityTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $this->dallas($tenant);
-        // A past job in 75201 gives the zip its place.
+        // A past job in 75201 gives the zip its place; one Workiz could not
+        // place (-1,-1) must not drag the zip's centre to Africa.
         $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-08-10 08:00:00', -1.0, -1.0);
         // Oct 5: one job, far away (Houston).
         $this->located($tenant, '2026-10-05 07:00:00', 29.7600, -95.3700, '77002', 'Harry Jenkins');
         // Oct 12: one job a few blocks from the customer, in the 11-2 window.
@@ -815,7 +817,7 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertSame(5.0, (float) $data['radius_miles']);
+        $this->assertSame(30.0, (float) $data['radius_miles']);
         $this->assertSame('2026-10-05', $data['earliest']['date']);
         $this->assertSame(0, $data['earliest']['nearby']);
         $this->assertGreaterThan(200, $data['earliest']['nearest_miles']);
@@ -830,6 +832,11 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame(['Ivan Sharkov'], $data['suggested']['technicians']);
         $this->assertFalse($data['suggested']['same_as_earliest']);
         $this->assertLessThan(1, $data['suggested']['jobs'][0]['miles']);
+        // What its dot on the map says when hovered.
+        $this->assertSame(['Dana Reyes', 'Chimney Sweep', '4417', 'Submitted'], [
+            $data['suggested']['jobs'][0]['customer'], $data['suggested']['jobs'][0]['service'],
+            $data['suggested']['jobs'][0]['number'], $data['suggested']['jobs'][0]['status'],
+        ]);
         $this->assertEqualsWithDelta(32.788, $data['origin']['latitude'], 0.002, 'The centre of the zip from its jobs.');
 
         // A wider radius from Settings changes nothing here, a 1-mile one still

@@ -1051,7 +1051,7 @@ class SettingRegistry
         return [
             new SettingDefinition(
                 key: 'scheduling.suggest_radius_miles', label: 'Suggested availability: nearby radius',
-                type: SettingDefinition::TYPE_ENUM, default: 5,
+                type: SettingDefinition::TYPE_ENUM, default: 30,
                 options: $miles,
                 optionLabels: array_combine(array_map('strval', $miles), array_map(fn ($m) => $m === 1 ? '1 mile' : "{$m} miles", $miles)),
                 help: 'How close a booked job must be, in a straight line, for Scheduling › Availability '
