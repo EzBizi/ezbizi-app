@@ -20,6 +20,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
   String _period = 'last_month';
   String? _category;
   String? _branch;
+  String? _state;
   Map<String, dynamic>? _data;
   String? _error;
 
@@ -59,6 +60,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
       'to': _day(to),
       'category': ?_category,
       'branch': ?_branch,
+      'state': ?_state,
     });
     if (!mounted) return;
     setState(() {
@@ -158,6 +160,16 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
               const ValueKey('thumbtack-category'),
             ),
             _filter(
+              'State',
+              _state,
+              {
+                for (final s in (data?['states'] as List? ?? const []))
+                  '$s': '$s',
+              },
+              (v) => _state = v,
+              const ValueKey('thumbtack-state'),
+            ),
+            _filter(
               'Branch',
               _branch,
               {
@@ -190,6 +202,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
             child: DataTable(
               columns: const [
                 DataColumn(label: Text('Category')),
+                DataColumn(label: Text('State')),
                 DataColumn(label: Text('Branch')),
                 DataColumn(label: Text('Leads'), numeric: true),
                 DataColumn(label: Text('Refunded'), numeric: true),
@@ -203,6 +216,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
                   DataRow(
                     cells: [
                       DataCell(Text('${r['category'] ?? 'No category'}')),
+                      DataCell(Text('${r['state'] ?? '—'}')),
                       DataCell(Text('${r['branch'] ?? 'Unassigned'}')),
                       DataCell(Text('${r['leads']}')),
                       DataCell(Text('${r['credited']}')),
