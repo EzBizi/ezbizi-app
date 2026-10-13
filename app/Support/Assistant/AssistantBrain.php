@@ -4,12 +4,14 @@ namespace App\Support\Assistant;
 
 use App\Models\AssistantEntry;
 use App\Models\Organization;
+use App\Models\TrainingGuide;
 use App\Models\User;
 use App\Models\WebValue;
 use App\Support\Ai\GrokCli;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Training\GuideScreens;
 use Illuminate\Support\Collection;
 
 /**
@@ -151,14 +153,17 @@ final class AssistantBrain
             .trim(($e->description ? $e->description."\n" : '').$e->body))->implode("\n\n");
         $sites = $this->locations($organization, $query)->take(5)
             ->map(fn (array $s) => json_encode($s))->implode("\n");
+        $guides = $this->guideExcerpts($viewer, $query);
 
         $json = GrokCli::ask(
             "You answer staff questions for {$this->name($organization)}, a home-services business. Answer "
-            ."ONLY from the Library and branch details below; if they do not contain the answer, set "
+            ."ONLY from the Library, training guides and branch details below; if they do not contain the answer, set "
             ."answered to false and reply with an empty string. Never invent prices, phone numbers, "
             ."addresses or policies. Reply in 1-5 short plain sentences, in the question's language. "
             ."List the ids of the Library entries you used.\n".($forWhatsApp ? GrokCli::WHATSAPP_STYLE."\n" : '')."\nLIBRARY:\n".($library ?: '(empty)')
-            ."\n\nBRANCHES:\n".($sites ?: '(none matched)')."\n\nQUESTION: ".$query,
+            ."\n\nBRANCHES:\n".($sites ?: '(none matched)')
+            ."\n\nTRAINING GUIDES (quote video links exactly as given):\n".($guides ?: '(none)')
+            ."\n\nQUESTION: ".$query,
             [
                 'type' => 'object',
                 'properties' => [
@@ -184,6 +189,58 @@ final class AssistantBrain
             // Only ids this viewer could read: a hallucinated id is dropped.
             'entry_ids' => array_values(array_intersect((array) $json['entry_ids'], $entries->pluck('id')->all())),
         ];
+    }
+
+    /**
+     * The training-guide topics that best match the question, as plain text,
+     * from the guide for the asker's role (Jose, 2026-10-13: "i want the AI
+     * to be able to answer them as well, without using the menu"). A role
+     * with "tech" in its name reads the Technician guide, "dispatch" or
+     * "call center" the Dispatcher guide, anyone else staff both; a stranger
+     * none.
+     *
+     * ponytail: role read from its name and guides from their title, until a
+     * guide carries an audience; keyword-picked topics, top 6.
+     */
+    private function guideExcerpts(?User $viewer, string $query): string
+    {
+        if ($viewer === null) {
+            return '';
+        }
+
+        $role = mb_strtolower((string) $viewer->role?->name);
+        $want = match (true) {
+            str_contains($role, 'tech') => ['technician'],
+            str_contains($role, 'dispatch'), str_contains($role, 'call center') => ['dispatcher'],
+            default => ['technician', 'dispatcher'],
+        };
+
+        preg_match_all('/[\p{L}\p{N}]{3,}/u', mb_strtolower($query), $m);
+        $words = array_values(array_diff(array_unique($m[0]), self::STOPWORDS));
+        if ($words === []) {
+            return '';
+        }
+
+        $scored = [];
+        foreach (TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED)->get() as $guide) {
+            $title = mb_strtolower((string) $guide->title);
+            if (! collect($want)->contains(fn ($w) => str_contains($title, $w))) {
+                continue;
+            }
+            foreach (GuideScreens::topics($guide) as $t) {
+                $text = GuideScreens::plainText($t['topic']);
+                $hay = mb_strtolower($t['title'].' '.$t['chapter'].' '.$t['section'].' '.$text);
+                $score = array_sum(array_map(fn ($w) => (str_contains(mb_strtolower($t['title']), $w) ? 3 : 0)
+                    + min(3, substr_count($hay, $w)), $words));
+                if ($score > 0) {
+                    $scored[] = [$score, "[{$guide->title} › {$t['chapter']} › {$t['title']}]\n".mb_substr($text, 0, 1500)];
+                }
+            }
+        }
+
+        usort($scored, fn ($a, $b) => $b[0] <=> $a[0]);
+
+        return implode("\n\n", array_column(array_slice($scored, 0, 6), 1));
     }
 
     public function name(Organization $organization): string

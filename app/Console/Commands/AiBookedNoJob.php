@@ -49,7 +49,7 @@ class AiBookedNoJob extends Command
             $booked = CallReportLabel::query()->where('provider', 'grok')->where('label', 'booked')
                 ->whereIn('call_id', array_column($report['calls'] ?? [], 'id'))->pluck('call_id')->flip();
 
-            return array_values(array_filter($report['calls'] ?? [], fn ($c) => isset($booked[$c['id']]) && ! $c['booked']));
+            return array_values(array_filter($report['calls'] ?? [], fn ($c) => isset($booked[$c['id']]) && ! $c['booked'] && ($c['existing_job'] ?? null) === null));
         });
 
         $this->info('AI booked, no job: '.count($found));

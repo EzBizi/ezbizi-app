@@ -62,6 +62,37 @@ void main() {
     );
   });
 
+  testWidgets('a caller with an open earlier job reads Existing job, not '
+      'Not booked', (tester) async {
+    final existing = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (existing['calls'] as List).first['existing_job'] = {
+      'created_at': '2026-10-05 10:00:00',
+      'scheduled_for': '2026-10-19 09:00:00',
+      'status': 'Submitted',
+    };
+    await _pump(tester, width: 1400, view: 'Calls', report: () => existing);
+
+    expect(find.text('Existing job'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('calls-filter-not_booked')),
+      findsOneWidget,
+    );
+    expect(find.text('Not booked 0'), findsOneWidget);
+  });
+
+  testWidgets('an existing job AI read as a reschedule says Rescheduled', (
+    tester,
+  ) async {
+    final moved = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final first = (moved['calls'] as List).first as Map;
+    first['existing_job'] = {'created_at': '2026-10-05 10:00:00'};
+    first['labels'] = {'grok': 'reschedule'};
+    await _pump(tester, width: 1400, view: 'Calls', report: () => moved);
+
+    expect(find.text('Rescheduled'), findsOneWidget);
+    expect(find.text('Existing job'), findsNothing);
+  });
+
   testWidgets('no Booked per AI list while no call is one', (tester) async {
     await _pump(tester, width: 1400, view: 'Calls');
     expect(

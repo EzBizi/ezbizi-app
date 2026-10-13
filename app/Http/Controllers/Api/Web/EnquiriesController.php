@@ -11,6 +11,7 @@ use App\Models\LeadConversation;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\User;
+use App\Models\WebBooking;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
@@ -25,6 +26,7 @@ use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
 use App\Support\Web\Turnstile;
 use App\Support\Web\WebsiteEnquiries;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -412,6 +414,15 @@ class EnquiriesController extends Controller
 
         if ($lead->job_id !== null || in_array($lead->status, [Lead::STATUS_BOOKED, Lead::STATUS_COMPLETED], true)) {
             return response()->json(['message' => 'You already have a visit with us. Please call us to change it.'],
+                Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
+        }
+
+        // One request per lead: Leads reads a lead's booking as one row (Leads, 2026-10-13).
+        $asked = WebBooking::query()->where('lead_id', $lead->getKey())
+            ->whereIn('status', [WebBooking::PENDING, WebBooking::APPROVED])->first();
+
+        if ($asked !== null) {
+            return response()->json(['message' => 'You already asked for '.CarbonImmutable::parse($asked->date)->format('l, F j').". We'll confirm shortly."],
                 Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
         }
 

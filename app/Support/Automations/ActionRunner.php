@@ -452,6 +452,8 @@ class ActionRunner
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
+            'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
+            'lead.text' => $this->textLead($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -1375,6 +1377,26 @@ class ActionRunner
                 'type' => $type, 'ok' => false,
                 'detail' => 'This step needs a template and a field to send to.',
             ];
+        }
+
+        // "The customer it is about" on an ENQUIRY is the enquiry itself: sent
+        // through LeadWhatsApp, so the message and their answer are on its
+        // thread (Meta, 2026-10-13; booking confirmations). No phone is skipped.
+        if ($field === self::RECIPIENT_CUSTOMER && $subject instanceof Lead) {
+            if (Lead::e164($subject->phone) === null) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The enquiry has no phone number, so no WhatsApp was sent.'];
+            }
+
+            try {
+                app(\App\Support\Social\LeadWhatsApp::class)->sendTemplate($subject, $template, array_map(
+                    fn ($value) => $this->interpolate((string) $value, $event, $subject),
+                    array_values((array) ($action['parameters'] ?? [])),
+                ), automatic: true, from: ($action['from'] ?? '') !== '' ? (string) $action['from'] : null);
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return ['type' => $type, 'ok' => true, 'detail' => "Handed the \"{$template}\" template to WhatsApp for the customer; it is on the enquiry."];
         }
 
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
@@ -3193,6 +3215,16 @@ class ActionRunner
      */
     private function interpolate(string $template, AutomationEvent $event, ?Model $subject, bool $forMarkdown = false): string
     {
+        // "Book online now: {{booking_link}}" is a line, not a message: with no
+        // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
+        if (preg_match('/\{\{\s*booking_link\s*\}\}/i', $template)
+            && blank($subject?->getAttribute('booking_link'))) {
+            $template = implode("\n", array_filter(
+                explode("\n", $template),
+                fn (string $line) => ! preg_match('/\{\{\s*booking_link\s*\}\}/i', $line),
+            ));
+        }
+
         // Only the fields EzBizi composes itself keep their Markdown; anything
         // else may be a stranger's words and is escaped to read as text.
         $composed = $forMarkdown
@@ -3351,5 +3383,72 @@ class ActionRunner
     private static function idList(mixed $value): array
     {
         return is_string($value) ? explode(',', $value) : array_values((array) $value);
+    }
+
+    /**
+     * A Communication › Alerts pop-up from a rule (Jose, 2026-10-13: complaint
+     * calls). Exactly a person's alert - one Alert, each recipient's copy a
+     * notification with source `alert` - sent as the rule's creator, who must
+     * be allowed to send alerts by hand.
+     */
+    private function sendAlert(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        [$actor] = $this->taskContext($automation);
+        if (! $actor->hasPermission('phone.alerts.view')) {
+            return ['type' => 'alert.send', 'ok' => false, 'detail' => 'The person who made this rule may not send alerts.'];
+        }
+
+        $message = mb_substr(trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject)), 0, 500);
+        $named = array_values(array_unique(array_filter(array_map('trim', self::idList($action['user_ids'] ?? [])))));
+        $people = User::query()->where('is_active', true)->whereIn('id', $named)->get();
+        // Skipped, not refused as a person's send is: a rule keeps alerting
+        // the rest. Said, so whoever reads the run log knows to fix the list.
+        $skipped = count($named) - $people->count();
+
+        if ($message === '' || $people->isEmpty()) {
+            return ['type' => 'alert.send', 'ok' => false, 'detail' => $message === '' ? 'The alert has no message.' : 'Nobody to alert.'];
+        }
+
+        $alert = \App\Models\Alert::create(['organization_id' => $actor->organization_id, 'sender_id' => $actor->id, 'message' => $message]);
+        $told = 0;
+        foreach ($people as $person) {
+            $told += $this->notifications->dispatch(
+                title: $alert->message,
+                body: 'From the automation "'.($automation?->name ?? 'a rule').'"',
+                subject: $alert,
+                onlyTo: $person,
+                source: 'alert',
+            ) > 0 ? 1 : 0;
+        }
+
+        return ['type' => 'alert.send', 'ok' => true, 'detail' => "Alerted {$told} ".($told === 1 ? 'person' : 'people').'.'
+            .($skipped > 0 ? " {$skipped} named ".($skipped === 1 ? 'person is' : 'people are').' no longer active here and were skipped.' : '')];
+    }
+
+    /**
+     * A text to the lead from the branch's cleared line, written into the
+     * lead's thread so the answer is seen there (LeadTexts, Leads 2026-10-13).
+     * No phone on the lead is skipped, not failed: a web form without one is
+     * ordinary, and a failure would count toward switching the rule off.
+     */
+    private function textLead(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'lead.text', 'ok' => false, 'detail' => 'This step needs a trigger about an enquiry.'];
+        }
+
+        if (Lead::e164($subject->phone) === null) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => 'The enquiry has no phone number, so no text was sent.'];
+        }
+
+        [$actor] = $this->taskContext($automation);
+
+        try {
+            app(\App\Support\Leads\LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+        } catch (\RuntimeException $e) {
+            return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        return ['type' => 'lead.text', 'ok' => true, 'detail' => 'Texted the customer; it is on the enquiry.'];
     }
 }

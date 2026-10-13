@@ -40,20 +40,20 @@ final class SameDayReport
         $zone = self::zone($branch);
 
         $lines = [
-            '*'.BranchName::of($branch).' · Same-Day Report*',
+            '📊 *'.BranchName::of($branch).' · Same-Day Report*',
             self::dateLabel($date),
             self::asOf($date, $zone),
             '',
-            '*1. Jobs created per ad source*',
+            '🔧 *1. Jobs created per ad source*',
             ...self::jobLines($f['jobs'], $f['sources'], 'No ad-source jobs were created.', 'Workiz sources did not refresh'),
             '',
-            '*2. Jobs created by service area*',
+            '📍 *2. Jobs created by service area*',
             ...self::jobLines($f['jobs'], $f['areas'], 'No Workiz service areas were returned.', 'Workiz service areas did not refresh'),
             '',
-            '*3. Google Reviews (mapped metro areas)*',
+            '⭐ *3. Google Reviews (mapped metro areas)*',
             ...self::reviewLines($f['reviews']),
             '',
-            '*4. Field performance*',
+            '👷 *4. Field performance*',
             ...self::fieldLines($f),
             '',
             '_Ask me about any location, technician, source, or job behind these numbers._',
@@ -73,6 +73,7 @@ final class SameDayReport
 
         $sources = [];
         $rows = [];
+        $verified = 0;
         $totals = ['jobs' => 0, 'completed' => 0, 'canceled' => 0, 'sales' => 0.0, 'deposits' => null, 'new' => null];
 
         foreach ($branches as $branch) {
@@ -97,9 +98,14 @@ final class SameDayReport
                 'new' => $f['reviews']['new'] ?? null,
             ];
 
-            $rows[] = '• *'.BranchName::of($branch).":* {$row['jobs']} jobs · {$row['completed']} completed · "
-                ."{$row['canceled']} canceled · ".self::money($row['sales']).' sales · '
-                .self::money($row['deposits']).' deposits · '.self::count($row['new']).' new reviews';
+            // One branch, a few short lines (Jose, 2026-10-13: "use emojis ...
+            // line breaks"), a blank line between branches.
+            $verified++;
+            $rows[] = '*'.BranchName::of($branch).'*';
+            $rows[] = "🔧 *{$row['jobs']}* jobs · ✅ {$row['completed']} done · ❌ {$row['canceled']} canceled";
+            $rows[] = '💰 *'.self::money($row['sales']).'* sales · 💵 '.self::money($row['deposits']).' deposits';
+            $rows[] = '⭐ '.self::count($row['new']).' new reviews';
+            $rows[] = '';
 
             foreach ($totals as $key => $value) {
                 // Deposits and reviews stay a dash until one branch has them.
@@ -111,22 +117,24 @@ final class SameDayReport
         $zone = self::zone($branches->first());
 
         $lines = [
-            "*{$organization->name} · Same-Day Company Summary*",
+            "📊 *{$organization->name} · Same-Day Company Summary*",
             self::dateLabel($date),
             self::asOf($date, $zone),
-            '_'.count($rows).' verified company reports_',
+            '_'.$verified.' verified company reports_',
             '',
-            '*Jobs created per ad source*',
+            '🔧 *Jobs created per ad source*',
             ...($sources === []
                 ? ['No ad-source jobs were created.']
                 : array_map(fn ($name, $n) => "• *{$name}:* {$n}", array_keys($sources), $sources)),
             '*Total: '.self::jobs($totals['jobs']).'*',
             '',
-            '*Company summary*',
+            '🏢 *Company summary*',
+            '',
             ...$rows,
-            "*All companies:* {$totals['jobs']} jobs · {$totals['completed']} completed · "
-                ."{$totals['canceled']} canceled · ".self::money($totals['sales']).' sales · '
-                .self::money($totals['deposits']).' deposits · '.self::count($totals['new']).' new reviews',
+            '*All companies*',
+            "🔧 *{$totals['jobs']}* jobs · ✅ {$totals['completed']} done · ❌ {$totals['canceled']} canceled",
+            '💰 *'.self::money($totals['sales']).'* sales · 💵 '.self::money($totals['deposits']).' deposits',
+            '⭐ '.self::count($totals['new']).' new reviews',
         ];
 
         return self::fit(implode("\n", $lines), 'the company summary');
@@ -340,8 +348,8 @@ final class SameDayReport
     private static function metrics(array $row, bool $workiz, bool $paid): array
     {
         return array_merge(
-            $workiz ? ["{$row['completed']} completed", "{$row['canceled']} canceled", self::money($row['sales']).' sales'] : [],
-            $paid ? [self::money($row['deposits']).' deposits'] : [],
+            $workiz ? ["✅ {$row['completed']} done", "❌ {$row['canceled']} canceled", '💰 '.self::money($row['sales']).' sales'] : [],
+            $paid ? ['💵 '.self::money($row['deposits']).' deposits'] : [],
         );
     }
 
@@ -366,7 +374,7 @@ final class SameDayReport
 
     private static function dateLabel(string $date): string
     {
-        return CarbonImmutable::parse($date)->format('D, M j, Y');
+        return '📅 '.CarbonImmutable::parse($date)->format('D, M j, Y');
     }
 
     private static function asOf(string $date, string $zone): string

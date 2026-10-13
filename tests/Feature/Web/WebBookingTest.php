@@ -11,6 +11,7 @@ use App\Models\WebSite;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Web\BookingLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -95,6 +96,10 @@ class WebBookingTest extends TestCase
             $this->assertSame(1, Lead::query()->count(), 'no second lead');
             $this->assertSame($lead->id, WebBooking::query()->sole()->lead_id);
         });
+
+        // One request per lead: Leads shows a lead's booking as one row.
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))
+            ->assertStatus(409)->assertJsonFragment(['message' => 'You already asked for '.Carbon::parse($first)->format('l, F j').". We'll confirm shortly."]);
 
         // A lead that already has its visit is told to call.
         $this->inTenant($tenant['org'], fn () => $lead->forceFill(['status' => Lead::STATUS_BOOKED])->save());

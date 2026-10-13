@@ -347,15 +347,17 @@ final class WebsiteEnquiries
     public function submitForm(WebSite $site, array $fields, array $visitor = [], array $attachments = []): Lead
     {
         $remoteId = 'form_'.Str::uuid()->toString();
-        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
         // The review link's faces form sends a Rating: a rating, not an enquiry
         // (Jose, 2026-10-09). Only "Not happy" comes here today; happy goes to Google.
+        // Set at creation, so lead.received carries it: a complaint rule (Jose,
+        // 2026-10-13: a task, an alert and a text) triggers on rating = sad.
         if (isset($fields['Rating'])) {
-            $lead->forceFill([
-                'lead_type' => stripos((string) $fields['Rating'], 'not') === false ? 'GOOD_RATING' : 'BAD_RATING',
-            ])->save();
+            $visitor['lead_type'] = stripos((string) $fields['Rating'], 'not') === false ? 'GOOD_RATING' : 'BAD_RATING';
+            $visitor['comment'] = $fields['What happened?'] ?? null;
         }
+
+        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
         $lines = self::condensed($fields, $visitor);
 
@@ -482,6 +484,7 @@ final class WebsiteEnquiries
             'marketing_consent_at' => $consented ? now() : null,
             'marketing_consent_text' => $consented ? mb_substr($consentText, 0, 500) : null,
             'summary' => $site->host,
+            'lead_type' => $visitor['lead_type'] ?? null,
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
@@ -506,6 +509,13 @@ final class WebsiteEnquiries
                 'zip' => $visitor['zip'] ?? null,
                 // For a rule that files it as Not a lead (looksLikeSpam).
                 'looks_like_spam' => $looksLikeSpam,
+                // The review faces' complaint form: sad, with what they wrote; null for an enquiry.
+                'rating' => match ($lead->lead_type) {
+                    'BAD_RATING' => 'sad',
+                    'GOOD_RATING' => 'happy',
+                    default => null,
+                },
+                'comment' => isset($visitor['comment']) ? mb_substr((string) $visitor['comment'], 0, 1000) : null,
             ],
         ]);
 

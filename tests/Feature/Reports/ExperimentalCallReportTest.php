@@ -204,6 +204,37 @@ class ExperimentalCallReportTest extends TestCase
     }
 
     /**
+     * A caller with an open job booked before the dates is "Existing job",
+     * not "Not booked" (Jose, 2026-10-13: a reschedule read as a lost booking).
+     * A job already Done does not count.
+     */
+    public function test_a_caller_with_an_open_earlier_job_is_an_existing_job_not_a_lost_booking(): void
+    {
+        $call = fn (string $id, string $phone) => array_merge(
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
+        );
+
+        $this->fakeCallLog([$call('c-open-job', '+12342014951'), $call('c-done-job', '+12125550000')]);
+
+        $day = app(CallReconciliation::class)->forRange(
+            app(RingCentralCallLog::class)->forDate('x', 'y'),
+            [
+                ['created_at' => '2026-09-05 10:00:00', 'phone' => '2342014951', 'status' => 'Submitted', 'scheduled_for' => '2026-09-19 09:00:00'],
+                ['created_at' => '2026-09-05 10:00:00', 'phone' => '2125550000', 'status' => 'Done'],
+            ],
+            '2026-09-14',
+            '2026-09-14',
+        );
+
+        $this->assertSame(1, $day['totals']['not_booked']);
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertFalse($byId['c-open-job']['booked']);
+        $this->assertSame('2026-09-19 09:00:00', $byId['c-open-job']['existing_job']['scheduled_for']);
+        $this->assertNull($byId['c-done-job']['existing_job']);
+    }
+
+    /**
      * Jose, 2026-10-12: "on missed calls i want also to differentiate between
      * inbound and outbound calls". An outbound call nobody picked up is listed
      * with its direction and who placed it, and is not a missed customer call;
