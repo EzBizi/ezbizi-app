@@ -1900,7 +1900,8 @@ function ezbizi_street_view_shortcode($atts) {
 /**
  * [ezbizi_review_faces] — A1 Tools' smiley widget, answered from EzBizi.
  *
- * Happy sends the visitor to the site's `review_link`. Sad opens a short form
+ * Happy sends the visitor straight to the Google review link, no step
+ * between (Jose, 2026-10-13). Sad opens a short form
  * that posts to the same public endpoint as [ezbizi_form], so the complaint
  * lands in Leads with this site's host on it instead of on Google.
  *
@@ -2017,7 +2018,9 @@ function ezbizi_review_faces_shortcode($atts) {
         . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . '<span>' . $t('sad_label')
         . '<small>' . esc_html__('Tell us what to fix', 'ezbizi') . '</small></span></button>'
         . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . '<span>' . $t('happy_label')
-        . '<small>' . esc_html__('Happy with the visit', 'ezbizi') . '</small></span></button>'
+        // With a Google link the green face IS the way to Google (Jose, 2026-10-13).
+        . '<small>' . ($link === '' ? esc_html__('Happy with the visit', 'ezbizi')
+            : esc_html__('Tap to share it on Google', 'ezbizi')) . '</small></span></button>'
         . '</div></div>'
         /*
          * Jose, 2026-10-05: a good review can bring a thank-you and the
@@ -2053,10 +2056,10 @@ function ezbizi_review_faces_shortcode($atts) {
     $out .= "<script>(function(){
 var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
 function show(n){Array.prototype.forEach.call(w.querySelectorAll('[data-step]'),function(d){d.hidden=d.getAttribute('data-step')!==n;});}
-var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ";
+var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ",google=" . wp_json_encode($link) . ";
 var c='';try{c=new URLSearchParams(location.search).get('c')||'';}catch(x){}
 // The review itself, for the customer's record and the Membership offer. Never waited on.
-function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
+function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
 // A link that names the customer: the sad form stops asking for their name,
 // phone and email, once the server confirms the link (Jose, 2026-10-08).
 if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+encodeURIComponent(c),{headers:{'Accept':'application/json'}})
@@ -2066,6 +2069,9 @@ if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+enco
 function who(raw){var s=String(raw||'').trim(),o={};if(!s)return o;if(s.indexOf('@')>-1)o.email=s;else o.phone=s;return o;}
 Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){
   var go=b.getAttribute('data-go');
+  // Jose, 2026-10-13: the green face goes straight to Google, no step between.
+  // Without a Google link it keeps the old path rather than a dead end.
+  if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}
   if(go==='happy'){if(c){tell({rating:'happy'});show('happy');}else show('ask');return;}
   show(go);
 });});
