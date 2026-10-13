@@ -2965,6 +2965,26 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 80 · Task Board · boards for every company, franchise and person — **sent 2026-10-13, waiting** (`docs/previews/task-board-layouts.html`)
+
+From the Task Board session, relaying Jose: *a "Task Board" tab, Monday.com-style. Tied to Organization → Company →
+Franchise. Every Company, every Franchise, and every user automatically gets its own board, assigned to them. Must work with
+Automations and Reports.*
+
+The same in every option:
+- Task Board is its own sidebar module.
+- The top-bar view decides which boards show (my own, the view's franchise and its company; or a company and its franchises).
+- A board is coloured, foldable groups of tasks. Each task has an owner, a status (Not started / Working on it / Stuck / Done,
+  in words as well as colour), a due date (late in red) and an About link to a job, lead or customer.
+- A task opens in the side panel, with its updates and history; "+ Add task" sits at the foot of each group.
+- Automations get task created / status changed / overdue, and create / change status / assign. Reports get tasks by status,
+  owner and board, and overdue.
+
+Desktop **1** (recommended): the boards as tabs (My board · the franchise · the company, each with a count), Table or Kanban.
+**2**: a rail of boards, like Monday's workspace. **3**: "My work" across every board, plus a board picker. Phone **4**
+(recommended): scrolling tabs, then cards with a status edge, grouped; **5**: the board list first; **6**: My work. Owner:
+the Task Board session (backend, Automations, Reports); UI/UX builds the screens.
+
 ### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **Jose: "as u recommend on everything" — 1 and 4** (`docs/previews/monitoring-files-explorer-layouts.html`)
 
 Jose 2026-10-12, via Monitoring: *"have the files system require the authenticator code as well for extra security, and also
