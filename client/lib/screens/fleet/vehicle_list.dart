@@ -93,7 +93,11 @@ class VehicleList extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _build(context, box.maxWidth),
+  );
+
+  Widget _build(BuildContext context, double width) {
     final total = places.fold<int>(
       0,
       (sum, p) => sum + ((p['count'] as num?)?.toInt() ?? 0),
@@ -191,7 +195,10 @@ class VehicleList extends StatelessWidget {
     // On a phone the search and the nine chips scroll with the rows. Standing
     // above them they took three lines of chips and 200 of the screen's 800
     // pixels; see HeaderAboveList, which scrolls the header above them away.
-    if (MediaQuery.sizeOf(context).width < 600) {
+    // The list's own width, not the screen's: a narrow list pane on a computer
+    // wraps the chips as tall as a phone does (512px at 265 wide), above rows
+    // left with no room.
+    if (width < 600) {
       return ListView.builder(
         padding: const EdgeInsets.only(bottom: 24),
         itemCount: filters.length + (vehicles.isEmpty ? 1 : count),

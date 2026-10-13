@@ -183,6 +183,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
           children: [
             if (me['tracked'] == true) ...[
               Card(
+                key: const ValueKey('tour-field-sos'),
                 child: ListTile(
                   leading: Icon(
                     me['should_track'] == true
@@ -229,6 +230,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                     : 2;
                 final width = (box.maxWidth - 8 * (columns - 1)) / columns;
                 return Wrap(
+                  key: const ValueKey('tour-field-counts'),
                   spacing: 8,
                   runSpacing: 8,
                   children: [
@@ -259,7 +261,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Alerts', style: theme.textTheme.titleMedium),
+            Text(key: const ValueKey('tour-field-alerts'), 'Alerts', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             if (alerts.isEmpty)
               Padding(

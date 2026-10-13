@@ -133,6 +133,7 @@ class _FieldScreenState extends State<FieldScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-field-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() {

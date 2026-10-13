@@ -450,6 +450,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
+          key: const ValueKey('tour-marketing-social-panes'),
           level: TabLevel.secondary,
           labels: [for (final pane in shown) (pane.$2, pane.$3)],
           selected: shown.indexWhere((p) => p.$1 == current),
@@ -870,6 +871,7 @@ class _PostsDashboard extends StatelessWidget {
     final cannot = connections.where((c) => !c.canPublish).length;
 
     return FilterTiles(
+      key: const ValueKey('tour-marketing-social-tiles'),
       prefix: 'social-posts',
       picked: filter,
       onPick: onFilter,
@@ -949,6 +951,7 @@ class _PostsDashboard extends StatelessWidget {
       controls: onNew == null
           ? null
           : FilledButton.icon(
+              key: const ValueKey('tour-marketing-new-post'),
               onPressed: onNew,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('New post'),
