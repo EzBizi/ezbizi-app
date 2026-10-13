@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/report_grid.dart';
+import '../../widgets/module_overview.dart';
+import '../../core/numbers.dart';
+import '../../core/job_money.dart';
 import '../../core/api_client.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
@@ -97,16 +101,11 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     await Future.wait([_loadCampaigns(), _load()]);
   }
 
-  static String _money(Object? minor) {
-    if (minor is! num) return '—';
-    final cents = minor.round();
-    final digits = (cents ~/ 100).toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
+  /// Money as every Reports tab writes it (UI queue 87).
+  static String _money(Object? minor) =>
+      minor is num ? formatMoney(minor.round()) : '—';
 
-    return '\$$digits.${(cents % 100).toString().padLeft(2, '0')}';
-  }
+  static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
 
   Widget _filter(
     String label,
@@ -206,44 +205,71 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
             style: muted,
           )
         else ...[
-          Text(
-            '${_money(total('spend_minor'))} spent · ${total('leads')} leads · '
-            '${total('leads') > 0 ? _money(total('spend_minor') ~/ total('leads')) : '—'} per lead',
+          // UI queue 87, desktop 1: the figures, then the one table.
+          OverviewFigures(
             key: const ValueKey('meta-totals'),
-            style: theme.textTheme.titleMedium,
+            figures: [
+              OverviewFigure(
+                label: 'Spend',
+                value: _money(total('spend_minor')),
+              ),
+              OverviewFigure(label: 'Leads', value: _count(total('leads'))),
+              OverviewFigure(
+                label: 'Cost per lead',
+                value: total('leads') > 0
+                    ? _money(total('spend_minor') ~/ total('leads'))
+                    : '—',
+              ),
+              OverviewFigure(label: 'Clicks', value: _count(total('clicks'))),
+            ],
           ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Campaign')),
-                DataColumn(label: Text('State')),
-                DataColumn(label: Text('Category')),
-                DataColumn(label: Text('Branch')),
-                DataColumn(label: Text('Spend'), numeric: true),
-                DataColumn(label: Text('Leads'), numeric: true),
-                DataColumn(label: Text('Cost per lead'), numeric: true),
-                DataColumn(label: Text('Clicks'), numeric: true),
-                DataColumn(label: Text('Impressions'), numeric: true),
-              ],
-              rows: [
-                for (final r in rows)
-                  DataRow(
-                    cells: [
-                      DataCell(Text('${r['name']}')),
-                      DataCell(Text('${r['state'] ?? '—'}')),
-                      DataCell(Text('${r['category'] ?? 'Uncategorised'}')),
-                      DataCell(Text('${r['branch'] ?? '—'}')),
-                      DataCell(Text(_money(r['spend_minor']))),
-                      DataCell(Text('${r['leads']}')),
-                      DataCell(Text(_money(r['cost_per_lead_minor']))),
-                      DataCell(Text('${r['clicks']}')),
-                      DataCell(Text('${r['impressions']}')),
-                    ],
-                  ),
-              ],
-            ),
+          const SizedBox(height: 12),
+          ReportGrid(
+            key: const ValueKey('meta-table'),
+            columns: const [
+              GridColumn('Campaign', pinned: true),
+              GridColumn('State'),
+              GridColumn('Category'),
+              GridColumn('Branch'),
+              GridColumn('Spend', numeric: true, main: true),
+              GridColumn('Leads', numeric: true, main: true),
+              GridColumn('Cost per lead', numeric: true, main: true),
+              GridColumn('Clicks', numeric: true),
+              GridColumn('Impressions', numeric: true),
+            ],
+            rows: [
+              for (final r in rows)
+                [
+                  GridCell('${r['name']}'),
+                  r['state'] == null
+                      ? const GridCell.none()
+                      : GridCell('${r['state']}'),
+                  GridCell('${r['category'] ?? 'Uncategorised'}'),
+                  r['branch'] == null
+                      ? const GridCell.none()
+                      : GridCell('${r['branch']}'),
+                  GridCell(_money(r['spend_minor'])),
+                  GridCell(_count(r['leads'])),
+                  r['cost_per_lead_minor'] == null
+                      ? const GridCell.none()
+                      : GridCell(_money(r['cost_per_lead_minor'])),
+                  GridCell(_count(r['clicks'])),
+                  GridCell(_count(r['impressions'])),
+                ],
+            ],
+            total: [
+              const GridCell('Total'),
+              const GridCell(''),
+              const GridCell(''),
+              const GridCell(''),
+              GridCell(_money(total('spend_minor'))),
+              GridCell(_count(total('leads'))),
+              total('leads') > 0
+                  ? GridCell(_money(total('spend_minor') ~/ total('leads')))
+                  : const GridCell.none(),
+              GridCell(_count(total('clicks'))),
+              GridCell(_count(total('impressions'))),
+            ],
           ),
         ],
         const SizedBox(height: 12),

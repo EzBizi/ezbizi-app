@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/report_grid.dart';
+import '../../widgets/module_overview.dart';
+import '../../core/theme.dart';
+import '../../core/numbers.dart';
+import '../../core/job_money.dart';
 import '../../core/api_client.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
@@ -77,18 +82,11 @@ class _MarketingReportState extends State<MarketingReport> {
     });
   }
 
-  static String _money(Object? minor) {
-    if (minor is! num) return '—';
-    final dollars = (minor / 100).round();
-    final digits = dollars.abs().toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
+  /// Money as every Reports tab writes it now: `$9,479.00` (UI queue 87).
+  static String _money(Object? minor) =>
+      minor is num ? formatMoney(minor.round()) : '—';
 
-    return '${dollars < 0 ? '-' : ''}\$$digits';
-  }
-
-  static String _count(Object? n) => n is num ? '${n.round()}' : '—';
+  static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
 
   static const _columns = <(String, String)>[
     ('branch', 'Branch'),
@@ -108,22 +106,27 @@ class _MarketingReportState extends State<MarketingReport> {
 
   /// Profit with no P&L behind it says so on the cell, and why on hover
   /// (Jose kept asking why it was blank).
-  Widget _cellWidget(Map<String, dynamic> row, String key) {
+  GridCell _gridCell(Map<String, dynamic> row, String key) {
     final missing = row['profit_missing'];
     if ((key == 'profit_minor' || key == 'net_profit_minor') &&
         row[key] == null &&
         missing is String) {
-      return Tooltip(
-        message: 'No profit: $missing.',
-        child: Text(
-          'No P&L',
-          key: ValueKey('no-pnl-${row['branch']}-${row['source']}-$key'),
-          style: TextStyle(color: Theme.of(context).colorScheme.outline),
-        ),
+      return GridCell(
+        'No P&L',
+        key: ValueKey('no-pnl-${row['branch']}-${row['source']}-$key'),
+        muted: true,
+        tooltip: 'No profit: $missing.',
       );
     }
-
-    return Text(_cell(row, key));
+    final text = _cell(row, key);
+    if (text == '—') return const GridCell.none();
+    final value = row[key];
+    return GridCell(
+      text,
+      tone: key == 'net_profit_minor' && value is num && value < 0
+          ? Tone.bad
+          : null,
+    );
   }
 
   String _cell(Map<String, dynamic> row, String key) => switch (key) {
@@ -134,6 +137,116 @@ class _MarketingReportState extends State<MarketingReport> {
     final k when k.endsWith('_minor') => _money(row[key]),
     _ => _count(row[key]),
   };
+
+  /// The Total row: sums where a sum means something, rates worked out from
+  /// the sums, and a dash where no row has a figure.
+  Map<String, Object?> get _totals {
+    num? sum(String key) {
+      num? total;
+      for (final row in _rows) {
+        final v = row[key];
+        if (v is num) total = (total ?? 0) + v;
+      }
+      return total;
+    }
+
+    final leads = sum('leads');
+    final jobs = sum('jobs_created');
+    final cost = sum('cost_minor');
+    return {
+      'branch': 'Total',
+      'source': _rows.length == 1 ? '1 row' : '${_rows.length} rows',
+      for (final key in [
+        'clicks',
+        'conversions',
+        'cost_minor',
+        'leads',
+        'jobs_created',
+        'done_jobs',
+        'gross_minor',
+        'profit_minor',
+        'net_profit_minor',
+      ])
+        key: sum(key),
+      'leads_to_jobs': leads != null && leads > 0 && jobs != null
+          ? num.parse((jobs / leads * 100).toStringAsFixed(1))
+          : null,
+      'cost_per_job_minor': cost != null && jobs != null && jobs > 0
+          ? (cost / jobs).round()
+          : null,
+    };
+  }
+
+  /// UI queue 87, desktop 1: the figures, then the one table, Branch and
+  /// Source pinned, a Total row, a loss in red.
+  List<Widget> _figuresAndTable() {
+    final t = _totals;
+    final net = t['net_profit_minor'];
+    final leads = t['leads'];
+    final jobs = t['jobs_created'];
+    return [
+      OverviewFigures(
+        figures: [
+          OverviewFigure(
+            key: const Key('marketing-fact-cost'),
+            label: 'Ad cost',
+            value: _money(t['cost_minor']),
+          ),
+          OverviewFigure(
+            label: 'Leads',
+            value: _count(leads),
+            note: jobs is num
+                ? '${_count(jobs)} became jobs'
+                      '${t['leads_to_jobs'] is num ? ' · ${t['leads_to_jobs']}%' : ''}'
+                : '',
+          ),
+          OverviewFigure(label: 'Gross sales', value: _money(t['gross_minor'])),
+          OverviewFigure(
+            key: const Key('marketing-fact-net'),
+            label: 'Net profit',
+            value: _money(net),
+            tone: net is num && net < 0 ? Tone.bad : null,
+            note: 'estimated, after ad cost',
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      ReportGrid(
+        key: const Key('marketing-table'),
+        columns: [
+          for (final (key, label) in _columns)
+            GridColumn(
+              label,
+              numeric: key != 'branch' && key != 'source',
+              pinned: key == 'branch' || key == 'source',
+              // A phone's card: cost, leads and jobs, net profit beside
+              // the name.
+              main:
+                  key == 'cost_minor' ||
+                  key == 'leads' ||
+                  key == 'jobs_created',
+              headline: key == 'net_profit_minor',
+            ),
+        ],
+        rows: [
+          for (final row in _rows)
+            [for (final (key, _) in _columns) _gridCell(row, key)],
+        ],
+        total: [
+          for (final (key, _) in _columns)
+            switch (_cell(t.cast<String, dynamic>(), key)) {
+              '—' => const GridCell.none(),
+              final text => GridCell(
+                text,
+                tone: key == 'net_profit_minor' && net is num && net < 0
+                    ? Tone.bad
+                    : null,
+              ),
+            },
+        ],
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,27 +275,7 @@ class _MarketingReportState extends State<MarketingReport> {
         else if (_rows.isEmpty)
           Text('No Workiz jobs in these dates.', style: muted)
         else
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: [
-                for (final (key, label) in _columns)
-                  DataColumn(
-                    label: Text(label),
-                    numeric: key != 'branch' && key != 'source',
-                  ),
-              ],
-              rows: [
-                for (final row in _rows)
-                  DataRow(
-                    cells: [
-                      for (final (key, _) in _columns)
-                        DataCell(_cellWidget(row, key)),
-                    ],
-                  ),
-              ],
-            ),
-          ),
+          ..._figuresAndTable(),
         const SizedBox(height: 12),
         Text(
           'Jobs created are booked in these dates; done jobs and gross sales '
