@@ -108,7 +108,13 @@ void main() {
     await tester.pump();
     expect(find.text('Your shift is ending'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Not now'));
+    // The dialog's own Not now: the tab's walkthrough offer has one too.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextButton, 'Not now'),
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(minutes: 1));
     await tester.pump();

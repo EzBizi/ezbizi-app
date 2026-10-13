@@ -140,6 +140,7 @@ class _ServiceListState extends State<ServiceList> {
             ? Refused(
                 reason: refused,
                 child: FilledButton.icon(
+                  key: const ValueKey('tour-services-add'),
                   onPressed: refused == null
                       ? () => setState(() {
                           _adding = true;
@@ -165,6 +166,7 @@ class _ServiceListState extends State<ServiceList> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
+            key: const ValueKey('tour-services-search'),
             controller: _search,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),

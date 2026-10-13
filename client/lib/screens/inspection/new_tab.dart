@@ -478,6 +478,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
+            key: const ValueKey('tour-inspection-search'),
             controller: _search,
             decoration: const InputDecoration(
               hintText: 'Client name or job number',

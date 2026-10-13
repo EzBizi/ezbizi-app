@@ -273,4 +273,224 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'dashboard': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-dashboard-period',
+        title: 'The period',
+        body: 'Day, week, month, quarter or year, for every box at once.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-customize',
+        title: 'Customize',
+        body:
+            'Drag the boxes into your own order, pick each one\'s size, or hide it.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-refresh',
+        title: 'Refresh',
+        body: 'Reloads every box now.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-boxes',
+        title: 'Your boxes',
+        body:
+            'One box for each part of EzBizi you can open, grouped as the '
+            'sidebar is. A box\'s menu can show it as a chart or as words.',
+      ),
+    ],
+  ),
+  'work_hours': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-tabs',
+        title: 'Work Hours',
+        body:
+            'General, Paid Time Off, Reports and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-week',
+        title: 'The week',
+        body:
+            'Which week you are looking at; the arrows move a week either way.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-search',
+        title: 'Find someone',
+        body: 'Narrows the list to people whose name matches.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-role',
+        title: 'Role',
+        body: 'Shows one role at a time.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-people',
+        title: 'The people',
+        body:
+            'Each person with their total for the week. A green dot means on '
+            'the clock right now. Click one for their week, day by day.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-everyone',
+        title: 'Everyone',
+        body:
+            'Only people who clocked in that week are listed until you ask for everyone.',
+      ),
+      TourStep(
+        anchor: 'correction-requests',
+        title: 'Corrections',
+        body:
+            'Changes people asked for that wait on you, to approve or decline.',
+      ),
+    ],
+  ),
+  'phone': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-phone-tabs',
+        title: 'Communication',
+        body:
+            'Phone, Users, Records, Reports, Alerts and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-sections',
+        title: 'Dial, Team, Messages, Voicemail',
+        body: 'The phone itself, your team, texts, and the voicemail boxes.',
+      ),
+      TourStep(
+        anchor: 'phone-call-history',
+        title: 'Recent calls',
+        body:
+            'Grouped by day, with names. Clicking one puts the number on the '
+            'pad; it never dials by itself.',
+      ),
+      TourStep(
+        anchor: 'phone-open-keypad',
+        title: 'Keypad',
+        body: 'Opens the dial pad.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-calling-as',
+        title: 'Calling as',
+        body:
+            'Whether you are ready to take calls, and the line you call from.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-number',
+        title: 'Name or number',
+        body: 'Type a number, or letters to find a customer or a teammate.',
+      ),
+      TourStep(
+        anchor: 'phone-call-pad',
+        title: 'Dial pad',
+        body: 'The keys, then Call.',
+      ),
+    ],
+  ),
+  'email': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-email-tabs',
+        title: 'Email',
+        body: 'The inbox, and its settings.',
+      ),
+      TourStep(
+        anchor: 'tour-email-inboxes',
+        title: 'Your inboxes',
+        body:
+            'All inboxes together, or one at a time, with how many are unread, '
+            'then its folders.',
+      ),
+      TourStep(
+        anchor: 'tour-email-inbox-bar',
+        title: 'Where you are',
+        body: 'The inbox you are reading, by its address.',
+      ),
+      TourStep(
+        anchor: 'tour-email-search',
+        title: 'Search mail',
+        body: 'Press Enter to search; the × clears it.',
+      ),
+      TourStep(
+        anchor: 'tour-email-compose',
+        title: 'New message',
+        body: 'Writes from the inbox you have open.',
+      ),
+      TourStep(
+        anchor: 'tour-email-unread',
+        title: 'Unread',
+        body: 'Shows only what has not been read.',
+      ),
+      TourStep(
+        anchor: 'tour-email-list',
+        title: 'The messages',
+        body: 'Click one to read it. Older messages load at the end.',
+      ),
+    ],
+  ),
+  'services': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-services-tabs',
+        title: 'Services',
+        body: 'The catalogue of work this company sells, and its settings.',
+      ),
+      TourStep(
+        anchor: 'tour-services-add',
+        title: 'Add a service',
+        body: 'Opens a new service beside the list.',
+      ),
+      TourStep(
+        anchor: 'tour-services-search',
+        title: 'Find a service',
+        body: 'By name or number.',
+      ),
+      TourStep(
+        anchor: 'inventory-list',
+        title: 'The catalogue',
+        body:
+            'Each service with its price, number and owner. Click one to open it.',
+      ),
+    ],
+  ),
+  'inspection': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-inspection-tabs',
+        title: 'Inspection',
+        body:
+            'Start a new inspection, read the finished reports, or build the forms.',
+      ),
+      TourStep(
+        anchor: 'tour-inspection-search',
+        title: 'Start here',
+        body:
+            'Search a client by name or a job by its number, then pick the '
+            'inspection to start.',
+      ),
+      TourStep(
+        anchor: 'inspection-resume-panel',
+        title: 'Resume',
+        body: 'Carries on the draft you have in progress, or starts it again.',
+      ),
+      TourStep(
+        anchor: 'tour-inspection-reports-search',
+        title: 'Find a report',
+        body:
+            'Searches the finished reports. Archived ones stay hidden until you ask.',
+      ),
+      TourStep(
+        anchor: 'inspection-reports-list',
+        title: 'The reports',
+        body: 'Click one to read it beside the list and download its PDF.',
+      ),
+    ],
+  ),
 };

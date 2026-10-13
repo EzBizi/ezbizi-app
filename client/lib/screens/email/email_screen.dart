@@ -968,6 +968,7 @@ class _EmailScreenState extends State<EmailScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-email-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: (index) => setState(() {
@@ -1091,6 +1092,7 @@ class _EmailScreenState extends State<EmailScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InboxBar(
+          key: const ValueKey('tour-email-inbox-bar'),
           mailbox: barMailbox,
           allInboxes: combinedBar,
           allAddresses: [
@@ -1137,6 +1139,7 @@ class _EmailScreenState extends State<EmailScreen> {
       };
 
   Widget _rail() => MailboxRail(
+    key: const ValueKey('tour-email-inboxes'),
     mailboxes: _mailboxes,
     selectedId: _selected?.id,
     onSelected: _select,
@@ -1155,6 +1158,7 @@ class _EmailScreenState extends State<EmailScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: TextField(
+            key: const ValueKey('tour-email-search'),
             controller: _search,
             textInputAction: TextInputAction.search,
             onSubmitted: _runSearch,
@@ -1206,11 +1210,13 @@ class _EmailScreenState extends State<EmailScreen> {
                     // refuse is the shape the house rule forbids.
                     if (_selected != null && mailbox.canReply)
                       FilledButton.tonalIcon(
+                        key: const ValueKey('tour-email-compose'),
                         onPressed: () => _compose(mailbox),
                         icon: const Icon(Icons.edit_outlined, size: 18),
                         label: const Text('New message'),
                       ),
                     FilterChip(
+                      key: const ValueKey('tour-email-unread'),
                       label: const Text('Unread'),
                       selected: _unreadOnly,
                       onSelected: (selected) {
@@ -1240,6 +1246,7 @@ class _EmailScreenState extends State<EmailScreen> {
   }
 
   Widget _list(Mailbox mailbox) => MessageListPane(
+    key: const ValueKey('tour-email-list'),
     mailbox: mailbox,
     messages: _messages,
     loading: _loadingList,

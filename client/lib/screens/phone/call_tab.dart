@@ -1662,6 +1662,7 @@ class _CallTabState extends State<CallTab> {
               // The state and the line on one strip; the state above the
               // line when the column is too narrow for both (UI queue 35).
               LayoutBuilder(
+                key: const ValueKey('tour-phone-calling-as'),
                 builder: (context, constraints) {
                   final line = Row(
                     children: [
@@ -1760,6 +1761,7 @@ class _CallTabState extends State<CallTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: TextField(
+            key: const ValueKey('tour-phone-number'),
             controller: _destination,
             decoration: const InputDecoration(labelText: 'Name or number'),
             inputFormatters: const [PhoneNumberInputFormatter()],
