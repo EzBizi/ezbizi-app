@@ -158,6 +158,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'reschedule': 'Reschedule',
     'eta': 'ETA',
     'billing': 'Billing',
+    'cancel': 'Cancel',
     'estimate_question': 'Estimate question',
     'job_status': 'Job status',
     'confirmation': 'Confirmation',
@@ -169,6 +170,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static const _notBookedLabels = {
     'price': 'Price',
     'availability': 'Availability',
+    'cancel': 'Cancel',
+    'confirmation': 'Confirmation',
+    'service_question': 'Service question',
     'not_a_customer': 'Not a customer',
     'no_conversation': 'No conversation',
     'other': 'Other',

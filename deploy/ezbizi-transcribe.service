@@ -26,6 +26,9 @@ ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-lead
 ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-report-calls --minutes=3
 # Then the AI labels on what was just transcribed (off unless REPORT_CALL_TAGGING).
 ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:label-report-calls --minutes=2
+# Then each call divided by speaker, four at a time, for coaching (Reports, 2026-10-13).
+# 4+3+2+3 minutes plus one batch running over stays inside TimeoutStartSec.
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:label-report-calls --split-only --minutes=3
 Nice=19
 CPUQuota=400%
 TimeoutStartSec=900

@@ -32,7 +32,8 @@ class LabelReportCalls extends Command
         {--days=2 : days back to look, including today}
         {--minutes=2 : how long a run may take}
         {--organization= : whose report; defaults to the one organization with Workiz connected}
-        {--relabel= : ask again for calls holding this label (e.g. other), overwriting it}';
+        {--relabel= : ask again for calls holding this label (e.g. other), overwriting it}
+        {--split-only : only divide the last 7 days of transcripts by speaker, several at a time}';
 
     protected $description = 'Label the Performance report\'s calls with Claude and Grok';
 
@@ -68,6 +69,16 @@ class LabelReportCalls extends Command
         $end = CarbonImmutable::now($zone);
         $start = $end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
         $until = now()->addMinutes((int) $this->option('minutes'));
+
+        // Its own run (every 5 minutes): splitting after labelling got the
+        // seconds labelling left, about one call a run, and 1,728 piled up
+        // that coaching cannot score (Grok AI, measured 2026-10-13).
+        if ($this->option('split-only')) {
+            $split = $this->splitSpeakers(null, $tenant, $organization, $until);
+            $this->info("Split by speaker: {$split}");
+
+            return self::SUCCESS;
+        }
 
         // The queue decides the question, so it comes from the call log.
         $queues = array_column($calls->forPeriod($start, $end), 'queue', 'id');
@@ -134,9 +145,12 @@ class LabelReportCalls extends Command
      * left. An answer that lost the words keeps the raw text; a Grok failure
      * is reported and left for the next run.
      *
-     * @param  list<string>  $callIds
+     * Several side by side (TranscriptSpeakers::readMany). Null $callIds is
+     * every transcript of the last 7 days, the window coaching scores.
+     *
+     * @param  list<string>|null  $callIds
      */
-    private function splitSpeakers(array $callIds, TenantContext $tenant, $organization, $until): int
+    private function splitSpeakers(?array $callIds, TenantContext $tenant, $organization, $until): int
     {
         if (! GrokCli::configured()) {
             return 0;
@@ -146,28 +160,31 @@ class LabelReportCalls extends Command
 
         $tenant->run($organization, function () use ($callIds, $until, &$split) {
             $rows = CallReportTranscript::query()
-                ->whereIn('call_id', $callIds)
+                ->when($callIds !== null, fn ($q) => $q->whereIn('call_id', $callIds))
+                ->when($callIds === null, fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
                 ->whereNull('transcript_labelled')
                 ->whereNotNull('transcript')
                 ->where('transcript', '!=', '')
                 ->latest()
                 ->get();
 
-            foreach ($rows as $row) {
+            foreach ($rows->chunk(max(1, (int) config('services.grok_cli.concurrency', 4))) as $batch) {
                 if (now()->greaterThan($until)) {
                     return;
                 }
 
-                try {
-                    $labelled = TranscriptSpeakers::label((string) $row->transcript);
-                } catch (Throwable $e) {
-                    report($e);
+                $reads = TranscriptSpeakers::readMany($batch->map(fn ($row) => (string) $row->transcript)->values()->all());
 
-                    return;
+                foreach ($batch->values() as $n => $row) {
+                    if ($reads[$n] instanceof Throwable) {
+                        report($reads[$n]);   // left for the next run
+
+                        continue;
+                    }
+
+                    $row->forceFill(['transcript_labelled' => $reads[$n]['labelled'] ?? $row->transcript])->save();
+                    $split++;
                 }
-
-                $row->forceFill(['transcript_labelled' => $labelled ?? $row->transcript])->save();
-                $split++;
             }
         });
 
