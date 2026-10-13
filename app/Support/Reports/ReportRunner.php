@@ -7,6 +7,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -471,6 +472,8 @@ final class ReportRunner
                 // The column says WHICH column holds the user id: `id` on the
                 // people themselves, `user_id` on a row that belongs to one.
                 'people' => $this->visiblePeopleIds($user),
+                // The boards the Task Board itself would show this person.
+                'task_board' => app(TaskBoards::class)->visibleTo($user)->pluck('id')->all(),
                 default => throw new LogicException(
                     "ReportMap scopes '{$table}.{$column}' by '{$source}', and this runner "
                     .'does not know which view ids resolve that. Teach it here rather than '

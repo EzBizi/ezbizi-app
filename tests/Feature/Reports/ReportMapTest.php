@@ -100,7 +100,7 @@ class ReportMapTest extends TestCase
      */
     public function test_every_scope_source_is_one_the_runner_can_resolve(): void
     {
-        $known = ['franchise', 'place', 'people'];
+        $known = ['franchise', 'place', 'people', 'task_board'];
 
         foreach (ReportMap::all() as $key => $resource) {
             foreach ($resource['scope'] as $column => $source) {

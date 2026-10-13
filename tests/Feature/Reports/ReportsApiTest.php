@@ -7,8 +7,11 @@ use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SavedReport;
+use App\Models\Task;
+use App\Models\TaskGroup;
 use App\Models\WorkizJob;
 use App\Support\Reports\ReportMap;
+use App\Support\Tasks\TaskBoards;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -426,6 +429,41 @@ class ReportsApiTest extends TestCase
         $this->assertSame(30, $preview['count']);
         $this->assertSame('Title', $preview['columns'][0]['label']);
         $this->assertSame(0, SavedReport::withoutGlobalScopes()->count());
+    }
+
+    /** Task Board tasks: a personal board reports only to its owner, as on screen. */
+    public function test_tasks_report_the_boards_the_person_could_open(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->userWithRole($tenant, 'Tech', []);
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            $boards = app(TaskBoards::class);
+            foreach ([
+                'Branch task' => $boards->ensureFor($tenant['franchise']),
+                'My task' => $boards->ensureFor($tenant['admin']),
+                'Their task' => $boards->ensureFor($other),
+            ] as $title => $board) {
+                Task::query()->create([
+                    'board_id' => $board->id,
+                    'group_id' => TaskGroup::query()->where('board_id', $board->id)->value('id'),
+                    'franchise_id' => $board->franchise_id,
+                    'title' => $title,
+                ]);
+            }
+        });
+
+        $titles = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'tasks',
+                'columns' => [['resource' => 'tasks', 'column' => 'title']],
+                'filters' => [],
+                'sort' => [['resource' => 'tasks', 'column' => 'title', 'direction' => 'asc']],
+            ]])
+            ->assertOk()
+            ->json('data.rows');
+
+        $this->assertSame(['Branch task', 'My task'], array_map(fn ($r) => array_values($r)[0], $titles));
     }
 
     /** The same gates as a run: building, and a column's own permission. */
