@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0415',
+      date: '12 Oct 2026',
+      items: [
+        'Reports › Meta: AI suggests a service category for each Facebook ad campaign; a person confirms it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0414',
       date: '12 Oct 2026',
       items: [
