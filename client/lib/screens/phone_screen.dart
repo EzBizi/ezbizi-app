@@ -129,6 +129,7 @@ class _PhoneScreenState extends State<PhoneScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-phone-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: current,
             onSelected: (i) => setState(() => _tab = tabs[i].$1),

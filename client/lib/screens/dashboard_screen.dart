@@ -394,6 +394,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       error: _error,
       onRetry: _load,
       child: ListView(
+        key: const ValueKey('tour-dashboard-boxes'),
         // A phone's 16px gutter: 24 took the room a card's title needs.
         padding: EdgeInsets.all(
           MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
@@ -568,6 +569,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         if (phone)
           PopupMenuButton<String>(
+            key: const ValueKey('tour-dashboard-period'),
             tooltip: 'Period',
             initialValue: _period,
             onSelected: _setPeriod,
@@ -603,6 +605,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         else
           Expanded(
             child: Wrap(
+              key: const ValueKey('tour-dashboard-period'),
               spacing: 8,
               runSpacing: 8,
               children: [
@@ -623,16 +626,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (_glances.isNotEmpty)
           phone
               ? IconButton(
+                  key: const ValueKey('tour-dashboard-customize'),
                   onPressed: () => setState(() => _customizing = true),
                   icon: const Icon(Icons.dashboard_customize_outlined),
                   tooltip: 'Customize',
                 )
               : TextButton.icon(
+                  key: const ValueKey('tour-dashboard-customize'),
                   onPressed: () => setState(() => _customizing = true),
                   icon: const Icon(Icons.dashboard_customize_outlined),
                   label: const Text('Customize'),
                 ),
         IconButton(
+          key: const ValueKey('tour-dashboard-refresh'),
           onPressed: _load,
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',

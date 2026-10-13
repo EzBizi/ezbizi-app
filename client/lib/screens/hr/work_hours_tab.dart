@@ -635,6 +635,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: TextField(
+            key: const ValueKey('tour-work_hours-search'),
             decoration: InputDecoration(
               isDense: true,
               prefixIcon: const Icon(Icons.search, size: 18),
@@ -647,6 +648,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             child: SearchPickerField<String?>(
+              key: const ValueKey('tour-work_hours-role'),
               isDense: true,
               value: _roles.containsKey(_roleId) ? _roleId : null,
               options: [
@@ -666,6 +668,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
               child: TextButton(
+                key: const ValueKey('tour-work_hours-everyone'),
                 onPressed: () => setState(() => _everyone = !_everyone),
                 child: Text(
                   _everyone
@@ -686,6 +689,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                   ),
                 )
               : ListView.builder(
+                  key: const ValueKey('tour-work_hours-people'),
                   itemCount: people.length,
                   itemBuilder: (context, i) => _PersonRow(
                     api: widget.api,
@@ -728,6 +732,7 @@ class _WeekBar extends StatelessWidget {
     final w = week;
 
     return Container(
+      key: const ValueKey('tour-work_hours-week'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
