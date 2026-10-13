@@ -452,22 +452,22 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
     await tester.pumpAndSettle();
 
-    // Claude's reading first: Kitchen tap is a price call. Both readings are
-    // in what the row opens to (UI queue 78).
-    expect(find.text('Price 1'), findsOneWidget);
-    expect(find.text('Availability 0'), findsOneWidget);
+    // Grok's reading first (Jose, 2026-10-13): Kitchen tap is an
+    // availability call. Both readings are in what the row opens to.
+    expect(find.text('Price 0'), findsOneWidget);
+    expect(find.text('Availability 1'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('call-details-c1')));
     await tester.pumpAndSettle();
     expect(find.text('Claude: Price · Grok: Availability'), findsOneWidget);
 
-    // Grok read the same call differently.
-    await tester.tap(find.text('Grok'));
+    // Claude read the same call differently.
+    await tester.tap(find.text('Claude'));
     await tester.pumpAndSettle();
-    expect(find.text('Price 0'), findsOneWidget);
-    expect(find.text('Availability 1'), findsOneWidget);
+    expect(find.text('Price 1'), findsOneWidget);
+    expect(find.text('Availability 0'), findsOneWidget);
 
     // A count narrows the list to its calls.
-    await tester.tap(find.byKey(const ValueKey('label-price')));
+    await tester.tap(find.byKey(const ValueKey('label-availability')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Kitchen tap'), findsNothing);
   });

@@ -150,7 +150,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// Whose AI labels the counts show, and the label the list is narrowed to
   /// (Jose, 2026-10-06: both Claude and Grok, to compare).
-  String _labeller = 'claude';
+  // Grok first (Jose, 2026-10-13: "we only use grok for now, set it as the
+  // default instead of claude"); Claude stays one tap away.
+  String _labeller = 'grok';
   String? _labelFilter;
 
   static const _existingLabels = {
