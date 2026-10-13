@@ -20,6 +20,7 @@ class VersionHistory {
         'Leads: AI marks a lead Booked when a day was agreed on the call, and shows why.',
         'Leads: Google leads that look like spam or a service we don\'t offer show "Credit?", and Request credit asks Google for a refund.',
         'WhatsApp: staff with Reports access can ask the staff line for figures, for example "how much did MA sell last week".',
+        'Leads: Google LS calls no longer count as unread, since there is nothing to reply to.',
       ],
     ),
     VersionRelease(
