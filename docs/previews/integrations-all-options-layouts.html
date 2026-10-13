@@ -1,0 +1,279 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Integrations, every option</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.sec{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;flex:0 0 auto}
+.sec h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.sec h3 .c{font-size:11px;font-weight:600;color:var(--muted)}
+.grid{display:flex;flex-wrap:wrap;gap:10px}
+.pc{width:212px;border:1px solid #c9d4d9;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:#fff}
+.pc.off{background:#fafcfd;border-style:dashed}
+.pc .r{display:flex;align-items:center;gap:8px}
+.pc img{width:26px;height:26px}
+.pc b{font-size:13px}
+.pc .s{font-size:11px;color:var(--muted);min-height:28px}
+.pc .s.bad{color:var(--bad)}
+.pp{margin-left:auto;font-size:10px;font-weight:700;border-radius:999px;padding:1px 8px;border:1px solid}
+.pp.on{color:var(--pri);border-color:#93c4d3}.pp.att{color:var(--bad);border-color:#e7a5a5}.pp.no{color:var(--muted);border-color:#c9d4d9}
+.pc .btn{align-self:flex-start}
+.why{font-size:11px;color:var(--cau);font-weight:600}
+.tile{display:inline-flex;align-items:center;gap:8px;border:1px solid #c9d4d9;border-radius:10px;padding:6px 10px;background:#fff;font-size:12px;font-weight:600}
+.tile img{width:20px;height:20px}
+.tile .plus{color:var(--pri);font-weight:800;margin-left:4px}
+.rowl{display:grid;grid-template-columns:28px minmax(0,1fr) 150px 170px 110px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.rowl img{width:24px;height:24px}
+.rowl.h{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-top:0}
+.prow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.prow:first-child{border-top:0}
+.prow img{width:26px;height:26px}
+.prow .g{flex:1;min-width:0}.prow .g b{display:block}.prow .g span{font-size:11px;color:var(--muted)}
+.ptile{width:calc(50% - 5px);border:1px solid #c9d4d9;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;background:#fff;font-size:11.5px}
+.ptile img{width:22px;height:22px}
+</style>
+
+<div class="wrap">
+<h1>Settings › Integrations: every option, connected or not</h1>
+<p class="sub">Jose, 2026-10-13: Integrations shows only what is connected. He wants every option shown, with the ones not
+connected connectable right there, so he can connect them all. Workiz and Airtable also show as grey squares. Today an
+unconnected provider is a plain "Also available" chip (Social) or is not shown at all (Advertising, Mailing). The counts,
+and which cards say "not available" or "ask an administrator", are examples only.</p>
+<p class="need"><b>The same in every option.</b> Each of the four sections lists every provider EzBizi supports:
+<b>Mailing</b> (Mailchimp), <b>Social</b> (Facebook, Instagram, Threads, LinkedIn, TikTok, Pinterest, YouTube, X, Bluesky),
+<b>Advertising and listings</b> (Google Business Profile, Google Ads, Facebook Ads, Thumbtack) and <b>Reporting</b> (Workiz,
+Airtable). Every card wears its logo; Workiz's and Airtable's are already in the app and were simply never wired. Connect sits
+on the card and connects in the current view, as the provider's page does today. A Connect button is only drawn where it can
+work. Where EzBizi can't connect a provider yet (the server's own "not ready" reason), the card says so instead. Where you
+lack the permission, it says "Ask an administrator". Clicking a card still opens its page, with the accounts and whose they
+are.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Every provider a full card; the ones not connected carry Connect <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Connected cards come first and look as they do now. The rest follow in the same grid with a dashed edge, one
+line about what the provider is for, and a <b>Connect</b> button. Nothing is hidden behind a chip, and you can see at a glance
+which cards are yours, because only those are solid.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="page" style="gap:12px">
+ <div class="t">Integrations</div>
+ <div class="sec"><h3>✉ Mailing</h3><div class="grid">
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/mailchimp.svg"><span class="pp no">Not connected</span></div><b>Mailchimp</b><span class="s">Sends your newsletters from your own account.</span><span class="btn f sm">Connect</span></div>
+ </div></div>
+ <div class="sec"><h3>⤴ Social <span class="c">2 of 9 connected</span></h3><div class="grid">
+  <div class="pc"><div class="r"><img src="../../client/assets/social/facebook.svg"><span class="pp on">Connected</span></div><b>Facebook</b><span class="s">1 connected at a company</span></div>
+  <div class="pc"><div class="r"><img src="../../client/assets/social/instagram.svg"><span class="pp on">Connected</span></div><b>Instagram</b><span class="s">1 connected at a company</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/linkedin.svg"><span class="pp no">Not connected</span></div><b>LinkedIn</b><span class="s">Post to your company page.</span><span class="btn f sm">Connect</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/tiktok.svg"><span class="pp no">Not connected</span></div><b>TikTok</b><span class="s">Post videos to your account.</span><span class="why">Not available on EzBizi yet</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/bluesky.svg"><span class="pp no">Not connected</span></div><b>Bluesky</b><span class="s">Post to your account.</span><span class="btn f sm">Connect</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/x.svg"><span class="pp no">Not connected</span></div><b>X</b><span class="s">Post to your account.</span><span class="btn f sm">Connect</span></div>
+ </div><span class="tiny">… Threads, Pinterest, YouTube the same.</span></div>
+ <div class="sec"><h3>📣 Advertising and listings <span class="c">2 of 4 connected</span></h3><div class="grid">
+  <div class="pc"><div class="r"><img src="../../client/assets/social/google.svg"><span class="pp on">Connected</span></div><b>Google Ads</b><span class="s">53 connected at a company</span></div>
+  <div class="pc"><div class="r"><img src="../../client/assets/social/thumbtack.svg"><span class="pp on">Connected</span></div><b>Thumbtack</b><span class="s">3 connected at a branch</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/facebook.svg"><span class="pp no">Not connected</span></div><b>Facebook Ads</b><span class="s">Leads and spend from your ad account.</span><span class="btn f sm">Connect</span></div>
+  <div class="pc off"><div class="r"><img src="../../client/assets/social/google.svg"><span class="pp no">Not connected</span></div><b>Google Business Profile</b><span class="s">Reviews, calls and messages.</span><span class="why">Ask an administrator</span></div>
+ </div></div>
+ <div class="sec"><h3>📊 Reporting <span class="c">2 of 2 connected</span></h3><div class="grid">
+  <div class="pc"><div class="r"><img src="../../client/assets/social/workiz.svg"><span class="pp on">Connected</span></div><b>Workiz</b><span class="s">2 connected at a branch</span></div>
+  <div class="pc"><div class="r"><img src="../../client/assets/social/airtable.svg"><span class="pp on">Connected</span></div><b>Airtable</b><span class="s">1 connected at a company</span></div>
+ </div></div>
+</div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>Connected cards, then a row of small "+ Connect" tiles</h2>
+<p class="cap">What you have stays big. What you could add is a row of small logo tiles, each a Connect button in itself. It
+takes less room than option 1, but a tile has no room to say what the provider is for or why it can't be connected.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="page" style="gap:12px">
+ <div class="t">Integrations</div>
+ <div class="sec"><h3>⤴ Social <span class="c">2 of 9 connected</span></h3><div class="grid">
+  <div class="pc"><div class="r"><img src="../../client/assets/social/facebook.svg"><span class="pp on">Connected</span></div><b>Facebook</b><span class="s">1 connected at a company</span></div>
+  <div class="pc"><div class="r"><img src="../../client/assets/social/instagram.svg"><span class="pp on">Connected</span></div><b>Instagram</b><span class="s">1 connected at a company</span></div>
+ </div>
+ <div class="grid" style="gap:8px"><span class="tile"><img src="../../client/assets/social/linkedin.svg">LinkedIn<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/threads.svg">Threads<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/pinterest.svg">Pinterest<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/youtube.svg">YouTube<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/x.svg">X<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/bluesky.svg">Bluesky<span class="plus">+</span></span><span class="tile" style="opacity:.55"><img src="../../client/assets/social/tiktok.svg">TikTok</span></div></div>
+ <div class="sec"><h3>✉ Mailing</h3><div class="grid" style="gap:8px"><span class="tile"><img src="../../client/assets/social/mailchimp.svg">Mailchimp<span class="plus">+ Connect</span></span></div></div>
+</div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>One list with a filter: All · Connected · Not connected</h2>
+<p class="cap">The sections become a column in a single table, with a search and three chips. It reads like a checklist, which
+suits connecting everything in one sitting. But the at-a-glance picture of what this business has goes, and so does the card
+look Jose asked for in September.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="page" style="gap:10px">
+ <div class="t">Integrations</div>
+ <div class="pills"><span class="pill2 on">All · 16</span><span class="pill2">Connected · 6</span><span class="pill2">Not connected · 10</span></div>
+ <div class="card" style="padding:4px 16px">
+  <div class="rowl h"><span></span><span>Provider</span><span>Kind</span><span>Status</span><span></span></div>
+  <div class="rowl"><img src="../../client/assets/social/google.svg"><b>Google Ads</b><span class="muted">Advertising</span><span>53 at a company</span><span class="btn sm">Open</span></div>
+  <div class="rowl"><img src="../../client/assets/social/workiz.svg"><b>Workiz</b><span class="muted">Reporting</span><span>2 at a branch</span><span class="btn sm">Open</span></div>
+  <div class="rowl"><img src="../../client/assets/social/mailchimp.svg"><b>Mailchimp</b><span class="muted">Mailing</span><span class="muted">Not connected</span><span class="btn f sm">Connect</span></div>
+  <div class="rowl"><img src="../../client/assets/social/facebook.svg"><b>Facebook Ads</b><span class="muted">Advertising</span><span class="muted">Not connected</span><span class="btn f sm">Connect</span></div>
+  <div class="rowl"><img src="../../client/assets/social/tiktok.svg"><b>TikTok</b><span class="muted">Social</span><span class="why">Not available yet</span><span></span></div>
+ </div>
+</div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Each section is a list with logo, name and status. Rows not connected carry Connect on the right.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Integrations</span></div><div class="pb">
+ <div class="lst"><div class="prow"><b style="font-size:12px">SOCIAL · 2 OF 9</b></div>
+  <div class="prow"><img src="../../client/assets/social/facebook.svg"><div class="g"><b>Facebook</b><span>1 at a company</span></div><span class="pp on">Connected</span></div>
+  <div class="prow"><img src="../../client/assets/social/linkedin.svg"><div class="g"><b>LinkedIn</b><span>Not connected</span></div><span class="btn f sm">Connect</span></div>
+  <div class="prow"><img src="../../client/assets/social/tiktok.svg"><div class="g"><b>TikTok</b><span class="why">Not available yet</span></div></div></div>
+ <div class="lst"><div class="prow"><b style="font-size:12px">REPORTING · 2 OF 2</b></div>
+  <div class="prow"><img src="../../client/assets/social/workiz.svg"><div class="g"><b>Workiz</b><span>2 at a branch</span></div><span class="pp on">Connected</span></div>
+  <div class="prow"><img src="../../client/assets/social/airtable.svg"><div class="g"><b>Airtable</b><span>1 at a company</span></div><span class="pp on">Connected</span></div></div>
+</div></div></div></div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">The connected cards in two columns, then the small + tiles.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Integrations</span></div><div class="pb">
+ <b style="font-size:12px">SOCIAL · 2 OF 9</b>
+ <div class="grid" style="gap:10px"><div class="ptile"><img src="../../client/assets/social/facebook.svg"><b>Facebook</b><span class="pp on" style="margin:0;align-self:flex-start">Connected</span></div><div class="ptile"><img src="../../client/assets/social/instagram.svg"><b>Instagram</b><span class="pp on" style="margin:0;align-self:flex-start">Connected</span></div></div>
+ <div class="grid" style="gap:6px"><span class="tile"><img src="../../client/assets/social/linkedin.svg">LinkedIn<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/x.svg">X<span class="plus">+</span></span><span class="tile"><img src="../../client/assets/social/bluesky.svg">Bluesky<span class="plus">+</span></span></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">The filter chips over one list.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Integrations</span></div><div class="pb">
+ <div class="pills"><span class="pill2 on">All</span><span class="pill2">Connected</span><span class="pill2">Not connected</span></div>
+ <div class="lst"><div class="prow"><img src="../../client/assets/social/mailchimp.svg"><div class="g"><b>Mailchimp</b><span>Mailing · not connected</span></div><span class="btn f sm">Connect</span></div>
+ <div class="prow"><img src="../../client/assets/social/google.svg"><div class="g"><b>Google Ads</b><span>Advertising · 53 at a company</span></div><span class="pp on">Connected</span></div></div>
+</div></div></div></div>
+
+<p class="cap" style="margin-top:30px">Owner: UI/UX (<code>integrations_screen.dart</code>). The logos are a one-line fix
+in every option.</p>
+</div>

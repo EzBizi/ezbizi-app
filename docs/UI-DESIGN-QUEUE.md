@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 81 · App-wide · a walkthrough and a how-to video beside every tab's title (`docs/previews/tab-walkthrough-video-layouts.html`)
+### 81 · App-wide · a walkthrough and a how-to video beside every tab's title — **Jose: "as u recommend" — 1 and 4** — **BUILT** (`docs/previews/tab-walkthrough-video-layouts.html`)
 
 Jose 2026-10-13, via the desk: *"on a1tools for each main tab we had this ... a walkthrough and how to use video buttons, so
 im wondering if we can put those back ... 1 - Clicking the Walkthrough icon would basically help the user navigate the tab
@@ -2985,6 +2985,28 @@ one (?) with a menu, and the video floats in a corner. **3**: (?) opens a Help p
 Show me. Phone **4** (recommended): both icons in the app bar, the step card along the bottom, and the video full width;
 **5**: menu and a docked mini player; **6**: a Help page. Owner: UI/UX builds the engine, the buttons and the staff list.
 Module owners write their own tab's steps. The desk makes the videos, Scheduling first.
+
+Built (4fcd185a). Walkthroughs are data in `client/lib/core/tab_tours.dart`, keyed by module: steps name the
+`ValueKey<String>` they point at, and the Task Board has the first one. The (?) and ▶ sit beside the title in
+`ModulePageHeader(beside:)`, and the offer sits under it. Seen is stored as the `help.tours_seen` preference (module →
+version). Videos come from `GET help/videos` (table `platform_help_videos`), set in Staff › Help videos with link, length,
+chapters ("0:42 Booking a job", one a line) and an optional .vtt. A video with burned-in captions needs no .vtt. They play in
+the side panel, Keep it small moves them to a corner, and where a platform has no player (Windows) Open the video uses the
+browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
+steps `since:` to offer them as What's new.
+
+### 82 · Settings › Integrations · every option, connected or not (`docs/previews/integrations-all-options-layouts.html`)
+
+Jose 2026-10-13, via the desk: *"going into Settings - Integrations only shows the currently connected, when it should also
+show the currently not connected and allow to be connected from there, we are also missing the workiz and airtable logos.
+So basically i should be able to see all the options so i can connected them all if i wanted."* The same in every option:
+each section lists every provider the server's catalogue offers, logos throughout (workiz.svg and airtable.svg were in the
+app but never mapped), and Connect on the card in the current view. Connect is drawn only where it works; otherwise the
+card shows the server's "not ready" reason, or "Ask an administrator" without the permission. Desktop **1** (recommended):
+every provider a full card, connected ones solid and first, the rest dashed with a line on what they're for and Connect.
+**2**: connected cards, then small "+ Connect" logo tiles. **3**: one list with All / Connected / Not connected. Phone **4**
+(recommended): a list per section with Connect on the right; **5**: tiles; **6**: the filtered list. Owner: UI/UX
+(`integrations_screen.dart`).
 
 ### 80 · Task Board · boards for every company, franchise and person — **Jose: "as you recommend" — 1 and 4** (`docs/previews/task-board-layouts.html`)
 
