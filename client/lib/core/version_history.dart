@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Reports: calls can be tagged Cancel, Confirmation or Service question, and new calls are split by speaker for coaching.',
         'AI: only calls and leads from Oct 13 onward are read, summarized and scored.',
+        'Email: the Inbox tab lists only the inboxes a person may open.',
       ],
     ),
     VersionRelease(
