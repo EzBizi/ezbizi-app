@@ -250,6 +250,7 @@
                 "Availability",
                 "Schedule",
                 "Overbooking",
+                "Re-Scheduling",
                 "Locations",
                 "Settings"
             ]
@@ -492,6 +493,7 @@
         "scheduling.edit",
         "scheduling.locations.view",
         "scheduling.overbooking.view",
+        "scheduling.rescheduling.view",
         "scheduling.schedule.view",
         "scheduling.settings.view",
         "scheduling.view",

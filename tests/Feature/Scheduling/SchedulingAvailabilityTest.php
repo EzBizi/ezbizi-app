@@ -875,6 +875,57 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('07:00', $suggested['window']['start_time']);
     }
 
+    /**
+     * Jose, 2026-10-13: Re-Scheduling lists booked jobs that a technician
+     * drives to alone, with the day beside other work they could move to.
+     * Two lone jobs near each other on different days are ONE suggestion,
+     * not each sent to the other's day; a job already paired on its day, or
+     * with nothing near it on any day, is not listed.
+     */
+    public function test_a_lone_job_is_suggested_a_day_beside_other_work(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        // Mondays and Wednesdays, 7-11 for two and 11-2 for one.
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+            ['weekday' => 3, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 3, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+        ]])->assertOk();
+        // Mon Oct 5: A downtown, alone. Mon Oct 12: C two blocks from A, alone.
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7900, -96.8010);
+        // Wed Oct 7: B alone in Houston with nothing near it on any day, and
+        // D+E together in Denton, 38 miles off. That fills the day.
+        $this->located($tenant, '2026-10-07 07:00:00', 29.7600, -95.3700, '77002');
+        $this->located($tenant, '2026-10-07 08:00:00', 33.2150, -97.1330, '76201');
+        $this->located($tenant, '2026-10-07 11:00:00', 33.2160, -97.1340, '76201');
+        // Mon Oct 12: F near D+E, filling 7-11. D is already paired, so it is
+        // not offered F's day even though F sits next to it.
+        $this->located($tenant, '2026-10-12 07:30:00', 33.2170, -97.1330, '76201');
+        // Two jobs Workiz could not place (-1,-1): "0 miles apart", not a pair.
+        $this->located($tenant, '2026-10-05 12:00:00', -1.0, -1.0, '75202');
+        $this->located($tenant, '2026-10-14 08:00:00', -1.0, -1.0, '75202');
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/reschedules')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows, json_encode(array_map(fn ($r) => [$r['job']['date'], $r['job']['time']], $rows)));
+        $this->assertSame('Dallas', $rows[0]['area_name']);
+        // A and C save the same; the earlier one moves beside the other, into
+        // Oct 12's only open window, and C stays put. F is alone too, but Oct 7
+        // is full.
+        $this->assertSame(['2026-10-05', '08:00'], [$rows[0]['job']['date'], $rows[0]['job']['time']]);
+        $this->assertNull($rows[0]['current_nearest_miles'], 'Nothing else booked on Oct 5.');
+        $this->assertSame('2026-10-12', $rows[0]['suggested']['date']);
+        $this->assertSame('11:00', $rows[0]['suggested']['window']['start_time']);
+        $this->assertSame(1, $rows[0]['suggested']['nearby']);
+        $this->assertLessThan(1, $rows[0]['suggested']['nearest_miles']);
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {
