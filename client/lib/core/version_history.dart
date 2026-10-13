@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Leads: texts sent to a lead, and the customer\'s text replies, now show in the lead\'s conversation.',
         'Automations: a pop-up alert step says which of the people it names it skipped, and why.',
+        'Automations: a rule can text the customer onto the enquiry, so their answer is seen there.',
       ],
     ),
     VersionRelease(
