@@ -28,6 +28,8 @@ class VersionHistory {
         'Reports: every tab now reads the same way: one date bar, the key figures, and one table with a Total row; on a phone, one menu for the tabs and each row as a card. Fixed: saved reports showing cents, 24-hour call times, Google Ads money.',
         'WhatsApp: when a customer replies, the message appears in their lead in Leads.',
         'Automations: a notification to several people picked by name now reaches each of them.',
+        'Automations: a task made by a rule goes on the place\'s board and is given to the person.',
+        'Leads: after hours, auto replies can carry a booking link that books onto the same lead; an approved online booking can send the customer a confirmation with the number to call; the Online Booking card shows the best-fit window for the dispatcher.',
       ],
     ),
     VersionRelease(
