@@ -3959,6 +3959,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // stay, so no role loses a grant.
                     new TabDefinition('builder', 'Report Builder'),
                     new TabDefinition('experimental', 'Performance'),
+                    // Each dispatcher as a card, ranked by AI's call score
+                    // (Jose, 2026-10-13). Granted to Administrator and Lead
+                    // Manager only (Jose: "right now only administrators and
+                    // lead manager").
+                    new TabDefinition('scoring', 'Scoring'),
                     // Ad cost against jobs and profit (Jose, 2026-10-12); the
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.

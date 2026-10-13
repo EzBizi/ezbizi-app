@@ -16,6 +16,7 @@ import 'reports/marketing_report.dart';
 import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
+import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/work_hours_report_panel.dart';
@@ -315,6 +316,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
       // changes data asks for Build itself: ExperimentalCallReport.canEdit.
       if (_mayOpen('experimental'))
         ('Performance', Icons.science_outlined, null),
+      // Each dispatcher as a card, ranked by AI's call score (Jose,
+      // 2026-10-13; UI queue 85). Its own grant: Administrator and Lead
+      // Manager only, for now (Jose).
+      if (_mayOpen('scoring'))
+        (
+          'Scoring',
+          Icons.leaderboard_outlined,
+          () => ScoringReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
       // Ad cost against jobs and profit (Jose, 2026-10-12). Its profit is the
       // P&L's margin, so it goes where the P&L can.
       if (_mayOpen('marketing') &&

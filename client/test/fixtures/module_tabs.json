@@ -228,6 +228,7 @@
                 "Reports",
                 "Report Builder",
                 "Performance",
+                "Scoring",
                 "Marketing",
                 "Meta",
                 "Thumbtack"
@@ -476,6 +477,7 @@
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.scoring.view",
         "reports.thumbtack.view",
         "reports.view",
         "reviews.create",
