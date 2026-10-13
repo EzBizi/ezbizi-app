@@ -21,6 +21,7 @@ class VersionHistory {
         'Leads: a lead with a note shows a note mark in the list; hover it to read the note.',
         'Leads: Awaiting reply is now solid red.',
         'A1Leads GBP: each Google review shows once, even when it is reachable through more than one Google account.',
+        'Task Board: choose a board from a list grouped by company, and set up your own statuses, columns and groups. Tasks can have subtasks.',
       ],
     ),
     VersionRelease(
