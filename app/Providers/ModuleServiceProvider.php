@@ -2229,12 +2229,6 @@ class ModuleServiceProvider extends ServiceProvider
                         executionType: 'task.create',
                     ),
                     new ActionDefinition(
-                        key: 'task.update_status',
-                        label: 'Change the task status',
-                        description: 'Moves the task the rule fired on to a different status.',
-                        executionType: 'task.update_status',
-                    ),
-                    new ActionDefinition(
                         key: 'task.assign',
                         label: 'Give the task to somebody',
                         description: 'Makes a person the owner of the task the rule fired on.',
