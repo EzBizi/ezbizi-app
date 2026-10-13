@@ -43,6 +43,8 @@ void main() {
                   'gross_minor': 50000,
                   'profit_minor': null,
                   'net_profit_minor': null,
+                  'profit_missing':
+                      'the CT table has no week 12 Oct - 18 Oct yet',
                 },
               ],
             },
@@ -75,8 +77,18 @@ void main() {
     expect(find.text('-\$29,500'), findsOneWidget);
     // No ad cost and no P&L: dashes, never $0.
     expect(find.text('\$0'), findsNothing);
+    expect(find.text('No P&L'), findsNWidgets(2));
 
-    await tester.tap(find.byKey(const ValueKey('marketing-last_month')));
+    // The arrow steps a week back; the panel picks any dates.
+    await tester.tap(find.byKey(const Key('date-range-previous')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'from': '2026-09-28', 'to': '2026-10-04'});
+
+    await tester.tap(find.byKey(const Key('date-range-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('date-preset-last_month')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('date-range-apply')));
     await tester.pumpAndSettle();
     expect(asked.last, {'from': '2026-09-01', 'to': '2026-09-30'});
   });

@@ -62,7 +62,7 @@ final class MarketingReport
     public function rows(Franchise $branch, string $from, string $to): array
     {
         $f = $this->period->figures($branch, $from, $to);
-        $margin = $this->margin($branch, $from, $to);
+        [$margin, $noProfit] = $this->margin($branch, $from, $to);
         $ads = $this->cost ? ($this->cost)($branch, $from, $to) : null;
         $leads = $this->leads($branch, $from, $to);
 
@@ -98,6 +98,8 @@ final class MarketingReport
                 'gross_minor' => $gross,
                 'profit_minor' => $profit,
                 'net_profit_minor' => $profit === null ? null : $profit - ($cost ?? 0),
+                // Why there is no profit, said on the cell (Jose kept asking).
+                'profit_missing' => $noProfit,
             ];
         }
 
@@ -108,19 +110,22 @@ final class MarketingReport
 
     /**
      * (Net + marketing) / income from the branch's P&L: the margin before
-     * marketing, or null when the P&L has no complete figures for the dates.
+     * marketing; or null and why, when the P&L has no complete figures for
+     * the dates (its weeks run Monday to Sunday, so a part week has none).
+     *
+     * @return array{0: ?float, 1: ?string}
      */
-    private function margin(Franchise $branch, string $from, string $to): ?float
+    private function margin(Franchise $branch, string $from, string $to): array
     {
         $pnl = $this->period->profitAndLoss($branch, $from, $to);
 
         if (! $pnl['income'] || $pnl['net'] === null) {
-            return null;
+            return [null, $pnl['why'] ?: 'the P&L is not filled in for every week of these dates'];
         }
 
         $marketing = array_sum(array_map(fn ($w) => $w['categories']['Marketing']['total'] ?? 0, $pnl['weeks']));
 
-        return ($pnl['net'] + $marketing) / $pnl['income'];
+        return [($pnl['net'] + $marketing) / $pnl['income'], null];
     }
 
     /**

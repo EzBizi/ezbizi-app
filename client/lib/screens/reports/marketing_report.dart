@@ -1,54 +1,47 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import 'report_dates.dart';
 
 /// Ad cost against jobs, sales and profit, per branch and Workiz job source
 /// (Jose, 2026-10-12). Profit is an estimate: the source's done-job sales
 /// times the branch's P&L margin before marketing, as the note under the
 /// table says.
 class MarketingReport extends StatefulWidget {
-  const MarketingReport({super.key, required this.api, this.now});
+  const MarketingReport({
+    super.key,
+    required this.api,
+    this.now,
+    this.formats = DisplayFormats.fallback,
+  });
 
   final ApiClient api;
   final DateTime Function()? now;
+  final DisplayFormats formats;
 
   @override
   State<MarketingReport> createState() => _MarketingReportState();
 }
 
 class _MarketingReportState extends State<MarketingReport> {
-  String _period = 'last_week';
+  late DateSpan _span = _lastWeek(_today);
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = true;
   String? _error;
 
-  static const _periods = {
-    'this_week': 'This week',
-    'last_week': 'Last week',
-    'this_month': 'This month',
-    'last_month': 'Last month',
-  };
-
   /// Monday-start weeks, as the P&L's are.
-  (DateTime, DateTime) _range() {
-    final now = (widget.now ?? DateTime.now)();
-    final today = DateTime(now.year, now.month, now.day);
+  static DateSpan _lastWeek(DateTime today) {
     final monday = today.subtract(Duration(days: today.weekday - 1));
-
-    return switch (_period) {
-      'this_week' => (monday, today),
-      'this_month' => (DateTime(today.year, today.month), today),
-      'last_month' => (
-        DateTime(today.year, today.month - 1),
-        DateTime(today.year, today.month, 0),
-      ),
-      _ => (
-        monday.subtract(const Duration(days: 7)),
-        monday.subtract(const Duration(days: 1)),
-      ),
-    };
+    return DateSpan(
+      monday.subtract(const Duration(days: 7)),
+      monday.subtract(const Duration(days: 1)),
+    );
   }
+
+  DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
   static String _day(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -64,7 +57,7 @@ class _MarketingReportState extends State<MarketingReport> {
       _loading = true;
       _error = null;
     });
-    final (from, to) = _range();
+    final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/marketing', {
       'from': _day(from),
       'to': _day(to),
@@ -113,6 +106,26 @@ class _MarketingReportState extends State<MarketingReport> {
     ('net_profit_minor', 'Net profit'),
   ];
 
+  /// Profit with no P&L behind it says so on the cell, and why on hover
+  /// (Jose kept asking why it was blank).
+  Widget _cellWidget(Map<String, dynamic> row, String key) {
+    final missing = row['profit_missing'];
+    if ((key == 'profit_minor' || key == 'net_profit_minor') &&
+        row[key] == null &&
+        missing is String) {
+      return Tooltip(
+        message: 'No profit: $missing.',
+        child: Text(
+          'No P&L',
+          key: ValueKey('no-pnl-${row['branch']}-${row['source']}-$key'),
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+      );
+    }
+
+    return Text(_cell(row, key));
+  }
+
   String _cell(Map<String, dynamic> row, String key) => switch (key) {
     'branch' || 'source' => '${row[key] ?? ''}',
     'leads_to_jobs' => row[key] is num ? '${row[key]}%' : '—',
@@ -132,22 +145,14 @@ class _MarketingReportState extends State<MarketingReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 8,
-          children: [
-            for (final p in _periods.entries)
-              ChoiceChip(
-                key: ValueKey('marketing-${p.key}'),
-                label: Text(p.value),
-                selected: _period == p.key,
-                showCheckmark: false,
-                onSelected: (_) {
-                  setState(() => _period = p.key);
-                  _load();
-                },
-              ),
-          ],
+        ReportDates(
+          initial: _span,
+          today: _today,
+          formats: widget.formats,
+          onChanged: (span) {
+            setState(() => _span = span);
+            _load();
+          },
         ),
         const SizedBox(height: 12),
         if (_error != null)
@@ -172,7 +177,7 @@ class _MarketingReportState extends State<MarketingReport> {
                   DataRow(
                     cells: [
                       for (final (key, _) in _columns)
-                        DataCell(Text(_cell(row, key))),
+                        DataCell(_cellWidget(row, key)),
                     ],
                   ),
               ],

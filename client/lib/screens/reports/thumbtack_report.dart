@@ -1,48 +1,42 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import 'report_dates.dart';
 
 /// Thumbtack lead spend per category and branch (Jose, 2026-10-13: "add the
 /// Thumbtack financials as well"). Only leads EzBizi received: Thumbtack
 /// cannot list the rest, so this is not the whole Thumbtack bill.
 class ThumbtackReport extends StatefulWidget {
-  const ThumbtackReport({super.key, required this.api, this.now});
+  const ThumbtackReport({
+    super.key,
+    required this.api,
+    this.now,
+    this.formats = DisplayFormats.fallback,
+  });
 
   final ApiClient api;
   final DateTime Function()? now;
+  final DisplayFormats formats;
 
   @override
   State<ThumbtackReport> createState() => _ThumbtackReportState();
 }
 
 class _ThumbtackReportState extends State<ThumbtackReport> {
-  String _period = 'last_month';
+  late DateSpan _span = DateSpan(
+    DateTime(_today.year, _today.month - 1),
+    DateTime(_today.year, _today.month, 0),
+  );
   String? _category;
   String? _branch;
   String? _state;
   Map<String, dynamic>? _data;
   String? _error;
 
-  static const _periods = {
-    'this_month': 'This month',
-    'last_month': 'Last month',
-    'last_12': 'Last 12 months',
-  };
-
-  (DateTime, DateTime) _range() {
-    final now = (widget.now ?? DateTime.now)();
-    final today = DateTime(now.year, now.month, now.day);
-
-    return switch (_period) {
-      'this_month' => (DateTime(today.year, today.month), today),
-      'last_12' => (DateTime(today.year - 1, today.month, today.day), today),
-      _ => (
-        DateTime(today.year, today.month - 1),
-        DateTime(today.year, today.month, 0),
-      ),
-    };
-  }
+  DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
   static String _day(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -54,7 +48,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
   }
 
   Future<void> _load() async {
-    final (from, to) = _range();
+    final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/thumbtack', {
       'from': _day(from),
       'to': _day(to),
@@ -127,22 +121,14 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 8,
-          children: [
-            for (final p in _periods.entries)
-              ChoiceChip(
-                key: ValueKey('thumbtack-${p.key}'),
-                label: Text(p.value),
-                selected: _period == p.key,
-                showCheckmark: false,
-                onSelected: (_) {
-                  setState(() => _period = p.key);
-                  _load();
-                },
-              ),
-          ],
+        ReportDates(
+          initial: _span,
+          today: _today,
+          formats: widget.formats,
+          onChanged: (span) {
+            setState(() => _span = span);
+            _load();
+          },
         ),
         const SizedBox(height: 12),
         Wrap(

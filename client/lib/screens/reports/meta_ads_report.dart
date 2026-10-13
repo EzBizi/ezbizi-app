@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
+import '../../widgets/date_range_picker.dart';
 import '../../widgets/ai_mark.dart';
 import '../../widgets/error_note.dart';
+import 'report_dates.dart';
 
 /// Facebook ad spend per campaign (Jose, 2026-10-12: "Facebook Financial
 /// report + Retro filter by state and category"), filtered by the state a
@@ -14,18 +17,23 @@ class MetaAdsReport extends StatefulWidget {
     required this.api,
     this.canEdit = false,
     this.now,
+    this.formats = DisplayFormats.fallback,
   });
 
   final ApiClient api;
   final bool canEdit;
   final DateTime Function()? now;
+  final DisplayFormats formats;
 
   @override
   State<MetaAdsReport> createState() => _MetaAdsReportState();
 }
 
 class _MetaAdsReportState extends State<MetaAdsReport> {
-  String _period = 'last_month';
+  late DateSpan _span = DateSpan(
+    DateTime(_today.year, _today.month - 1),
+    DateTime(_today.year, _today.month, 0),
+  );
   String? _state;
   String? _category;
   String? _region;
@@ -34,31 +42,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
   bool _editing = false;
   String? _error;
 
-  static const _periods = {
-    'last_week': 'Last week',
-    'this_month': 'This month',
-    'last_month': 'Last month',
-    'last_12': 'Last 12 months',
-  };
-
-  (DateTime, DateTime) _range() {
-    final now = (widget.now ?? DateTime.now)();
-    final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
-
-    return switch (_period) {
-      'last_week' => (
-        monday.subtract(const Duration(days: 7)),
-        monday.subtract(const Duration(days: 1)),
-      ),
-      'this_month' => (DateTime(today.year, today.month), today),
-      'last_12' => (DateTime(today.year - 1, today.month, today.day), today),
-      _ => (
-        DateTime(today.year, today.month - 1),
-        DateTime(today.year, today.month, 0),
-      ),
-    };
-  }
+  DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
   static String _day(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -70,7 +54,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
   }
 
   Future<void> _load() async {
-    final (from, to) = _range();
+    final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/meta', {
       'from': _day(from),
       'to': _day(to),
@@ -168,22 +152,14 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 8,
-          children: [
-            for (final p in _periods.entries)
-              ChoiceChip(
-                key: ValueKey('meta-${p.key}'),
-                label: Text(p.value),
-                selected: _period == p.key,
-                showCheckmark: false,
-                onSelected: (_) {
-                  setState(() => _period = p.key);
-                  _load();
-                },
-              ),
-          ],
+        ReportDates(
+          initial: _span,
+          today: _today,
+          formats: widget.formats,
+          onChanged: (span) {
+            setState(() => _span = span);
+            _load();
+          },
         ),
         const SizedBox(height: 12),
         Wrap(
