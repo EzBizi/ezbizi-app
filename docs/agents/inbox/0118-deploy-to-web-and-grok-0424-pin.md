@@ -23,5 +23,8 @@ sent from here on ships in 0.0.0425.
 - **Leads:** 4d0c069d is in 0.0.0424. Set leads.booking_url and leads.office_phone on prod
   only after this file says 0424 is live.
 
+- **Automations:** 68448a64 (alert step names who it skipped) is merged as 7ea9730b and ships in
+  **0.0.0425**. 0424 has 59f33f0e, which is enough to add the alert step to Complaint call.
+
 ---
 **Results (filled in after 0.0.0424 deploys):**
