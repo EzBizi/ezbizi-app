@@ -194,7 +194,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
 <h1>AI Assistance › Staff bot: one number, a menu for each role</h1>
 <p class="subt">Jose asked for one WhatsApp number whose menu changes with the person's role. Everything it says is kept in EzBizi, where it can be edited. The Office and Technician menus below are Jose's list. Every person, phone number and figure here is invented.</p>
 <p class="cap"><b>Linked, never copied.</b> Most items point at a Training guide, down to its chapter and section. Editing the guide changes what the bot says, and nothing is kept twice. Where nothing in EzBizi covers an item yet (Monday training, the Before &amp; After gallery, the trainers' videos, the Google reviews link, a stand-alone dispatch speech), the item becomes a <b>Library entry</b> written in place: text, a link, a video or photos. One item, Daily Conversion Updates, is <b>made from Reports</b> each day. The bot knows who is writing from their phone number on their EzBizi profile, and that person's role decides the menu they get.</p>
-<div class="need"><b>Who builds what:</b> Training keeps the guides; Meta runs the WhatsApp number and sends the menus; Grok AI writes the free answers over them; UI/UX builds this editor. <b>WhatsApp's limits shape the editor:</b> one list holds at most 10 rows, a row's title 24 characters and its description 72. The counters below show how much is left of each.</div>
+<div class="need"><b>Who builds what:</b> Training keeps the guides; Meta runs the WhatsApp number and sends the menus; Grok AI writes the free answers over them; UI/UX builds this editor. <b>WhatsApp's limits shape the editor</b> (Meta, via Grok AI): a list holds 10 rows and one is the bot's own <i>Find a location</i>, so a menu takes <b>9 topics</b>; a row's title is 24 characters and its line 72; an answer has at most 3 buttons; media goes one per message (photos 5 MB, video 16 MB), so a gallery is 3–5 photos or a link to a gallery page, and long training videos go as links. A message the bot sends unasked, such as a morning Daily Conversion Update, needs a template Meta approves; asked for from the menu, it needs none. A typed question gets an AI answer from the role's guide and the Library, so the menu is a shortcut, not the only way in. The counters below show how much is left.</div>
 
 <!-- ───────── Desktop 1 ───────── -->
 <h2><span class="n">1</span> Menus on the left, items in order, the editor and a live preview <span class="rec">RECOMMENDED</span></h2>
@@ -206,7 +206,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
  <div class="tabs"><span>AI</span><span>Library</span><span>WhatsApp groups</span><span class="on">Staff bot</span><span>Settings</span></div>
  <div class="cols">
   <div class="menus">
-   <div class="menu on"><b>Office</b><span class="tiny">7 items · 7 of 10 rows</span><div class="roles"><span class="role">Dispatcher</span><span class="role">Remote Dispatcher</span><span class="role">Office Manager</span></div></div>
+   <div class="menu on"><b>Office</b><span class="tiny">7 topics · 7 of 9</span><div class="roles"><span class="role">Dispatcher</span><span class="role">Remote Dispatcher</span><span class="role">Office Manager</span></div></div>
    <div class="menu"><b>Technicians</b><span class="tiny">6 items · 2 need content</span><div class="roles"><span class="role">Technician</span><span class="role">Lead Technician</span></div></div>
    <span class="btn sm">+ Another menu</span>
    <span class="tiny">A role in no menu gets "Ask a question" only. A person in two menus' roles gets the first one.</span>
@@ -226,7 +226,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
    <div class="fld"><label>Title in the menu</label><div class="in">Locations</div><span class="count">9 / 24</span></div>
    <div class="fld"><label>Line under it</label><div class="in">Branches, hours and addresses</div><span class="count">29 / 72</span></div>
    <div class="fld"><label>The answer comes from</label><div class="opt3"><span>📘 A Training guide</span><span class="on">📍 Library entry</span><span>📊 From Reports</span></div></div>
-   <div class="fld"><label>Library entry</label><div class="crumb"><span class="seg2">Library ▾</span>›<span class="seg2">Locations ▾</span></div><span class="tiny">6 branches, kept in the Library already. The bot sends the one nearest the person, and the list on request.</span></div>
+   <div class="fld"><label>Library entry</label><div class="crumb"><span class="seg2">Library ▾</span>›<span class="seg2">Locations ▾</span></div><span class="tiny">6 branches, kept in the Library already. The bot's own Find a location row answers with the nearest; this item adds the company's details.</span></div>
    <div class="fld"><label>Attach</label><div class="bar2"><span class="btn sm">🔗 Link</span><span class="btn sm">🎬 Video</span><span class="btn sm">🖼 Photos</span></div></div>
    <div class="foot"><span class="tiny">Saved as you type · edits reach WhatsApp at once</span><span class="sp"></span><span class="btn sm">Send me a test</span></div>
   </div>
@@ -245,7 +245,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
   <h3>Before &amp; After gallery <span class="stt miss">Needs content</span></h3>
   <div class="fld"><label>The answer comes from</label><div class="opt3"><span>📘 A Training guide</span><span class="on">📍 Library entry</span><span>📊 From Reports</span></div></div>
   <div class="fld"><label>Write it here</label><div class="in area"><span class="ph">A few words the bot sends before the photos…</span></div></div>
-  <div class="fld"><label>Photos</label><div class="bar2"><span class="btn sm">🖼 Add photos</span><span class="tiny">0 of 10 · sent as one album</span></div></div>
+  <div class="fld"><label>Photos</label><div class="bar2"><span class="btn sm">🖼 Add photos</span><span class="tiny">0 photos · up to 5 are sent, then a link to the rest</span></div></div>
   <span class="tiny">Until it has content, the item stays in the menu and answers: "Coming soon, ask your manager."</span>
  </div>
 </div>
@@ -263,13 +263,13 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">2</span><div class="tx"><b>Dispatch guidelines</b></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide</span></div><span class="stt ok">Ready</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">3</span><div class="tx"><b>Each call type</b></div><div class="src"><span class="ic g">📘</span><span>Dispatcher guide</span></div><span class="stt ok">Ready</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">4</span><div class="tx"><b>Software videos</b></div><div class="src"><span class="ic g">📘</span><span>2 guides</span></div><span class="stt miss">7 missing</span></div>
-   <span class="tiny">+ 3 more · 7 of 10 rows</span></div>
+   <span class="tiny">+ 3 more · 7 of 9 topics</span></div>
   <div class="items" style="padding:10px;gap:8px"><div class="bar2"><b>Technicians</b><span class="sp"></span><span class="role">Technician</span><span class="role">Lead Technician</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">1</span><div class="tx"><b>Core values</b></div><div class="src"><span class="ic g">📘</span><span>Technician guide</span></div><span class="stt ok">Ready</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">2</span><div class="tx"><b>Before &amp; After</b></div><div class="src"><span class="ic m">🖼</span><span>Library entry</span></div><span class="stt miss">Needs content</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">3</span><div class="tx"><b>How-to videos</b></div><div class="src"><span class="ic g">📘</span><span>Platform and Reports</span></div><span class="stt ok">Ready</span></div>
    <div class="it" style="border:1px solid var(--line);border-radius:8px"><span class="h">⋮⋮</span><span class="n">4</span><div class="tx"><b>Guidelines</b></div><div class="src"><span class="ic g">📘</span><span>Conduct and Behaviour</span></div><span class="stt miss">Trainer videos missing</span></div>
-   <span class="tiny">+ 2 more · 6 of 10 rows</span></div>
+   <span class="tiny">+ 2 more · 6 of 9 topics</span></div>
  </div>
 </div></div></div>
 
