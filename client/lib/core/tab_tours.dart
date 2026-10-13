@@ -719,4 +719,222 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'ai_assistance': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-ai_assistance-tabs',
+        title: 'AI Assistance',
+        body: 'AI, Library, WhatsApp groups and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-ai_assistance-ask',
+        title: 'Ask',
+        body: 'A question in your own words, or a city, state or branch code.',
+      ),
+      TourStep(
+        anchor: 'assistant-answer',
+        title: 'From the Library',
+        body: 'The Library entry that answers it.',
+      ),
+      TourStep(
+        anchor: 'assistant-ai-answer',
+        title: "AI's answer",
+        body: 'AI reads the Library and answers in its own words.',
+      ),
+    ],
+  ),
+  'customer_experience': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'customer-experience-tabs',
+        title: 'Customer Experience',
+        body: 'Reviews and Business Profile, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-unanswered',
+        title: 'Unanswered',
+        body: 'Only the reviews nobody has replied to, with how many.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-rating',
+        title: 'Rating',
+        body: 'One star rating at a time.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-fetch',
+        title: 'Fetch new',
+        body: 'Reads new reviews now instead of waiting for the next check.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-reviews',
+        title: 'The reviews',
+        body: 'Click one to read it and write the reply.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-check-google',
+        title: 'Check Google',
+        body: 'Reads the profiles from Google again.',
+      ),
+    ],
+  ),
+  'reports': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tabs',
+        title: 'Reports',
+        body:
+            'Your reports, the Builder, Performance and the rest, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-new',
+        title: 'New report',
+        body: 'Opens the Builder on a new report.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-library',
+        title: 'Your reports',
+        body: 'Each saved report, what it covers, and when it was sent.',
+      ),
+      TourStep(
+        anchor: 'ads-refresh',
+        title: 'Read again',
+        body: 'Reads the figures from Google again.',
+      ),
+      TourStep(
+        anchor: 'ads-account-search',
+        title: 'Find an account',
+        body: 'Narrows the accounts as you type.',
+      ),
+      TourStep(
+        anchor: 'ads-accounts',
+        title: 'Accounts',
+        body:
+            'Managers stand out in their own colour, above the accounts in them.',
+      ),
+      TourStep(
+        anchor: 'ads-account-figures',
+        title: 'The account',
+        body: 'Cost, clicks and the rest, for the dates chosen.',
+      ),
+      TourStep(
+        anchor: 'ads-campaign-search',
+        title: 'Find a campaign',
+        body: 'Narrows the campaigns as you type.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-pl-controls',
+        title: 'Profit & Loss',
+        body: 'Where the figures come from, and which week.',
+      ),
+    ],
+  ),
+  'monitoring': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-monitoring-tabs',
+        title: 'Monitoring',
+        body:
+            'General, Map, PC Specs, Files, Camera Monitoring and Desktop '
+            'Monitoring, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'floor-plan-picker',
+        title: 'Floor plan',
+        body: 'Which floor plan you are looking at.',
+      ),
+      TourStep(
+        anchor: 'floor-plan-canvas',
+        title: 'The plan',
+        body: 'Each machine where it sits, with its status.',
+      ),
+      TourStep(
+        anchor: 'general-refresh',
+        title: 'Refresh status',
+        body: 'Reads every status again.',
+      ),
+      TourStep(
+        anchor: 'camera-monitoring-add-button',
+        title: 'Add a camera',
+        body: 'Adds a camera by its address.',
+      ),
+      TourStep(
+        anchor: 'camera-monitoring-grid',
+        title: 'Cameras',
+        body: 'Every camera you can see, side by side.',
+      ),
+    ],
+  ),
+  'automations': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-automations-tabs',
+        title: 'Automations',
+        body: 'Your automations, and Build.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-new',
+        title: 'New automation',
+        body: 'A rule: when something happens, what EzBizi does.',
+      ),
+      TourStep(
+        anchor: 'automations-search',
+        title: 'Find a rule',
+        body: 'By its name.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-live',
+        title: 'Live',
+        body: 'Switches a rule on or off.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-menu',
+        title: 'More',
+        body:
+            'Edit, duplicate, test, run it now, its run history, or delete it.',
+      ),
+    ],
+  ),
+  'hr': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-tabs',
+        title: 'Human Resources',
+        body:
+            'Dashboard, Records, Contracts, Invitations and Onboarding, as '
+            'your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-period',
+        title: 'The period',
+        body: 'Day, week, month, quarter or year.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-refresh',
+        title: 'Refresh',
+        body: 'Reads the dashboard again.',
+      ),
+      TourStep(
+        anchor: 'hr-right-now',
+        title: 'Right now',
+        body:
+            'Who is on the clock, who is away today, and what is due for retaking.',
+      ),
+      TourStep(
+        anchor: 'hr-by-month',
+        title: 'Joined and left',
+        body: 'People who joined and left, month by month over the last year.',
+      ),
+      TourStep(
+        anchor: 'hr-places',
+        title: 'Where people work',
+        body: 'How many people work at each place.',
+      ),
+    ],
+  ),
 };

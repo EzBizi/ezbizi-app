@@ -129,6 +129,7 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-ai_assistance-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() {
@@ -675,6 +676,7 @@ class _AssistantTabState extends State<AssistantTab> {
   );
 
   Widget _askField(BuildContext context) => Row(
+    key: const ValueKey('tour-ai_assistance-ask'),
     children: [
       Expanded(
         child: TextField(

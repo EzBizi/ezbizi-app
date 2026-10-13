@@ -215,6 +215,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   // broken, and never that their role is missing one grant.
                   reason: noCreate,
                   child: FilledButton.icon(
+                    key: const ValueKey('tour-automations-new'),
                     onPressed: (noCreate != null || _catalogue == null)
                         ? null
                         : _new,
@@ -227,6 +228,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           Material(
             color: Theme.of(context).colorScheme.surface,
             child: TabBarLike(
+              key: const ValueKey('tour-automations-tabs'),
               labels: [for (final tab in _tabs) (tab.$2, tab.$3)],
               selected: _tabs.indexWhere((tab) => tab.$1 == _tab),
               onSelected: (i) => setState(() => _tab = _tabs[i].$1),
@@ -545,6 +547,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       // reader has no reason to read as belonging to it.
                       label: 'Live — ${automation['name']}',
                       child: Switch(
+                        key: const ValueKey('tour-automations-live'),
                         value: automation['is_active'] as bool? ?? false,
                         onChanged: noEdit != null
                             ? null
@@ -553,6 +556,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     ),
                   ),
                   PopupMenuButton<String>(
+                    key: const ValueKey('tour-automations-menu'),
                     // Every menu on this screen is drawn from the same icon, so
                     // "Show menu" — the framework's default — is what a screen
                     // reader reads for all of them.

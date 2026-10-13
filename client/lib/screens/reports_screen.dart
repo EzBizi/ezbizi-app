@@ -231,6 +231,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   Expanded(
                     child: TabBarLike(
+                      key: const ValueKey('tour-reports-tabs'),
                       labels: _chipLabels(
                         canBuildHere: canBuildHere,
                         canExperiment: canExperiment,
@@ -455,6 +456,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Padding(
       padding: const EdgeInsets.only(left: 12),
       child: FilledButton.icon(
+        key: const ValueKey('tour-reports-new'),
         // To the Builder by NAME. `_chip = 1` was the Builder only while the
         // library sat at 0 (deploy desk audit, 2026-09-29).
         onPressed: () => setState(() {
@@ -811,6 +813,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         );
 
     return Container(
+      key: const ValueKey('tour-reports-library'),
       decoration: BoxDecoration(
         color: scheme.surface,
         border: Border.all(color: scheme.outlineVariant),

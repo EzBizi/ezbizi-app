@@ -267,6 +267,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
         .toList();
 
     return Wrap(
+      key: const ValueKey('tour-reports-pl-controls'),
       spacing: 12,
       runSpacing: 12,
       crossAxisAlignment: WrapCrossAlignment.center,
