@@ -41,6 +41,7 @@ class ReportsModuleTest extends TestCase
             'library.view',
             'builder.view',
             'experimental.view',
+            'scoring.view',
             'marketing.view',
             'meta.view',
             'thumbtack.view',
@@ -62,8 +63,9 @@ class ReportsModuleTest extends TestCase
             $this->module()->tabs,
         );
 
-        // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental")
-        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Marketing', 'Meta', 'Thumbtack'], $labels);
+        // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental");
+        // Scoring added 2026-10-13 (Administrators and Lead Managers).
+        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Scoring', 'Marketing', 'Meta', 'Thumbtack'], $labels);
     }
 
     /**
