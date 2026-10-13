@@ -13,16 +13,17 @@ class TaskPolicy
 
     public function view(User $user, Task $task): Response
     {
-        return $this->boards->view($user, $task->board);
+        // A deleted (custom) board takes its tasks out of sight with it.
+        return $task->board ? $this->boards->view($user, $task->board) : Response::denyAsNotFound();
     }
 
     public function update(User $user, Task $task): Response
     {
-        return $this->boards->update($user, $task->board);
+        return $task->board ? $this->boards->update($user, $task->board) : Response::denyAsNotFound();
     }
 
     public function delete(User $user, Task $task): Response
     {
-        return $this->boards->update($user, $task->board);
+        return $this->update($user, $task);
     }
 }
