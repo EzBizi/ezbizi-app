@@ -34,6 +34,8 @@ final class CallLabels
         'availability' => 'Did not book because no appointment time suited them, or not soon enough.',
         'booked' => 'The caller accepted a visit on this call (an estimate or inspection counts, even if repairs are left undecided).',
         // Added 2026-10-13 (as above): new-client lines carry these too.
+        // Reschedule too (Jose: "maybe a rescheduled tag as well?").
+        'reschedule' => 'Moving an appointment the caller already had to another day or time.',
         'cancel' => 'Wants to cancel an appointment or the work: found someone else, no longer needs it, sold the house.',
         'confirmation' => 'Calling about an appointment already made: is the technician still coming, confirming the day or time.',
         'service_question' => 'Only asked whether a service is offered (masonry, vent extensions, gas logs...) without asking a price or a day.',
@@ -47,7 +49,9 @@ final class CallLabels
      * suggestions/EZBIZI-TRANSCRIPTION-AND-CUSTOMER-IDENTITY-HANDOFF.md, §4),
      * so a quote or an offered time is not read as a booking.
      */
-    private const BOOKING_RULES = 'A price quote or an offered time is not a booking: the caller must accept a visit. '
+    private const BOOKING_RULES = 'Booked means a NEW appointment created on this call. Moving, cancelling or confirming an '
+        .'appointment the caller already had is not booked: use reschedule, confirmation or cancel. '
+        .'A price quote or an offered time is not a booking: the caller must accept a visit. '
         .'A caller who declines, says they will call back, or is shopping around has not booked. '
         .'If a booking is cancelled later in the same call, it is not booked.';
 

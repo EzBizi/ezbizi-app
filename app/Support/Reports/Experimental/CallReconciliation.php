@@ -134,6 +134,24 @@ final class CallReconciliation
         $booked = $this->jobsCreatedBetween($jobs, $from, $to);
 
         /*
+         * A CALLER WHO ALREADY HAS A JOB (Jose, 2026-10-13, via Grok AI: a
+         * caller moving a job booked a week earlier read "Not booked"). An
+         * open job - not Done or Canceled - created before the dates, for the
+         * same number, makes the call "Existing job", out of the not-booked
+         * count. Only as far back as the jobs read (LOOKBACK_DAYS).
+         */
+        $openJobs = [];
+        foreach ($jobs as $job) {
+            $day = substr((string) ($job['created_at'] ?? ''), 0, 10);
+            $status = strtolower(trim((string) ($job['status'] ?? '')));
+            if ($day !== '' && $day < $from && ! in_array($status, ['done', 'canceled', 'cancelled'], true)
+                && ($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
+                $openJobs[$phone] = ['created_at' => $job['created_at'], 'scheduled_for' => $job['scheduled_for'] ?? null, 'status' => $job['status'] ?? null];
+            }
+        }
+        $existingJob = fn (array $call) => $openJobs[NumberNames::lastTen($call['from'] ?? null) ?? ''] ?? null;
+
+        /*
          * WHICH CALLS BECAME JOBS, matched on the caller's number: a Workiz job
          * created in the period for the same phone (last ten digits). Plus any
          * call somebody marked as booked by hand, for jobs Workiz cannot tie
@@ -201,7 +219,7 @@ final class CallReconciliation
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
             }
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted)) {
+            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
 
@@ -346,6 +364,7 @@ final class CallReconciliation
                 'result' => $call['result'] ?? null,
                 'outcome' => $this->outcome($call),
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
+                'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,

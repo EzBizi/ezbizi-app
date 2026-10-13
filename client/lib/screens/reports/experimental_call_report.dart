@@ -172,6 +172,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static const _notBookedLabels = {
     'price': 'Price',
     'availability': 'Availability',
+    'reschedule': 'Reschedule',
     'cancel': 'Cancel',
     'confirmation': 'Confirmation',
     'service_question': 'Service question',
@@ -782,9 +783,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             (c) =>
                 c['queue'] == _newQueue &&
                 c['answered_by'] != null &&
-                c['booked'] != true,
+                c['booked'] != true &&
+                c['existing_job'] == null,
           )
           .toList();
+
+  static String _existingJobTip(Map job) {
+    String day(Object? v) => '$v'.length >= 10 ? '$v'.substring(0, 10) : '—';
+    return 'Already had a job: booked ${day(job['created_at'])}, '
+        'for ${day(job['scheduled_for'])}'
+        '${job['status'] == null ? '' : ' (${job['status']})'}.';
+  }
 
   /// The calls that reached nobody: customers calling in. Outbound calls
   /// nobody picked up are listed beside them in Missed, never counted as a
@@ -1099,7 +1108,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             .where(
               (c) =>
                   (c['labels'] as Map?)?['grok'] == 'booked' &&
-                  c['booked'] != true,
+                  c['booked'] != true &&
+                  c['existing_job'] == null,
             )
             .toList(),
       _ => from.where((c) => !_isOutbound(c)).toList(),
@@ -2138,6 +2148,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         : call['queue'] == _newQueue
         ? call['booked'] == true
               ? const StatusPill('Booked', tone: Tone.ok)
+              // The caller already had an open job (Jose, 2026-10-13): a
+              // reschedule or a question, not a lost booking.
+              : call['existing_job'] is Map
+              ? Tooltip(
+                  message: _existingJobTip(call['existing_job'] as Map),
+                  // Jose, 2026-10-13: "maybe a rescheduled tag as well?"
+                  child: StatusPill(
+                    (call['labels'] as Map?)?[_labeller] == 'reschedule'
+                        ? 'Rescheduled'
+                        : 'Existing job',
+                  ),
+                )
               : const StatusPill('Not booked', tone: Tone.caution)
         : const StatusPill('Answered');
 
