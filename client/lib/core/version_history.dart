@@ -18,6 +18,8 @@ class VersionHistory {
       date: '13 Oct 2026',
       items: [
         'Scheduling › Availability: a zip search shows the earliest opening beside a suggested one near work already booked, with a small map of the route. The radius is in Settings › Scheduling.',
+        'Leads: a lead with a note shows a note mark in the list; hover it to read the note.',
+        'Leads: Awaiting reply is now solid red.',
       ],
     ),
     VersionRelease(
