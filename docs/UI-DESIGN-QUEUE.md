@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 87 · Reports · one look for every tab — **Jose: "yes, as u recommend" — desktop 1, phone 4** — building (`docs/previews/reports-one-look-layouts.html`)
+### 87 · Reports · one look for every tab — **Jose: "yes, as u recommend" — desktop 1, phone 4** — **BUILT** 34706c55 (session/uiux-reports-1: d6ba03b5 shell and bugs, b6be86b5 ReportGrid on Marketing/Meta/Thumbtack, 1b666c22 Google Ads and P&L, 34706c55 empty pages, library, scores). Left for later: Performance's own tables and Sources panel, the Builder preview (`docs/previews/reports-one-look-layouts.html`)
 
 Jose 2026-10-13, verbatim: *"Please whenever you can take a look at all the tabs in reports, specially the new ones ( also
 the old ones ) and see how you can improve them visually for UI-UX"*. Every tab and sub-tab was rendered with invented data,
