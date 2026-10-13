@@ -310,6 +310,7 @@ class _HrScreenState extends State<HrScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-hr-tabs'),
             labels: [for (final tab in _shownTabs) (tab.$2, tab.$3)],
             // TabBarLike speaks positions, so the conversion happens HERE and
             // nowhere else: one place that knows both, rather than an index

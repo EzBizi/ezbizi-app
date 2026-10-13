@@ -221,6 +221,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilterChip(
+                key: const ValueKey('tour-customer_experience-unanswered'),
                 label: Text(_unanswered > 0
                     ? 'Unanswered ($_unanswered)'
                     : 'Unanswered'),
@@ -233,6 +234,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               SizedBox(
                 width: 150,
                 child: SearchPickerField<int?>(
+                  key: const ValueKey('tour-customer_experience-rating'),
                   value: _rating,
                   border: InputBorder.none,
                   isDense: true,
@@ -252,6 +254,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 ),
               ),
               FilledButton.tonalIcon(
+                key: const ValueKey('tour-customer_experience-fetch'),
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing
                     ? const SizedBox(
@@ -362,6 +365,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   Widget _list(ThemeData theme) {
     return ListView.separated(
+      key: const ValueKey('tour-customer_experience-reviews'),
       padding: const EdgeInsets.only(bottom: 24),
       itemCount: _reviews.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
