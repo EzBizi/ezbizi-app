@@ -844,6 +844,30 @@ class SchedulingAvailabilityTest extends TestCase
             ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested'));
     }
 
+    /**
+     * Found on production 2026-10-13 (Atlanta): a later, farther day won
+     * because its open window sat next to the job. The day is chosen first,
+     * closest work then earliest; the window beside the job only picks within it.
+     */
+    public function test_a_closer_earlier_day_beats_a_later_one_with_an_adjacent_window(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        // Oct 5: ~2.8 miles off, at 11, which fills 11-2; only 7-11 is open.
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8270, -96.7990, '75204');
+        // Oct 12: ~4 miles off, at 8, inside the open 7-11.
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7290, -96.7990, '75215');
+
+        $suggested = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')
+            ->assertOk()
+            ->json('data.suggested');
+
+        $this->assertSame('2026-10-05', $suggested['date']);
+        $this->assertSame('07:00', $suggested['window']['start_time']);
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {

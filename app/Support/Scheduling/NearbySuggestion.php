@@ -90,10 +90,13 @@ final class NearbySuggestion
             return $out;
         }
 
+        // The day first (nearby and nearest_miles are per-day), then the window
+        // beside the job within it: gap before date let a later, farther day
+        // win on production (Atlanta, 2026-10-13).
         $best = collect($candidates)
             ->filter(fn ($c) => $c['nearby'] > 0)
-            ->sort(fn ($a, $b) => [-$a['nearby'], $a['gap'], $a['nearest_miles'], $a['date'], $a['window']['start_time']]
-                <=> [-$b['nearby'], $b['gap'], $b['nearest_miles'], $b['date'], $b['window']['start_time']])
+            ->sort(fn ($a, $b) => [-$a['nearby'], $a['nearest_miles'], $a['date'], $a['gap'], $a['window']['start_time']]
+                <=> [-$b['nearby'], $b['nearest_miles'], $b['date'], $b['gap'], $b['window']['start_time']])
             ->first();
 
         if ($best !== null) {
