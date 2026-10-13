@@ -2995,6 +2995,22 @@ the side panel, Keep it small moves them to a corner, and where a platform has n
 browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
 steps `since:` to offer them as What's new.
 
+### 84 · Task Board v2 · subtasks, your own columns and statuses, a board picker (`docs/previews/task-board-v2-layouts.html`)
+
+Jose 2026-10-13, via Task Board, on the live 0.0.0418 screen: *"I feel like this can be drastically Improve, tasks should
+have sub tasks as well, i should be able to make custom columns, etc, please take the time to look at workiz and their UI,
+i should also be able to make custom status, and columns, with options wether they are text based, numerical, status,
+etc."* In the organization view the board tabs wrap to four rows of about 80, many identical ("Main · 0" ×20). The same in
+every option: a board picker grouped company › franchise (My board first, search, open counts) replaces the flat tabs.
+Columns are per board in seven types: Text, Number (unit), Status (own labels and colours), Date, Person, Dropdown (own
+options) and Checkbox, each added, renamed, moved, hidden. Statuses are per board, each marked done or not. Subtasks open
+under their task, like Workiz's job checklists, with "2 / 5" on the task. Desktop **1** (recommended): one Board ▾ button
+with the grouped list, + at the end of the header to add a column, ⋮ per column, ▸ opening subtasks in place, Statuses…
+in a side panel. **2**: a rail tree of boards and a Customize board panel. **3**: Company ▾ Franchise ▾ pickers and
+subtasks as a checklist in the task panel. Phone **4** (recommended): a full-width picker opening a board list page, cards
+with custom columns as lines and subtasks under the card; **5**: a Boards tree page; **6**: two pickers. Owner: Task Board
+(backend); UI/UX builds the screens.
+
 ### 83 · Scheduling › Availability · earliest and suggested, with the route — **Jose: "go ahea with ur recommendations" — 1 and 4** (`docs/previews/scheduling-suggested-availability-layouts.html`)
 
 Jose 2026-10-13, via Scheduling: a zip search shows **Earliest** and **Suggested** availability. Suggested is the open
