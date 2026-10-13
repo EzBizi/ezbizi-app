@@ -43,6 +43,7 @@ class ReportsModuleTest extends TestCase
             'experimental.view',
             'marketing.view',
             'meta.view',
+            'thumbtack.view',
         ], $module->actions);
     }
 
@@ -62,7 +63,7 @@ class ReportsModuleTest extends TestCase
         );
 
         // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental")
-        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Marketing', 'Meta'], $labels);
+        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Marketing', 'Meta', 'Thumbtack'], $labels);
     }
 
     /**

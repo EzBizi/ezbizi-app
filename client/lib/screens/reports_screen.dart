@@ -16,6 +16,7 @@ import 'reports/marketing_report.dart';
 import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
+import 'reports/thumbtack_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/work_hours_report_panel.dart';
 
@@ -329,6 +330,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
           'Meta',
           Icons.campaign_outlined,
           () => MetaAdsReport(api: widget.api, canEdit: canBuildHere),
+        ),
+      // Thumbtack lead spend (Jose, 2026-10-13).
+      if (_mayOpen('thumbtack'))
+        (
+          'Thumbtack',
+          Icons.request_quote_outlined,
+          () => ThumbtackReport(api: widget.api),
         ),
       if (me != null)
         for (final module in me.reachableModules)
