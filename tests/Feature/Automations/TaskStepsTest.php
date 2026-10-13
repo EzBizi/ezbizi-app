@@ -106,4 +106,28 @@ class TaskStepsTest extends TestCase
             $this->assertEqualsCanonicalizing([$one->id, $two->id], Notification::query()->pluck('user_id')->unique()->values()->all());
         });
     }
+
+    /**
+     * Jose, 2026-10-13: complaint tasks for Adeline and Jonathan. A personal
+     * board is its owner's alone, so the task goes on the place's board and
+     * is given to them, rather than being refused on theirs.
+     */
+    public function test_a_task_given_to_somebody_else_lands_on_the_places_board(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $dispatcher = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $dispatcher) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => [],
+                'scope_snapshot' => ['type' => 'company', 'id' => $t['company']->id, 'company_chain' => [$t['company']->id]]]);
+
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint', 'assignee' => 'user:'.$dispatcher->id], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame($dispatcher->id, $task->assignee_user_id);
+            $this->assertSame(TaskBoard::query()->where('kind', 'company')->where('company_id', $t['company']->id)->value('id'), $task->board_id);
+        });
+    }
 }

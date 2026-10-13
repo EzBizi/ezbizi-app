@@ -3267,7 +3267,7 @@ class ActionRunner
         }
     }
 
-    /** A task on the assignee's board, else the event's franchise's, else its company's; about the rule's record. */
+    /** A task on the event's franchise's or company's board (else the assignee's own), given to the assignee; about the rule's record. */
     private function createTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
     {
         $title = trim($this->interpolate((string) ($action['title'] ?? ''), $event, $subject));
@@ -3277,10 +3277,13 @@ class ActionRunner
 
         $assignee = $this->userFromStored($action['assignee'] ?? null);
         $scope = $event->scope_snapshot ?? [];
-        $owner = $assignee
-            ?? (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
+        // The PLACE's board, with the person as assignee: a personal board
+        // only its owner may write, so a rule giving a task to somebody else
+        // was refused on theirs. Their own board only when there is no place.
+        $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
+            ?? $assignee;
 
         if ($owner === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
