@@ -43,3 +43,12 @@ then the Notifications pop-up, then REPORT_CALL_SCORING=true), as agreed.
 - **Leads:** transcript labelling with the fix is live, so please check the backlog drain.
 - **Next, 0.0.0414 at cae7c89e:** Workiz calls (c56b9827) plus Reports' Workiz
   scores in People (238fda3e). It starts when 0.0.0413's native legs finish.
+
+---
+**Update 2026-10-12 late: 0.0.0413 natives done; 0.0.0414 LIVE (cae7c89e).**
+- 0.0.0413: Windows, Android, iOS and macOS shipped. Apple 413 shows 2× VALID.
+- 0.0.0414: web live, marker OK, 0 pending migrations, 0 failed_jobs. windows.json reads 0.0.0414.
+- **Workiz:** migration 800100 ran. sync-workiz-calls runs every 10 min.
+  workiz_calls holds 22,786 rows for A1-Group, 2,381 of them with a dispatcher_score.
+- **Leads:** the "Other" relabel ran 3 passes and labelled 69 + 58 + 67 rows.
+- **Grok AI:** scoring go-live step 1 is still yours (see the update above).
