@@ -112,8 +112,28 @@ void main() {
                 'id': 'b-fr',
                 'kind': 'franchise',
                 'name': 'Lakeview franchise',
+                'company_id': 'c-1',
+                'company_name': 'Northside Chimney',
                 'open_for_me': 1,
                 'can_edit': false,
+              },
+              {
+                'id': 'b-m1',
+                'kind': 'franchise',
+                'name': 'Main',
+                'company_id': 'c-1',
+                'company_name': 'Northside Chimney',
+                'open_for_me': 0,
+                'can_edit': true,
+              },
+              {
+                'id': 'b-m2',
+                'kind': 'franchise',
+                'name': 'Main',
+                'company_id': 'c-2',
+                'company_name': 'Everdoors Garage',
+                'open_for_me': 0,
+                'can_edit': true,
               },
             ],
           });
@@ -265,12 +285,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the boards are tabs with my open count, and a board is its '
-      'groups in order, an all-done group folded', (tester) async {
+  testWidgets('a board is its groups in order, an all-done group folded', (
+    tester,
+  ) async {
     await pumpBoard(tester);
 
-    expect(find.text('My board · 2'), findsOneWidget);
-    expect(find.text('Lakeview franchise · 1'), findsOneWidget);
+    // The picker opens on My board.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('tasks-boards')),
+        matching: find.text('My board'),
+      ),
+      findsOneWidget,
+    );
 
     final week = find.byKey(const ValueKey('task-group-g1'));
     final done = find.byKey(const ValueKey('task-group-g2'));
@@ -383,12 +410,40 @@ void main() {
     expect(find.text('Omar Feld'), findsNothing);
   });
 
+  // UI queue 84: in the organization view the tabs wrapped into four rows,
+  // twenty of them "Main · 0".
+  testWidgets('the picker groups boards under their company, so two Mains '
+      'are told apart, with my open count on each', (tester) async {
+    await pumpBoard(tester);
+
+    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('NORTHSIDE CHIMNEY'), findsOneWidget);
+    expect(find.text('EVERDOORS GARAGE'), findsOneWidget);
+    expect(find.text('Main'), findsNWidgets(2));
+    expect(find.text('2 open'), findsOneWidget);
+    // Companies in alphabetical order, each Main under its own.
+    final everdoors = tester.getTopLeft(find.text('EVERDOORS GARAGE')).dy;
+    final northside = tester.getTopLeft(find.text('NORTHSIDE CHIMNEY')).dy;
+    final mains = [
+      for (final e in find.text('Main').evaluate())
+        tester.getTopLeft(find.byWidget(e.widget)).dy,
+    ]..sort();
+    expect(everdoors, lessThan(northside));
+    expect(mains.first, greaterThan(everdoors));
+    expect(mains.first, lessThan(northside));
+    expect(mains.last, greaterThan(northside));
+  });
+
   testWidgets('a board I may only read says so and offers no add', (
     tester,
   ) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.text('Lakeview franchise · 1'));
+    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lakeview franchise'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('task-t9')), findsOneWidget);
