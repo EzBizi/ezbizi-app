@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0419',
       date: '13 Oct 2026',
       items: [
+        'Reports: Performance › Calls has a Score column, AI’s score out of 10 for each call.',
         'Leads: Google bookings that were still "Booking through Google" now get the customer\'s name, phone, email and ZIP from Workiz\'s booking email.',
       ],
     ),
