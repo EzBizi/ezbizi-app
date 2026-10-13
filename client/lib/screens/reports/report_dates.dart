@@ -58,6 +58,15 @@ class _ReportDatesState extends State<ReportDates> {
     _set(next);
   }
 
+  /// The narrow panel fills the height it is given, and these tabs hold it
+  /// in a scrolling list, which gives none: Marketing, Meta and Thumbtack
+  /// drew nothing at all on a phone once the dates were opened (UI audit,
+  /// 2026-10-13). Most of a phone's height, then, and it scrolls inside.
+  static Widget _bounded(BuildContext context, Widget panel) =>
+      MediaQuery.sizeOf(context).width < 600
+      ? SizedBox(height: MediaQuery.sizeOf(context).height * 0.7, child: panel)
+      : panel;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -74,13 +83,16 @@ class _ReportDatesState extends State<ReportDates> {
         ),
         if (_picking) ...[
           const SizedBox(height: 8),
-          DateRangePanel(
-            initial: _span,
-            today: widget.today,
-            formats: widget.formats,
-            narrow: MediaQuery.sizeOf(context).width < 600,
-            onApply: _set,
-            onCancel: () => setState(() => _picking = false),
+          _bounded(
+            context,
+            DateRangePanel(
+              initial: _span,
+              today: widget.today,
+              formats: widget.formats,
+              narrow: MediaQuery.sizeOf(context).width < 600,
+              onApply: _set,
+              onCancel: () => setState(() => _picking = false),
+            ),
           ),
         ],
       ],
