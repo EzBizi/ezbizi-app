@@ -3,6 +3,7 @@
 namespace App\Support\Social;
 
 use App\Jobs\AnswerWhatsAppWithAi;
+use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
 use App\Models\StaffBotItem;
@@ -10,6 +11,7 @@ use App\Models\StaffBotMenu;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Support\Collection;
@@ -386,6 +388,14 @@ final class WhatsAppStaffBot
         // dumping its whole list rather than answering.
         if (mb_strlen($query) < 2) {
             $this->menu($number, $to, $viewer);
+
+            return;
+        }
+
+        // "Send me all the calls with 9524572594" (Jose, 2026-10-13): Grok reads
+        // the number and dates off the webhook; Reports access, as Performance.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && CallRecordingsRequest::looksLikeOne($query)) {
+            SendCallRecordings::dispatch($number->id, $to, $query);
 
             return;
         }

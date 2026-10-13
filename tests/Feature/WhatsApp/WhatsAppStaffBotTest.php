@@ -893,4 +893,41 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('for staff only', $this->sent[1]['text']['body']);
         $this->assertStringNotContainsString('third ring', $this->sent[1]['text']['body']);
     }
+
+    /** Jose, 2026-10-13: "please send me all the calls w this number 9524572594" goes to the recordings job. */
+    public function test_a_calls_request_from_reports_staff_is_queued_for_recordings(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);   // the admin: holds reports.view
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $this->inbound(self::BOT, $this->text('please send me all the calls w this number 9524572594'))->assertOk();
+
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\SendCallRecordings::class,
+            fn ($job) => str_contains($job->text, '9524572594'));
+        $this->assertSame([], $this->sent, 'nothing is sent from the webhook itself');
+    }
+
+    public function test_the_request_is_read_into_a_number_and_dates_or_a_question(): void
+    {
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::sequence()
+            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+                'is_request' => true, 'phone' => '(952) 457-2594', 'from' => '2026-10-13', 'to' => '2026-12-01', 'clarify' => '',
+            ]])))
+            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+                'is_request' => true, 'phone' => '', 'from' => '2026-10-12', 'to' => '2026-10-12', 'clarify' => '',
+            ]])))]);
+
+        $this->assertTrue(\App\Support\Ai\CallRecordingsRequest::looksLikeOne('send me all the calls w this number 9524572594'));
+        $this->assertFalse(\App\Support\Ai\CallRecordingsRequest::looksLikeOne('what is the wifi password'));
+        $this->assertSame(['phone' => '9524572594', 'from' => '2026-10-13', 'to' => '2026-10-13', 'clarify' => null],
+            \App\Support\Ai\CallRecordingsRequest::read('calls with 9524572594', $today), 'never later than today');
+        $this->assertSame('Which phone number? Send the 10 digits.',
+            \App\Support\Ai\CallRecordingsRequest::read('calls from yesterday', $today)['clarify']);
+    }
 }
