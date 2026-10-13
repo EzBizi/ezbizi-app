@@ -437,12 +437,17 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
     /**
      * "$14.90" and "Charged" as cents and the charge_status Google's leads use.
      *
-     * @return array{lead_cost_minor: ?int, lead_cost_currency: ?string, charge_status: ?string}
+     * And where the work is: the request's state and ZIP.
+     *
+     * @return array{lead_cost_minor: ?int, lead_cost_currency: ?string, charge_status: ?string, service_state: ?string, postal_code: ?string}
      */
     public static function cost(array $raw): array
     {
         $price = (string) ($raw['leadPrice'] ?? '');
         $state = strtolower(trim((string) ($raw['chargeState'] ?? '')));
+        $where = (array) (((array) ($raw['request'] ?? []))['location'] ?? []);
+        $region = strtoupper(trim((string) ($where['state'] ?? '')));
+        $zip = trim((string) ($where['zipCode'] ?? ''));
 
         return [
             'lead_cost_minor' => preg_match('/^\s*\$?\s*([\d,]+)(?:\.(\d{1,2}))?\s*$/', $price, $m) === 1
@@ -455,6 +460,8 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
                 $state === 'charged' => 'CHARGED',
                 default => strtoupper(str_replace(' ', '_', $state)),
             },
+            'service_state' => preg_match('/^[A-Z]{2}$/', $region) === 1 ? $region : null,
+            'postal_code' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
         ];
     }
 

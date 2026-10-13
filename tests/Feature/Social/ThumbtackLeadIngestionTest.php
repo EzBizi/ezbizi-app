@@ -316,7 +316,7 @@ class ThumbtackLeadIngestionTest extends TestCase
         $negotiation = fn (string $state) => [
             'negotiationID' => 'neg-1', 'createdAt' => '2026-09-08T14:30:00Z',
             'customer' => ['firstName' => 'Ada', 'lastName' => 'Sweep', 'phone' => '+15552345678'],
-            'request' => ['category' => ['name' => 'Chimney Cleaning']],
+            'request' => ['category' => ['name' => 'Chimney Cleaning'], 'location' => ['state' => 'NJ', 'zipCode' => '08108']],
             'leadPrice' => '$14.90', 'chargeState' => $state,
         ];
         // A callback, not URL patterns: the messages URL also matches negotiations/*.
@@ -331,6 +331,8 @@ class ThumbtackLeadIngestionTest extends TestCase
         $this->assertSame(1490, $lead->lead_cost_minor);
         $this->assertSame('USD', $lead->lead_cost_currency);
         $this->assertSame('CHARGED', $lead->charge_status);
+        $this->assertSame('NJ', $lead->service_state);
+        $this->assertSame('08108', $lead->postal_code);
 
         $this->artisan('ezbizi:thumbtack-lead-costs')->expectsOutputToContain('Read 1 of 1')->assertSuccessful();
 
@@ -342,7 +344,7 @@ class ThumbtackLeadIngestionTest extends TestCase
     public function test_a_price_reads_in_cents_and_nothing_is_guessed(): void
     {
         $this->assertSame(123450, ThumbtackLeads::cost(['leadPrice' => '$1,234.5'])['lead_cost_minor']);
-        $this->assertSame(['lead_cost_minor' => null, 'lead_cost_currency' => null, 'charge_status' => null], ThumbtackLeads::cost([]));
+        $this->assertSame(['lead_cost_minor' => null, 'lead_cost_currency' => null, 'charge_status' => null, 'service_state' => null, 'postal_code' => null], ThumbtackLeads::cost([]));
     }
 
     private function send(array $t, array $body): \Illuminate\Testing\TestResponse
