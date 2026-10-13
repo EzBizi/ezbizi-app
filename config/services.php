@@ -622,6 +622,8 @@ return [
         'concurrency' => (int) env('GROK_CLI_CONCURRENCY', 4),
         // Grok's reasoning effort; 'low' is ~3.5x faster on transcripts.
         'effort' => env('GROK_CLI_EFFORT', 'low'),
+        // Jose, 2026-10-13: "just new stuff from now on" - AI reads nothing older.
+        'since' => env('GROK_AI_SINCE', '2026-10-13'),
         'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
     ],
 

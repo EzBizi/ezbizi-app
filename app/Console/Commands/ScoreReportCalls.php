@@ -37,7 +37,7 @@ class ScoreReportCalls extends Command
         }
 
         $rows = CallReportTranscript::query()->withoutGlobalScopes()
-            ->where('created_at', '>=', now()->subDays((int) $this->option('days')))
+            ->where('created_at', '>=', max(now()->subDays((int) $this->option('days')), GrokCli::since()))
             ->where('transcript_labelled', 'like', '%Dispatcher:%')
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('call_report_scores')
                 ->whereColumn('call_report_scores.organization_id', 'call_report_transcripts.organization_id')
