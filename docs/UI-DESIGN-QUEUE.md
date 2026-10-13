@@ -2995,7 +2995,7 @@ the side panel, Keep it small moves them to a corner, and where a platform has n
 browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
 steps `since:` to offer them as What's new.
 
-### 83 · Scheduling › Availability · earliest and suggested, with the route (`docs/previews/scheduling-suggested-availability-layouts.html`)
+### 83 · Scheduling › Availability · earliest and suggested, with the route — **Jose: "go ahea with ur recommendations" — 1 and 4** (`docs/previews/scheduling-suggested-availability-layouts.html`)
 
 Jose 2026-10-13, via Scheduling: a zip search shows **Earliest** and **Suggested** availability. Suggested is the open
 window nearest booked work, so a technician does both, with *"a small map with an animation of the route being drawn
