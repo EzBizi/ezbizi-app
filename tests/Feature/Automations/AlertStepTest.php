@@ -32,9 +32,10 @@ class AlertStepTest extends TestCase
             $event = new AutomationEvent(['event_key' => 'lead.received', 'payload' => ['after' => ['phone' => '+15550001111']]]);
             $runner = app(ActionRunner::class);
 
-            $sent = $runner->run(['type' => 'alert.send', 'user_ids' => [$one->id, $two->id], 'message' => 'Complaint call {{phone}}'], $event, null, automation: $rule);
+            $sent = $runner->run(['type' => 'alert.send', 'user_ids' => [$one->id, $two->id, 'gone-user-id'], 'message' => 'Complaint call {{phone}}'], $event, null, automation: $rule);
 
             $this->assertTrue($sent['ok'], $sent['detail']);
+            $this->assertStringContainsString('1 named person is no longer active here', $sent['detail']);
             $alert = Alert::query()->sole();
             $this->assertSame('Complaint call +15550001111', $alert->message);
             $this->assertEqualsCanonicalizing([$one->id, $two->id], Notification::query()->where('source', 'alert')->pluck('user_id')->all());
