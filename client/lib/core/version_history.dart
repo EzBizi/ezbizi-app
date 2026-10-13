@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0419',
+      date: '13 Oct 2026',
+      items: [
+        'Leads: Google bookings that were still "Booking through Google" now get the customer\'s name, phone, email and ZIP from Workiz\'s booking email.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0418',
       date: '13 Oct 2026',
       items: [
