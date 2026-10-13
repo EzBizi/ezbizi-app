@@ -136,8 +136,24 @@ final class AppAsk
         }
     }
 
+    /** Jose, 2026-10-13: signed links (customer links, signature=) never reach xAI. */
+    public static function withoutSignedLinks(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return preg_replace('#https?://\S*[?&]signature=\S*#i', '[signed link removed]', $value);
+        }
+        if (is_array($value)) {
+            array_walk_recursive($value, function (&$v) {
+                $v = is_string($v) ? self::withoutSignedLinks($v) : $v;
+            });
+        }
+
+        return $value;
+    }
+
     private static function cut(mixed $value): mixed
     {
+        $value = self::withoutSignedLinks($value);
         $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         return strlen($json) > self::MAX_CHARS ? mb_strcut($json, 0, self::MAX_CHARS).' …(cut)' : $value;
