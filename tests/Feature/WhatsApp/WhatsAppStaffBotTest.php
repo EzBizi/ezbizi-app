@@ -616,7 +616,7 @@ class WhatsAppStaffBotTest extends TestCase
         // One message, not two: the explanation rides in the menu's body.
         $this->assertCount(1, $this->sent);
         $body = $this->sent[0]['interactive']['body']['text'];
-        $this->assertStringContainsString('Nothing matched "Atlantis"', $body);
+        $this->assertStringContainsString('Nothing matched *Atlantis*', $body);
         // No cheerful welcome straight after a failed search.
         $this->assertStringNotContainsString('Welcome', $body);
     }

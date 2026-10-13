@@ -57,7 +57,9 @@ final class WhatsAppPeriodReports
             $this->filename($batch, 'All companies'));
 
         $this->groups->deliver(self::APPROVAL, $label,
-            "Reply *APPROVE* to send the {$label} to every group, or *REFRESH* for a new copy once the Airtable P&L is in.");
+            "\u{1F4CA} *".ucfirst($label)." - ready for approval*\n\n"
+            ."\u{2705} Reply *APPROVE* to send them to every group\n"
+            ."\u{1F504} Reply *REFRESH* for a new copy once the Airtable P&L is in");
 
         return $reached;
     }
@@ -112,8 +114,8 @@ final class WhatsAppPeriodReports
         }
 
         $this->groups->deliver(self::APPROVAL, $this->label($batch), $word === 'REFRESH'
-            ? 'Building a new copy now.'
-            : 'Approved. Sending the '.$this->label($batch).' to every group now.');
+            ? "\u{1F504} *Building a new copy now.*"
+            : "\u{2705} *Approved!*\n\n\u{1F4E4} Sending the ".$this->label($batch).' to every group now.');
 
         return true;
     }

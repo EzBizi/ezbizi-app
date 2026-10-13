@@ -102,7 +102,7 @@ class WhatsAppIntakeTest extends TestCase
             ->where('event_key', 'lead.received')->where('subject_id', $lead->id)->count());
         // Both taps were thanked: the second was answered, not refused by the
         // database for trying to make the same lead again.
-        $this->assertCount(2, array_filter($this->sent, fn ($m) => str_contains((string) ($m['text']['body'] ?? ''), 'someone will reach out')));
+        $this->assertCount(2, array_filter($this->sent, fn ($m) => str_contains((string) ($m['text']['body'] ?? ''), 'Someone will reach out')));
     }
 
     public function test_i_want_to_work_with_you_tells_hr_and_makes_no_lead(): void

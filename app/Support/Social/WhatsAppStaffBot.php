@@ -113,8 +113,9 @@ final class WhatsAppStaffBot
     {
         if ($choice === self::FIND_LOCATION) {
             $this->text($number, $to,
-                'Text a city or state and I\'ll send that location\'s phone, address and '
-                .'service area - for example *Chicago* or *NJ*.');
+                "\u{1F4CD} *Find a location*\n\n"
+                ."Text a city or state and I'll send its phone, address and service area.\n\n"
+                ."\u{1F4AC} For example *Chicago* or *NJ*");
 
             return;
         }
@@ -151,7 +152,7 @@ final class WhatsAppStaffBot
      */
     private function refuse(WhatsAppNumber $number, string $to): void
     {
-        $this->text($number, $to, 'That option is for staff only. Text MENU to see what is available.');
+        $this->text($number, $to, "\u{1F512} That option is for staff only.\n\n\u{1F4CB} Text *MENU* to see what is available.");
     }
 
     private function answer(WhatsAppNumber $number, string $to, AssistantEntry $entry): void
@@ -165,7 +166,7 @@ final class WhatsAppStaffBot
     {
         $section = (string) $entries->first()->section;
 
-        $this->answerList($number, $to, $section, 'Choose a topic.', $entries);
+        $this->answerList($number, $to, $section, "\u{1F4DA} Choose a topic below.", $entries);
     }
 
     /** @param  Collection<int, AssistantEntry>  $entries */
@@ -207,7 +208,7 @@ final class WhatsAppStaffBot
          * having noticed. The short prompt carries on from the explanation.
          */
         $body = mb_substr($lead !== null
-            ? $lead."\n\nPlease choose an option below."
+            ? $lead."\n\n\u{1F447} Choose an option below."
             : $this->brain->welcome($organization), 0, 1024);
 
         // One row per section, leaving room for Find a location.
@@ -345,7 +346,7 @@ final class WhatsAppStaffBot
         }
 
         if ($answers->isNotEmpty()) {
-            $this->answerList($number, $to, 'Answers', 'These answers match "'.mb_substr($query, 0, 40).'".', $answers);
+            $this->answerList($number, $to, 'Answers', "\u{1F50E} These answers match *".mb_substr($query, 0, 40).'*', $answers);
 
             return;
         }
@@ -362,7 +363,7 @@ final class WhatsAppStaffBot
 
                 return;
             }
-            $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
+            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
 
             return;
         }
@@ -373,7 +374,7 @@ final class WhatsAppStaffBot
             ->implode("\n\n");
 
         if ($matches->count() > self::MAX_LOCATIONS) {
-            $reply .= "\n\n_Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
+            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
                 .'. Text a city for fewer._';
         }
 
@@ -392,18 +393,20 @@ final class WhatsAppStaffBot
     /** @param  array<string, string>  $site */
     private static function describe(array $site, string $fallbackName): string
     {
-        $lines = ['*'.($site['company_name'] ?? $fallbackName).'*'];
+        $lines = ["\u{1F3E2} *".($site['company_name'] ?? $fallbackName).'*'];
 
+        // One fact per line with its emoji: the voice GrokCli::WHATSAPP_STYLE
+        // gives AI replies (Jose, 2026-10-13).
         foreach ([
-            'phone' => 'Phone',
-            'address' => 'Address',
-            'service_area' => 'Serves',
-            'maps_url' => 'Map',
-        ] as $key => $label) {
+            'phone' => "\u{1F4DE}",
+            'address' => "\u{1F4CD}",
+            'service_area' => "\u{1F5FA}\u{FE0F}",
+            'maps_url' => "\u{1F517}",
+        ] as $key => $emoji) {
             $value = trim((string) ($site[$key] ?? ''));
 
             if ($value !== '') {
-                $lines[] = $label.': '.$value;
+                $lines[] = $emoji.' '.$value;
             }
         }
 
@@ -448,7 +451,7 @@ final class WhatsAppStaffBot
         }
 
         if ($answer === null) {
-            $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
+            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
 
             return;
         }
