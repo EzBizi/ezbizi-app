@@ -169,6 +169,9 @@ final class AssistantBrain
                 'required' => ['answered', 'reply', 'entry_ids'],
                 'additionalProperties' => false,
             ],
+            // A person is waiting, and on WhatsApp the one queue worker is:
+            // under its 90 s retry_after (Meta review, 2026-10-13).
+            60,
         );
 
         $reply = trim((string) ($json['reply'] ?? ''));

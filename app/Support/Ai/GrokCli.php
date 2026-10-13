@@ -40,9 +40,9 @@ final class GrokCli
      *                          or answers without the structured output: loud,
      *                          never an empty answer
      */
-    public static function ask(string $prompt, array $schema): array
+    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT): array
     {
-        $answer = self::askMany([$prompt], $schema)[0];
+        $answer = self::askMany([$prompt], $schema, $timeout)[0];
 
         if ($answer instanceof RuntimeException) {
             throw $answer;
@@ -64,7 +64,7 @@ final class GrokCli
      * @param  array<string, mixed>  $schema
      * @return list<array<string, mixed>|RuntimeException> in the prompts' order
      */
-    public static function askMany(array $prompts, array $schema): array
+    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT): array
     {
         $home = (string) config('services.grok_cli.home');
         $answers = [];
@@ -83,7 +83,7 @@ final class GrokCli
                 // transcript's timeout stopped every run behind it).
                 $running = [];
                 foreach ($works as $i => $work) {
-                    $running[$i] = Process::env(['HOME' => $home])->timeout(self::TIMEOUT)->start([
+                    $running[$i] = Process::env(['HOME' => $home])->timeout($timeout)->start([
                         $home.'/.grok/bin/grok',
                         '--prompt-file', $work.'/prompt.txt',
                         '--json-schema', json_encode($schema),
@@ -102,8 +102,8 @@ final class GrokCli
                     try {
                         $results[$i] = $process->wait();
                     } catch (ProcessTimedOutException) {
-                        self::failed('timed out after '.self::TIMEOUT.'s');
-                        $results[$i] = new RuntimeException('The Grok CLI timed out after '.self::TIMEOUT.'s');
+                        self::failed('timed out after '.$timeout.'s');
+                        $results[$i] = new RuntimeException('The Grok CLI timed out after '.$timeout.'s');
                     }
                 }
             } finally {

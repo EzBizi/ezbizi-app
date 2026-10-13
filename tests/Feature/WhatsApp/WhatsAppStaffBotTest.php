@@ -695,7 +695,8 @@ class WhatsAppStaffBotTest extends TestCase
             'answered' => true, 'reply' => 'Use the flue sizing chart in the Library.', 'entry_ids' => ['made-up-id'],
         ]]))]);
 
-        $this->inbound(self::BOT, $this->text('who approves overtime pay'))->assertOk();
+        $this->staff($t);
+        $this->inbound(self::BOT, $this->text('who approves holiday requests'))->assertOk();
 
         $this->assertSame('text', $this->sent[0]['type']);
         $this->assertStringContainsString('Use the flue sizing chart', $this->sent[0]['text']['body']);
@@ -712,8 +713,24 @@ class WhatsAppStaffBotTest extends TestCase
             'answered' => false, 'reply' => '', 'entry_ids' => [],
         ]]))]);
 
+        $this->staff($t);
         $this->inbound(self::BOT, $this->text('what is the wifi password'))->assertOk();
 
+        $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
+    }
+
+    /** Meta review, 2026-10-13: a stranger has the intake; no xAI call per message from the public. */
+    public function test_a_stranger_gets_the_menu_and_no_ai_call(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake();
+
+        $this->inbound(self::BOT, $this->text('who approves holiday requests'))->assertOk();
+
+        \Illuminate\Support\Facades\Process::assertNothingRan();
         $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
     }
 }

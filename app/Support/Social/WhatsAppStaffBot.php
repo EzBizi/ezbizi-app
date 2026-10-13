@@ -348,7 +348,8 @@ final class WhatsAppStaffBot
         if ($matches->isEmpty()) {
             // Grok reads the Library in the background: it takes seconds, and
             // the webhook must answer Meta at once (Jose, 2026-10-12).
-            if (GrokCli::configured() && mb_strlen($query) > 3) {
+            // Staff only: strangers have the intake, and each ask is an xAI call.
+            if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
                 AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
 
                 return;
