@@ -18,6 +18,7 @@ class VersionHistory {
       date: '13 Oct 2026',
       items: [
         'Reports: calls can be tagged Cancel, Confirmation or Service question, and every call is now split by speaker for coaching.',
+        'AI: only calls and leads from Oct 13 onward are read, summarized and scored.',
       ],
     ),
     VersionRelease(
