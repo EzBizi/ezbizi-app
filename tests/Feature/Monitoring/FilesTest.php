@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\MonitoredDevice;
 use App\Models\PlatformStaff;
+use App\Models\PlatformStaffLink;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -557,6 +558,36 @@ class FilesTest extends TestCase
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
             ->assertForbidden()
             ->assertJsonPath('code', 'files_locked');
+    }
+
+    public function test_a_manager_who_signs_in_through_a_staff_account_unlocks_with_that_authenticator(): void
+    {
+        // Jose and Bar, 2026-10-13: "it says i need to set it up, when it's
+        // already set up". Their sign-in factor lives on the linked
+        // PlatformStaff account, not on the tenant user — TwoFactorPolicy::
+        // subjectFor() is what sign-in asks, and unlock() must ask the same.
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $staff = $this->leadStaff('manager-staff@ezbizi.test');
+        $secret = app(Google2FA::class)->generateSecretKey(32);
+        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
+        PlatformStaffLink::create(['staff_id' => $staff->getKey(), 'user_id' => $manager->getKey()]);
+
+        // The tenant user itself has no authenticator — exactly their case.
+        $this->assertFalse($manager->fresh()->hasTotp());
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', [
+                'code' => app(Google2FA::class)->getCurrentOtp($secret),
+            ])
+            ->assertOk();
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertOk();
     }
 
     public function test_only_a_six_digit_code_unlocks_so_no_recovery_code_is_spent(): void
