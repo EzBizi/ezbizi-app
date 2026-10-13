@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\MonitoredDevice;
 use App\Models\Service;
 use App\Models\ServiceArea;
+use App\Models\Task;
 use App\Models\TrainingGuide;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -733,6 +734,36 @@ final class ReportMap
                 ],
                 'relations' => [
                     'person' => ['to' => 'users', 'local' => 'user_id', 'foreign' => 'id'],
+                ],
+            ],
+
+            /*
+             * Task Board tasks (2026-10-13). Scoped by the board the screen
+             * would show: a personal board only to its owner, a company or
+             * franchise board to tasks.view in that place - TaskBoards::visibleTo,
+             * reused so a report and the board cannot disagree.
+             */
+            'tasks' => [
+                'model' => Task::class,
+                'table' => 'tasks',
+                'label' => 'Tasks',
+                'module' => 'tasks',
+                'permission' => 'tasks.view',
+                'scope' => ['board_id' => 'task_board'],
+                'shared_because' => null,
+                'soft_deletes' => true,
+                'columns' => [
+                    'title' => ['label' => 'Task', 'type' => 'string'],
+                    'status' => ['label' => 'Status', 'type' => 'string'],
+                    'priority' => ['label' => 'Priority', 'type' => 'string'],
+                    'due_on' => ['label' => 'Due', 'type' => 'date'],
+                    'completed_at' => ['label' => 'Completed', 'type' => 'datetime'],
+                    'estimate_minutes' => ['label' => 'Estimate (min)', 'type' => 'integer'],
+                    'created_at' => ['label' => 'Created', 'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'assignee' => ['to' => 'users', 'local' => 'assignee_user_id', 'foreign' => 'id'],
+                    'franchise' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
                 ],
             ],
 
