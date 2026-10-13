@@ -9,6 +9,7 @@ use App\Models\Job;
 use App\Models\SavedReport;
 use App\Models\Task;
 use App\Models\TaskGroup;
+use App\Models\TaskStatus;
 use App\Models\WorkizJob;
 use App\Support\Reports\ReportMap;
 use App\Support\Tasks\TaskBoards;
@@ -464,6 +465,41 @@ class ReportsApiTest extends TestCase
             ->json('data.rows');
 
         $this->assertSame(['Branch task', 'My task'], array_map(fn ($r) => array_values($r)[0], $titles));
+    }
+
+    /** Task Board v2: a custom status reports its own name and done flag; subtasks say so. */
+    public function test_tasks_report_custom_statuses_and_subtasks(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $board = app(TaskBoards::class)->ensureFor($tenant['franchise']);
+            $invoiced = TaskStatus::query()->create(['board_id' => $board->id, 'name' => 'Invoiced', 'colour' => '#00aa00', 'position' => 9, 'is_done' => true]);
+            $group = TaskGroup::query()->where('board_id', $board->id)->value('id');
+            $parent = Task::query()->create(['board_id' => $board->id, 'group_id' => $group, 'franchise_id' => $board->franchise_id,
+                'title' => 'A parent', 'status' => 'done', 'status_id' => $invoiced->id]);
+            Task::query()->create(['board_id' => $board->id, 'group_id' => $group, 'franchise_id' => $board->franchise_id,
+                'title' => 'B child', 'parent_task_id' => $parent->id,
+                'status_id' => TaskStatus::query()->where('board_id', $board->id)->where('key', 'not_started')->value('id')]);
+        });
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/reports/preview', ['definition' => [
+                'root' => 'tasks',
+                'columns' => [
+                    ['resource' => 'tasks', 'column' => 'title'],
+                    ['resource' => 'task_statuses', 'column' => 'name'],
+                    ['resource' => 'task_statuses', 'column' => 'is_done'],
+                    ['resource' => 'tasks', 'column' => 'is_subtask'],
+                ],
+                'filters' => [],
+                'sort' => [['resource' => 'tasks', 'column' => 'title', 'direction' => 'asc']],
+            ]])
+            ->assertOk()
+            ->json('data.rows');
+
+        $this->assertSame([['A parent', 'Invoiced', true, false], ['B child', 'Not started', false, true]],
+            array_map(fn ($r) => array_map(fn ($v) => is_numeric($v) && ! is_string($v) ? (bool) $v : $v, array_values($r)), $rows));
     }
 
     /** The same gates as a run: building, and a column's own permission. */
