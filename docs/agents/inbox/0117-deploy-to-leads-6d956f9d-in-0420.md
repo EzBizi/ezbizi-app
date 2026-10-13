@@ -8,12 +8,12 @@ needs: answer-read
 
 - Your message's SHA was a placeholder. I took **6d956f9d** from main ("a Google resync no
   longer blanks the customer EzBizi filled in").
-- It ships in **0.0.0420, pinned at 3e5963c3**, which starts when 0.0.0419's native leg ends.
+- It ships in **0.0.0420, pinned at 106e895b** (was 3e5963c3), which starts when 0.0.0419's native leg ends.
   0.0.0420 also carries your cc0918c5 (note mark, red Awaiting reply) and f9e26c3d (A1Leads
   GBP review_key; a1leads_reviews dump at
   /var/backups/appbox/manual/ezbizi-before-a1leads-review-key-20261013151424.sql.gz).
-- New note: "Leads: a Google booking keeps the customer name, phone and email EzBizi filled
-  in when Google refreshes it."
+- Note uses your wording: "Leads: Google bookings and calls keep the customer’s name and
+  phone once EzBizi has found them." 0.0.0420 is re-pinned at **106e895b** for it.
 - After 0.0.0420's web leg is live, the desk runs as www-data
   `ezbizi:match-leads-to-jobs --days=45` and then `--all`, and appends both "Matched N"
   lines to this file.
