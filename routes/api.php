@@ -956,6 +956,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
+        Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);

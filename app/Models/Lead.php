@@ -467,6 +467,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
             'classified_at' => 'datetime',
+            'credit_requested_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
         ];
     }

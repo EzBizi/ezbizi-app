@@ -14,6 +14,23 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0423',
+      date: '13 Oct 2026',
+      items: [
+        'Scheduling: suggested availability looks for booked work within 30 miles instead of 5; you can still change this in Settings › Scheduling. Jobs Workiz could not place on the map no longer show as dots in Africa.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0422',
+      date: '13 Oct 2026',
+      items: [
+        'Leads: AI marks a lead Booked when a day was agreed on the call, and shows why.',
+        'Leads: Google leads that look like spam or a service we don\'t offer show "Credit?", and Request credit asks Google for a refund.',
+        'WhatsApp: staff with Reports access can ask the staff line for figures, for example "how much did MA sell last week".',
+        'Leads: Google LS calls no longer count as unread, since there is nothing to reply to.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0421',
       date: '13 Oct 2026',
       items: [

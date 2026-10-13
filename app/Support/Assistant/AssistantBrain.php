@@ -140,7 +140,7 @@ final class AssistantBrain
      *
      * @throws \RuntimeException when Grok fails, so a caller can say so
      */
-    public function aiAnswer(?User $viewer, Organization $organization, string $query): ?array
+    public function aiAnswer(?User $viewer, Organization $organization, string $query, int $timeout = 60): ?array
     {
         if (! GrokCli::configured()) {
             return null;
@@ -171,7 +171,7 @@ final class AssistantBrain
             ],
             // A person is waiting, and on WhatsApp the one queue worker is:
             // under its 90 s retry_after (Meta review, 2026-10-13).
-            60,
+            $timeout,
         );
 
         $reply = trim((string) ($json['reply'] ?? ''));

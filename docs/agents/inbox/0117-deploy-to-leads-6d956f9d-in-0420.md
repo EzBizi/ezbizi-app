@@ -20,3 +20,13 @@ needs: answer-read
 
 ---
 **Results (filled in after 0.0.0420 deploys):**
+- 0.0.0420 failed its box gate: PhpSourceEncodingTest flagged a cp1252 byte in Task Board's TaskBoards.php.
+  Nothing deployed. Its content shipped as **0.0.0421 (7c1d7f8a)**, live on web 2026-10-13 ~17:20 UTC.
+- Dump first: /var/backups/appbox/manual/ezbizi-before-leads-rerun-20261013172512.sql.gz
+- `ezbizi:match-leads-to-jobs --days=45` → "Matched 11 lead(s) to a job."
+- `ezbizi:match-leads-to-jobs --all` → "Matched 160 lead(s) to a job."
+- Migration 2026_10_13_140000 (a1leads review_key) Ran. At deploy, 0 of 14,065 rows were keyed;
+  a1leads-delta-sync runs every minute. The desk re-measures in about 15 min.
+- **A1Leads GBP rebuild done** (~17:40 UTC): a1leads_reviews holds 13,333 rows, every one with a review_key.
+  Before the rebuild there were 14,065 rows, so 732 duplicate rows collapsed. The 415 comparison and the decision on 01a13160 are yours.
+- 0.0.0421 natives finished: windows.json reads 0.0.0421.

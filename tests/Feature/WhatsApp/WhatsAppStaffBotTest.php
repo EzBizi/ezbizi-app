@@ -733,4 +733,68 @@ class WhatsAppStaffBotTest extends TestCase
         \Illuminate\Support\Facades\Process::assertNothingRan();
         $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
     }
+
+    /** Jose, 2026-10-13: Rodrigo's report-on-request, answered from Reports' figures. */
+    public function test_a_figures_question_from_someone_on_reports_is_answered_from_the_figures(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::sequence()
+            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
+            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
+
+        $this->staff($t);
+        $this->inbound(self::BOT, $this->text('how much did we sell last week'))->assertOk();
+
+        $this->assertStringContainsString('12 jobs done', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('From EzBizi Reports', $this->sent[0]['text']['body']);
+    }
+
+    public function test_a_figures_question_from_someone_without_reports_goes_to_the_library(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            'answered' => false, 'reply' => '', 'entry_ids' => [],
+        ]]))]);
+        $tech = $this->userWithRole($t, 'technician');
+        $this->inTenant($t['org'], fn () => $tech->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+        $this->assertFalse($this->inTenant($t['org'], fn () => $tech->hasPermission('reports.view')));
+
+        $this->inbound(self::BOT, $this->text('how much did we sell last week'))->assertOk();
+
+        // The Library's own answer, never the figures.
+        $this->assertStringNotContainsString('From EzBizi Reports', json_encode($this->sent));
+    }
+
+    /** Jose, 2026-10-12: no Google Ads or LSA figures go to xAI. */
+    public function test_google_local_services_leads_are_not_in_the_figures_sent_to_ai(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $branch = $this->inTenant($t['org'], fn () => \App\Models\Franchise::query()->firstOrFail());
+        $this->inTenant($t['org'], function () use ($t, $branch) {
+            foreach ([\App\Models\Lead::SOURCE_LOCAL_SERVICES, \App\Models\Lead::SOURCE_THUMBTACK] as $source) {
+                \App\Models\Lead::create([
+                    'organization_id' => $t['org']->id, 'franchise_id' => $branch->id, 'source' => $source,
+                    'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
+                ]);
+            }
+        });
+
+        $counts = \App\Support\Ai\ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
+
+        $this->assertSame([\App\Models\Lead::SOURCE_THUMBTACK => 1], $counts);
+    }
+
+    public function test_a_misread_period_is_clamped_to_a_year_ending_today(): void
+    {
+        $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        $this->assertSame(['2025-10-13', '2026-10-13'], \App\Support\Ai\ReportAsk::period('1990-01-01', '2030-01-01', $today));
+        $this->assertSame(['2026-10-01', '2026-10-13'], \App\Support\Ai\ReportAsk::period('nonsense', 'x', $today));
+        $this->assertSame(['2026-10-05', '2026-10-11'], \App\Support\Ai\ReportAsk::period('2026-10-05', '2026-10-11', $today));
+    }
 }

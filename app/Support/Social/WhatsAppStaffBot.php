@@ -328,6 +328,14 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // A question about the figures goes to AI before the Library's word
+        // match, which answered "how much did we sell" with the CSIA entry.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
+            AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         $answers = mb_strlen($query) > 3 ? $this->brain->search($viewer, $query) : collect();
 
         if ($answers->count() === 1) {
@@ -372,6 +380,15 @@ final class WhatsAppStaffBot
         $this->text($number, $to, $reply);
     }
 
+    /**
+     * Sounds like the business's figures. ponytail: a word list; AI still
+     * decides (ReportAsk), and a miss falls back to the Library's AI answer.
+     */
+    public static function asksFigures(string $query): bool
+    {
+        return preg_match('/\b(sales?|sell|sold|revenue|gross|profit|jobs?|leads?|deposits?|cancel\w*|how (much|many)|numbers|report|last (week|month)|this (week|month)|yesterday|today)\b/i', $query) === 1;
+    }
+
     /** @param  array<string, string>  $site */
     private static function describe(array $site, string $fallbackName): string
     {
@@ -409,8 +426,23 @@ final class WhatsAppStaffBot
     {
         $organization = Organization::findOrFail($number->organization_id);
 
+        // A question about the figures, from someone who may read Reports
+        // (Jose, 2026-10-13, Rodrigo's report-on-request). The whole reply
+        // fits the job's 75 s (AnswerWhatsAppWithAi): the Library gets what
+        // the figures left, and nothing when under 10 s remain.
+        $started = microtime(true);
+        if ($viewer?->hasPermission('reports.view')) {
+            $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
+            if ($figures !== null) {
+                $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
+
+                return;
+            }
+        }
+
+        $left = min(60, 70 - (int) ceil(microtime(true) - $started));
         try {
-            $answer = $this->brain->aiAnswer($viewer, $organization, $query);
+            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left) : null;
         } catch (\RuntimeException) {
             $answer = null;
         }
