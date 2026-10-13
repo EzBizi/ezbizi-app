@@ -804,7 +804,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// Our calls out that nobody picked up.
   List<Map<String, dynamic>> _outbound(List<Map<String, dynamic>> calls) =>
-      calls.where(_isOutbound).toList();
+      calls
+          .where((c) => _isOutbound(c) && c['outcome'] != 'connected')
+          .toList();
+
+  /// A phone number typed in the search (seven digits or more): every call
+  /// with it, outbound ones that connected included (Jose, 2026-10-13: "be
+  /// able to search all calls by number as well").
+  bool get _numberSearch =>
+      _query.replaceAll(RegExp(r'[^0-9]'), '').length >= 7;
 
   static bool _isOutbound(Map<String, dynamic> c) =>
       c['direction'] == 'Outbound';
@@ -1112,7 +1120,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   c['existing_job'] == null,
             )
             .toList(),
-      _ => from.where((c) => !_isOutbound(c)).toList(),
+      _ => _numberSearch ? from : from.where((c) => !_isOutbound(c)).toList(),
     };
 
     // The search narrows everything under it, counts included, so a chip
@@ -1304,7 +1312,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         decoration: const InputDecoration(
           isDense: true,
           prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a caller, number or person',
+          hintText: 'Find a caller, person, or any call by number',
           border: OutlineInputBorder(),
         ),
       ),
@@ -2103,7 +2111,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final by = call['answered_by'];
     final id = call['recording_id']?.toString();
     final outbound = _isOutbound(call);
-    final missed = by == null;
+    // An outbound call that connected has nobody "answering" on our side.
+    final missed = by == null && call['outcome'] != 'connected';
 
     // Said in words. Jose, 2026-09-24: "hard to understand what the icons
     // mean" - an arrow and a bell told nobody which was which.
@@ -2161,7 +2170,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ),
                 )
               : const StatusPill('Not booked', tone: Tone.caution)
-        : const StatusPill('Answered');
+        : StatusPill(outbound ? 'Connected' : 'Answered');
 
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
     final dash = Text('—', style: small);
