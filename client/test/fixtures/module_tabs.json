@@ -229,7 +229,8 @@
                 "Report Builder",
                 "Performance",
                 "Marketing",
-                "Meta"
+                "Meta",
+                "Thumbtack"
             ]
         },
         "reviews": {
@@ -474,6 +475,7 @@
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",
+        "reports.thumbtack.view",
         "reports.view",
         "reviews.create",
         "reviews.delete",

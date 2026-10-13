@@ -3952,6 +3952,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('marketing', 'Marketing'),
                     // Facebook ad spend by campaign, state and category.
                     new TabDefinition('meta', 'Meta'),
+                    // Thumbtack lead spend by category and branch (2026-10-13).
+                    new TabDefinition('thumbtack', 'Thumbtack'),
                 ],
                 actionRequires: [
                     'build' => ['reports.view'],
