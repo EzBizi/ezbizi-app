@@ -661,6 +661,29 @@ void main() {
     expect(find.byKey(const ValueKey('lead-ai-zip')), findsNothing);
   });
 
+  // Jose, 2026-10-13: AI suggests a Google credit; only a person's press asks.
+  testWidgets('a Google credit is suggested by AI and asked for by a person', (
+    tester,
+  ) async {
+    _creditPosts.clear();
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      credit: const {'reason': 'SPAM', 'requested_at': null, 'decision': null},
+    );
+
+    expect(find.text('Google credit? Spam'), findsOneWidget);
+    expect(_creditPosts, isEmpty, reason: 'nothing goes to Google on its own');
+
+    await tester.tap(find.byKey(const ValueKey('lead-credit-request')));
+    await tester.pumpAndSettle();
+
+    expect(_creditPosts.single, contains('SPAM'));
+    expect(find.text('Credit requested · credited'), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-credit-request')), findsNothing);
+  });
+
   testWidgets('without the model there is no Suggest button', (tester) async {
     await _pump(
       tester,
@@ -1053,6 +1076,7 @@ void main() {
 
 final _sent = <String>[];
 final _typingPosts = <String>[];
+final _creditPosts = <String>[];
 final _followUpPosts = <String>[];
 
 Future<void> _pump(
@@ -1082,6 +1106,7 @@ Future<void> _pump(
   Map<String, dynamic>? booking,
   List<String>? ai,
   String? postalCode,
+  Map<String, dynamic>? credit,
 }) async {
   _sent.clear();
   _typingPosts.clear();
@@ -1151,6 +1176,26 @@ Future<void> _pump(
         );
       }
 
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/google-credit')) {
+        _creditPosts.add(request.body);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'lead-1',
+              'status': 'not_a_lead',
+              'credit': {
+                ...?credit,
+                'requested_at': '2026-10-13T18:00:00Z',
+                'decision': 'SUCCESS_NOT_REACHED_THRESHOLD',
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
         _typingPosts.add(request.url.path);
         return http.Response('{}', 200, headers: {'content-type': 'application/json'});
@@ -1178,6 +1223,7 @@ Future<void> _pump(
               'viewers': viewers,
               'visitor_typing': visitorTyping,
               'booking': booking,
+              'credit': credit,
               'reply_templates': templates,
               'conversations': conversations ?? [
                 {
@@ -1249,6 +1295,7 @@ Future<void> _pump(
             'source': ?source,
             'ai': ?ai,
             'postal_code': ?postalCode,
+            'credit': ?credit,
           },
           onStatusChanged: (_) async {},
           onRead: onRead,

@@ -328,6 +328,14 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // A question about the figures goes to AI before the Library's word
+        // match, which answered "how much did we sell" with the CSIA entry.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
+            AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         $answers = mb_strlen($query) > 3 ? $this->brain->search($viewer, $query) : collect();
 
         if ($answers->count() === 1) {
@@ -372,6 +380,15 @@ final class WhatsAppStaffBot
         $this->text($number, $to, $reply);
     }
 
+    /**
+     * Sounds like the business's figures. ponytail: a word list; AI still
+     * decides (ReportAsk), and a miss falls back to the Library's AI answer.
+     */
+    public static function asksFigures(string $query): bool
+    {
+        return preg_match('/\b(sales?|sell|sold|revenue|gross|profit|jobs?|leads?|deposits?|cancel\w*|how (much|many)|numbers|report|last (week|month)|this (week|month)|yesterday|today)\b/i', $query) === 1;
+    }
+
     /** @param  array<string, string>  $site */
     private static function describe(array $site, string $fallbackName): string
     {
@@ -408,6 +425,17 @@ final class WhatsAppStaffBot
     public function aiReply(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
     {
         $organization = Organization::findOrFail($number->organization_id);
+
+        // A question about the figures, from someone who may read Reports
+        // (Jose, 2026-10-13, Rodrigo's report-on-request).
+        if ($viewer?->hasPermission('reports.view')) {
+            $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
+            if ($figures !== null) {
+                $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
+
+                return;
+            }
+        }
 
         try {
             $answer = $this->brain->aiAnswer($viewer, $organization, $query);

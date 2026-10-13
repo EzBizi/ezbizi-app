@@ -87,7 +87,7 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, name_basis: string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool}|null
+     * @return array{classification: string, summary: string, name: ?string, name_basis: string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool, booked: bool, reason: string, google_credit: ?string}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
@@ -119,7 +119,7 @@ class LeadInsights
         return array_map(fn ($i) => match (true) {
             ! isset($answers[$i]) => null,
             $answers[$i] instanceof RuntimeException => $answers[$i],
-            default => self::parseRead($answers[$i]),
+            default => self::gate(self::parseRead($answers[$i]), $threads[$i]),
         }, array_keys($leads));
     }
 
@@ -145,8 +145,44 @@ class LeadInsights
         ."service, even one we may not offer, or who declined a price, is false.\n"
         ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
         ."- lost: true when a real customer will not book: they declined the price or said no, or "
-        ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
+        ."want a service a chimney/fireplace/garage-door company does not do. False otherwise.\n"
+        ."- booked: true ONLY when the business and the customer agreed a specific day for the visit "
+        ."(\"Thursday between 9 and 12\") and the customer accepted it. A quote, a price, a callback, "
+        ."or the customer saying they will check and call back is false.\n"
+        ."- reason: one short sentence on why booked, lost, not_a_lead or job_applicant is true, "
+        ."quoting what was said; empty when all are false.\n"
+        ."- google_credit: whether Google should refund this lead: SPAM (a bot, a silent or dead call, "
+        ."a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks "
+        ."only for a service a chimney/fireplace/garage-door company does not do), or null. A real "
+        ."customer who simply did not book is null."
         ."\n\n";
+
+    /** Google's own SurveyDissatisfiedReason values AI may suggest for a credit. */
+    public const CREDIT_REASONS = ['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH'];
+
+    /**
+     * Rodrigo's booking gate (a1leads booking-gate.js, deferral.js): a model
+     * says "booked" on a call that ended "let me check with my wife and call
+     * you back". The last words win. ponytail: a phrase list over the last
+     * 400 characters; Rodrigo's speaker-aware version if the weekly AI check
+     * shows people un-booking leads AI booked.
+     */
+    private const DEFERRALS = "/\\b(call (you|u) back|get back to you|check with my|talk (to|with) my|think about it|let me (check|think)|i'?ll (call|let you know)|not (sure|ready) yet)\\b/i";
+
+    public static function deferred(string $thread): bool
+    {
+        return preg_match(self::DEFERRALS, mb_substr($thread, -400)) === 1;
+    }
+
+    /** A booking the customer put off at the end is not a booking. */
+    private static function gate(array $read, string $thread): array
+    {
+        if ($read['booked'] && self::deferred($thread)) {
+            $read['booked'] = false;
+        }
+
+        return $read;
+    }
 
     private const READ_SCHEMA = [
         'type' => 'object',
@@ -159,8 +195,11 @@ class LeadInsights
             'not_a_lead' => ['type' => 'boolean'],
             'lost' => ['type' => 'boolean'],
             'job_applicant' => ['type' => 'boolean'],
+            'booked' => ['type' => 'boolean'],
+            'reason' => ['type' => 'string'],
+            'google_credit' => ['type' => ['string', 'null'], 'enum' => [...self::CREDIT_REASONS, null]],
         ],
-        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
+        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant', 'booked', 'reason', 'google_credit'],
         'additionalProperties' => false,
     ];
 
@@ -181,6 +220,9 @@ class LeadInsights
             'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
             'lost' => ($json['lost'] ?? false) === true,
             'job_applicant' => ($json['job_applicant'] ?? false) === true,
+            'booked' => ($json['booked'] ?? false) === true,
+            'reason' => mb_substr(trim((string) ($json['reason'] ?? '')), 0, 255),
+            'google_credit' => in_array($json['google_credit'] ?? null, self::CREDIT_REASONS, true) ? $json['google_credit'] : null,
         ];
     }
 

@@ -1751,6 +1751,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 if (lead['is_test'] == true) ...[
                                   _Badge('Test', key: ValueKey('test-badge-$id')),
                                 ],
+                                // AI thinks Google should refund it, not yet asked.
+                                if (lead['credit'] is Map &&
+                                    (lead['credit'] as Map)['requested_at'] == null)
+                                  _Badge('Credit?', key: ValueKey('credit-badge-$id')),
                                 // Only when it is not New: 43,184 of 43,190 are,
                                 // and a pill on every row would say nothing.
                                 if ((lead['status'] ?? 'new') != 'new')

@@ -189,4 +189,92 @@ class LeadsReadTest extends TestCase
         $read = $this->inTenant($this->t['org'], fn () => array_filter([$a->refresh()->classification, $b->refresh()->classification]));
         $this->assertCount(1, $read, 'one read, one left for the next run');
     }
+
+    /** Jose, 2026-10-13: Rodrigo's verdict - a lead booked on the call is Booked, with the reason. */
+    public function test_a_call_that_booked_is_booked_with_the_reason(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Inspection Thursday.', 'name' => null, 'zip' => null,
+            'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+            'booked' => true, 'reason' => 'Adeline offered Thursday 9-12 and the customer said that works.', 'google_credit' => null,
+        ]]))]);
+        $call = $this->callLead(null, 'Can you do Thursday between 9 and 12? Yes that works, see you then.');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($call) {
+            $call->refresh();
+            $this->assertSame(Lead::STATUS_BOOKED, $call->status);
+            $this->assertSame(['status'], \App\Http\Controllers\Api\LeadsController::aiHeld($call));
+            $this->assertStringContainsString('Thursday 9-12', $call->ai_set['reason']);
+            $this->assertNull($call->credit_reason);
+        });
+    }
+
+    /** Rodrigo's booking gate: the last words win over the model's "booked". */
+    public function test_a_booking_the_customer_put_off_stays_new(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Offered Thursday.', 'name' => null, 'zip' => null,
+            'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+            'booked' => true, 'reason' => 'Thursday was offered.', 'google_credit' => null,
+        ]]))]);
+        $call = $this->callLead(null, 'We have Thursday between 9 and 12. Okay let me check with my wife and I will call you back.');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame(Lead::STATUS_NEW, $this->inTenant($this->t['org'], fn () => $call->refresh()->status));
+    }
+
+    /** Jose, 2026-10-13: Rodrigo's LSA triage - AI suggests a Google credit; a person asks. */
+    public function test_a_spam_call_from_google_is_flagged_for_a_credit_and_a_person_asks_google(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'ARCHIVE', 'summary' => 'Robocall.', 'name' => null, 'zip' => null,
+            'not_a_lead' => true, 'lost' => false, 'job_applicant' => false,
+            'booked' => false, 'reason' => 'A recorded message about a car warranty.', 'google_credit' => 'SPAM',
+        ]]))]);
+        $call = $this->callLead(null, 'This is an important message about your vehicle warranty.');
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->assertSame('SPAM', $this->inTenant($this->t['org'], fn () => $call->refresh()->credit_reason));
+
+        // The button: Google's lead feedback, and its decision kept on the lead.
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+        ]);
+        $this->inTenant($this->t['org'], function () use ($call) {
+            $connection = new \App\Models\SocialConnection;
+            $connection->forceFill([
+                'organization_id' => $this->t['org']->id,
+                'scope_type' => \App\Models\SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $this->t['company']->id,
+                'provider' => 'google_ads',
+                'remote_id' => '1234567890',
+                'display_name' => '123-456-7890',
+            ]);
+            $connection->connect(['refresh_token' => 'rt-test', 'access_token' => 'at-stale']);
+            $connection->save();
+            $call->forceFill(['connection_id' => $connection->id])->save();
+        });
+        \Illuminate\Support\Facades\Http::fake([
+            'oauth2.googleapis.com/*' => \Illuminate\Support\Facades\Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600]),
+            '*provideLeadFeedback' => \Illuminate\Support\Facades\Http::response(['creditIssuanceDecision' => 'SUCCESS_NOT_REACHED_THRESHOLD']),
+        ]);
+
+        $this->signedInAs($this->t['admin'])
+            ->postJson("/api/v1/leads/{$call->id}/google-credit", ['reason' => 'SPAM'])
+            ->assertOk()
+            ->assertJsonPath('data.credit.decision', 'SUCCESS_NOT_REACHED_THRESHOLD');
+
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => str_ends_with($r->url(), "/customers/1234567890/localServicesLeads/{$call->remote_id}:provideLeadFeedback")
+            && $r['surveyAnswer'] === 'VERY_DISSATISFIED' && $r['surveyDissatisfied']['surveyDissatisfiedReason'] === 'SPAM');
+
+        $this->signedInAs($this->t['admin'])
+            ->postJson("/api/v1/leads/{$call->id}/google-credit", ['reason' => 'SPAM'])
+            ->assertStatus(409);
+    }
 }

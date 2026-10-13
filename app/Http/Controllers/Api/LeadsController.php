@@ -984,6 +984,43 @@ class LeadsController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Ask Google to credit a Local Services lead (Jose, 2026-10-13). AI only
+     * suggests the reason; a person presses the button, because it is a claim
+     * made to Google in the business's name.
+     */
+    public function requestCredit(Request $request, Lead $lead, \App\Services\Leads\LocalServicesLeads $google): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $input = $request->validate([
+            'reason' => ['required', 'string', \Illuminate\Validation\Rule::in(['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH', 'GEO_MISMATCH', 'DUPLICATE', 'NOT_READY_TO_BOOK', 'OTHER_DISSATISFIED_REASON'])],
+            'comment' => ['nullable', 'string', 'max:1000', 'required_if:reason,OTHER_DISSATISFIED_REASON'],
+        ]);
+
+        abort_unless($lead->source === Lead::SOURCE_LOCAL_SERVICES, Response::HTTP_UNPROCESSABLE_ENTITY, 'Only Google Local Services leads can be credited.');
+        abort_if($lead->credit_requested_at !== null, Response::HTTP_CONFLICT, 'A credit was already requested for this lead.');
+
+        try {
+            $decision = $google->requestCredit($lead, $input['reason'], (string) ($input['comment'] ?? ''));
+        } catch (RuntimeException $e) {
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+        }
+
+        $lead->forceFill([
+            'credit_reason' => $input['reason'],
+            'credit_requested_at' => now(),
+            'credit_decision' => mb_substr($decision, 0, 40),
+        ])->save();
+
+        $this->audit->log('lead.credit_requested', $lead, [
+            'reason' => $input['reason'],
+            'decision' => $decision,
+        ], actor: $request->user());
+
+        return response()->json(['data' => $this->present($lead->refresh())]);
+    }
+
     public function reply(Request $request, Lead $lead): JsonResponse
     {
         $this->authorize('update', $lead);
@@ -1576,6 +1613,15 @@ class LeadsController extends Controller
             'ai' => self::aiHeld($lead),
             // A different name the customer gave, kept for a person to decide.
             'name_conflict' => $lead->ai_set['name_conflict'] ?? null,
+            // Why AI set the status, while the status is still AI's.
+            'ai_reason' => in_array('status', self::aiHeld($lead), true) ? ($lead->ai_set['reason'] ?? null) : null,
+            // Google Local Services credit: AI's suggested reason, then what
+            // Google decided once a person asked.
+            'credit' => $lead->source === Lead::SOURCE_LOCAL_SERVICES && ($lead->credit_reason !== null) ? [
+                'reason' => $lead->credit_reason,
+                'requested_at' => $lead->credit_requested_at?->toIso8601String(),
+                'decision' => $lead->credit_decision,
+            ] : null,
 
             // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
             // model), beside what somebody DECIDED (status). Null until the

@@ -71,6 +71,10 @@ class LeadsRead extends Command
                     $applicant = $answer['job_applicant'] && $before === Lead::STATUS_NEW;
                     $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
                     $lost = ! $applicant && ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
+                    // Booked on the call (Jose, 2026-10-13, Rodrigo's verdict
+                    // with its booking gate - LeadInsights::gate).
+                    $booked = ! $applicant && ! $junk && ! $lost && $answer['booked'] && $before === Lead::STATUS_NEW;
+                    $decided = $applicant || $junk || $lost || $booked;
 
                     // Rodrigo's §3 merge table (NameDecision): fill a blank,
                     // enrich a first name, correct AI's own weak spelling; a
@@ -86,11 +90,14 @@ class LeadsRead extends Command
                     // What AI wrote, so the AI mark shows while the value is
                     // still AI's and the weekly check counts what people changed.
                     $aiSet = array_filter([
-                        'status' => ($applicant || $junk || $lost) ? match (true) {
+                        'status' => $decided ? match (true) {
                             $applicant => Lead::STATUS_JOB_APPLICANT,
                             $junk => Lead::STATUS_NOT_A_LEAD,
+                            $booked => Lead::STATUS_BOOKED,
                             default => Lead::STATUS_LOST,
                         } : null,
+                        // Why, shown on the AI mark.
+                        'reason' => $decided ? $answer['reason'] : null,
                         'contact_name' => in_array($nameAction, ['fill', 'enrich', 'correct'], true) ? $name : null,
                         'name_conflict' => $nameAction === 'conflict' ? $name : null,
                         'postal_code' => $lead->postal_code ? null : $answer['zip'],
@@ -102,8 +109,11 @@ class LeadsRead extends Command
                             $applicant => Lead::STATUS_JOB_APPLICANT,
                             $junk => Lead::STATUS_NOT_A_LEAD,
                             $lost => Lead::STATUS_LOST,
+                            $booked => Lead::STATUS_BOOKED,
                             default => $before,
                         },
+                        // Google Local Services only: Google refunds its own leads.
+                        'credit_reason' => $lead->source === Lead::SOURCE_LOCAL_SERVICES ? $answer['google_credit'] : null,
                         'classification' => $answer['classification'],
                         'summary' => $answer['summary'] !== '' ? $answer['summary'] : $lead->summary,
                         'classified_at' => now(),
@@ -111,7 +121,7 @@ class LeadsRead extends Command
                         'postal_code' => $lead->postal_code ?: $answer['zip'],
                     ])->save();
 
-                    if ($applicant || $junk || $lost) {
+                    if ($decided) {
                         $events->emit('lead.status_changed', $lead, [
                             'before' => ['status' => $before],
                             'after' => ['status' => $lead->status],

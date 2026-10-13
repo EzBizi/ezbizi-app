@@ -654,10 +654,13 @@ class _LeadThreadState extends State<LeadThread> {
                                 ),
                                 if (leadAiHolds(lead, 'status')) ...[
                                   const SizedBox(width: 4),
-                                  const AiMark(
-                                    key: ValueKey('thread-ai-status'),
-                                    tooltip: 'Status set by AI from the '
-                                        'conversation. Change it to override.',
+                                  AiMark(
+                                    key: const ValueKey('thread-ai-status'),
+                                    tooltip: [
+                                      'Status set by AI from the '
+                                          'conversation. Change it to override.',
+                                      ?(lead['ai_reason'] as String?),
+                                    ].join('\n'),
                                   ),
                                 ],
                                 if (widget.onStar != null)
@@ -747,6 +750,8 @@ class _LeadThreadState extends State<LeadThread> {
                             fontStyle: FontStyle.italic,
                           ),
                         ),
+                      if (lead['credit'] is Map)
+                        _creditLine(theme, lead['credit'] as Map),
                       if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
                       if (_booking != null) _bookingBlock(theme),
                       if (!narrow || _showDetails) ...[
@@ -1550,6 +1555,63 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// A Google Local Services lead AI thinks Google should refund (Jose,
+  /// 2026-10-13): AI's reason, and a button a person presses to ask Google.
+  Widget _creditLine(ThemeData theme, Map credit) {
+    final reason = creditReasonWord(credit['reason'] as String?);
+    final requested = credit['requested_at'] != null;
+    final colours = ToneColours.of(context, requested ? Tone.neutral : Tone.caution);
+    return Padding(
+      key: const ValueKey('lead-credit'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _pill(
+            requested
+                ? 'Credit requested · ${creditDecisionWord(credit['decision'] as String?)}'
+                : 'Google credit? $reason',
+            colours,
+            icon: Icons.money_off_outlined,
+          ),
+          if (!requested) ...[
+            const AiMark(tooltip: 'AI read the conversation and thinks Google '
+                'should refund this lead. Nothing is sent until you press '
+                'Request credit.'),
+            TextButton(
+              key: const ValueKey('lead-credit-request'),
+              onPressed: _requestingCredit ? null : () => _requestCredit(credit['reason'] as String),
+              child: const Text('Request credit'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  bool _requestingCredit = false;
+
+  Future<void> _requestCredit(String reason) async {
+    setState(() => _requestingCredit = true);
+    final response = await widget.api.post(
+      '/leads/${widget.lead['id']}/google-credit',
+      {'reason': reason},
+    );
+    if (!mounted) return;
+    setState(() {
+      _requestingCredit = false;
+      if (response.ok && response.data is Map) {
+        _lead = Map<String, dynamic>.from(response.data as Map);
+      }
+    });
+    if (!response.ok) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+    }
+  }
+
   Future<void> _decideBooking(String decision) async {
     // Two literal paths, so ClientCallsRealRoutesTest can match each route.
     final response = decision == 'approve'
@@ -2293,6 +2355,25 @@ bool showsNumberLine(Map<String, dynamic> lead) {
       phone.isNotEmpty &&
       leadTitle(lead) != formatPhoneNumber(phone);
 }
+
+/// Google's credit reason, in words.
+String creditReasonWord(String? reason) => switch (reason) {
+      'SPAM' => 'Spam',
+      'SOLICITATION' => 'Someone selling',
+      'JOB_TYPE_MISMATCH' => 'Service we do not offer',
+      'GEO_MISMATCH' => 'Outside our area',
+      'DUPLICATE' => 'Duplicate',
+      _ => 'Other',
+    };
+
+/// Google's creditIssuanceDecision, in words.
+String creditDecisionWord(String? decision) => switch (decision) {
+      'SUCCESS_NOT_REACHED_THRESHOLD' || 'SUCCESS_REACHED_THRESHOLD' =>
+        'credited',
+      'FAIL_OVER_THRESHOLD' => 'refused, credit limit reached',
+      'FAIL_NOT_ELIGIBLE' => 'refused, not eligible',
+      _ => 'sent',
+    };
 
 /// Whether [field] still holds the value AI wrote: the API's `ai` list,
 /// which drops a field once a person changes it (UI queue 77).
