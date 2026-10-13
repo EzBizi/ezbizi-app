@@ -20,6 +20,7 @@ class VersionHistory {
         'Scheduling › Availability: a zip search shows the earliest opening beside a suggested one near work already booked, with a small map of the route. The radius is in Settings › Scheduling.',
         'Leads: a lead with a note shows a note mark in the list; hover it to read the note.',
         'Leads: Awaiting reply is now solid red.',
+        'Leads: a Google booking keeps the customer name, phone and email EzBizi filled in when Google refreshes it.',
         'A1Leads GBP: each Google review shows once, even when it is reachable through more than one Google account.',
         'Task Board: choose a board from a list grouped by company, and set up your own statuses, columns and groups. Tasks can have subtasks.',
         'Reports: task reports show each board’s own statuses and whether a task is a subtask.',
