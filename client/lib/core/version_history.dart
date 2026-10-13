@@ -21,7 +21,7 @@ class VersionHistory {
         'Fleet: in a narrow vehicle list on a computer, the search and filters scroll with the vehicles instead of filling the pane.',
         'Reports: call reasons show Grok\'s reading by default.',
         'Reports: calls AI says were booked but have no Workiz job get their own list in Calls, and a daily alert you can route in Automations.',
-        'WhatsApp: AI answers are easier to read, with titles, emojis and line breaks.',
+        'WhatsApp: AI answers and the bot\'s own messages are easier to read, with titles, emojis and one fact per line.',
         'Scheduling: a Re-Scheduling tab lists booked jobs that would sit better beside other work, with a confirmed Move. On the Availability map, hover or tap a dot for the job, and zoom with + −. The suggestion radius is in Scheduling › Settings › Suggestions.',
         'Reports: Scoring shows each dispatcher as a card ranked by AI\'s call score, with AI\'s daily and weekly analysis; for Administrators and Lead Managers.',
         'Reports: on a phone, Marketing, Meta and Thumbtack no longer go blank when the dates are opened.',
