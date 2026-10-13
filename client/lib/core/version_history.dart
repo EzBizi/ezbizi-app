@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'AI Assistance: a Staff bot tab gives each group of roles its own menu on the staff WhatsApp line, with each topic linked to its Training guide section or Library entry, so editing the guide changes what the bot says. The Daily conversion topic answers with today\'s new-client calls, answered, booked and the conversion. A topic\'s guide pictures follow its text.',
         'Reports: type a phone number in Calls to find every call with it, in or out.',
+        'WhatsApp: staff with Reports access can ask the staff line for the calls with a number and get the list plus each recording.',
+        'WhatsApp: the staff line answers questions the Library cannot from what the asker can see in EzBizi, read only.',
       ],
     ),
     VersionRelease(
