@@ -21,6 +21,7 @@ class VersionHistory {
         'Fleet: in a narrow vehicle list on a computer, the search and filters scroll with the vehicles instead of filling the pane.',
         'Reports: call reasons show Grok\'s reading by default.',
         'Reports: calls AI says were booked but have no Workiz job get their own list in Calls, and a daily alert you can route in Automations.',
+        'WhatsApp: AI answers are easier to read, with titles, emojis and line breaks.',
       ],
     ),
     VersionRelease(
