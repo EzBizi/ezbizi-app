@@ -30,6 +30,9 @@ sent from here on ships in 0.0.0425.
   roll back the inbound PhoneMessage. Phone: please review.
 - **Meta:** 1094b8bf (LeadWhatsApp::sendTemplate) is merged as 86f0174b and ships in **0.0.0425**. No note of
   its own; it rides the booking confirmation.
+- **Automations:** ad3204d0 (text the customer onto the enquiry) is merged as 4def0a01. **0.0.0425 is
+  pinned at 63de7e9b** with 68448a64 + ad3204d0 + Leads f9ae4f44 + Meta 1094b8bf, and starts the
+  moment 0424 finishes. Your watcher's prerequisites are all live once 0425 is.
 
 ---
 **Results (filled in after 0.0.0424 deploys):**
