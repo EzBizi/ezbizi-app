@@ -24,6 +24,13 @@ class LabelReportCallsTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // These calls are dated before AI's start day (2026-10-13); move it back.
+        config(['services.grok_cli.since' => '2026-09-01']);
+    }
+
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();
@@ -222,6 +229,29 @@ class LabelReportCallsTest extends TestCase
         $this->assertSame(5, CallReportTranscript::withoutGlobalScopes()->where('transcript_labelled', 'like', '%Dispatcher: It is 199.%')->count());
         $this->assertNull(CallReportTranscript::withoutGlobalScopes()->where('call_id', 'rc-old')->value('transcript_labelled'));
         $this->assertSame([], $asked->questions);
+    }
+
+    /** Jose, 2026-10-13: "just new stuff from now on" - nothing older goes to AI. */
+    public function test_calls_before_the_ai_start_day_are_neither_split_nor_labelled(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true,
+            'services.grok_cli.home' => '/var/lib/ezbizi-grok', 'services.grok_cli.since' => '2026-10-07']);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->ringCentral([$this->rcCall('rc-new', 'A1 - New Client')]);
+        $this->transcript($tenant, 'rc-new', 'Hello. It is 199.');
+        $asked = $this->fakeTaggers();
+        Process::fake();
+
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])->assertSuccessful();
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--split-only' => true])
+            ->expectsOutput('Split by speaker: 0')
+            ->assertSuccessful();
+
+        $this->assertSame([], $asked->questions);
+        Process::assertNothingRan();
+        $this->assertNull(CallReportTranscript::withoutGlobalScopes()->where('call_id', 'rc-new')->value('transcript_labelled'));
     }
 
     /**

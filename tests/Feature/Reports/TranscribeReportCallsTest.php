@@ -20,6 +20,13 @@ class TranscribeReportCallsTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // These calls are dated before AI's start day (2026-10-13); move it back.
+        config(['services.grok_cli.since' => '2026-09-01']);
+    }
+
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();

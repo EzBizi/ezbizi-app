@@ -37,6 +37,16 @@ class LabelReportCalls extends Command
 
     protected $description = 'Label the Performance report\'s calls with Claude and Grok';
 
+    /**
+     * Nothing before this day goes to AI (Jose, 2026-10-13: "just new stuff
+     * from now on"). ponytail: GrokCli::since() reads the same setting once
+     * Grok AI's 7f3e81ba is on main; switch to it then.
+     */
+    public static function aiSince(): CarbonImmutable
+    {
+        return CarbonImmutable::parse((string) config('services.grok_cli.since', '2026-10-13'), (string) config('app.timezone'))->startOfDay();
+    }
+
     public function handle(RingCentralCallLog $calls, TenantContext $tenant): int
     {
         if (! config('experimental_reports.tagging.enabled')) {
@@ -67,7 +77,7 @@ class LabelReportCalls extends Command
 
         $zone = (string) config('app.timezone');
         $end = CarbonImmutable::now($zone);
-        $start = $end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
+        $start = max($end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay(), self::aiSince());
         $until = now()->addMinutes((int) $this->option('minutes'));
 
         // Its own run (every 5 minutes): splitting after labelling got the
@@ -161,7 +171,7 @@ class LabelReportCalls extends Command
         $tenant->run($organization, function () use ($callIds, $until, &$split) {
             $rows = CallReportTranscript::query()
                 ->when($callIds !== null, fn ($q) => $q->whereIn('call_id', $callIds))
-                ->when($callIds === null, fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
+                ->when($callIds === null, fn ($q) => $q->where('created_at', '>=', max(now()->subDays(7), self::aiSince())))
                 ->whereNull('transcript_labelled')
                 ->whereNotNull('transcript')
                 ->where('transcript', '!=', '')
