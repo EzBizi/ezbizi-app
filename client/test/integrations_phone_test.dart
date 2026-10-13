@@ -79,16 +79,16 @@ void main() {
         // Material from whatever already wraps it. Here that is this Scaffold.
         home: Scaffold(
           body: IntegrationProviderScreen(
-          api: api,
-          session: session,
-          provider: 'google_ads',
-          providerLabel: 'Google Ads',
-          connections: _connections
-              .map(IntegrationConnection.fromJson)
-              .where((c) => c.provider == 'google_ads')
-              .toList(),
-          onBack: () {},
-        ),
+            api: api,
+            session: session,
+            provider: 'google_ads',
+            providerLabel: 'Google Ads',
+            connections: _connections
+                .map(IntegrationConnection.fromJson)
+                .where((c) => c.provider == 'google_ads')
+                .toList(),
+            onBack: () {},
+          ),
         ),
       ),
     );
@@ -133,8 +133,10 @@ void main() {
   /// an unconnected Airtable card IS the only route to its connect form.
   /// Tidying that family the same way would remove the only door, and nothing
   /// else in the suite would notice.
-  testWidgets('a provider you do not use is not a card, unless the card is '
-      'the only way to connect it', (tester) async {
+  /// Jose, 2026-10-13 (UI queue 82): "i should be able to see all the
+  /// options so i can connected them all if i wanted." This reverses the
+  /// rule it replaces, which drew only the providers a business uses.
+  testWidgets('every provider is a card, connected or not', (tester) async {
     await _pumpCatalogue(tester);
 
     Finder cards() => find.byWidgetPredicate(
@@ -144,26 +146,12 @@ void main() {
           (w.key as ValueKey).value.toString().startsWith('provider:'),
     );
 
-    // EXACTLY TWO, and which two is the whole point: Reporting's pair. Not
-    // `findsNothing`, which would go red on the correct behaviour, and not an
-    // unbounded count, which would pass if the other eleven came back.
-    expect(
-      find.text('Set up'),
-      findsNWidgets(2),
-      reason:
-          'Either a family that connects elsewhere drew cards for providers '
-          'nobody uses, or Reporting lost the cards that are its only connect '
-          'form.',
-    );
-
-    // The two connected ones, plus Reporting's two, which stay because the
-    // card is their connect form's only entrance.
-    expect(cards(), findsNWidgets(4));
-    expect(find.byKey(const ValueKey('provider:airtable')), findsOneWidget);
-    expect(find.byKey(const ValueKey('provider:workiz')), findsOneWidget);
-
-    // And discovery survives the collapse.
-    expect(find.textContaining('Also available:'), findsWidgets);
+    // The catalogue's fifteen, each once: the two connected ones among them
+    // rather than beside them.
+    expect(cards(), findsNWidgets(15));
+    expect(find.text('Not connected'), findsNWidgets(13));
+    expect(find.byKey(const ValueKey('provider:linkedin')), findsOneWidget);
+    expect(find.textContaining('Also available:'), findsNothing);
   });
 }
 
@@ -205,12 +193,13 @@ Future<void> _pump(WidgetTester tester, {required double width}) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: IntegrationsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
 }
-
 
 /// The real catalogue, near enough: fifteen providers against two connections.
 Future<void> _pumpCatalogue(WidgetTester tester) async {
@@ -219,9 +208,21 @@ Future<void> _pumpCatalogue(WidgetTester tester) async {
   addTearDown(tester.view.reset);
 
   const all = [
-    'facebook_page', 'instagram_professional', 'threads', 'linkedin', 'tiktok',
-    'pinterest', 'youtube', 'x', 'bluesky', 'google_business_profile',
-    'google_ads', 'thumbtack', 'mailchimp', 'workiz', 'airtable',
+    'facebook_page',
+    'instagram_professional',
+    'threads',
+    'linkedin',
+    'tiktok',
+    'pinterest',
+    'youtube',
+    'x',
+    'bluesky',
+    'google_business_profile',
+    'google_ads',
+    'thumbtack',
+    'mailchimp',
+    'workiz',
+    'airtable',
   ];
 
   final api = ApiClient(
@@ -248,7 +249,9 @@ Future<void> _pumpCatalogue(WidgetTester tester) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: IntegrationsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
