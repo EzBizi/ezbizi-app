@@ -122,6 +122,7 @@ class AutomationsController extends Controller
         'task.create',
         'task.assign',
         'alert.send',
+        'lead.text',
         'unassign',
 
         // HR's, through App\Support\Hr\InvitationActions so the screen and the
@@ -2097,6 +2098,10 @@ class AutomationsController extends Controller
                 $parameter('assignee', 'Give it to', 'person', false, true),
             ]),
             // Communication › Alerts, from a rule (Jose, 2026-10-13).
+            // From the branch's texting line, onto the enquiry's thread (Leads' LeadTexts).
+            $type('lead.text', 'Text the customer (on the enquiry)', false, [
+                $parameter('body', 'Message', 'text', variables: true),
+            ]),
             $type('alert.send', 'Send an alert (pop-up)', false, [
                 $parameter('user_ids', 'Who gets it', 'people'),
                 $parameter('message', 'Message', 'text', variables: true),

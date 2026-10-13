@@ -453,6 +453,7 @@ class ActionRunner
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
+            'lead.text' => $this->textLead($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -3402,5 +3403,32 @@ class ActionRunner
 
         return ['type' => 'alert.send', 'ok' => true, 'detail' => "Alerted {$told} ".($told === 1 ? 'person' : 'people').'.'
             .($skipped > 0 ? " {$skipped} named ".($skipped === 1 ? 'person is' : 'people are').' no longer active here and were skipped.' : '')];
+    }
+
+    /**
+     * A text to the lead from the branch's cleared line, written into the
+     * lead's thread so the answer is seen there (LeadTexts, Leads 2026-10-13).
+     * No phone on the lead is skipped, not failed: a web form without one is
+     * ordinary, and a failure would count toward switching the rule off.
+     */
+    private function textLead(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'lead.text', 'ok' => false, 'detail' => 'This step needs a trigger about an enquiry.'];
+        }
+
+        if (Lead::e164($subject->phone) === null) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => 'The enquiry has no phone number, so no text was sent.'];
+        }
+
+        [$actor] = $this->taskContext($automation);
+
+        try {
+            app(\App\Support\Leads\LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+        } catch (\RuntimeException $e) {
+            return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        return ['type' => 'lead.text', 'ok' => true, 'detail' => 'Texted the customer; it is on the enquiry.'];
     }
 }
