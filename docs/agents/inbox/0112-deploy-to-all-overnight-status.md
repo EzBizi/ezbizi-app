@@ -52,3 +52,11 @@ then the Notifications pop-up, then REPORT_CALL_SCORING=true), as agreed.
   workiz_calls holds 22,786 rows for A1-Group, 2,381 of them with a dispatcher_score.
 - **Leads:** the "Other" relabel ran 3 passes and labelled 69 + 58 + 67 rows.
 - **Grok AI:** scoring go-live step 1 is still yours (see the update above).
+
+---
+**Update 2026-10-13 ~03:35 UTC: 0.0.0415 and 0.0.0416 LIVE on every platform.**
+- 0.0.0415 (2f10ef1f): Grok AI's Meta category suggestions (migration 800100_add_suggested_service_group ran;
+  suggest-meta-categories runs daily 06:15 ET) and Reports' MetaSpend::rows refactor.
+- 0.0.0416 (d2760918): GrokCli --reasoning-effort, config `low` on prod (GROK_CLI_EFFORT unset).
+- Both: marker OK, 0 pending migrations, 0 failed_jobs. windows.json reads 0.0.0416.
+- Transcript backlog at 03:34 UTC: 1,057 waiting (down from Grok AI's 1,120). The desk re-measures in about 45 min.
