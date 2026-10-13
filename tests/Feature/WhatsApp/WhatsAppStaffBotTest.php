@@ -6,6 +6,7 @@ use App\Models\AssistantEntry;
 use App\Models\StaffBotItem;
 use App\Models\StaffBotMenu;
 use App\Models\TrainingGuide;
+use App\Models\TrainingMedia;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
@@ -827,7 +828,8 @@ class WhatsAppStaffBotTest extends TestCase
                     'training_guide_id' => $guide->id, 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service']),
                 $item(2, ['title' => 'Codes', 'source' => 'library',
                     'assistant_entry_id' => AssistantEntry::query()->orderBy('position')->value('id')]),
-                $item(3, ['title' => 'Daily conversion', 'source' => 'report', 'report' => 'daily_conversion']),
+                $item(3, ['title' => 'Before & After', 'source' => 'guide',
+                    'training_guide_id' => $guide->id, 'chapter' => 'Gallery']),
             ];
         });
     }
@@ -838,14 +840,14 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         $this->staff($t);
-        [$guide, $library, $report] = $this->roleMenu($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
 
         $this->inbound(self::BOT, $this->text('hi'))->assertOk();
 
         $this->assertSame([
             WhatsAppStaffBot::ITEM.$guide->id,
             WhatsAppStaffBot::ITEM.$library->id,
-            WhatsAppStaffBot::ITEM.$report->id,
+            WhatsAppStaffBot::ITEM.$empty->id,
             WhatsAppStaffBot::FIND_LOCATION,
         ], $this->menuIds());
         $this->assertSame('Office', $this->sent[0]['interactive']['action']['sections'][0]['title']);
@@ -857,21 +859,21 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         $this->staff($t);
-        [$guide, $library, $report] = $this->roleMenu($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
         $entryBody = $this->inTenant($t['org'], fn () => (string) AssistantEntry::query()->orderBy('position')->value('body'));
 
         // The guide's section, as the guide says it today.
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN1')->assertOk();
-        $this->assertStringContainsString('*Dispatch guidelines*', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString("\u{1F4D8} *Dispatch guidelines*", $this->sent[0]['text']['body']);
         $this->assertStringContainsString('Answer by the third ring', $this->sent[0]['text']['body']);
 
         // The Library entry, read through AssistantBrain.
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$library->id, 'Codes'), 'wamid.IN2')->assertOk();
         $this->assertStringContainsString(mb_substr($entryBody, 0, 40), $this->sent[1]['text']['body']);
 
-        // Nothing writes the report yet: it says so rather than going quiet.
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$report->id, 'Daily conversion'), 'wamid.IN3')->assertOk();
-        $this->assertStringContainsString('coming soon', $this->sent[2]['text']['body']);
+        // A section with nothing in it yet says so rather than going quiet.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$empty->id, 'Before & After'), 'wamid.IN3')->assertOk();
+        $this->assertStringContainsString('Coming soon', $this->sent[2]['text']['body']);
     }
 
     public function test_another_roles_menu_is_neither_shown_nor_answered(): void
@@ -892,6 +894,46 @@ class WhatsAppStaffBotTest extends TestCase
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN2')->assertOk();
         $this->assertStringContainsString('for staff only', $this->sent[1]['text']['body']);
         $this->assertStringNotContainsString('third ring', $this->sent[1]['text']['body']);
+    }
+
+    public function test_a_guide_rows_pictures_follow_its_text(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+
+        $item = $this->inTenant($t['org'], function () use ($t) {
+            $guide = TrainingGuide::create([
+                'company_id' => null, 'franchise_id' => null, 'title' => 'Technician guide',
+                'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+            ]);
+            $png = TrainingMedia::create(['guide_id' => $guide->id, 'disk' => 'local', 'path' => 'g/crown.png',
+                'sha256' => str_repeat('a', 64), 'mime' => 'image/png', 'bytes' => 120_000]);
+            $huge = TrainingMedia::create(['guide_id' => $guide->id, 'disk' => 'local', 'path' => 'g/huge.png',
+                'sha256' => str_repeat('b', 64), 'mime' => 'image/png', 'bytes' => 9_000_000]);
+            $guide->forceFill(['screens' => [['title' => 'Rebuilt crown', 'chapter' => 'Gallery', 'section' => null,
+                'blocks' => [
+                    ['type' => 'text', 'text' => 'Before and after, Maple Grove.'],
+                    ['type' => 'image', 'media_id' => $png->id],
+                    ['type' => 'image', 'media_id' => $huge->id],          // over WhatsApp's 5 MB
+                    ['type' => 'image', 'url' => 'https://example.test/after.jpg'],
+                    ['type' => 'image', 'url' => 'https://example.test/spin.gif'], // not a jpg or png
+                ]]]])->save();
+            $menu = StaffBotMenu::create(['name' => 'Technicians', 'role_ids' => [$t['admin']->role_id]]);
+
+            return StaffBotItem::create(['organization_id' => $t['org']->id, 'menu_id' => $menu->id, 'position' => 1,
+                'title' => 'Before & After', 'source' => 'guide', 'training_guide_id' => $guide->id, 'chapter' => 'Gallery']);
+        });
+
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$item->id, 'Before & After'))->assertOk();
+
+        $this->assertCount(3, $this->sent, 'the text, then two pictures');
+        $this->assertStringContainsString('Before and after, Maple Grove.', $this->sent[0]['text']['body']);
+        $this->assertSame('image', $this->sent[1]['type']);
+        $this->assertStringContainsString('signature=', $this->sent[1]['image']['link']);
+        $this->assertSame('Rebuilt crown', $this->sent[1]['image']['caption']);
+        $this->assertSame('https://example.test/after.jpg', $this->sent[2]['image']['link']);
     }
 
     /** Jose, 2026-10-13: "please send me all the calls w this number 9524572594" goes to the recordings job. */
