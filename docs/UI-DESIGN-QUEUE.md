@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 86 · Scheduling › Re-Scheduling, and the Availability map's dots — **sent 2026-10-13, awaiting Jose** (`docs/previews/scheduling-rescheduling-layouts.html`)
+### 86 · Scheduling › Re-Scheduling, and the Availability map's dots — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, map 7** — **BUILT** b5f42548 (session/uiux-resched, carries Scheduling's 42e4981b) (`docs/previews/scheduling-rescheduling-layouts.html`)
 
 Relayed by Scheduling, Jose 2026-10-13: *"a separate tab in scheduling called Re-Scheduling where it shows such suggestions
 and what to replace them for, to better fit a comprehensive route for the technicians"*; on the map: *"when hovering or
@@ -2981,7 +2981,7 @@ as cards, a tap opening the job in the tab with the map; **5**: by area, folded;
 click, + − ⤢ top-right; **8**: label on hover, card on click; **9**: the dot picks its row in the list. Settings: the radius
 and look-ahead as a Suggestions sub-tab of Scheduling › Settings, the stock settings control, built without a vote.
 
-### 85 · Reports › Scoring · a card per person, a ranking, and Grok's read — **sent 2026-10-13, awaiting Jose** (`docs/previews/reports-scoring-layouts.html`)
+### 85 · Reports › Scoring · a card per person, a ranking, and Grok's read — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** 0ba978af (session/uiux-scoring) (`docs/previews/reports-scoring-layouts.html`)
 
 Jose 2026-10-13, verbatim: *"I also want you to build an extra tab related to performance, but more focused on the Scoring
 and Performance of each employee ... name it Scoring or something ... i want to see the employees as cards, and clicking on
