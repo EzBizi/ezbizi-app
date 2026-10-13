@@ -427,7 +427,10 @@ final class WhatsAppStaffBot
         $organization = Organization::findOrFail($number->organization_id);
 
         // A question about the figures, from someone who may read Reports
-        // (Jose, 2026-10-13, Rodrigo's report-on-request).
+        // (Jose, 2026-10-13, Rodrigo's report-on-request). The whole reply
+        // fits the job's 75 s (AnswerWhatsAppWithAi): the Library gets what
+        // the figures left, and nothing when under 10 s remain.
+        $started = microtime(true);
         if ($viewer?->hasPermission('reports.view')) {
             $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
             if ($figures !== null) {
@@ -437,8 +440,9 @@ final class WhatsAppStaffBot
             }
         }
 
+        $left = min(60, 70 - (int) ceil(microtime(true) - $started));
         try {
-            $answer = $this->brain->aiAnswer($viewer, $organization, $query);
+            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left) : null;
         } catch (\RuntimeException) {
             $answer = null;
         }
