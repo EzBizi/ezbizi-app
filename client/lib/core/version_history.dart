@@ -23,6 +23,7 @@ class VersionHistory {
         'A1Leads GBP: each Google review shows once, even when it is reachable through more than one Google account.',
         'Task Board: choose a board from a list grouped by company, and set up your own statuses, columns and groups. Tasks can have subtasks.',
         'Reports: task reports show each board’s own statuses and whether a task is a subtask.',
+        'Automations: "Change the status" on a task works with each board’s own statuses.',
       ],
     ),
     VersionRelease(
