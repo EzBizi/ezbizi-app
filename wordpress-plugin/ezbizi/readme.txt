@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.13
+Stable tag: 1.26.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,11 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.14 =
+* CHANGE: The review faces' green face goes straight to the Google review
+  page, with no step between. A site with no Google review link keeps the
+  old path.
 
 = 1.26.13 =
 * CHANGE: The review faces' complaint form asks for detail under "What
