@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0427',
+      date: '13 Oct 2026',
+      items: [
+        'Automations: a rule can move a task to another group on its board.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0426',
       date: '13 Oct 2026',
       items: [
