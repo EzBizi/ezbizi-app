@@ -5,6 +5,8 @@ namespace App\Support\Social;
 use App\Jobs\AnswerWhatsAppWithAi;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
+use App\Models\StaffBotItem;
+use App\Models\StaffBotMenu;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
@@ -47,6 +49,9 @@ final class WhatsAppStaffBot
     public const SECTION = 's:';
 
     public const ENTRY = 'e:';
+
+    /** A row of a role's own menu (AI Assistance › Staff bot, UI queue 88). */
+    public const ITEM = 'i:';
 
     /** Words that mean "show me the menu" rather than "search for this". */
     private const MENU_WORDS = ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'];
@@ -140,9 +145,59 @@ final class WhatsAppStaffBot
             return;
         }
 
+        if (str_starts_with($choice, self::ITEM)) {
+            $this->answerItem($number, $to, $viewer, substr($choice, strlen(self::ITEM)));
+
+            return;
+        }
+
         // A row id we do not know: a menu drawn before the Library replaced the
         // built-in answers. The fresh menu is a better answer than silence.
         $this->menu($number, $to, $viewer);
+    }
+
+    /**
+     * A row of the sender's role menu. Asked about the sender on every tap, as
+     * the rest is: a row tapped after their role changed, or one from another
+     * role's menu, is refused like any staff-only answer. A Library row is
+     * read through AssistantBrain, so it keeps its own audience and place.
+     */
+    private function answerItem(WhatsAppNumber $number, string $to, ?User $viewer, string $id): void
+    {
+        $item = StaffBotItem::query()->with('menu', 'guide')->find($id);
+
+        if ($item === null || $viewer === null || ! $item->menu->isFor($viewer->role_id)) {
+            $this->refuse($number, $to);
+
+            return;
+        }
+
+        if ($item->source === StaffBotItem::SOURCE_LIBRARY) {
+            $entry = $item->assistant_entry_id === null ? null : $this->brain->entry($viewer, $item->assistant_entry_id);
+            $answer = trim((string) $entry?->body) === '' ? null : (string) $entry->body;
+        } else {
+            $answer = $item->answer();
+        }
+
+        // Linked content not written yet says so, rather than going quiet.
+        $this->text($number, $to, $answer === null
+            ? "\u{1F6A7} *{$item->title}* is coming soon. Ask your manager in the meantime.\n\n\u{1F4CB} Text *MENU* to go back."
+            : mb_substr("*{$item->title}*\n\n".$answer, 0, AssistantEntry::MAX_BODY));
+    }
+
+    /**
+     * The first menu, in the editor's order, that names the sender's role and
+     * has a row in it; null for a stranger, or a role no menu names, who get
+     * the Library's sections as before.
+     */
+    private function roleMenu(?User $viewer): ?StaffBotMenu
+    {
+        if ($viewer === null || $viewer->role_id === null) {
+            return null;
+        }
+
+        return StaffBotMenu::query()->with('items')->orderBy('position')->orderBy('created_at')->get()
+            ->first(fn (StaffBotMenu $m) => $m->isFor($viewer->role_id) && $m->items->isNotEmpty());
     }
 
     /**
@@ -211,14 +266,20 @@ final class WhatsAppStaffBot
             ? $lead."\n\n\u{1F447} Choose an option below."
             : $this->brain->welcome($organization), 0, 1024);
 
-        // One row per section, leaving room for Find a location.
-        $library = $this->brain->sections($viewer)->take(self::MAX_ROWS - 1)->map(
-            fn (Collection $entries, string $section) => $this->row(
-                self::SECTION.$section,
-                $section,
-                $entries->count() === 1 ? $entries->first()->description : $entries->count().' topics',
-            ),
-        )->values()->all();
+        // The sender's role menu when one names their role (UI queue 88);
+        // otherwise one row per Library section. Room left for Find a location.
+        $roleMenu = $this->roleMenu($viewer);
+        $library = $roleMenu !== null
+            ? $roleMenu->items->take(self::MAX_ROWS - 1)->map(
+                fn (StaffBotItem $item) => $this->row(self::ITEM.$item->id, $item->title, $item->line),
+            )->values()->all()
+            : $this->brain->sections($viewer)->take(self::MAX_ROWS - 1)->map(
+                fn (Collection $entries, string $section) => $this->row(
+                    self::SECTION.$section,
+                    $section,
+                    $entries->count() === 1 ? $entries->first()->description : $entries->count().' topics',
+                ),
+            )->values()->all();
 
         $this->cloud->replyFreeForm($number, $to, [
             'type' => 'interactive',
@@ -231,7 +292,7 @@ final class WhatsAppStaffBot
                     'button' => 'Choose',
                     // A section with no rows makes Meta refuse the whole list.
                     'sections' => array_values(array_filter([
-                        ['title' => 'Library', 'rows' => $library],
+                        ['title' => mb_substr($roleMenu?->name ?? 'Library', 0, 24), 'rows' => $library],
                         ['title' => 'Company', 'rows' => [
                             $this->row(self::FIND_LOCATION, 'Find a location', 'Phone, address, service area'),
                         ]],
