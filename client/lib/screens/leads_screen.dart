@@ -1797,6 +1797,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                     key: ValueKey('customer-badge-$id'),
                                   ),
                                 ],
+                                // A dispatcher left a note: seen from the list, read on
+                                // hover (Jose, 2026-10-13: "u can't tell a note is
+                                // there unless u enter the lead").
+                                if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
+                                  Tooltip(
+                                    message: [
+                                      if ((lead['note_by'] as Map?)?['name'] != null)
+                                        'Note · ${(lead['note_by'] as Map)['name']}',
+                                      '${lead['note']}',
+                                    ].join('\n'),
+                                    child: Icon(
+                                      Icons.sticky_note_2,
+                                      key: ValueKey('note-mark-$id'),
+                                      size: 17,
+                                      color: ToneColours.of(context, Tone.caution).ink,
+                                    ),
+                                  ),
                                 // Replied or not, and ONLY where a reply is possible.
                                 //
                                 // `can_reply` is the channel's own answer, not a guess
@@ -1813,6 +1830,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',
                                     key: ValueKey('reply-badge-$id'),
+                                    alert: !mine,
                                   ),
                                 ],
                                 // Waited too long: the customer spoke last over ten
@@ -2030,10 +2048,14 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
 
 /// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
 class _Badge extends StatelessWidget {
-  const _Badge(this.text, {super.key, this.call = false});
+  const _Badge(this.text, {super.key, this.call = false, this.alert = false});
 
   final String text;
   final bool call;
+
+  /// Solid red: somebody is owed an answer (Jose, 2026-10-13: Awaiting reply
+  /// "should be a different color, maybe bright red").
+  final bool alert;
 
   @override
   Widget build(BuildContext context) {
@@ -2044,14 +2066,22 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(
         // Call is the primary family, Text the secondary. tertiaryContainer
         // is off limits: it would be the first purple in the app.
-        color: call ? scheme.primaryContainer : scheme.secondaryContainer,
+        color: alert
+            ? scheme.error
+            : call
+            ? scheme.primaryContainer
+            : scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: call ? scheme.onPrimaryContainer : scheme.onSecondaryContainer,
+          color: alert
+              ? scheme.onError
+              : call
+              ? scheme.onPrimaryContainer
+              : scheme.onSecondaryContainer,
         ),
       ),
     );
