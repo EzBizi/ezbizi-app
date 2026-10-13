@@ -17,7 +17,7 @@ class VersionHistory {
       version: '0.0.0424',
       date: '13 Oct 2026',
       items: [
-        'Walkthroughs: the (?) beside the title on Leads, Jobs, Customers and Scheduling now walks you through each part of the tab.',
+        'Walkthroughs: the (?) beside the title on Leads, Jobs, Customers, Scheduling, Dashboard, Work Hours, Communication, Email, Services and Inspection now walks you through each part of the tab.',
       ],
     ),
     VersionRelease(
