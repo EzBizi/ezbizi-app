@@ -66,6 +66,35 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    public function test_a_rule_moves_a_task_to_a_group_on_its_own_board_only(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.status_changed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $runner = app(ActionRunner::class);
+            $event = new AutomationEvent(['event_key' => 'job.created', 'payload' => [],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+            $runner->run(['type' => 'task.create', 'title' => 'T'], $event, null, automation: $rule);
+            $task = Task::query()->sole();
+            $finished = \App\Models\TaskGroup::create(['organization_id' => $t['org']->id, 'board_id' => $task->board_id, 'name' => 'Finished', 'position' => 9]);
+            $elsewhere = \App\Models\TaskGroup::create(['organization_id' => $t['org']->id,
+                'board_id' => TaskBoard::create(['organization_id' => $t['org']->id, 'kind' => 'personal', 'owner_user_id' => $t['admin']->id, 'name' => 'Mine'])->id,
+                'name' => 'Other', 'position' => 9]);
+
+            $moved = $runner->run(['type' => 'task.move_group', 'group_id' => $finished->id], $event, $task, automation: $rule);
+            $this->assertTrue($moved['ok'], $moved['detail']);
+            $this->assertSame($finished->id, $task->fresh()->group_id);
+
+            $again = $runner->run(['type' => 'task.move_group', 'group_id' => $finished->id], $event, $task->fresh(), automation: $rule);
+            $this->assertTrue($again['skipped'] ?? false, 'already there is a skip, not a failure');
+
+            $refused = $runner->run(['type' => 'task.move_group', 'group_id' => $elsewhere->id], $event, $task->fresh(), automation: $rule);
+            $this->assertFalse($refused['ok'], 'a group on another board is refused');
+            $this->assertSame($finished->id, $task->fresh()->group_id);
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');
