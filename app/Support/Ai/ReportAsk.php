@@ -90,7 +90,8 @@ final class ReportAsk
                 ."per source: created (booked in the period) and closed (done or canceled in the period), "
                 ."gross in dollars; techs with their gross and deposits; leads by source. Never invent a "
                 ."number; if the figures do not answer it, say what you can and what is missing. 2-8 short "
-                ."lines for WhatsApp, numbers rounded to whole dollars, the period stated once.\n\n"
+                ."lines for WhatsApp, numbers rounded to whole dollars, the period stated once.\n"
+                .GrokCli::WHATSAPP_STYLE."\n\n"
                 ."FIGURES:\n{$figures}\n\nQUESTION: {$question}",
                 ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false],
                 self::ANSWER_TIMEOUT,

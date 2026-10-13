@@ -23,6 +23,17 @@ use RuntimeException;
  */
 final class GrokCli
 {
+    /**
+     * How every Grok reply that goes out on WhatsApp is laid out (Jose,
+     * 2026-10-13: "use emojis, line breaks ... better ui-ux experience").
+     * WhatsApp renders *bold* and _italic_, not Markdown headings or tables.
+     */
+    public const WHATSAPP_STYLE = "FORMAT FOR WHATSAPP: start with a short *bold* title line with one fitting emoji. "
+        ."Then one fact per line, each line starting with a fitting emoji (for example \u{1F4B0} money, "
+        ."\u{1F4C5} dates, \u{1F527} jobs, \u{1F464} people, \u{2705} done, \u{274C} canceled, \u{1F4CD} places, "
+        ."\u{1F4DE} phone). Put a blank line between groups. Use *bold* for names and key numbers. No "
+        ."Markdown headings (#), no tables, no ** double asterisks. Keep it short.";
+
     /** A long call's speaker split can take minutes; 120 s timed out on prod. */
     private const TIMEOUT = 300;
 

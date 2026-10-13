@@ -442,7 +442,7 @@ final class WhatsAppStaffBot
 
         $left = min(60, 70 - (int) ceil(microtime(true) - $started));
         try {
-            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left) : null;
+            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left, forWhatsApp: true) : null;
         } catch (\RuntimeException) {
             $answer = null;
         }
