@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
@@ -18,6 +19,7 @@ use App\Support\Memberships\CustomerLinks;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingLink;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
 use App\Support\Web\Turnstile;
@@ -356,6 +358,60 @@ class EnquiriesController extends Controller
         });
     }
 
+    /**
+     * GET /api/v1/web/booking/lead?key&l — what a lead's booking link already
+     * knows (Jose, 2026-10-13), so the widget skips asking for it. A first name
+     * and a ZIP, never the phone itself: the link travels in a text message.
+     */
+    public function bookingLead(Request $request): JsonResponse
+    {
+        $site = $this->siteForKey($request);
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        return $this->tenant->run($organization, function () use ($site, $request): JsonResponse {
+            $lead = $this->bookingLeadFor($site, $request->query('l'));
+
+            if ($lead instanceof JsonResponse) {
+                return $lead;
+            }
+
+            return response()->json([
+                'first_name' => Str::of((string) $lead->contact_name)->trim()->before(' ')->value() ?: null,
+                'zip' => preg_match('/^[0-9]{5}/', (string) $lead->postal_code, $m) === 1 ? $m[0] : null,
+                'has_name' => trim((string) $lead->contact_name) !== '',
+                'has_phone' => trim((string) $lead->phone) !== '',
+            ])->withHeaders($this->browserHeaders());
+        });
+    }
+
+    /**
+     * The lead a booking link names, if it is this site's company's and can still
+     * be booked; otherwise the answer the widget shows. A lead that already has a
+     * job is a customer to talk to, not a slot to take.
+     */
+    private function bookingLeadFor(WebSite $site, mixed $token): Lead|JsonResponse
+    {
+        $id = BookingLink::leadId(is_string($token) ? $token : null);
+        $lead = $id === null ? null : Lead::query()->whereKey($id)->where('company_id', $site->company_id)->first();
+
+        if ($lead === null) {
+            return response()->json(['message' => 'This booking link has expired. Please book below or call us.'],
+                Response::HTTP_NOT_FOUND)->withHeaders($this->browserHeaders());
+        }
+
+        if ($lead->job_id !== null || in_array($lead->status, [Lead::STATUS_BOOKED, Lead::STATUS_COMPLETED], true)) {
+            return response()->json(['message' => 'You already have a visit with us. Please call us to change it.'],
+                Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
+        }
+
+        return $lead;
+    }
+
     /** POST /api/v1/web/booking — a visitor asks for a day and window; a dispatcher approves it in Leads. */
     public function submitBooking(Request $request): JsonResponse
     {
@@ -365,12 +421,16 @@ class EnquiriesController extends Controller
             return $site;
         }
 
+        // A lead's own link: what the lead already holds is not asked again.
+        $linked = $request->filled('l');
+
         $input = $request->validate([
             'zip' => ['required', 'regex:/^[0-9]{5}$/'],
             'date' => ['required', 'date_format:Y-m-d'],
             'start_time' => ['required', 'date_format:H:i'],
-            'name' => ['required', 'string', 'max:191'],
-            'phone' => ['required', 'string', 'max:40'],
+            'l' => ['nullable', 'string', 'max:200'],
+            'name' => [$linked ? 'nullable' : 'required', 'string', 'max:191'],
+            'phone' => [$linked ? 'nullable' : 'required', 'string', 'max:40'],
             'address' => ['required', 'string', 'max:300'],
             'page_url' => ['nullable', 'string', 'max:500'],
             'captcha' => ['nullable', 'string', 'max:2000'],
@@ -386,7 +446,25 @@ class EnquiriesController extends Controller
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
 
-        return $this->tenant->run($organization, function () use ($site, $input, $organization): JsonResponse {
+        return $this->tenant->run($organization, function () use ($site, $input, $organization, $linked): JsonResponse {
+            $lead = null;
+
+            if ($linked) {
+                $lead = $this->bookingLeadFor($site, $input['l']);
+
+                if ($lead instanceof JsonResponse) {
+                    return $lead;
+                }
+
+                // Whatever the lead lacks is still asked for.
+                foreach (['name' => 'contact_name', 'phone' => 'phone'] as $field => $column) {
+                    if (trim((string) $lead->{$column}) === '' && trim((string) ($input[$field] ?? '')) === '') {
+                        return response()->json(['message' => 'Please fill in your '.$field.'.', 'errors' => [$field => ['Required.']]],
+                            Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
+                    }
+                }
+            }
+
             $area = $this->bookingArea($site, $input['zip']);
 
             if ($area === null) {
@@ -394,7 +472,7 @@ class EnquiriesController extends Controller
             }
 
             // One booking at a time per area, so two visitors cannot take the last seat together.
-            return Cache::lock('web-booking:'.($area->shares_with_id ?? $area->id), 10)->block(5, function () use ($site, $area, $input, $organization): JsonResponse {
+            return Cache::lock('web-booking:'.($area->shares_with_id ?? $area->id), 10)->block(5, function () use ($site, $area, $input, $organization, $lead): JsonResponse {
                 $day = collect($this->bookingOpen($area, $organization))->firstWhere('date', $input['date']);
                 $window = collect($day['windows'] ?? [])->firstWhere('start_time', $input['start_time']);
 
@@ -404,11 +482,11 @@ class EnquiriesController extends Controller
                 }
 
                 DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], [
-                    'name' => $input['name'],
-                    'phone' => $input['phone'],
+                    'name' => $input['name'] ?? null,
+                    'phone' => $input['phone'] ?? null,
                     'zip' => $input['zip'],
                     'page_url' => $input['page_url'] ?? null,
-                ]));
+                ], $lead));
 
                 return response()->json(['received' => true, 'date' => $input['date']] + $window, Response::HTTP_CREATED)
                     ->withHeaders($this->browserHeaders());

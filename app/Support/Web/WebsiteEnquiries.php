@@ -388,10 +388,14 @@ final class WebsiteEnquiries
      *
      * @param  array{name?: ?string, phone?: ?string, zip?: ?string, page_url?: ?string}  $visitor
      */
-    public function submitBooking(WebSite $site, ServiceArea $area, string $date, array $window, string $address, array $visitor): WebBooking
+    public function submitBooking(WebSite $site, ServiceArea $area, string $date, array $window, string $address, array $visitor, ?Lead $existing = null): WebBooking
     {
         $remoteId = 'booking_'.Str::uuid()->toString();
-        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
+        // From the lead's own booking link (Jose, 2026-10-13): the request joins
+        // that lead's thread rather than starting a second lead.
+        $lead = $existing ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
+        $visitor['name'] = ($visitor['name'] ?? '') !== '' ? $visitor['name'] : $lead->contact_name;
+        $visitor['phone'] = ($visitor['phone'] ?? '') !== '' ? $visitor['phone'] : $lead->phone;
 
         // The area knows the branch better than the site does.
         if ($lead->franchise_id === null && $area->franchise_id !== null) {

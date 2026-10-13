@@ -1187,12 +1187,22 @@ function load(){
   }).catch(function(){note.textContent=" . wp_json_encode(__('That did not work. Please call us.', 'ezbizi')) . ";});
 }
 q('[data-step=zip]').addEventListener('submit',function(e){e.preventDefault();var f=e.target;if(!f.checkValidity()){f.reportValidity();return;}load();});
+// A lead's own link (?l=, Jose 2026-10-13): the booking lands on that lead, and
+// what it already holds (ZIP, name, phone) is not asked again.
+var lt='';try{lt=new URLSearchParams(location.search).get('l')||'';}catch(x){}
+if(lt){fetch(api+'/api/v1/web/booking/lead?key='+encodeURIComponent(key)+'&l='+encodeURIComponent(lt),{headers:{'Accept':'application/json'}})
+  .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(x){
+    if(!x.ok){lt='';note.textContent=x.d.message||'';return;}
+    var f=q('[data-step=details]');
+    ['name','phone'].forEach(function(n){if(x.d['has_'+n]){var i=f.elements[n];i.required=false;i.closest('label').style.display='none';}});
+    if(x.d.zip){q('[name=zip]').value=x.d.zip;load();}
+  }).catch(function(){lt='';});}
 q('[data-step=details]').addEventListener('submit',function(e){
   e.preventDefault();var f=e.target;if(!f.checkValidity()){f.reportValidity();return;}
   var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('.ezb-go');b.disabled=true;note.textContent='';
   var v={key:key,zip:st.zip,date:st.date,start_time:st.win.start_time,name:f.elements['name'].value.trim(),phone:f.elements.phone.value.trim(),address:f.elements.address.value.trim(),page_url:location.href};
-  if(ts)v.turnstile=ts;
+  if(ts)v.turnstile=ts;if(lt)v.l=lt;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
     return fetch(api+'/api/v1/web/booking',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
   .then(function(r){ezTsReset(f);b.disabled=false;

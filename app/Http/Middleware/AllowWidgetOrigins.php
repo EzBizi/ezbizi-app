@@ -64,6 +64,7 @@ final class AllowWidgetOrigins
         'api/v1/web/chat/*/typing',
         'api/v1/web/booking',
         'api/v1/web/booking/days',
+        'api/v1/web/booking/lead',
     ];
 
     public function handle(Request $request, Closure $next): Response

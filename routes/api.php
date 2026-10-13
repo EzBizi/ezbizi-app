@@ -564,6 +564,11 @@ Route::get('v1/web/booking/days', [WebEnquiriesController::class, 'bookingDays']
     ->middleware('throttle:web-chat-poll')
     ->name('web.booking.days');
 
+// A lead's own booking link (Jose, 2026-10-13): what it already knows, so the widget skips asking.
+Route::get('v1/web/booking/lead', [WebEnquiriesController::class, 'bookingLead'])
+    ->middleware('throttle:web-chat-poll')
+    ->name('web.booking.lead');
+
 Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
     ->middleware('throttle:web-enquiry')
     ->name('web.booking.submit');

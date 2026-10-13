@@ -8,6 +8,7 @@ use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
 use App\Models\WebBooking;
 use App\Models\WebSite;
+use App\Support\Web\BookingLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -63,6 +64,40 @@ class WebBookingTest extends TestCase
         $this->postJson('/api/v1/web/form', ['key' => $site->public_key, 'fields' => ['ZIP code' => '06810'], 'zip' => '06810'])->assertCreated();
 
         $this->assertSame('06810', $this->inTenant($tenant['org'], fn () => Lead::query()->sole()->postal_code));
+    }
+
+    /**
+     * Jose, 2026-10-13: an after-hours lead's own booking link books onto that
+     * lead (no second lead) and is not asked again for what the lead holds.
+     */
+    public function test_a_leads_booking_link_books_onto_that_lead(): void
+    {
+        [$site, $tenant] = $this->siteWithArea();
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::create([
+            'company_id' => $tenant['company']->getKey(), 'source' => 'website_form', 'remote_id' => 'form_1',
+            'contact_name' => 'Dana Smith', 'phone' => '+12035550100', 'postal_code' => '06810',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+        $url = BookingLink::forLead($lead, 'https://www.a-1chimney.com/booking/');
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $token = $query['l'];
+
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))->assertOk()
+            ->assertExactJson(['first_name' => 'Dana', 'zip' => '06810', 'has_name' => true, 'has_phone' => true]);
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token.'x'))->assertNotFound();
+
+        $first = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->json('days.0.date');
+        $this->postJson('/api/v1/web/booking', ['key' => $site->public_key, 'zip' => '06810', 'date' => $first, 'start_time' => '08:00',
+            'address' => '1 Main St, Danbury, CT', 'name' => '', 'phone' => '', 'l' => $token, 'captcha' => $this->solved()])->assertCreated();
+
+        $this->inTenant($tenant['org'], function () use ($lead) {
+            $this->assertSame(1, Lead::query()->count(), 'no second lead');
+            $this->assertSame($lead->id, WebBooking::query()->sole()->lead_id);
+        });
+
+        // A lead that already has its visit is told to call.
+        $this->inTenant($tenant['org'], fn () => $lead->forceFill(['status' => Lead::STATUS_BOOKED])->save());
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))->assertStatus(409);
     }
 
     /** @return array{0: WebSite, 1: array} */
