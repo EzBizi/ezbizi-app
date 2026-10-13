@@ -2798,6 +2798,10 @@ Route::prefix('v1')
         Route::get('me/preferences', [PreferencesController::class, 'index']);
         Route::patch('me/preferences', [PreferencesController::class, 'update']);
 
+        // Each tab's how-to video (UI queue 81): platform-wide, kept by staff,
+        // the same for everybody signed in.
+        Route::get('help/videos', [\App\Http\Controllers\Api\HelpVideosController::class, 'index']);
+
         // ── Your own second factor (§6) ──────────────────────────
         //
         // Self-service on purpose: anybody signed in can switch it on without an
@@ -3225,6 +3229,12 @@ Route::prefix('v1/staff')
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
+
+        // Which tab has which how-to video (UI queue 81). Platform-wide like the
+        // client versions: a new video is a save, not a release.
+        Route::get('help-videos', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'index']);
+        Route::put('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'update']);
+        Route::delete('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'destroy']);
 
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);

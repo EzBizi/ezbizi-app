@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../widgets/enrolment_dialog.dart';
 import '../../widgets/side_panel.dart';
 import 'client_versions_screen.dart';
+import 'help_videos_screen.dart';
 import 'health_screen.dart';
 import 'impersonations_screen.dart';
 import 'modules_screen.dart';
@@ -71,10 +72,14 @@ class _StaffShellState extends State<StaffShell> {
     ];
   }
 
+  // In the order [destinations] draws them: the index is shared, so a missing
+  // id sends every later item to its neighbour's address.
   static const _ids = [
     'organizations',
     'modules',
+    'phone-requests',
     'client-versions',
+    'help-videos',
     'client-access',
     'health',
     'staff',
@@ -170,6 +175,13 @@ class _StaffShellState extends State<StaffShell> {
         Icons.devices_outlined,
         ClientVersionsScreen(staff: widget.staff),
         id: 'client-versions',
+      ),
+      // UI queue 81: which tab's ▶ plays which video, for every organization.
+      _Destination(
+        'Help videos',
+        Icons.smart_display_outlined,
+        HelpVideosScreen(staff: widget.staff),
+        id: 'help-videos',
       ),
       _Destination(
         'Client access',

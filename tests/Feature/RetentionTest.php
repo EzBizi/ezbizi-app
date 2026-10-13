@@ -662,6 +662,10 @@ class RetentionTest extends TestCase
             'permissions' => 'the list of what the software can do (§2.1). It is code kept in '
                 .'a table and synced by ezbizi:sync-permissions; a client composes these into '
                 .'roles and cannot invent one',
+            'platform_help_videos' => 'one row per module, holding the how-to video behind '
+                .'its tab (UI queue 81), changed in place. `module_key` is unique, so it is '
+                .'bounded by the number of modules. `changed_by` is a PlatformStaff label '
+                .'overwritten by the next change; the audit log carries the history',
             'platform_module_flags' => 'one row per module, holding EzBizi\'s own '
                 .'availability switch (§2.1 layer 3), changed in place',
             'platform_minimum_client_versions' => 'one row per platform, holding the oldest '

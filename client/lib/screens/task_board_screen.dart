@@ -324,6 +324,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           children: [
             if (_boards.isNotEmpty)
               Material(
+                key: const ValueKey('tasks-boards'),
                 color: theme.colorScheme.surface,
                 child: TabBarLike(
                   level: TabLevel.secondary,
@@ -428,7 +429,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       children: [
-        for (final g in _groups(_board!)) _group(context, g, cards: cards),
+        for (final (i, g) in _groups(_board!).indexed)
+          // The walkthrough's last step points at the first group.
+          i == 0
+              ? KeyedSubtree(
+                  key: const ValueKey('tasks-groups'),
+                  child: _group(context, g, cards: cards),
+                )
+              : _group(context, g, cards: cards),
       ],
     );
   }

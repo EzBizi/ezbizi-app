@@ -49,6 +49,7 @@ import 'screens/update_required_screen.dart';
 import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
+import 'widgets/tab_help.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
@@ -1988,6 +1989,19 @@ class _HomeShellState extends State<HomeShell> {
         ModulePageHeader(
           title: destination.label,
           subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+          // UI queue 81: the walkthrough and the how-to video, as A1 Tools
+          // had them, each only where the tab has one.
+          beside: TabHelpButtons(
+            module: destination.id,
+            label: destination.label,
+            api: widget.api,
+            session: widget.session,
+          ),
+        ),
+        TourOffer(
+          module: destination.id,
+          label: destination.label,
+          session: widget.session,
         ),
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
