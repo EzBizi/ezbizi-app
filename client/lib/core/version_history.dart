@@ -14,13 +14,6 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0425',
-      date: '13 Oct 2026',
-      items: [
-        'AI Assistance: answers in the app and on the WhatsApp staff line also draw on your role\'s training guide, with its video links.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0424',
       date: '13 Oct 2026',
       items: [
@@ -37,6 +30,7 @@ class VersionHistory {
         'Automations: a notification to several people picked by name now reaches each of them.',
         'Automations: a task made by a rule goes on the place\'s board and is given to the person.',
         'Leads: after hours, auto replies can carry a booking link that books onto the same lead; an approved online booking can send the customer a confirmation with the number to call; the Online Booking card shows the best-fit window for the dispatcher.',
+        'AI Assistance: answers in the app and on the WhatsApp staff line also draw on your role\'s training guide, with its video links.',
       ],
     ),
     VersionRelease(
