@@ -383,6 +383,9 @@ Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()-
 Schedule::command('ezbizi:ai-weekly-summary')->weeklyOn(1, '07:00')->timezone('America/New_York')->withoutOverlapping(60);
 // Coaching scores for answered calls (ScoreReportCalls); off until REPORT_CALL_SCORING.
 Schedule::command('ezbizi:score-report-calls')->everyTenMinutes()->withoutOverlapping(15);
+// Grok's daily and weekly read per employee for the Scoring tab (AiPersonReviews).
+Schedule::command('ezbizi:ai-person-reviews daily')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:ai-person-reviews weekly')->weeklyOn(1, '06:45')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok failing for 30 minutes mails the ops address (CheckGrokHealth).
 Schedule::command('ezbizi:check-grok')->everyFifteenMinutes();
 // Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).
