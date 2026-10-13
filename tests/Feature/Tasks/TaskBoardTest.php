@@ -61,6 +61,29 @@ class TaskBoardTest extends TestCase
         $this->assertNotContains('Beta F1', $names('franchise:'.$tenant['franchise']->id));
     }
 
+    public function test_assignable_is_the_owner_on_a_personal_board_and_reach_on_a_team_board(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $betaF1 = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $beta = Company::create(['organization_id' => $tenant['org']->id, 'name' => 'Beta Co', 'is_active' => true]);
+
+            return Franchise::create(['company_id' => $beta->id, 'name' => 'Beta F1']);
+        });
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['tasks.view']);
+        $outsider = $this->userWithRole($tenant, 'Outsider', ['tasks.view'], onlyAt: $betaF1);
+
+        $assignable = function (string $name) use ($viewer) {
+            $boards = $this->signedInAs($viewer)->getJson('/api/v1/task-boards')->json('data');
+            $id = collect($boards)->firstWhere('name', $name)['id'];
+
+            return collect($this->signedInAs($viewer)->getJson("/api/v1/task-boards/{$id}")->assertOk()->json('data.assignable'))->pluck('name')->all();
+        };
+
+        $this->assertSame(['Viewer'], $assignable('Viewer'));
+        $this->assertContains('Viewer', $assignable('Alpha F1'));
+        $this->assertNotContains('Outsider', $assignable('Alpha F1'));
+    }
+
     public function test_create_update_and_done_sets_and_clears_completed_at_and_emits(): void
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -57,6 +57,7 @@ class TaskBoardsController extends Controller
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => [
                 'id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position,
             ])->all(),
+            'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
             'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))->all(),
         ]]);
     }
