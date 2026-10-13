@@ -67,7 +67,7 @@ void main() {
       expect(
         find.descendant(
           of: private,
-          matching: find.text("Riley Chen · no phone · won't receive"),
+          matching: find.text('Riley Chen · no phone'),
         ),
         findsOneWidget,
       );
